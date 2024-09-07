@@ -1,0 +1,9 @@
+[package]
+name = "ucc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.87"
+regex = "1.10.6"
+structopt = "0.3.26"
