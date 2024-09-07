@@ -60,20 +60,15 @@ pub fn resolve_statement(s: &Statement, variable_map: &mut HashMap<String, Strin
 
 fn resolve_exp(exp: &Expression, variable_map: &mut HashMap<String, String>) -> Result<Expression> {
     match exp.to_owned() {
-        Expression::Assign(AssignExpression { op, lhs, rhs }) => {
-            let valid = match *lhs {
-                Expression::Variable(_) => true,
-                _ => false,
-            };
-
-            if !valid {
-                bail!("lhs of assignment must be a variable");
+        Expression::Assign(AssignExpression { op, ref lhs, rhs }) => {
+            if let Expression::Variable(_) = &**lhs {
+                let resolved_lhs = resolve_exp(&lhs, variable_map)?;
+                let resolved_rhs = resolve_exp(&rhs, variable_map)?;
+    
+                Ok(Expression::Assign(AssignExpression { op, lhs: resolved_lhs.into(), rhs: resolved_rhs.into() }))    
+            } else {
+                bail!("left-hand side of assignment must be a variable");
             }
-            
-            let resolved_lhs = resolve_exp(&*lhs, variable_map)?;
-            let resolved_rhs = resolve_exp(&*rhs, variable_map)?;
-
-            Ok(Expression::Assign(AssignExpression { op, lhs: resolved_lhs.into(), rhs: resolved_rhs.into() }))
         }
         Expression::Variable(name) => {
             let variable = variable_map.get(&name).ok_or_else(|| anyhow::anyhow!("undeclared variable: {}", name))?;
