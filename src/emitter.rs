@@ -165,7 +165,17 @@ impl Emit for AsmInstruction {
                 };
 
                 write!(f, "set{} ", suffix)?;
-                operand.emit(f)?;
+                
+                match operand {
+                    AsmOperand::Register(reg) => match reg {
+                        AsmRegister::AX => write!(f, "%al")?,
+                        AsmRegister::DX => write!(f, "%dl")?,
+                        AsmRegister::R10 => write!(f, "%r10b")?,
+                        AsmRegister::R11 => write!(f, "%r11b")?,
+                    },
+                    _ => operand.emit(f)?,
+                }
+
                 writeln!(f)?;
             }
             AsmInstruction::Label(label) => {
