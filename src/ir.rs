@@ -95,12 +95,11 @@ impl Irfy for Statement {
 impl Irfy for ProgramStatement {
     fn irfy(&self) -> IRNode {
         let mut functions = vec![];
+
         for func in &self.stmts {
-            functions.push(match func.irfy() {
-                IRNode::Function(func) => func,
-                _ => unreachable!(),
-            });
+            functions.push(func.irfy().into());
         }
+
         IRNode::Program(IRProgram { functions })
     }
 }
@@ -108,15 +107,41 @@ impl Irfy for ProgramStatement {
 impl Irfy for FunctionDeclaration {
     fn irfy(&self) -> IRNode {
         let mut instructions = vec![];
+
         for stmt in &self.stmts {
-            instructions.extend(match stmt.irfy() {
-                IRNode::Instructions(instrs) => instrs,
-                _ => unreachable!(),
-            });
+            instructions.extend::<Vec<IRInstruction>>(stmt.irfy().into());
         }
+
         IRNode::Function(IRFunction {
             name: self.name.clone(),
             body: instructions,
         })
+    }
+}
+
+impl From<IRNode> for IRProgram {
+    fn from(node: IRNode) -> Self {
+        match node {
+            IRNode::Program(prog) => prog,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<IRNode> for IRFunction {
+    fn from(node: IRNode) -> Self {
+        match node {
+            IRNode::Function(func) => func,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<IRNode> for Vec<IRInstruction> {
+    fn from(node: IRNode) -> Self {
+        match node {
+            IRNode::Instructions(instrs) => instrs,
+            _ => unreachable!(),
+        }
     }
 }
