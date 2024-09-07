@@ -99,13 +99,13 @@ impl Parser {
     fn parse_expression_statement(&mut self) -> Result<BlockItem> {
         let expr = self.parse_expression()?;
         self.consume(&Token::Semicolon)?;
-        Ok(BlockItem::Statement(Statement::Expression(expr)))
+        Ok(BlockItem::Statement(Statement::Expression(ExpressionStatement { expr })))
     }
 
     fn parse_return_statement(&mut self) -> Result<BlockItem> {
         let expr = self.parse_expression()?;
         self.consume(&Token::Semicolon)?;
-        Ok(BlockItem::Statement(Statement::Return(expr)))
+        Ok(BlockItem::Statement(Statement::Return(ReturnStatement { expr })))
     }
 
     fn parse_expression(&mut self) -> Result<Expression> {
@@ -309,8 +309,8 @@ pub struct VariableDeclaration {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Program(ProgramStatement),
-    Return(Expression),
-    Expression(Expression),
+    Return(ReturnStatement),
+    Expression(ExpressionStatement),
     Null,
 }
 
@@ -323,6 +323,16 @@ pub struct ProgramStatement {
 pub struct FunctionDeclaration {
     pub name: String,
     pub body: Vec<BlockItem>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReturnStatement {
+    pub expr: Expression,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExpressionStatement {
+    pub expr: Expression,
 }
 
 #[derive(Debug, Clone, PartialEq)]

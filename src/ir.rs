@@ -1,5 +1,5 @@
 use crate::parser::{
-    AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, Declaration, Expression, FunctionDeclaration, ProgramStatement, Statement, UnaryExpression, UnaryExpressionKind, VariableDeclaration
+    AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, Declaration, Expression, ExpressionStatement, FunctionDeclaration, ProgramStatement, ReturnStatement, Statement, UnaryExpression, UnaryExpressionKind, VariableDeclaration
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -211,21 +211,8 @@ impl Irfy for Statement {
     fn irfy(&self) -> IRNode {
         match self {
             Statement::Program(prog) => prog.irfy(),
-            Statement::Return(expr) => {
-                let mut instructions = vec![];
-
-                let expr = emit_tacky(expr.clone(), &mut instructions);
-                instructions.push(IRInstruction::Ret(expr));
-
-                IRNode::Instructions(instructions)
-            }
-            Statement::Expression(expr) => {
-                let mut instructions = vec![];
-
-                emit_tacky(expr.clone(), &mut instructions);
-
-                IRNode::Instructions(instructions)
-            }
+            Statement::Return(ret_stmt) => ret_stmt.irfy(),
+            Statement::Expression(expr_stmt) => expr_stmt.irfy(),
             Statement::Null => IRNode::Instructions(vec![]),
         }
     }
@@ -240,6 +227,23 @@ impl Irfy for ProgramStatement {
         }
 
         IRNode::Program(IRProgram { functions })
+    }
+}
+
+impl Irfy for ReturnStatement {
+    fn irfy(&self) -> IRNode {
+        let mut instructions = vec![];
+        let result = emit_tacky(self.expr.clone(), &mut instructions);
+        instructions.push(IRInstruction::Ret(result));
+        IRNode::Instructions(instructions)
+    }
+}
+
+impl Irfy for ExpressionStatement {
+    fn irfy(&self) -> IRNode {
+        let mut instructions = vec![];
+        let _ = emit_tacky(self.expr.clone(), &mut instructions);
+        IRNode::Instructions(instructions)
     }
 }
 

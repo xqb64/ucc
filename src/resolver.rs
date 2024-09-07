@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use anyhow::{bail, Result};
 
-use crate::{ir::make_temporary, parser::{AssignExpression, BinaryExpression, BlockItem, Declaration, Expression, FunctionDeclaration, ProgramStatement, Statement, UnaryExpression, VariableDeclaration}};
+use crate::{ir::make_temporary, parser::{AssignExpression, BinaryExpression, BlockItem, Declaration, Expression, ExpressionStatement, FunctionDeclaration, ProgramStatement, ReturnStatement, Statement, UnaryExpression, VariableDeclaration}};
 
 fn resolve_declaration(decl: Declaration, variable_map: &mut HashMap<String, String>) -> Result<Declaration> {
     match decl {
@@ -45,13 +45,13 @@ pub fn resolve_block_item(item: BlockItem, variable_map: &mut HashMap<String, St
 
 pub fn resolve_statement(s: Statement, variable_map: &mut HashMap<String, String>) -> Result<Statement> {
     match s {
-        Statement::Expression(exp) => {
-            let resolved_exp = resolve_exp(exp, variable_map)?;
-            Ok(Statement::Expression(resolved_exp))
+        Statement::Expression(ExpressionStatement { expr }) => {
+            let resolved_exp = resolve_exp(expr, variable_map)?;
+            Ok(Statement::Expression(ExpressionStatement { expr: resolved_exp }))
         }
-        Statement::Return(exp) => {
-            let resolved_exp = resolve_exp(exp, variable_map)?;
-            Ok(Statement::Return(resolved_exp))
+        Statement::Return(ReturnStatement { expr }) => {
+            let resolved_exp = resolve_exp(expr, variable_map)?;
+            Ok(Statement::Return(ReturnStatement { expr: resolved_exp } ))
         }
         Statement::Null => Ok(Statement::Null),
         Statement::Program(prog) => {
