@@ -50,7 +50,7 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let mut variable_map = HashMap::new();
-    let validated_ast = resolve_statement(ast.clone(), &mut variable_map)?;
+    let validated_ast = resolve_statement(&ast, &mut variable_map)?;
 
     if opts.validate {
         println!("{:?}", validated_ast);
