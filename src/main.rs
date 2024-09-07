@@ -3,7 +3,7 @@ use std::{collections::VecDeque, fs::File, path::PathBuf};
 use anyhow::{bail, Result};
 use structopt::StructOpt;
 
-use std::io::{Write, Read};
+use std::io::Write;
 
 fn main() {
     let opts = Opt::from_args();
