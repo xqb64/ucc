@@ -32,6 +32,8 @@ impl Emit for AsmProgram {
             func.emit(f)?;
         }
 
+        writeln!(f)?;
+
         Ok(())
     }
 }
@@ -54,11 +56,11 @@ impl Emit for AsmFunction {
                 AsmInstruction::AllocateStack(offset_manager.offset.unsigned_abs() as usize + 4);
         }
 
-        writeln!(f, ".globl {}", self.name)?;
+        writeln!(f, "\t.globl {}", self.name)?;
         writeln!(f, "{}:", self.name)?;
 
-        writeln!(f, "  pushq %rbp")?;
-        writeln!(f, "  movq %rsp, %rbp")?;
+        writeln!(f, "\tpushq %rbp")?;
+        writeln!(f, "\tmovq %rsp, %rbp")?;
 
         self.instructions.emit(f)?;
 
@@ -68,7 +70,7 @@ impl Emit for AsmFunction {
 
 impl Emit for AsmInstruction {
     fn emit(&mut self, f: &mut File) -> Result<()> {
-        write!(f, "  ")?;
+        write!(f, "\t")?;
 
         match self {
             AsmInstruction::Mov { src, dst } => {
@@ -76,11 +78,12 @@ impl Emit for AsmInstruction {
                 src.emit(f)?;
                 write!(f, ", ")?;
                 dst.emit(f)?;
+                writeln!(f)?;
             }
             AsmInstruction::Ret => {
                 writeln!(f, "movq %rbp, %rsp")?;
-                writeln!(f, "popq %rbp")?;
-                write!(f, "ret")?;
+                writeln!(f, "\tpopq %rbp")?;
+                write!(f, "\tret")?;
             }
             AsmInstruction::Unary { op, operand } => {
                 match op {
@@ -124,8 +127,6 @@ impl Emit for AsmInstruction {
                 writeln!(f)?;
             }
         }
-
-        writeln!(f)?;
 
         Ok(())
     }
