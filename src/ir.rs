@@ -176,7 +176,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
     }
 }
 
-fn make_temporary() -> usize {
+pub fn make_temporary() -> usize {
     static mut TEMPORARY: usize = 0;
     unsafe {
         let temporary = TEMPORARY;

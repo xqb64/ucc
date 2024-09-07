@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::{collections::VecDeque, fs::File, path::PathBuf};
 
 use anyhow::{bail, Result};
@@ -8,6 +9,7 @@ use ucc::emitter::Emit;
 use ucc::ir::Irfy;
 use ucc::lexer::{Lexer, Token};
 use ucc::parser::Parser;
+use ucc::resolver::resolve_statement;
 
 fn main() {
     let opts = Opt::from_args();
@@ -44,6 +46,14 @@ fn run(opts: &Opt) -> Result<()> {
 
     if opts.parse {
         println!("{:?}", ast);
+        std::process::exit(0);
+    }
+
+    let mut variable_map = HashMap::new();
+    let validated_ast = resolve_statement(ast.clone(), &mut variable_map)?;
+
+    if opts.validate {
+        println!("{:?}", validated_ast);
         std::process::exit(0);
     }
 
@@ -97,6 +107,9 @@ struct Opt {
 
     #[structopt(name = "parse", long)]
     parse: bool,
+
+    #[structopt(name = "validate", long)]
+    validate: bool,
 
     #[structopt(name = "tacky", long)]
     tacky: bool,
