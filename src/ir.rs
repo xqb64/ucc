@@ -1,6 +1,6 @@
 use crate::parser::{
     Expression, FunctionDeclaration, ProgramStatement, Statement, UnaryExpression,
-    UnaryExpressoinKind,
+    UnaryExpressionKind,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,8 +44,8 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
             let dst_name = format!("var.{}", make_temporary());
             let dst = IRValue::Var(dst_name.clone());
             let op = match kind {
-                UnaryExpressoinKind::Negate => UnaryOp::Negate,
-                UnaryExpressoinKind::Complement => UnaryOp::Complement,
+                UnaryExpressionKind::Negate => UnaryOp::Negate,
+                UnaryExpressionKind::Complement => UnaryOp::Complement,
             };
             instructions.push(IRInstruction::Unary {
                 op,
@@ -55,6 +55,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
 
             dst
         }
+        _ => unreachable!(),
     }
 }
 

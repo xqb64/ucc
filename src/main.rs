@@ -42,15 +42,15 @@ fn run(opts: &Opt) -> Result<()> {
     let mut parser = Parser::new(tokens);
     let ast = parser.parse()?;
 
+    if opts.parse {
+        println!("{:?}", ast);
+        std::process::exit(0);
+    }
+
     let tac = ast.irfy();
 
     if opts.tacky {
         println!("{:?}", tac);
-        std::process::exit(0);
-    }
-
-    if opts.parse {
-        println!("{:?}", ast);
         std::process::exit(0);
     }
 

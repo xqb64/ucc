@@ -28,7 +28,7 @@ impl Iterator for Lexer {
 
         let src = &self.src[self.pos..];
 
-        let punctuation_re = regex::Regex::new(r"^[-~(){};]").unwrap();
+        let punctuation_re = regex::Regex::new(r"^[-+*/%~(){};]").unwrap();
         let punctuation_double_re = regex::Regex::new(r"^--").unwrap();
         let keyword_re = regex::Regex::new(r"^int\b|^void\b|^return\b").unwrap();
         let constant_re = regex::Regex::new(r"^[0-9]+\b").unwrap();
@@ -37,7 +37,11 @@ impl Iterator for Lexer {
         let token = if let Some(m) = punctuation_re.find(src) {
             self.pos += m.as_str().len();
             match m.as_str() {
+                "+" => Token::Plus,
                 "-" => Token::Hyphen,
+                "*" => Token::Star,
+                "/" => Token::Slash,
+                "%" => Token::Percent,
                 "~" => Token::Tilde,
                 "(" => Token::LParen,
                 ")" => Token::RParen,
@@ -86,7 +90,11 @@ pub enum Token {
     RParen,
     LBrace,
     RBrace,
+    Plus,
     Hyphen,
+    Star,
+    Slash,
+    Percent,
     Tilde,
     DoubleHyphen,
     Semicolon,

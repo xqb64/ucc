@@ -90,7 +90,48 @@ impl Parser {
     }
 
     fn parse_expression(&mut self) -> Result<Expression> {
-        self.unary()
+        self.term()
+    }
+
+    fn term(&mut self) -> Result<Expression> {
+        let mut result = self.factor()?;
+        while self.is_next(&[Token::Plus, Token::Hyphen]) {
+            let kind = match self.previous.as_ref() {
+                Some(token) => match token {
+                    Token::Plus => BinaryExpressionKind::Add,
+                    Token::Hyphen => BinaryExpressionKind::Sub,
+                    _ => unreachable!(),
+                },
+                None => unreachable!(),
+            };
+            result = Expression::Binary(BinaryExpression {
+                kind,
+                lhs: result.into(),
+                rhs: self.factor()?.into(),
+            });
+        }
+        Ok(result)
+    }
+
+    fn factor(&mut self) -> Result<Expression> {
+        let mut result = self.unary()?;
+        while self.is_next(&[Token::Star, Token::Slash, Token::Percent]) {
+            let kind = match self.previous.as_ref() {
+                Some(token) => match token {
+                    Token::Star => BinaryExpressionKind::Mul,
+                    Token::Slash => BinaryExpressionKind::Div,
+                    Token::Percent => BinaryExpressionKind::Rem,
+                    _ => unreachable!(),
+                },
+                None => unreachable!(),
+            };
+            result = Expression::Binary(BinaryExpression {
+                kind,
+                lhs: result.into(),
+                rhs: self.unary()?.into(),
+            });
+        }
+        Ok(result)
     }
 
     fn unary(&mut self) -> Result<Expression> {
@@ -100,8 +141,8 @@ impl Parser {
             return Ok(Expression::Unary(UnaryExpression {
                 expr: expr.into(),
                 kind: match op {
-                    Token::Hyphen => UnaryExpressoinKind::Negate,
-                    Token::Tilde => UnaryExpressoinKind::Complement,
+                    Token::Hyphen => UnaryExpressionKind::Negate,
+                    Token::Tilde => UnaryExpressionKind::Complement,
                     _ => unreachable!(),
                 },
             }));
@@ -155,16 +196,33 @@ pub struct FunctionDeclaration {
 pub enum Expression {
     Constant(i32),
     Unary(UnaryExpression),
+    Binary(BinaryExpression),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnaryExpression {
-    pub kind: UnaryExpressoinKind,
+    pub kind: UnaryExpressionKind,
     pub expr: Box<Expression>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum UnaryExpressoinKind {
+pub enum UnaryExpressionKind {
     Negate,
     Complement,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BinaryExpression {
+    pub kind: BinaryExpressionKind,
+    pub lhs: Box<Expression>,
+    pub rhs: Box<Expression>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BinaryExpressionKind {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
 }
