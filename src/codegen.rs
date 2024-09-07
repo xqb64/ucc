@@ -1,8 +1,7 @@
 
-use anyhow::Result;
-
 use crate::ir::{IRFunction, IRInstruction, IRNode, IRProgram, IRValue, UnaryOp};
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum AsmNode {
     Program(AsmProgram),
     Function(AsmFunction),
@@ -49,15 +48,7 @@ pub enum AsmUnaryOp {
     Not,
 }
 
-pub fn codegen(tac: IRNode) -> Result<AsmProgram> {
-    if let AsmNode::Program(prog) = tac.codegen() {
-        Ok(prog)
-    } else {
-        unreachable!()
-    }
-}
-
-trait Codegen {
+pub trait Codegen {
     fn codegen(&self) -> AsmNode;
 }
 
@@ -67,6 +58,7 @@ impl Codegen for IRNode {
             IRNode::Program(prog) => prog.codegen(),
             IRNode::Function(func) => func.codegen(),
             IRNode::Instructions(instrs) => instrs.codegen(),
+            IRNode::Value(value) => value.codegen(),
         }
     }
 }
@@ -155,6 +147,17 @@ pub trait ReplacePseudo {
     fn replace_pseudo(&self) -> Self;
 }
 
+impl ReplacePseudo for AsmNode {
+    fn replace_pseudo(&self) -> Self {
+        match self {
+            AsmNode::Program(prog) => AsmNode::Program(prog.replace_pseudo()),
+            AsmNode::Function(func) => AsmNode::Function(func.replace_pseudo()),
+            AsmNode::Operand(op) => AsmNode::Operand(op.replace_pseudo()),
+            _ => unreachable!(),
+        }
+    }
+}
+
 impl ReplacePseudo for AsmInstruction {
     fn replace_pseudo(&self) -> Self {
         match self {
@@ -213,6 +216,17 @@ pub trait Fixup {
     fn fixup(&mut self) -> Self;
 }
 
+impl Fixup for AsmNode {
+    fn fixup(&mut self) -> Self {
+        match self {
+            AsmNode::Program(prog) => AsmNode::Program(prog.fixup()),
+            AsmNode::Function(func) => AsmNode::Function(func.fixup()),
+            AsmNode::Instructions(instrs) => AsmNode::Instructions(instrs.fixup()),
+            AsmNode::Operand(op) => AsmNode::Operand(op.clone()),
+        }
+    }
+}
+
 impl Fixup for AsmProgram {
     fn fixup(&mut self) -> AsmProgram {
         let mut functions = vec![];
@@ -250,6 +264,71 @@ impl Fixup for AsmProgram {
         }
 
         AsmProgram { functions }
+    }
+}
+
+impl Fixup for AsmFunction {
+    fn fixup(&mut self) -> AsmFunction {
+        let mut instructions = vec![];
+
+        for instr in &mut self.instructions {
+            match instr {
+                AsmInstruction::Mov { src, dst } => {
+                    match (src, dst) {
+                        (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    src: AsmOperand::Stack(*src_n),
+                                    dst: AsmOperand::Register(Register::R10),
+                                },
+                                AsmInstruction::Mov {
+                                    src: AsmOperand::Register(Register::R10),
+                                    dst: AsmOperand::Stack(*dst_n),
+                                },
+                            ]);
+                        }
+                        _ => instructions.push(instr.clone()),
+                    }
+                }
+                _ => instructions.push(instr.clone()),
+            }
+        }
+
+        AsmFunction {
+            name: self.name.clone(),
+            instructions,
+        }
+    }
+}
+
+impl Fixup for Vec<AsmInstruction> {
+    fn fixup(&mut self) -> Vec<AsmInstruction> {
+        let mut instructions = vec![];
+
+        for instr in self {
+            match instr {
+                AsmInstruction::Mov { src, dst } => {
+                    match (src, dst) {
+                        (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    src: AsmOperand::Stack(*src_n),
+                                    dst: AsmOperand::Register(Register::R10),
+                                },
+                                AsmInstruction::Mov {
+                                    src: AsmOperand::Register(Register::R10),
+                                    dst: AsmOperand::Stack(*dst_n),
+                                },
+                            ]);
+                        }
+                        _ => instructions.push(instr.clone()),
+                    }
+                }
+                _ => instructions.push(instr.clone()),
+            }
+        }
+
+        instructions
     }
 }
 

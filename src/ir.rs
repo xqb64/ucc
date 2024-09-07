@@ -69,6 +69,7 @@ pub enum IRNode {
     Program(IRProgram),
     Function(IRFunction),
     Instructions(Vec<IRInstruction>),
+    Value(IRValue),
 }
 
 pub trait Irfy {

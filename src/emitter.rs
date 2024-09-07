@@ -1,4 +1,6 @@
+use crate::codegen::AsmFunction;
 use crate::codegen::AsmInstruction;
+use crate::codegen::AsmNode;
 use crate::codegen::OFFSET_MANAGER;
 use anyhow::Result;
 use std::fs::File;
@@ -13,24 +15,51 @@ pub trait Emit {
     fn emit(&mut self, f: &mut File) -> Result<()>;
 }
 
+impl Emit for AsmNode {
+    fn emit(&mut self, f: &mut File) -> Result<()> {
+        match self {
+            AsmNode::Program(prog) => prog.emit(f),
+            AsmNode::Function(func) => func.emit(f),
+            AsmNode::Operand(operand) => operand.emit(f),
+            AsmNode::Instructions(instrs) => instrs.emit(f),
+        }
+    }
+}
+
 impl Emit for AsmProgram {
     fn emit(&mut self, f: &mut File) -> Result<()> {
         for func in self.functions.iter_mut() {
-            if let Some(instr) = func.instructions.get_mut(0) {
-                let offset_manager = OFFSET_MANAGER.lock().unwrap();
-                *instr = AsmInstruction::AllocateStack(offset_manager.offset.unsigned_abs() as usize + 4);
-            }
-
-            writeln!(f, ".globl {}", func.name)?;
-            writeln!(f, "{}:", func.name)?;
-
-            writeln!(f, "  pushq %rbp")?;
-            writeln!(f, "  movq %rsp, %rbp")?;
-
-            for instr in &mut func.instructions {
-                instr.emit(f)?;
-            }
+            func.emit(f)?;
         }
+
+        Ok(())
+    }
+}
+
+impl Emit for Vec<AsmInstruction> {
+    fn emit(&mut self, f: &mut File) -> Result<()> {
+        for instr in self.iter_mut() {
+            instr.emit(f)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Emit for AsmFunction {
+    fn emit(&mut self, f: &mut File) -> Result<()> {
+        if let Some(instr) = self.instructions.get_mut(0) {
+            let offset_manager = OFFSET_MANAGER.lock().unwrap();
+            *instr = AsmInstruction::AllocateStack(offset_manager.offset.unsigned_abs() as usize + 4);
+        }
+
+        writeln!(f, ".globl {}", self.name)?;
+        writeln!(f, "{}:", self.name)?;
+
+        writeln!(f, "  pushq %rbp")?;
+        writeln!(f, "  movq %rsp, %rbp")?;
+
+        self.instructions.emit(f)?;
 
         Ok(())
     }

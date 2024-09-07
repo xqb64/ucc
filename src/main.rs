@@ -3,7 +3,7 @@ use std::{collections::VecDeque, fs::File, path::PathBuf};
 use anyhow::{bail, Result};
 use structopt::StructOpt;
 
-use ucc::codegen::{codegen, Fixup, ReplacePseudo};
+use ucc::codegen::{Codegen, Fixup, ReplacePseudo};
 use ucc::emitter::Emit;
 use ucc::lexer::{Lexer, Token};
 use ucc::parser::Parser;
@@ -55,7 +55,7 @@ fn run(opts: &Opt) -> Result<()> {
         std::process::exit(0);
     }
 
-    let mut asm_prog = codegen(tac)?.replace_pseudo().fixup();
+    let mut asm_prog = tac.codegen().replace_pseudo().fixup();
 
     if opts.codegen {
         println!("{:?}", asm_prog);
