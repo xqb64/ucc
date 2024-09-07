@@ -1,0 +1,112 @@
+pub struct Lexer {
+    src: String,
+    pos: usize,
+}
+
+impl Lexer {
+    pub fn new(src: String) -> Lexer {
+        Lexer { src, pos: 0 }
+    }
+}
+
+impl Iterator for Lexer {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self
+                .src
+                .chars()
+                .nth(self.pos)
+                .is_some_and(|ch| ch.is_whitespace())
+            {
+                self.pos += 1;
+            } else {
+                break;
+            }
+        }
+
+        let src = &self.src[self.pos..];
+
+        let punctuation_re = regex::Regex::new(r"^[-~(){};]").unwrap();
+        let punctuation_double_re = regex::Regex::new(r"^--").unwrap();
+        let keyword_re = regex::Regex::new(r"^int\b|^void\b|^return\b").unwrap();
+        let constant_re = regex::Regex::new(r"^[0-9]+\b").unwrap();
+        let identifier_re = regex::Regex::new(r"^[a-zA-Z_]\w*\b").unwrap();
+
+        let token = if let Some(m) = punctuation_re.find(src) {
+            self.pos += m.as_str().len();
+            match m.as_str() {
+                "-" => Token::Hyphen,
+                "~" => Token::Tilde,
+                "(" => Token::LParen,
+                ")" => Token::RParen,
+                "{" => Token::LBrace,
+                "}" => Token::RBrace,
+                ";" => Token::Semicolon,
+                _ => unreachable!(),
+            }
+        } else if let Some(m) = punctuation_double_re.find(src) {
+            self.pos += m.as_str().len();
+            match m.as_str() {
+                "--" => Token::DoubleHyphen,
+                _ => unreachable!(),
+            }
+        } else if let Some(m) = keyword_re.find(src) {
+            self.pos += m.as_str().len();
+            match m.as_str() {
+                "int" => Token::Int,
+                "void" => Token::Void,
+                "return" => Token::Return,
+                _ => unreachable!(),
+            }
+        } else if let Some(m) = constant_re.find(src) {
+            self.pos += m.as_str().len();
+            Token::Constant(m.as_str().parse().unwrap())
+        } else if let Some(m) = identifier_re.find(src) {
+            self.pos += m.as_str().len();
+            Token::Identifier(m.as_str().to_string())
+        } else {
+            if src.is_empty() {
+                return None;
+            }
+            Token::Error
+        };
+
+        Some(token)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Token {
+    Int,
+    Void,
+    Return,
+    LParen,
+    RParen,
+    LBrace,
+    RBrace,
+    Hyphen,
+    Tilde,
+    DoubleHyphen,
+    Semicolon,
+    Identifier(String),
+    Constant(i32),
+    Error,
+}
+
+impl Token {
+    pub fn as_const(&self) -> i32 {
+        match self {
+            Token::Constant(n) => *n,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_string(&self) -> String {
+        match self {
+            Token::Identifier(s) => s.to_owned(),
+            _ => unreachable!(),
+        }
+    }
+}

@@ -1,0 +1,294 @@
+
+use anyhow::Result;
+
+use crate::ir::{IRFunction, IRInstruction, IRNode, IRProgram, IRValue, UnaryOp};
+
+pub enum AsmNode {
+    Program(AsmProgram),
+    Function(AsmFunction),
+    Operand(AsmOperand),
+    Instructions(Vec<AsmInstruction>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AsmProgram {
+    pub functions: Vec<AsmFunction>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AsmFunction {
+    pub name: String,
+    pub instructions: Vec<AsmInstruction>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AsmInstruction {
+    Mov { src: AsmOperand, dst: AsmOperand },
+    Unary { op: AsmUnaryOp, operand: AsmOperand },
+    AllocateStack(usize),
+    Ret,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AsmOperand {
+    Imm(i32),
+    Pseudo(String),
+    Stack(i32),
+    Register(Register),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Register {
+    AX,
+    R10,
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum AsmUnaryOp {
+    Neg,
+    Not,
+}
+
+pub fn codegen(tac: IRNode) -> Result<AsmProgram> {
+    if let AsmNode::Program(prog) = tac.codegen()? {
+        Ok(prog)
+    } else {
+        unreachable!()
+    }
+}
+
+trait Codegen {
+    fn codegen(&self) -> Result<AsmNode>;
+}
+
+impl Codegen for IRNode {
+    fn codegen(&self) -> Result<AsmNode> {
+        match self {
+            IRNode::Program(prog) => prog.codegen(),
+            IRNode::Function(func) => func.codegen(),
+            IRNode::Instructions(instrs) => instrs.codegen(),
+        }
+    }
+}
+
+impl Codegen for IRProgram {
+    fn codegen(&self) -> Result<AsmNode> {
+        let mut functions = vec![];
+        for func in &self.functions {
+            functions.push(match func.codegen()? {
+                AsmNode::Function(func) => func,
+                _ => unreachable!(),
+            });
+        }
+        Ok(AsmNode::Program(AsmProgram { functions }))
+    }
+}
+
+impl Codegen for IRFunction {
+    fn codegen(&self) -> Result<AsmNode> {
+        let mut instructions = vec![];
+        
+        instructions.push(AsmInstruction::AllocateStack(0));
+        
+        for instr in &self.body {
+            instructions.extend(match instr.codegen()? {
+                AsmNode::Instructions(instrs) => instrs,
+                _ => unreachable!(),
+            });
+        }
+        Ok(AsmNode::Function(AsmFunction {
+            name: self.name.clone(),
+            instructions,
+        }))
+    }
+}
+
+impl Codegen for Vec<IRInstruction> {
+    fn codegen(&self) -> Result<AsmNode> {
+        let mut instructions = vec![];
+        for instr in self {
+            instructions.extend(match instr.codegen()? {
+                AsmNode::Instructions(instrs) => instrs,
+                _ => unreachable!(),
+            });
+        }
+        Ok(AsmNode::Instructions(instructions))
+    }
+}
+
+impl Codegen for IRValue {
+    fn codegen(&self) -> Result<AsmNode> {
+        match self {
+            IRValue::Constant(n) => Ok(AsmNode::Operand(AsmOperand::Imm(*n))),
+            IRValue::Var(name) => Ok(AsmNode::Operand(AsmOperand::Pseudo(name.to_owned()))),
+        }
+    }
+}
+
+impl Codegen for IRInstruction {
+    fn codegen(&self) -> Result<AsmNode> {
+        match self {
+            IRInstruction::Unary { op, src, dst } => Ok(AsmNode::Instructions(vec![
+                AsmInstruction::Mov {
+                    src: match src.codegen()? {
+                        AsmNode::Operand(op) => op,
+                        _ => unreachable!(),
+                    },
+                    dst: match dst.codegen()? {
+                        AsmNode::Operand(op) => op,
+                        _ => unreachable!(),
+                    },
+                },
+                AsmInstruction::Unary {
+                    op: match op {
+                        UnaryOp::Negate => AsmUnaryOp::Neg,
+                        UnaryOp::Complement => AsmUnaryOp::Not,
+                    },
+                    operand: match dst.codegen()? {
+                        AsmNode::Operand(op) => op,
+                        _ => unreachable!(),
+                    },
+                },
+            ])),
+            IRInstruction::Ret(value) => Ok(AsmNode::Instructions(vec![
+                AsmInstruction::Mov {
+                    src: match value.codegen()? {
+                        AsmNode::Operand(op) => op,
+                        _ => unreachable!(),
+                    },
+                    dst: AsmOperand::Register(Register::AX),
+                },
+                AsmInstruction::Ret,
+            ])),
+        }
+    }
+}
+
+pub trait ReplacePseudo {
+    fn replace_pseudo(&self) -> Self;
+}
+
+impl ReplacePseudo for AsmInstruction {
+    fn replace_pseudo(&self) -> Self {
+        match self {
+            AsmInstruction::Mov { src, dst } => AsmInstruction::Mov {
+                src: src.replace_pseudo(),
+                dst: dst.replace_pseudo(),
+            },
+            AsmInstruction::Unary { op, operand } => AsmInstruction::Unary {
+                op: *op,
+                operand: operand.replace_pseudo(),
+            },
+            AsmInstruction::AllocateStack(n) => AsmInstruction::AllocateStack(*n),
+            AsmInstruction::Ret => AsmInstruction::Ret,
+        }
+    }
+}
+
+lazy_static::lazy_static! {
+    pub static ref OFFSET_MANAGER: std::sync::Mutex<OffsetManager> = std::sync::Mutex::new(OffsetManager::new());
+}
+
+pub struct OffsetManager {
+    pub offsets: std::collections::HashMap<String, i32>,
+    pub offset: i32,
+}
+
+impl OffsetManager {
+    fn new() -> OffsetManager {
+        OffsetManager {
+            offsets: std::collections::HashMap::new(),
+            offset: -4,
+        }
+    }
+
+    pub fn get_offset(&mut self, name: &str) -> i32 {
+        if !self.offsets.contains_key(name) {
+            self.offsets.insert(name.to_owned(), self.offset);
+            self.offset -= 4;
+        }
+
+        self.offsets[name]
+    }
+}
+
+impl ReplacePseudo for AsmOperand {
+    fn replace_pseudo(&self) -> Self {
+        match self {
+            AsmOperand::Imm(_) => self.clone(),
+            AsmOperand::Pseudo(name) => {
+                let mut offset_manager = OFFSET_MANAGER.lock().unwrap();
+                AsmOperand::Stack(offset_manager.get_offset(name))
+            }
+            AsmOperand::Stack(_) => self.clone(),
+            AsmOperand::Register(_) => self.clone(),
+        }
+    }
+}
+
+impl ReplacePseudo for AsmProgram {
+    fn replace_pseudo(&self) -> Self {
+        let mut functions = vec![];
+        for func in &self.functions {
+            functions.push(func.replace_pseudo());
+        }
+        AsmProgram { functions }
+    }
+}
+
+impl ReplacePseudo for AsmFunction {
+    fn replace_pseudo(&self) -> Self {
+        let mut instructions = vec![];
+        for instr in &self.instructions {
+            instructions.push(instr.replace_pseudo());
+        }
+        AsmFunction {
+            name: self.name.clone(),
+            instructions,
+        }
+    }
+}
+
+pub trait Fixup {
+    fn fixup(&mut self) -> Self;
+}
+
+impl Fixup for AsmProgram {
+    fn fixup(&mut self) -> AsmProgram {
+        let mut functions = vec![];
+
+        for func in &mut self.functions {
+            let mut instructions = vec![];
+            
+            for instr in &mut func.instructions {
+                match instr {
+                    AsmInstruction::Mov { src, dst } => {
+                        match (src, dst) {
+                            (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
+                                instructions.extend(vec![
+                                    AsmInstruction::Mov {
+                                        src: AsmOperand::Stack(*src_n),
+                                        dst: AsmOperand::Register(Register::R10),
+                                    },
+                                    AsmInstruction::Mov {
+                                        src: AsmOperand::Register(Register::R10),
+                                        dst: AsmOperand::Stack(*dst_n),
+                                    },
+                                ]);
+                            }
+                            _ => instructions.push(instr.clone()),
+                        }
+                    }
+                    _ => instructions.push(instr.clone()),
+                }
+            }
+
+            functions.push(AsmFunction {
+                name: func.name.clone(),
+                instructions,
+            });
+        }
+
+        AsmProgram { functions }
+    }
+}
