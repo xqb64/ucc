@@ -76,11 +76,8 @@ fn resolve_exp(exp: &Expression, variable_map: &mut HashMap<String, String>) -> 
             Ok(Expression::Assign(AssignExpression { op, lhs: resolved_lhs.into(), rhs: resolved_rhs.into() }))
         }
         Expression::Variable(name) => {
-            if variable_map.contains_key(&name) {
-                Ok(Expression::Variable(variable_map[&name].clone()))
-            } else {
-                bail!("undeclared variable: {}", name);
-            }
+            let variable = variable_map.get(&name).ok_or_else(|| anyhow::anyhow!("undeclared variable: {}", name))?;
+            Ok(Expression::Variable(variable.clone()))
         }
         Expression::Constant(konst) => Ok(Expression::Constant(konst)),
         Expression::Unary(UnaryExpression { kind, expr }) => {
