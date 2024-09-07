@@ -33,11 +33,11 @@ pub enum AsmOperand {
     Imm(i32),
     Pseudo(String),
     Stack(i32),
-    Register(Register),
+    Register(AsmRegister),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Register {
+pub enum AsmRegister {
     AX,
     R10,
 }
@@ -135,7 +135,7 @@ impl Codegen for IRInstruction {
             IRInstruction::Ret(value) => AsmNode::Instructions(vec![
                 AsmInstruction::Mov {
                     src: value.codegen().into(),
-                    dst: AsmOperand::Register(Register::AX),
+                    dst: AsmOperand::Register(AsmRegister::AX),
                 },
                 AsmInstruction::Ret,
             ]),
@@ -242,10 +242,10 @@ impl Fixup for AsmProgram {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
                                         src: AsmOperand::Stack(*src_n),
-                                        dst: AsmOperand::Register(Register::R10),
+                                        dst: AsmOperand::Register(AsmRegister::R10),
                                     },
                                     AsmInstruction::Mov {
-                                        src: AsmOperand::Register(Register::R10),
+                                        src: AsmOperand::Register(AsmRegister::R10),
                                         dst: AsmOperand::Stack(*dst_n),
                                     },
                                 ]);
@@ -279,10 +279,10 @@ impl Fixup for AsmFunction {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
                                     src: AsmOperand::Stack(*src_n),
-                                    dst: AsmOperand::Register(Register::R10),
+                                    dst: AsmOperand::Register(AsmRegister::R10),
                                 },
                                 AsmInstruction::Mov {
-                                    src: AsmOperand::Register(Register::R10),
+                                    src: AsmOperand::Register(AsmRegister::R10),
                                     dst: AsmOperand::Stack(*dst_n),
                                 },
                             ]);
@@ -313,10 +313,10 @@ impl Fixup for Vec<AsmInstruction> {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
                                     src: AsmOperand::Stack(*src_n),
-                                    dst: AsmOperand::Register(Register::R10),
+                                    dst: AsmOperand::Register(AsmRegister::R10),
                                 },
                                 AsmInstruction::Mov {
-                                    src: AsmOperand::Register(Register::R10),
+                                    src: AsmOperand::Register(AsmRegister::R10),
                                     dst: AsmOperand::Stack(*dst_n),
                                 },
                             ]);

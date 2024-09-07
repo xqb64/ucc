@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::Write;
 use crate::codegen::AsmProgram;
 use crate::codegen::AsmOperand;
-use crate::codegen::Register;
+use crate::codegen::AsmRegister;
 use crate::codegen::AsmUnaryOp;
 
 
@@ -112,11 +112,11 @@ impl Emit for AsmOperand {
     }
 }
 
-impl Emit for Register {
+impl Emit for AsmRegister {
     fn emit(&mut self, f: &mut File) -> Result<()> {
         match self {
-            Register::AX => write!(f, "%eax")?,
-            Register::R10 => write!(f, "%r10d")?,
+            AsmRegister::AX => write!(f, "%eax")?,
+            AsmRegister::R10 => write!(f, "%r10d")?,
         }
         Ok(())
     }
