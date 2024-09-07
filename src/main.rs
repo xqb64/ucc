@@ -57,7 +57,7 @@ fn run(opts: &Opt) -> Result<()> {
         std::process::exit(0);
     }
 
-    let tac = ast.irfy();
+    let tac = validated_ast.irfy();
 
     if opts.tacky {
         println!("{:?}", tac);
