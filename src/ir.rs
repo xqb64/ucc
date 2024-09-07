@@ -1,5 +1,5 @@
 use crate::parser::{
-    BinaryExpression, BinaryExpressionKind, BlockItem, Declaration, Expression, FunctionDeclaration, ProgramStatement, Statement, UnaryExpression, UnaryExpressionKind
+    AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, Declaration, Expression, FunctionDeclaration, ProgramStatement, Statement, UnaryExpression, UnaryExpressionKind, VariableDeclaration
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -172,7 +172,17 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 }
             }
         }
-        _ => unreachable!(),
+        Expression::Variable(name) => IRValue::Var(name),
+        Expression::Assign(AssignExpression { op: _, lhs, rhs }) => {
+            let result = emit_tacky(*rhs, instructions);
+
+            if let Expression::Variable(var) = *lhs {
+                instructions.push(IRInstruction::Copy { src: result.clone(), dst: IRValue::Var(var.clone()) });
+                return IRValue::Var(var);
+            } else {
+                unimplemented!()
+            }
+        }
     }
 }
 
@@ -209,7 +219,14 @@ impl Irfy for Statement {
 
                 IRNode::Instructions(instructions)
             }
-            _ => unimplemented!(),
+            Statement::Expression(expr) => {
+                let mut instructions = vec![];
+
+                emit_tacky(expr.clone(), &mut instructions);
+
+                IRNode::Instructions(instructions)
+            }
+            Statement::Null => IRNode::Instructions(vec![]),
         }
     }
 }
@@ -231,9 +248,9 @@ impl Irfy for BlockItem {
         match self {
             BlockItem::Declaration(decl) => match decl {
                 Declaration::Function(func) => func.irfy(),
-                Declaration::Variable(_) => unimplemented!(),
+                Declaration::Variable(var) => var.irfy(),
             }
-            _ => unimplemented!(),
+            BlockItem::Statement(stmt) => stmt.irfy(),
         }
     }
 }
@@ -246,10 +263,25 @@ impl Irfy for FunctionDeclaration {
             instructions.extend::<Vec<IRInstruction>>(stmt.irfy().into());
         }
 
+        instructions.push(IRInstruction::Ret(IRValue::Constant(0)));
+
         IRNode::Function(IRFunction {
             name: self.name.clone(),
             body: instructions,
         })
+    }
+}
+
+impl Irfy for VariableDeclaration {
+    fn irfy(&self) -> IRNode {
+        let mut instructions = vec![];
+
+        if let Some(init) = &self.init {
+            let result = emit_tacky(init.clone(), &mut instructions);
+            instructions.push(IRInstruction::Copy { src: result, dst: IRValue::Var(self.name.clone()) });
+        }
+
+        IRNode::Instructions(instructions)
     }
 }
 

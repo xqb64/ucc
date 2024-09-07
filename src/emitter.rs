@@ -88,6 +88,7 @@ impl Emit for AsmInstruction {
                 writeln!(f, "movq %rbp, %rsp")?;
                 writeln!(f, "\tpopq %rbp")?;
                 write!(f, "\tret")?;
+                writeln!(f)?;
             }
             AsmInstruction::Unary { op, operand } => {
                 match op {
