@@ -47,7 +47,7 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
-    Mod,
+    Rem,
 }
 
 fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
@@ -79,7 +79,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 BinaryExpressionKind::Sub => BinaryOp::Sub,
                 BinaryExpressionKind::Mul => BinaryOp::Mul,
                 BinaryExpressionKind::Div => BinaryOp::Div,
-                BinaryExpressionKind::Rem => BinaryOp::Mod,
+                BinaryExpressionKind::Rem => BinaryOp::Rem,
             };
             instructions.push(IRInstruction::Binary { op, lhs, rhs, dst: dst.clone() });
 

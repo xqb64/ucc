@@ -1,3 +1,4 @@
+use crate::codegen::AsmBinaryOp;
 use crate::codegen::AsmFunction;
 use crate::codegen::AsmInstruction;
 use crate::codegen::AsmNode;
@@ -92,6 +93,36 @@ impl Emit for AsmInstruction {
             AsmInstruction::AllocateStack(n) => {
                 writeln!(f, "sub ${}, %rsp", n)?;
             }
+            AsmInstruction::Cdq => {
+                writeln!(f, "cdq")?;
+            }
+            AsmInstruction::Binary { op, lhs, rhs } => {
+                let instr = match op {
+                    AsmBinaryOp::Add => "addl",
+                    AsmBinaryOp::Sub => "subl",
+                    AsmBinaryOp::Mul => "imull",
+                };
+
+                write!(f, "{} ", instr)?;
+
+                lhs.emit(f)?;
+                write!(f, ", ")?;
+                rhs.emit(f)?;
+
+                writeln!(f)?;
+            }
+            AsmInstruction::Idiv(operand) => {
+                write!(f, "idivl ")?;
+                operand.emit(f)?;
+                writeln!(f)?;
+            }
+            AsmInstruction::Imul { src, dst } => {
+                write!(f, "imull ")?;
+                src.emit(f)?;
+                write!(f, ", ")?;
+                dst.emit(f)?;
+                writeln!(f)?;
+            }
         }
 
         writeln!(f)?;
@@ -116,7 +147,9 @@ impl Emit for AsmRegister {
     fn emit(&mut self, f: &mut File) -> Result<()> {
         match self {
             AsmRegister::AX => write!(f, "%eax")?,
+            AsmRegister::DX => write!(f, "%edx")?,
             AsmRegister::R10 => write!(f, "%r10d")?,
+            AsmRegister::R11 => write!(f, "%r11d")?,
         }
         Ok(())
     }

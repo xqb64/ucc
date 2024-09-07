@@ -1,4 +1,4 @@
-use crate::ir::{IRFunction, IRInstruction, IRNode, IRProgram, IRValue, UnaryOp};
+use crate::ir::{BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRValue, UnaryOp};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AsmNode {
@@ -23,6 +23,10 @@ pub struct AsmFunction {
 pub enum AsmInstruction {
     Mov { src: AsmOperand, dst: AsmOperand },
     Unary { op: AsmUnaryOp, operand: AsmOperand },
+    Binary { op: AsmBinaryOp, lhs: AsmOperand, rhs: AsmOperand },
+    Imul { src: AsmOperand, dst: AsmOperand },
+    Idiv(AsmOperand),
+    Cdq,
     AllocateStack(usize),
     Ret,
 }
@@ -38,13 +42,22 @@ pub enum AsmOperand {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AsmRegister {
     AX,
+    DX,
     R10,
+    R11,
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum AsmUnaryOp {
     Neg,
     Not,
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum AsmBinaryOp {
+    Add,
+    Sub,
+    Mul,
 }
 
 pub trait Codegen {
@@ -138,7 +151,36 @@ impl Codegen for IRInstruction {
                 },
                 AsmInstruction::Ret,
             ]),
-            _ => unreachable!(),
+            IRInstruction::Binary { op, lhs, rhs, dst } => {
+                match op {
+                    BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
+                        AsmNode::Instructions(vec![
+                            AsmInstruction::Mov { src: lhs.codegen().into(), dst: dst.codegen().into() },
+                            AsmInstruction::Binary {
+                                op: (*op).into(),
+                                lhs: rhs.codegen().into(),
+                                rhs: dst.codegen().into(),
+                            },
+                        ])        
+                    }
+                    BinaryOp::Div => {
+                        AsmNode::Instructions(vec![
+                            AsmInstruction::Mov { src: lhs.codegen().into(), dst: AsmOperand::Register(AsmRegister::AX) },
+                            AsmInstruction::Cdq,
+                            AsmInstruction::Idiv(rhs.codegen().into()),
+                            AsmInstruction::Mov { src: AsmOperand::Register(AsmRegister::AX), dst: dst.codegen().into() },
+                        ])
+                    }
+                    BinaryOp::Rem => {
+                        AsmNode::Instructions(vec![
+                            AsmInstruction::Mov { src: lhs.codegen().into(), dst: AsmOperand::Register(AsmRegister::AX) },
+                            AsmInstruction::Cdq,
+                            AsmInstruction::Idiv(rhs.codegen().into()),
+                            AsmInstruction::Mov { src: AsmOperand::Register(AsmRegister::DX), dst: dst.codegen().into() },
+                        ])
+                    }
+                }
+            }
         }
     }
 }
@@ -169,8 +211,15 @@ impl ReplacePseudo for AsmInstruction {
                 op: *op,
                 operand: operand.replace_pseudo(),
             },
+            AsmInstruction::Binary { op, lhs, rhs } => AsmInstruction::Binary {
+                op: *op,
+                lhs: lhs.replace_pseudo(),
+                rhs: rhs.replace_pseudo(),
+            },
+            AsmInstruction::Idiv(operand) => AsmInstruction::Idiv(operand.replace_pseudo()),
             AsmInstruction::AllocateStack(n) => AsmInstruction::AllocateStack(*n),
             AsmInstruction::Ret => AsmInstruction::Ret,
+            _ => self.clone(),
         }
     }
 }
@@ -232,33 +281,7 @@ impl Fixup for AsmProgram {
         let mut functions = vec![];
 
         for func in &mut self.functions {
-            let mut instructions = vec![];
-
-            for instr in &mut func.instructions {
-                match instr {
-                    AsmInstruction::Mov { src, dst } => match (src, dst) {
-                        (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    src: AsmOperand::Stack(*src_n),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: AsmOperand::Stack(*dst_n),
-                                },
-                            ]);
-                        }
-                        _ => instructions.push(instr.clone()),
-                    },
-                    _ => instructions.push(instr.clone()),
-                }
-            }
-
-            functions.push(AsmFunction {
-                name: func.name.clone(),
-                instructions,
-            });
+            functions.push(func.fixup());
         }
 
         AsmProgram { functions }
@@ -286,6 +309,54 @@ impl Fixup for AsmFunction {
                     }
                     _ => instructions.push(instr.clone()),
                 },
+                AsmInstruction::Binary { op, lhs, rhs } => {
+                    match op {
+                        AsmBinaryOp::Add | AsmBinaryOp::Sub => match (lhs, rhs) {
+                            (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
+                                instructions.extend(vec![
+                                    AsmInstruction::Mov {
+                                        src: AsmOperand::Stack(*src_n),
+                                        dst: AsmOperand::Register(AsmRegister::R10),
+                                    },
+                                    AsmInstruction::Binary { op: *op, lhs: AsmOperand::Register(AsmRegister::R10), rhs: AsmOperand::Stack(*dst_n) },
+                                ]);
+                            }
+                            _ => instructions.push(instr.clone()),        
+                        }
+                        AsmBinaryOp::Mul => match rhs {
+                            AsmOperand::Stack(_) => {
+                                instructions.extend(vec![
+                                    AsmInstruction::Mov {
+                                        src: rhs.clone(),
+                                        dst: AsmOperand::Register(AsmRegister::R11),
+                                    },
+                                    AsmInstruction::Imul {
+                                        src: lhs.clone(),
+                                        dst: AsmOperand::Register(AsmRegister::R11),
+                                    },
+                                    AsmInstruction::Mov {
+                                        src: AsmOperand::Register(AsmRegister::R11),
+                                        dst: rhs.clone(),
+                                    },
+                                ]);
+                            }
+                            _ => instructions.push(instr.clone()),
+                        }
+                    }
+                }
+                AsmInstruction::Idiv(operand) => {
+                    if let AsmOperand::Imm(konst) = operand {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                src: AsmOperand::Imm(*konst),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Idiv(AsmOperand::Register(AsmRegister::R10)),
+                        ]);
+                    } else {
+                        instructions.push(instr.clone());
+                    }
+                }
                 _ => instructions.push(instr.clone()),
             }
         }
@@ -340,6 +411,17 @@ impl From<UnaryOp> for AsmUnaryOp {
         match op {
             UnaryOp::Negate => AsmUnaryOp::Neg,
             UnaryOp::Complement => AsmUnaryOp::Not,
+        }
+    }
+}
+
+impl From<BinaryOp> for AsmBinaryOp {
+    fn from(op: BinaryOp) -> AsmBinaryOp {
+        match op {
+            BinaryOp::Add => AsmBinaryOp::Add,
+            BinaryOp::Sub => AsmBinaryOp::Sub,
+            BinaryOp::Mul => AsmBinaryOp::Mul,
+            _ => unreachable!(),
         }
     }
 }
