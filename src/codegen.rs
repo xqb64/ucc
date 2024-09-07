@@ -1,4 +1,3 @@
-
 use crate::ir::{IRFunction, IRInstruction, IRNode, IRProgram, IRValue, UnaryOp};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,16 +78,16 @@ impl Codegen for IRProgram {
 impl Codegen for IRFunction {
     fn codegen(&self) -> AsmNode {
         let mut instructions = vec![];
-        
+
         instructions.push(AsmInstruction::AllocateStack(0));
-        
+
         for instr in &self.body {
             instructions.extend(match instr.codegen() {
                 AsmNode::Instructions(instrs) => instrs,
                 _ => unreachable!(),
             });
         }
-        
+
         AsmNode::Function(AsmFunction {
             name: self.name.clone(),
             instructions,
@@ -105,7 +104,7 @@ impl Codegen for Vec<IRInstruction> {
                 _ => unreachable!(),
             });
         }
-        
+
         AsmNode::Instructions(instructions)
     }
 }
@@ -233,26 +232,24 @@ impl Fixup for AsmProgram {
 
         for func in &mut self.functions {
             let mut instructions = vec![];
-            
+
             for instr in &mut func.instructions {
                 match instr {
-                    AsmInstruction::Mov { src, dst } => {
-                        match (src, dst) {
-                            (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
-                                instructions.extend(vec![
-                                    AsmInstruction::Mov {
-                                        src: AsmOperand::Stack(*src_n),
-                                        dst: AsmOperand::Register(AsmRegister::R10),
-                                    },
-                                    AsmInstruction::Mov {
-                                        src: AsmOperand::Register(AsmRegister::R10),
-                                        dst: AsmOperand::Stack(*dst_n),
-                                    },
-                                ]);
-                            }
-                            _ => instructions.push(instr.clone()),
+                    AsmInstruction::Mov { src, dst } => match (src, dst) {
+                        (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    src: AsmOperand::Stack(*src_n),
+                                    dst: AsmOperand::Register(AsmRegister::R10),
+                                },
+                                AsmInstruction::Mov {
+                                    src: AsmOperand::Register(AsmRegister::R10),
+                                    dst: AsmOperand::Stack(*dst_n),
+                                },
+                            ]);
                         }
-                    }
+                        _ => instructions.push(instr.clone()),
+                    },
                     _ => instructions.push(instr.clone()),
                 }
             }
@@ -273,23 +270,21 @@ impl Fixup for AsmFunction {
 
         for instr in &mut self.instructions {
             match instr {
-                AsmInstruction::Mov { src, dst } => {
-                    match (src, dst) {
-                        (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    src: AsmOperand::Stack(*src_n),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: AsmOperand::Stack(*dst_n),
-                                },
-                            ]);
-                        }
-                        _ => instructions.push(instr.clone()),
+                AsmInstruction::Mov { src, dst } => match (src, dst) {
+                    (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                src: AsmOperand::Stack(*src_n),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Mov {
+                                src: AsmOperand::Register(AsmRegister::R10),
+                                dst: AsmOperand::Stack(*dst_n),
+                            },
+                        ]);
                     }
-                }
+                    _ => instructions.push(instr.clone()),
+                },
                 _ => instructions.push(instr.clone()),
             }
         }
@@ -307,23 +302,21 @@ impl Fixup for Vec<AsmInstruction> {
 
         for instr in self {
             match instr {
-                AsmInstruction::Mov { src, dst } => {
-                    match (src, dst) {
-                        (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    src: AsmOperand::Stack(*src_n),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: AsmOperand::Stack(*dst_n),
-                                },
-                            ]);
-                        }
-                        _ => instructions.push(instr.clone()),
+                AsmInstruction::Mov { src, dst } => match (src, dst) {
+                    (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                src: AsmOperand::Stack(*src_n),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Mov {
+                                src: AsmOperand::Register(AsmRegister::R10),
+                                dst: AsmOperand::Stack(*dst_n),
+                            },
+                        ]);
                     }
-                }
+                    _ => instructions.push(instr.clone()),
+                },
                 _ => instructions.push(instr.clone()),
             }
         }

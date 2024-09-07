@@ -5,10 +5,9 @@ use structopt::StructOpt;
 
 use ucc::codegen::{Codegen, Fixup, ReplacePseudo};
 use ucc::emitter::Emit;
+use ucc::ir::Irfy;
 use ucc::lexer::{Lexer, Token};
 use ucc::parser::Parser;
-use ucc::ir::Irfy;
-
 
 fn main() {
     let opts = Opt::from_args();
@@ -105,7 +104,3 @@ struct Opt {
     #[structopt(name = "codegen", long)]
     codegen: bool,
 }
-
-
-
-

@@ -1,4 +1,7 @@
-use crate::parser::{Expression, UnaryExpression, UnaryExpressoinKind, Statement, ProgramStatement, FunctionDeclaration};
+use crate::parser::{
+    Expression, FunctionDeclaration, ProgramStatement, Statement, UnaryExpression,
+    UnaryExpressoinKind,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IRProgram {

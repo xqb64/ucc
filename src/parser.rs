@@ -1,6 +1,6 @@
-use std::collections::VecDeque;
 use crate::lexer::Token;
 use anyhow::{bail, Result};
+use std::collections::VecDeque;
 
 pub struct Parser {
     pub tokens: VecDeque<Token>,

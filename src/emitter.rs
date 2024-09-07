@@ -1,15 +1,14 @@
 use crate::codegen::AsmFunction;
 use crate::codegen::AsmInstruction;
 use crate::codegen::AsmNode;
+use crate::codegen::AsmOperand;
+use crate::codegen::AsmProgram;
+use crate::codegen::AsmRegister;
+use crate::codegen::AsmUnaryOp;
 use crate::codegen::OFFSET_MANAGER;
 use anyhow::Result;
 use std::fs::File;
 use std::io::Write;
-use crate::codegen::AsmProgram;
-use crate::codegen::AsmOperand;
-use crate::codegen::AsmRegister;
-use crate::codegen::AsmUnaryOp;
-
 
 pub trait Emit {
     fn emit(&mut self, f: &mut File) -> Result<()>;
@@ -50,7 +49,8 @@ impl Emit for AsmFunction {
     fn emit(&mut self, f: &mut File) -> Result<()> {
         if let Some(instr) = self.instructions.get_mut(0) {
             let offset_manager = OFFSET_MANAGER.lock().unwrap();
-            *instr = AsmInstruction::AllocateStack(offset_manager.offset.unsigned_abs() as usize + 4);
+            *instr =
+                AsmInstruction::AllocateStack(offset_manager.offset.unsigned_abs() as usize + 4);
         }
 
         writeln!(f, ".globl {}", self.name)?;
