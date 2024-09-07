@@ -53,8 +53,7 @@ impl Emit for AsmFunction {
     fn emit(&mut self, f: &mut File) -> Result<()> {
         if let Some(instr) = self.instructions.get_mut(0) {
             let offset_manager = OFFSET_MANAGER.lock().unwrap();
-            *instr =
-                AsmInstruction::AllocateStack(offset_manager.offset.unsigned_abs() as usize);
+            *instr = AsmInstruction::AllocateStack(offset_manager.offset.unsigned_abs() as usize);
         }
 
         writeln!(f, "\t.globl {}", self.name)?;
@@ -149,7 +148,7 @@ impl Emit for AsmInstruction {
                     ConditionCode::L => "l",
                     ConditionCode::LE => "le",
                     ConditionCode::G => "g",
-                    ConditionCode::GE => "ge", 
+                    ConditionCode::GE => "ge",
                 };
 
                 write!(f, "j{} ", suffix)?;
@@ -162,11 +161,11 @@ impl Emit for AsmInstruction {
                     ConditionCode::L => "l",
                     ConditionCode::LE => "le",
                     ConditionCode::G => "g",
-                    ConditionCode::GE => "ge", 
+                    ConditionCode::GE => "ge",
                 };
 
                 write!(f, "set{} ", suffix)?;
-                
+
                 match operand {
                     AsmOperand::Register(reg) => match reg {
                         AsmRegister::AX => write!(f, "%al")?,

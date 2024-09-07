@@ -27,7 +27,12 @@ impl Parser {
         if self.check(token) {
             return Ok(self.advance());
         }
-        bail!("expected {:?}, got: prev: {:?}. curr: {:?}", token, self.previous, self.current);
+        bail!(
+            "expected {:?}, got: prev: {:?}. curr: {:?}",
+            token,
+            self.previous,
+            self.current
+        );
     }
 
     fn check(&self, token: &Token) -> bool {
@@ -60,19 +65,24 @@ impl Parser {
             self.parse_return_statement()
         } else if self.is_next(&[Token::Semicolon]) {
             Ok(BlockItem::Statement(Statement::Null))
-        }else {
+        } else {
             self.parse_expression_statement()
-        } 
+        }
     }
 
     fn parse_declaration(&mut self) -> Result<BlockItem> {
-        let name = self.consume(&Token::Identifier("".to_owned()))?.unwrap().as_string();
+        let name = self
+            .consume(&Token::Identifier("".to_owned()))?
+            .unwrap()
+            .as_string();
         if self.is_next(&[Token::LParen]) {
             self.parse_function_declaration(&name)
         } else if self.is_next(&[Token::Equal]) {
             self.parse_variable_declaration(&name)
         } else if self.is_next(&[Token::Semicolon]) {
-            Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, init: None })))
+            Ok(BlockItem::Declaration(Declaration::Variable(
+                VariableDeclaration { name, init: None },
+            )))
         } else {
             bail!("expected function or variable declaration");
         }
@@ -87,25 +97,39 @@ impl Parser {
             body.push(self.parse_statement()?);
         }
         self.consume(&Token::RBrace)?;
-        Ok(BlockItem::Declaration(Declaration::Function(FunctionDeclaration { name: name.to_owned(), body })))
+        Ok(BlockItem::Declaration(Declaration::Function(
+            FunctionDeclaration {
+                name: name.to_owned(),
+                body,
+            },
+        )))
     }
 
     fn parse_variable_declaration(&mut self, name: &str) -> Result<BlockItem> {
         let init = Some(self.parse_expression()?);
         self.consume(&Token::Semicolon)?;
-        Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name: name.to_owned(), init })))
+        Ok(BlockItem::Declaration(Declaration::Variable(
+            VariableDeclaration {
+                name: name.to_owned(),
+                init,
+            },
+        )))
     }
 
     fn parse_expression_statement(&mut self) -> Result<BlockItem> {
         let expr = self.parse_expression()?;
         self.consume(&Token::Semicolon)?;
-        Ok(BlockItem::Statement(Statement::Expression(ExpressionStatement { expr })))
+        Ok(BlockItem::Statement(Statement::Expression(
+            ExpressionStatement { expr },
+        )))
     }
 
     fn parse_return_statement(&mut self) -> Result<BlockItem> {
         let expr = self.parse_expression()?;
         self.consume(&Token::Semicolon)?;
-        Ok(BlockItem::Statement(Statement::Return(ReturnStatement { expr })))
+        Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
+            expr,
+        })))
     }
 
     fn parse_expression(&mut self) -> Result<Expression> {
@@ -114,9 +138,7 @@ impl Parser {
 
     fn assignment(&mut self) -> Result<Expression> {
         let mut result = self.or()?;
-        while self.is_next(&[
-            Token::Equal,
-        ]) {
+        while self.is_next(&[Token::Equal]) {
             result = Expression::Assign(AssignExpression {
                 lhs: result.into(),
                 rhs: self.assignment()?.into(),
