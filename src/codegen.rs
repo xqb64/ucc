@@ -50,7 +50,7 @@ pub enum AsmUnaryOp {
 }
 
 pub fn codegen(tac: IRNode) -> Result<AsmProgram> {
-    if let AsmNode::Program(prog) = tac.codegen()? {
+    if let AsmNode::Program(prog) = tac.codegen() {
         Ok(prog)
     } else {
         unreachable!()
@@ -58,11 +58,11 @@ pub fn codegen(tac: IRNode) -> Result<AsmProgram> {
 }
 
 trait Codegen {
-    fn codegen(&self) -> Result<AsmNode>;
+    fn codegen(&self) -> AsmNode;
 }
 
 impl Codegen for IRNode {
-    fn codegen(&self) -> Result<AsmNode> {
+    fn codegen(&self) -> AsmNode {
         match self {
             IRNode::Program(prog) => prog.codegen(),
             IRNode::Function(func) => func.codegen(),
@@ -72,69 +72,71 @@ impl Codegen for IRNode {
 }
 
 impl Codegen for IRProgram {
-    fn codegen(&self) -> Result<AsmNode> {
+    fn codegen(&self) -> AsmNode {
         let mut functions = vec![];
         for func in &self.functions {
-            functions.push(match func.codegen()? {
+            functions.push(match func.codegen() {
                 AsmNode::Function(func) => func,
                 _ => unreachable!(),
             });
         }
-        Ok(AsmNode::Program(AsmProgram { functions }))
+        AsmNode::Program(AsmProgram { functions })
     }
 }
 
 impl Codegen for IRFunction {
-    fn codegen(&self) -> Result<AsmNode> {
+    fn codegen(&self) -> AsmNode {
         let mut instructions = vec![];
         
         instructions.push(AsmInstruction::AllocateStack(0));
         
         for instr in &self.body {
-            instructions.extend(match instr.codegen()? {
+            instructions.extend(match instr.codegen() {
                 AsmNode::Instructions(instrs) => instrs,
                 _ => unreachable!(),
             });
         }
-        Ok(AsmNode::Function(AsmFunction {
+        
+        AsmNode::Function(AsmFunction {
             name: self.name.clone(),
             instructions,
-        }))
+        })
     }
 }
 
 impl Codegen for Vec<IRInstruction> {
-    fn codegen(&self) -> Result<AsmNode> {
+    fn codegen(&self) -> AsmNode {
         let mut instructions = vec![];
         for instr in self {
-            instructions.extend(match instr.codegen()? {
+            instructions.extend(match instr.codegen() {
                 AsmNode::Instructions(instrs) => instrs,
                 _ => unreachable!(),
             });
         }
-        Ok(AsmNode::Instructions(instructions))
+        
+        AsmNode::Instructions(instructions)
     }
 }
 
 impl Codegen for IRValue {
-    fn codegen(&self) -> Result<AsmNode> {
+    fn codegen(&self) -> AsmNode {
         match self {
-            IRValue::Constant(n) => Ok(AsmNode::Operand(AsmOperand::Imm(*n))),
-            IRValue::Var(name) => Ok(AsmNode::Operand(AsmOperand::Pseudo(name.to_owned()))),
+            IRValue::Constant(n) => AsmNode::Operand(AsmOperand::Imm(*n)),
+            IRValue::Var(name) => AsmNode::Operand(AsmOperand::Pseudo(name.to_owned())),
         }
     }
 }
 
 impl Codegen for IRInstruction {
-    fn codegen(&self) -> Result<AsmNode> {
+    fn codegen(&self) -> AsmNode {
         match self {
-            IRInstruction::Unary { op, src, dst } => Ok(AsmNode::Instructions(vec![
+            IRInstruction::Unary { op, src, dst } => AsmNode::Instructions(vec![
                 AsmInstruction::Mov {
-                    src: match src.codegen()? {
+                    src: match src.codegen() {
                         AsmNode::Operand(op) => op,
                         _ => unreachable!(),
                     },
-                    dst: match dst.codegen()? {
+                    dst: match dst.codegen() {
                         AsmNode::Operand(op) => op,
                         _ => unreachable!(),
                     },
@@ -144,22 +146,22 @@ impl Codegen for IRInstruction {
                         UnaryOp::Negate => AsmUnaryOp::Neg,
                         UnaryOp::Complement => AsmUnaryOp::Not,
                     },
-                    operand: match dst.codegen()? {
+                    operand: match dst.codegen() {
                         AsmNode::Operand(op) => op,
                         _ => unreachable!(),
                     },
                 },
-            ])),
-            IRInstruction::Ret(value) => Ok(AsmNode::Instructions(vec![
+            ]),
+            IRInstruction::Ret(value) => AsmNode::Instructions(vec![
                 AsmInstruction::Mov {
-                    src: match value.codegen()? {
+                    src: match value.codegen() {
                         AsmNode::Operand(op) => op,
                         _ => unreachable!(),
                     },
                     dst: AsmOperand::Register(Register::AX),
                 },
                 AsmInstruction::Ret,
-            ])),
+            ]),
         }
     }
 }
