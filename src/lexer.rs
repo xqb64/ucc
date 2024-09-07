@@ -28,13 +28,25 @@ impl Iterator for Lexer {
 
         let src = &self.src[self.pos..];
 
-        let punctuation_re = regex::Regex::new(r"^[-+*/%~(){};]").unwrap();
-        let punctuation_double_re = regex::Regex::new(r"^--").unwrap();
+        let punctuation_re = regex::Regex::new(r"^[-+*/%~(){};!<>]").unwrap();
+        let punctuation_double_re = regex::Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\|").unwrap();
         let keyword_re = regex::Regex::new(r"^int\b|^void\b|^return\b").unwrap();
         let constant_re = regex::Regex::new(r"^[0-9]+\b").unwrap();
         let identifier_re = regex::Regex::new(r"^[a-zA-Z_]\w*\b").unwrap();
 
-        let token = if let Some(m) = punctuation_re.find(src) {
+        let token = if let Some(m) = punctuation_double_re.find(src) {
+            self.pos += m.as_str().len();
+            match m.as_str() {
+                "--" => Token::DoubleHyphen,
+                "==" => Token::DoubleEqual,
+                "!=" => Token::BangEqual,
+                ">=" => Token::GreaterEqual,
+                "<=" => Token::LessEqual,
+                "&&" => Token::DoubleAmpersand,
+                "||" => Token::DoublePipe,
+                _ => unreachable!(),
+            }
+        } else if let Some(m) = punctuation_re.find(src) {
             self.pos += m.as_str().len();
             match m.as_str() {
                 "+" => Token::Plus,
@@ -43,17 +55,14 @@ impl Iterator for Lexer {
                 "/" => Token::Slash,
                 "%" => Token::Percent,
                 "~" => Token::Tilde,
+                "!" => Token::Bang,
+                "<" => Token::Less,
+                ">" => Token::Greater,
                 "(" => Token::LParen,
                 ")" => Token::RParen,
                 "{" => Token::LBrace,
                 "}" => Token::RBrace,
                 ";" => Token::Semicolon,
-                _ => unreachable!(),
-            }
-        } else if let Some(m) = punctuation_double_re.find(src) {
-            self.pos += m.as_str().len();
-            match m.as_str() {
-                "--" => Token::DoubleHyphen,
                 _ => unreachable!(),
             }
         } else if let Some(m) = keyword_re.find(src) {
@@ -96,7 +105,16 @@ pub enum Token {
     Slash,
     Percent,
     Tilde,
+    Bang,
     DoubleHyphen,
+    DoubleAmpersand,
+    DoublePipe,
+    DoubleEqual,
+    BangEqual,
+    Less,
+    Greater,
+    LessEqual,
+    GreaterEqual,
     Semicolon,
     Identifier(String),
     Constant(i32),
