@@ -50,7 +50,7 @@ fn run(opts: &Opt) -> Result<()> {
 
     let mut f = File::create(opts.path.with_extension("s"))?;
 
-    emit(asm_prog, &mut f)?;
+    asm_prog.emit(&mut f)?;
 
     std::process::Command::new("gcc")
         .arg("-o")
@@ -357,30 +357,45 @@ fn codegen_expression(expr: Expression) -> AsmOperand {
     }
 }
 
-fn emit(asm_prog: AsmProgram, f: &mut File) -> Result<()> {
-    for func in asm_prog.functions {
-        writeln!(f, ".globl {}", func.name)?;
-        writeln!(f, "{}:", func.name)?;
-        for instr in func.instructions {
-            match instr {
-                AsmInstruction::Mov { src, dst } => {
-                    write!(f, "  mov ")?;
-                    src.emit(f)?;
-                    write!(f, ", ")?;
-                    dst.emit(f)?;
-                    writeln!(f)?;
-                }
-                AsmInstruction::Ret => {
-                    writeln!(f, "  ret")?;
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
 trait Emit {
     fn emit(&self, f: &mut File) -> Result<()>;
+}
+
+impl Emit for AsmProgram {
+    fn emit(&self, f: &mut File) -> Result<()> {
+        for func in &self.functions {
+            writeln!(f, ".globl {}", func.name)?;
+            writeln!(f, "{}:", func.name)?;
+            
+            for instr in &func.instructions {
+                instr.emit(f)?;
+            }
+        }
+
+        Ok(())
+    }    
+}
+
+impl Emit for AsmInstruction {
+    fn emit(&self, f: &mut File) -> Result<()> {
+        write!(f, "  ")?;
+
+        match self {
+            AsmInstruction::Mov { src, dst } => {
+                write!(f, "mov ")?;
+                src.emit(f)?;
+                write!(f, ", ")?;
+                dst.emit(f)?;
+            }
+            AsmInstruction::Ret => {
+                write!(f, "ret")?;
+            }
+        }
+
+        writeln!(f)?;
+
+        Ok(())
+    }
 }
 
 impl Emit for AsmOperand {
