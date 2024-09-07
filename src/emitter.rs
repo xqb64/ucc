@@ -6,6 +6,7 @@ use crate::codegen::AsmOperand;
 use crate::codegen::AsmProgram;
 use crate::codegen::AsmRegister;
 use crate::codegen::AsmUnaryOp;
+use crate::codegen::ConditionCode;
 use crate::codegen::OFFSET_MANAGER;
 use anyhow::Result;
 use std::fs::File;
@@ -53,7 +54,7 @@ impl Emit for AsmFunction {
         if let Some(instr) = self.instructions.get_mut(0) {
             let offset_manager = OFFSET_MANAGER.lock().unwrap();
             *instr =
-                AsmInstruction::AllocateStack(offset_manager.offset.unsigned_abs() as usize + 4);
+                AsmInstruction::AllocateStack(offset_manager.offset.unsigned_abs() as usize);
         }
 
         writeln!(f, "\t.globl {}", self.name)?;
@@ -70,7 +71,10 @@ impl Emit for AsmFunction {
 
 impl Emit for AsmInstruction {
     fn emit(&mut self, f: &mut File) -> Result<()> {
-        write!(f, "\t")?;
+        if let AsmInstruction::Label(_) = self {
+        } else {
+            write!(f, "\t")?;
+        }
 
         match self {
             AsmInstruction::Mov { src, dst } => {
@@ -125,6 +129,47 @@ impl Emit for AsmInstruction {
                 write!(f, ", ")?;
                 dst.emit(f)?;
                 writeln!(f)?;
+            }
+            AsmInstruction::Cmp { lhs, rhs } => {
+                write!(f, "cmpl ")?;
+                lhs.emit(f)?;
+                write!(f, ", ")?;
+                rhs.emit(f)?;
+                writeln!(f)?;
+            }
+            AsmInstruction::Jmp { target } => {
+                write!(f, "jmp ")?;
+                writeln!(f, ".L{}", target)?;
+            }
+            AsmInstruction::JmpCC { condition, target } => {
+                let suffix = match condition {
+                    ConditionCode::E => "e",
+                    ConditionCode::NE => "ne",
+                    ConditionCode::L => "l",
+                    ConditionCode::LE => "le",
+                    ConditionCode::G => "g",
+                    ConditionCode::GE => "ge", 
+                };
+
+                write!(f, "j{} ", suffix)?;
+                writeln!(f, ".L{}", target)?;
+            }
+            AsmInstruction::SetCC { condition, operand } => {
+                let suffix = match condition {
+                    ConditionCode::E => "e",
+                    ConditionCode::NE => "ne",
+                    ConditionCode::L => "l",
+                    ConditionCode::LE => "le",
+                    ConditionCode::G => "g",
+                    ConditionCode::GE => "ge", 
+                };
+
+                write!(f, "set{} ", suffix)?;
+                operand.emit(f)?;
+                writeln!(f)?;
+            }
+            AsmInstruction::Label(label) => {
+                writeln!(f, ".L{}:", label)?;
             }
         }
 

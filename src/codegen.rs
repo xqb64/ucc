@@ -24,11 +24,26 @@ pub enum AsmInstruction {
     Mov { src: AsmOperand, dst: AsmOperand },
     Unary { op: AsmUnaryOp, operand: AsmOperand },
     Binary { op: AsmBinaryOp, lhs: AsmOperand, rhs: AsmOperand },
+    Cmp { lhs: AsmOperand, rhs: AsmOperand },
     Imul { src: AsmOperand, dst: AsmOperand },
     Idiv(AsmOperand),
     Cdq,
+    Jmp { target: String },
+    JmpCC { condition: ConditionCode, target: String },
+    SetCC { condition: ConditionCode, operand: AsmOperand },
+    Label(String),
     AllocateStack(usize),
     Ret,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConditionCode {
+    E,
+    NE,
+    L,
+    LE,
+    G,
+    GE,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -134,16 +149,26 @@ impl Codegen for IRValue {
 impl Codegen for IRInstruction {
     fn codegen(&self) -> AsmNode {
         match self {
-            IRInstruction::Unary { op, src, dst } => AsmNode::Instructions(vec![
-                AsmInstruction::Mov {
-                    src: src.codegen().into(),
-                    dst: dst.codegen().into(),
-                },
-                AsmInstruction::Unary {
-                    op: (*op).into(),
-                    operand: dst.codegen().into(),
-                },
-            ]),
+            IRInstruction::Unary { op, src, dst } => match op {
+                UnaryOp::Negate | UnaryOp::Complement => AsmNode::Instructions(vec![
+                    AsmInstruction::Mov {
+                        src: src.codegen().into(),
+                        dst: dst.codegen().into(),
+                    },
+                    AsmInstruction::Unary {
+                        op: (*op).into(),
+                        operand: dst.codegen().into(),
+                    },
+                ]),
+                UnaryOp::Not => AsmNode::Instructions(vec![
+                    AsmInstruction::Cmp { lhs: AsmOperand::Imm(0), rhs: src.codegen().into() },
+                    AsmInstruction::Mov { src: AsmOperand::Imm(0), dst: dst.codegen().into() },
+                    AsmInstruction::SetCC {
+                        condition: ConditionCode::E,
+                        operand: dst.codegen().into(),
+                    },
+                ]) 
+            }
             IRInstruction::Ret(value) => AsmNode::Instructions(vec![
                 AsmInstruction::Mov {
                     src: value.codegen().into(),
@@ -179,8 +204,44 @@ impl Codegen for IRInstruction {
                             AsmInstruction::Mov { src: AsmOperand::Register(AsmRegister::DX), dst: dst.codegen().into() },
                         ])
                     }
+                    BinaryOp::Less | BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual | BinaryOp::Equal | BinaryOp::NotEqual => {
+                        AsmNode::Instructions(vec![
+                            AsmInstruction::Cmp { lhs: rhs.codegen().into(), rhs: lhs.codegen().into() },
+                            AsmInstruction::Mov { src: AsmOperand::Imm(0), dst: dst.codegen().into() },
+                            AsmInstruction::SetCC {
+                                condition: match op {
+                                    BinaryOp::Less => ConditionCode::L,
+                                    BinaryOp::LessEqual => ConditionCode::LE,
+                                    BinaryOp::Greater => ConditionCode::G,
+                                    BinaryOp::GreaterEqual => ConditionCode::GE,
+                                    BinaryOp::Equal => ConditionCode::E,
+                                    BinaryOp::NotEqual => ConditionCode::NE,
+                                    _ => unreachable!(),
+                                },
+                                operand: dst.codegen().into(),
+                            },
+                        ])
+                    }
                 }
             }
+            IRInstruction::JumpIfZero { condition, target } => {
+                AsmNode::Instructions(vec![
+                    AsmInstruction::Cmp { lhs: AsmOperand::Imm(0), rhs: condition.codegen().into() },
+                    AsmInstruction::JmpCC { condition: ConditionCode::E, target: target.to_owned() },
+                ])
+            }
+            IRInstruction::JumpIfNotZero { condition, target } => {
+                AsmNode::Instructions(vec![
+                    AsmInstruction::Cmp { lhs: AsmOperand::Imm(0), rhs: condition.codegen().into() },
+                    AsmInstruction::JmpCC { condition: ConditionCode::NE, target: target.to_owned() },
+                ])
+            }
+            IRInstruction::Jump(target) => AsmNode::Instructions(vec![AsmInstruction::Jmp { target: target.to_owned() }]),
+            IRInstruction::Label(label) => AsmNode::Instructions(vec![AsmInstruction::Label(label.to_owned())]),
+            IRInstruction::Copy { src, dst } => AsmNode::Instructions(vec![AsmInstruction::Mov {
+                src: src.codegen().into(),
+                dst: dst.codegen().into(),
+            }]),
         }
     }
 }
@@ -219,6 +280,16 @@ impl ReplacePseudo for AsmInstruction {
             AsmInstruction::Idiv(operand) => AsmInstruction::Idiv(operand.replace_pseudo()),
             AsmInstruction::AllocateStack(n) => AsmInstruction::AllocateStack(*n),
             AsmInstruction::Ret => AsmInstruction::Ret,
+            AsmInstruction::Cmp { lhs, rhs } => {
+                AsmInstruction::Cmp {
+                    lhs: lhs.replace_pseudo(),
+                    rhs: rhs.replace_pseudo(),
+                }
+            }
+            AsmInstruction::SetCC { condition, operand } => AsmInstruction::SetCC {
+                condition: condition.clone(),
+                operand: operand.replace_pseudo(),
+            },
             _ => self.clone(),
         }
     }
@@ -357,6 +428,35 @@ impl Fixup for AsmFunction {
                         instructions.push(instr.clone());
                     }
                 }
+                AsmInstruction::Cmp { lhs, rhs } => {
+                    match (lhs.clone(), rhs.clone()) {
+                        (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    src: AsmOperand::Stack(src_n),
+                                    dst: AsmOperand::Register(AsmRegister::R10),
+                                },
+                                AsmInstruction::Cmp {
+                                    lhs: AsmOperand::Register(AsmRegister::R10),
+                                    rhs: AsmOperand::Stack(dst_n),
+                                },
+                            ]);
+                        }
+                        (_, AsmOperand::Imm(konst)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    src: AsmOperand::Imm(konst),
+                                    dst: AsmOperand::Register(AsmRegister::R11),
+                                },
+                                AsmInstruction::Cmp {
+                                    lhs: lhs.clone(),
+                                    rhs: AsmOperand::Register(AsmRegister::R11),
+                                },
+                            ]);
+                        }
+                        _ => instructions.push(instr.clone()),
+                    }
+                }
                 _ => instructions.push(instr.clone()),
             }
         }
@@ -411,6 +511,7 @@ impl From<UnaryOp> for AsmUnaryOp {
         match op {
             UnaryOp::Negate => AsmUnaryOp::Neg,
             UnaryOp::Complement => AsmUnaryOp::Not,
+            _ => unreachable!(),
         }
     }
 }

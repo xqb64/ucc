@@ -26,6 +26,20 @@ pub enum IRInstruction {
         rhs: IRValue,
         dst: IRValue,
     },
+    Copy {
+        src: IRValue,
+        dst: IRValue,
+    },
+    Jump(String),
+    JumpIfZero { 
+        condition: IRValue,
+        target: String,
+    },
+    JumpIfNotZero {
+        condition: IRValue,
+        target: String,
+    },
+    Label(String),
     Ret(IRValue),
 }
 
@@ -39,6 +53,7 @@ pub enum IRValue {
 pub enum UnaryOp {
     Negate,
     Complement,
+    Not,
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -48,6 +63,12 @@ pub enum BinaryOp {
     Mul,
     Div,
     Rem,
+    Less,
+    Greater,
+    Equal,
+    NotEqual,
+    LessEqual,
+    GreaterEqual,    
 }
 
 fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
@@ -60,7 +81,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
             let op = match kind {
                 UnaryExpressionKind::Negate => UnaryOp::Negate,
                 UnaryExpressionKind::Complement => UnaryOp::Complement,
-                _ => unimplemented!(),
+                UnaryExpressionKind::Not => UnaryOp::Not,
             };
             instructions.push(IRInstruction::Unary {
                 op,
@@ -71,21 +92,85 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
             dst
         }
         Expression::Binary(BinaryExpression { kind, lhs, rhs }) => {
-            let lhs = emit_tacky(*lhs, instructions);
-            let rhs = emit_tacky(*rhs, instructions);
-            let dst_name = format!("var.{}", make_temporary());
-            let dst = IRValue::Var(dst_name.clone());
-            let op = match kind {
-                BinaryExpressionKind::Add => BinaryOp::Add,
-                BinaryExpressionKind::Sub => BinaryOp::Sub,
-                BinaryExpressionKind::Mul => BinaryOp::Mul,
-                BinaryExpressionKind::Div => BinaryOp::Div,
-                BinaryExpressionKind::Rem => BinaryOp::Rem,
-                _ => unimplemented!()
-            };
-            instructions.push(IRInstruction::Binary { op, lhs, rhs, dst: dst.clone() });
+            match kind {
+                BinaryExpressionKind::And => {
+                    let tmp = make_temporary();
 
-            dst
+                    let false_label = format!("And.{}.shortcircuit", tmp);
+                    let end_label = format!("And.{}.end", tmp);
+
+                    let result = format!("var.{}", make_temporary());
+                    let result = IRValue::Var(result.clone());
+
+                    let lhs = emit_tacky(*lhs, instructions);
+                    instructions.push(IRInstruction::JumpIfZero { condition: lhs.clone(), target: false_label.clone() });
+                    
+                    let rhs = emit_tacky(*rhs, instructions);
+                    instructions.push(IRInstruction::JumpIfZero { condition: rhs.clone(), target: false_label.clone() });
+
+                    instructions.push(IRInstruction::Copy { src: IRValue::Constant(1), dst: result.clone() });
+
+                    instructions.push(IRInstruction::Jump(end_label.clone()));
+
+                    instructions.push(IRInstruction::Label(false_label.clone()));
+
+                    instructions.push(IRInstruction::Copy { src: IRValue::Constant(0), dst: result.clone() });
+
+                    instructions.push(IRInstruction::Label(end_label.clone()));
+
+                    result
+                }
+                BinaryExpressionKind::Or => {
+                    let tmp = make_temporary();
+
+                    let true_label = format!("Or.{}.shortcircuit", tmp);
+                    let end_label = format!("Or.{}.end", tmp);
+
+                    let result = format!("var.{}", make_temporary());
+                    let result = IRValue::Var(result.clone());
+
+                    let lhs = emit_tacky(*lhs, instructions);
+                    instructions.push(IRInstruction::JumpIfNotZero { condition: lhs.clone(), target: true_label.clone() });
+                    
+                    let rhs = emit_tacky(*rhs, instructions);
+                    instructions.push(IRInstruction::JumpIfNotZero { condition: rhs.clone(), target: true_label.clone() });
+
+                    instructions.push(IRInstruction::Copy { src: IRValue::Constant(0), dst: result.clone() });
+
+                    instructions.push(IRInstruction::Jump(end_label.clone()));
+
+                    instructions.push(IRInstruction::Label(true_label.clone()));
+
+                    instructions.push(IRInstruction::Copy { src: IRValue::Constant(1), dst: result.clone() });
+
+                    instructions.push(IRInstruction::Label(end_label.clone()));
+
+                    result
+                }
+                _ => {
+                    let lhs = emit_tacky(*lhs, instructions);
+                    let rhs = emit_tacky(*rhs, instructions);
+                    let dst_name = format!("var.{}", make_temporary());
+                    let dst = IRValue::Var(dst_name.clone());
+                    let op = match kind {
+                        BinaryExpressionKind::Add => BinaryOp::Add,
+                        BinaryExpressionKind::Sub => BinaryOp::Sub,
+                        BinaryExpressionKind::Mul => BinaryOp::Mul,
+                        BinaryExpressionKind::Div => BinaryOp::Div,
+                        BinaryExpressionKind::Rem => BinaryOp::Rem,
+                        BinaryExpressionKind::Less => BinaryOp::Less,
+                        BinaryExpressionKind::Greater => BinaryOp::Greater,
+                        BinaryExpressionKind::Equal => BinaryOp::Equal,
+                        BinaryExpressionKind::NotEqual => BinaryOp::NotEqual,
+                        BinaryExpressionKind::GreaterEqual => BinaryOp::GreaterEqual,
+                        BinaryExpressionKind::LessEqual => BinaryOp::LessEqual,
+                        _ => unreachable!()
+                    };
+                    instructions.push(IRInstruction::Binary { op, lhs, rhs, dst: dst.clone() });
+        
+                    dst        
+                }
+            }
         }
     }
 }
