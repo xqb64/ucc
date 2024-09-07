@@ -138,6 +138,7 @@ impl Codegen for IRInstruction {
                 },
                 AsmInstruction::Ret,
             ]),
+            _ => unreachable!(),
         }
     }
 }

@@ -1,6 +1,5 @@
 use crate::parser::{
-    Expression, FunctionDeclaration, ProgramStatement, Statement, UnaryExpression,
-    UnaryExpressionKind,
+    BinaryExpression, BinaryExpressionKind, Expression, FunctionDeclaration, ProgramStatement, Statement, UnaryExpression, UnaryExpressionKind
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -21,6 +20,12 @@ pub enum IRInstruction {
         src: IRValue,
         dst: IRValue,
     },
+    Binary {
+        op: BinaryOp,
+        lhs: IRValue,
+        rhs: IRValue,
+        dst: IRValue,
+    },
     Ret(IRValue),
 }
 
@@ -34,6 +39,15 @@ pub enum IRValue {
 pub enum UnaryOp {
     Negate,
     Complement,
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
 }
 
 fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
@@ -55,7 +69,22 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
 
             dst
         }
-        _ => unreachable!(),
+        Expression::Binary(BinaryExpression { kind, lhs, rhs }) => {
+            let lhs = emit_tacky(*lhs, instructions);
+            let rhs = emit_tacky(*rhs, instructions);
+            let dst_name = format!("var.{}", make_temporary());
+            let dst = IRValue::Var(dst_name.clone());
+            let op = match kind {
+                BinaryExpressionKind::Add => BinaryOp::Add,
+                BinaryExpressionKind::Sub => BinaryOp::Sub,
+                BinaryExpressionKind::Mul => BinaryOp::Mul,
+                BinaryExpressionKind::Div => BinaryOp::Div,
+                BinaryExpressionKind::Rem => BinaryOp::Mod,
+            };
+            instructions.push(IRInstruction::Binary { op, lhs, rhs, dst: dst.clone() });
+
+            dst
+        }
     }
 }
 
