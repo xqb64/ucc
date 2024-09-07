@@ -27,7 +27,7 @@ impl Parser {
         if self.check(token) {
             return Ok(self.advance());
         }
-        bail!("expected {:?}", token);
+        bail!("expected {:?}, got: prev: {:?}. curr: {:?}", token, self.previous, self.current);
     }
 
     fn check(&self, token: &Token) -> bool {
@@ -38,10 +38,7 @@ impl Parser {
         self.advance();
         let mut stmts = vec![];
         while self.current.is_some() {
-            stmts.push(match self.parse_statement()? {
-                Statement::Function(func) => func,
-                _ => unreachable!(),
-            });
+            stmts.push(self.parse_statement()?);
         }
         Ok(Statement::Program(ProgramStatement { stmts }))
     }
@@ -56,41 +53,77 @@ impl Parser {
         false
     }
 
-    fn parse_statement(&mut self) -> Result<Statement> {
+    fn parse_statement(&mut self) -> Result<BlockItem> {
         if self.is_next(&[Token::Int]) {
-            self.parse_function_declaration()
+            self.parse_declaration()
         } else if self.is_next(&[Token::Return]) {
             self.parse_return_statement()
+        } else if self.is_next(&[Token::Semicolon]) {
+            Ok(BlockItem::Statement(Statement::Null))
+        }else {
+            self.parse_expression_statement()
+        } 
+    }
+
+    fn parse_declaration(&mut self) -> Result<BlockItem> {
+        let name = self.consume(&Token::Identifier("".to_owned()))?.unwrap().as_string();
+        if self.is_next(&[Token::LParen]) {
+            self.parse_function_declaration(&name)
+        } else if self.is_next(&[Token::Equal]) {
+            self.parse_variable_declaration(&name)
+        } else if self.is_next(&[Token::Semicolon]) {
+            Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, init: None })))
         } else {
-            bail!("expected int or return");
+            bail!("expected function or variable declaration");
         }
     }
 
-    fn parse_function_declaration(&mut self) -> Result<Statement> {
-        let name = self
-            .consume(&Token::Identifier("".to_string()))?
-            .unwrap()
-            .as_string();
-        self.consume(&Token::LParen)?;
+    fn parse_function_declaration(&mut self, name: &str) -> Result<BlockItem> {
         self.consume(&Token::Void)?;
         self.consume(&Token::RParen)?;
         self.consume(&Token::LBrace)?;
-        let mut stmts = vec![];
+        let mut body = vec![];
         while !self.check(&Token::RBrace) {
-            stmts.push(self.parse_statement()?);
+            body.push(self.parse_statement()?);
         }
         self.consume(&Token::RBrace)?;
-        Ok(Statement::Function(FunctionDeclaration { name, stmts }))
+        Ok(BlockItem::Declaration(Declaration::Function(FunctionDeclaration { name: name.to_owned(), body })))
     }
 
-    fn parse_return_statement(&mut self) -> Result<Statement> {
+    fn parse_variable_declaration(&mut self, name: &str) -> Result<BlockItem> {
+        let init = Some(self.parse_expression()?);
+        self.consume(&Token::Semicolon)?;
+        Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name: name.to_owned(), init })))
+    }
+
+    fn parse_expression_statement(&mut self) -> Result<BlockItem> {
         let expr = self.parse_expression()?;
         self.consume(&Token::Semicolon)?;
-        Ok(Statement::Return(expr))
+        Ok(BlockItem::Statement(Statement::Expression(expr)))
+    }
+
+    fn parse_return_statement(&mut self) -> Result<BlockItem> {
+        let expr = self.parse_expression()?;
+        self.consume(&Token::Semicolon)?;
+        Ok(BlockItem::Statement(Statement::Return(expr)))
     }
 
     fn parse_expression(&mut self) -> Result<Expression> {
-        self.or()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expression> {
+        let mut result = self.or()?;
+        while self.is_next(&[
+            Token::Equal,
+        ]) {
+            result = Expression::Assign(AssignExpression {
+                lhs: result.into(),
+                rhs: self.assignment()?.into(),
+                op: Token::Equal,
+            });
+        }
+        Ok(result)
     }
 
     fn or(&mut self) -> Result<Expression> {
@@ -230,13 +263,22 @@ impl Parser {
             }
         } else if self.is_next(&[Token::LParen]) {
             self.parse_grouping()
+        } else if self.is_next(&[Token::Identifier("".to_owned())]) {
+            match self.previous.as_ref().unwrap() {
+                Token::Identifier(var) => self.parse_variable(var),
+                _ => unreachable!(),
+            }
         } else {
             bail!("expected primary");
         }
     }
 
-    fn parse_number(&mut self, n: i32) -> Result<Expression> {
+    fn parse_number(&self, n: i32) -> Result<Expression> {
         Ok(Expression::Constant(n))
+    }
+
+    fn parse_variable(&self, var: &str) -> Result<Expression> {
+        Ok(Expression::Variable(var.to_owned()))
     }
 
     fn parse_grouping(&mut self) -> Result<Expression> {
@@ -247,28 +289,49 @@ impl Parser {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum BlockItem {
+    Statement(Statement),
+    Declaration(Declaration),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Declaration {
+    Variable(VariableDeclaration),
+    Function(FunctionDeclaration),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariableDeclaration {
+    pub name: String,
+    pub init: Option<Expression>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Program(ProgramStatement),
-    Function(FunctionDeclaration),
     Return(Expression),
+    Expression(Expression),
+    Null,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProgramStatement {
-    pub stmts: Vec<FunctionDeclaration>,
+    pub stmts: Vec<BlockItem>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionDeclaration {
     pub name: String,
-    pub stmts: Vec<Statement>,
+    pub body: Vec<BlockItem>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Constant(i32),
+    Variable(String),
     Unary(UnaryExpression),
     Binary(BinaryExpression),
+    Assign(AssignExpression),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -306,4 +369,11 @@ pub enum BinaryExpressionKind {
     GreaterEqual,
     And,
     Or,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssignExpression {
+    pub lhs: Box<Expression>,
+    pub rhs: Box<Expression>,
+    pub op: Token,
 }
