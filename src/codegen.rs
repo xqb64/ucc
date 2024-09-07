@@ -132,32 +132,17 @@ impl Codegen for IRInstruction {
         match self {
             IRInstruction::Unary { op, src, dst } => AsmNode::Instructions(vec![
                 AsmInstruction::Mov {
-                    src: match src.codegen() {
-                        AsmNode::Operand(op) => op,
-                        _ => unreachable!(),
-                    },
-                    dst: match dst.codegen() {
-                        AsmNode::Operand(op) => op,
-                        _ => unreachable!(),
-                    },
+                    src: src.codegen().into(),
+                    dst: dst.codegen().into(),
                 },
                 AsmInstruction::Unary {
-                    op: match op {
-                        UnaryOp::Negate => AsmUnaryOp::Neg,
-                        UnaryOp::Complement => AsmUnaryOp::Not,
-                    },
-                    operand: match dst.codegen() {
-                        AsmNode::Operand(op) => op,
-                        _ => unreachable!(),
-                    },
+                    op: (*op).into(),
+                    operand: dst.codegen().into(),
                 },
             ]),
             IRInstruction::Ret(value) => AsmNode::Instructions(vec![
                 AsmInstruction::Mov {
-                    src: match value.codegen() {
-                        AsmNode::Operand(op) => op,
-                        _ => unreachable!(),
-                    },
+                    src: value.codegen().into(),
                     dst: AsmOperand::Register(Register::AX),
                 },
                 AsmInstruction::Ret,
@@ -184,33 +169,6 @@ impl ReplacePseudo for AsmInstruction {
             AsmInstruction::AllocateStack(n) => AsmInstruction::AllocateStack(*n),
             AsmInstruction::Ret => AsmInstruction::Ret,
         }
-    }
-}
-
-lazy_static::lazy_static! {
-    pub static ref OFFSET_MANAGER: std::sync::Mutex<OffsetManager> = std::sync::Mutex::new(OffsetManager::new());
-}
-
-pub struct OffsetManager {
-    pub offsets: std::collections::HashMap<String, i32>,
-    pub offset: i32,
-}
-
-impl OffsetManager {
-    fn new() -> OffsetManager {
-        OffsetManager {
-            offsets: std::collections::HashMap::new(),
-            offset: -4,
-        }
-    }
-
-    pub fn get_offset(&mut self, name: &str) -> i32 {
-        if !self.offsets.contains_key(name) {
-            self.offsets.insert(name.to_owned(), self.offset);
-            self.offset -= 4;
-        }
-
-        self.offsets[name]
     }
 }
 
@@ -292,5 +250,50 @@ impl Fixup for AsmProgram {
         }
 
         AsmProgram { functions }
+    }
+}
+
+impl From<AsmNode> for AsmOperand {
+    fn from(node: AsmNode) -> AsmOperand {
+        match node {
+            AsmNode::Operand(op) => op,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<UnaryOp> for AsmUnaryOp {
+    fn from(op: UnaryOp) -> AsmUnaryOp {
+        match op {
+            UnaryOp::Negate => AsmUnaryOp::Neg,
+            UnaryOp::Complement => AsmUnaryOp::Not,
+        }
+    }
+}
+
+lazy_static::lazy_static! {
+    pub static ref OFFSET_MANAGER: std::sync::Mutex<OffsetManager> = std::sync::Mutex::new(OffsetManager::new());
+}
+
+pub struct OffsetManager {
+    pub offsets: std::collections::HashMap<String, i32>,
+    pub offset: i32,
+}
+
+impl OffsetManager {
+    fn new() -> OffsetManager {
+        OffsetManager {
+            offsets: std::collections::HashMap::new(),
+            offset: -4,
+        }
+    }
+
+    pub fn get_offset(&mut self, name: &str) -> i32 {
+        if !self.offsets.contains_key(name) {
+            self.offsets.insert(name.to_owned(), self.offset);
+            self.offset -= 4;
+        }
+
+        self.offsets[name]
     }
 }

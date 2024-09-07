@@ -27,7 +27,7 @@ pub enum IRValue {
     Var(String),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum UnaryOp {
     Negate,
     Complement,
