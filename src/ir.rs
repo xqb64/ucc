@@ -60,6 +60,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
             let op = match kind {
                 UnaryExpressionKind::Negate => UnaryOp::Negate,
                 UnaryExpressionKind::Complement => UnaryOp::Complement,
+                _ => unimplemented!(),
             };
             instructions.push(IRInstruction::Unary {
                 op,
@@ -80,6 +81,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 BinaryExpressionKind::Mul => BinaryOp::Mul,
                 BinaryExpressionKind::Div => BinaryOp::Div,
                 BinaryExpressionKind::Rem => BinaryOp::Rem,
+                _ => unimplemented!()
             };
             instructions.push(IRInstruction::Binary { op, lhs, rhs, dst: dst.clone() });
 

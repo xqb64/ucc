@@ -90,7 +90,78 @@ impl Parser {
     }
 
     fn parse_expression(&mut self) -> Result<Expression> {
-        self.term()
+        self.or()
+    }
+
+    fn or(&mut self) -> Result<Expression> {
+        let mut result = self.and()?;
+        while self.is_next(&[Token::DoublePipe]) {
+            result = Expression::Binary(BinaryExpression {
+                kind: BinaryExpressionKind::Or,
+                lhs: result.into(),
+                rhs: self.and()?.into(),
+            });
+        }
+        Ok(result)
+    }
+
+    fn and(&mut self) -> Result<Expression> {
+        let mut result = self.equality()?;
+        while self.is_next(&[Token::DoubleAmpersand]) {
+            result = Expression::Binary(BinaryExpression {
+                kind: BinaryExpressionKind::And,
+                lhs: result.into(),
+                rhs: self.equality()?.into(),
+            });
+        }
+        Ok(result)
+    }
+
+    fn equality(&mut self) -> Result<Expression> {
+        let mut result = self.relational()?;
+        while self.is_next(&[Token::DoubleEqual, Token::BangEqual]) {
+            let negation = match self.previous.as_ref().unwrap() {
+                Token::BangEqual => true,
+                Token::DoubleEqual => false,
+                _ => unreachable!(),
+            };
+            result = Expression::Binary(BinaryExpression {
+                kind: match negation {
+                    true => BinaryExpressionKind::NotEqual,
+                    false => BinaryExpressionKind::Equal,
+                },
+                lhs: result.into(),
+                rhs: self.relational()?.into(),
+            });
+        }
+        Ok(result)
+    }
+
+    fn relational(&mut self) -> Result<Expression> {
+        let mut result = self.term()?;
+        while self.is_next(&[
+            Token::Less,
+            Token::Greater,
+            Token::LessEqual,
+            Token::GreaterEqual,
+        ]) {
+            let kind = match self.previous.as_ref() {
+                Some(token) => match token {
+                    Token::Less => BinaryExpressionKind::Less,
+                    Token::Greater => BinaryExpressionKind::Greater,
+                    Token::LessEqual => BinaryExpressionKind::LessEqual,
+                    Token::GreaterEqual => BinaryExpressionKind::GreaterEqual,
+                    _ => unreachable!(),
+                },
+                None => unreachable!(),
+            };
+            result = Expression::Binary(BinaryExpression {
+                kind,
+                lhs: result.into(),
+                rhs: self.term()?.into(),
+            });
+        }
+        Ok(result)
     }
 
     fn term(&mut self) -> Result<Expression> {
@@ -135,7 +206,7 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<Expression> {
-        if self.is_next(&[Token::Hyphen, Token::Tilde]) {
+        if self.is_next(&[Token::Hyphen, Token::Tilde, Token::Bang]) {
             let op = self.previous.clone().unwrap();
             let expr = self.unary()?;
             return Ok(Expression::Unary(UnaryExpression {
@@ -143,6 +214,7 @@ impl Parser {
                 kind: match op {
                     Token::Hyphen => UnaryExpressionKind::Negate,
                     Token::Tilde => UnaryExpressionKind::Complement,
+                    Token::Bang => UnaryExpressionKind::Not,
                     _ => unreachable!(),
                 },
             }));
@@ -209,6 +281,7 @@ pub struct UnaryExpression {
 pub enum UnaryExpressionKind {
     Negate,
     Complement,
+    Not,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -225,4 +298,12 @@ pub enum BinaryExpressionKind {
     Mul,
     Div,
     Rem,
+    Equal,
+    NotEqual,
+    Less,
+    Greater,
+    LessEqual,
+    GreaterEqual,
+    And,
+    Or,
 }
