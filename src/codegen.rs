@@ -118,10 +118,7 @@ impl Codegen for IRProgram {
     fn codegen(&self) -> AsmNode {
         let mut functions = vec![];
         for func in &self.functions {
-            functions.push(match func.codegen() {
-                AsmNode::Function(func) => func,
-                _ => unreachable!(),
-            });
+            functions.push(func.codegen().into());
         }
         AsmNode::Program(AsmProgram { functions })
     }
@@ -134,10 +131,7 @@ impl Codegen for IRFunction {
         instructions.push(AsmInstruction::AllocateStack(0));
 
         for instr in &self.body {
-            instructions.extend(match instr.codegen() {
-                AsmNode::Instructions(instrs) => instrs,
-                _ => unreachable!(),
-            });
+            instructions.extend::<Vec<AsmInstruction>>(instr.codegen().into());
         }
 
         AsmNode::Function(AsmFunction {
@@ -150,13 +144,11 @@ impl Codegen for IRFunction {
 impl Codegen for Vec<IRInstruction> {
     fn codegen(&self) -> AsmNode {
         let mut instructions = vec![];
+        
         for instr in self {
-            instructions.extend(match instr.codegen() {
-                AsmNode::Instructions(instrs) => instrs,
-                _ => unreachable!(),
-            });
+            instructions.extend::<Vec<AsmInstruction>>(instr.codegen().into());
         }
-
+        
         AsmNode::Instructions(instructions)
     }
 }
@@ -550,6 +542,24 @@ impl Fixup for Vec<AsmInstruction> {
         }
 
         instructions
+    }
+}
+
+impl From<AsmNode> for AsmFunction {
+    fn from(node: AsmNode) -> AsmFunction {
+        match node {
+            AsmNode::Function(func) => func,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<AsmNode> for Vec<AsmInstruction> {
+    fn from(node: AsmNode) -> Vec<AsmInstruction> {
+        match node {
+            AsmNode::Instructions(instrs) => instrs,
+            _ => unreachable!(),
+        }
     }
 }
 
