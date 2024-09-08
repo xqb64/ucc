@@ -116,8 +116,12 @@ impl Label for BlockItem {
             BlockItem::Declaration(decl) => {
                 match decl {
                     Declaration::Function(FunctionDeclaration { name, body }) => {
-                        let labeled_body = label_optional_block_item(&body, current_label)?;
-                        Ok(BlockItem::Declaration(Declaration::Function(FunctionDeclaration { name: name.clone(), body: labeled_body.into() })))
+                        if body.is_some() {
+                            let labeled_body = body.clone().unwrap().label(current_label)?;
+                            Ok(BlockItem::Declaration(Declaration::Function(FunctionDeclaration { name: name.clone(), body: Some(labeled_body).into() })))    
+                        } else {
+                            Ok(BlockItem::Declaration(Declaration::Function(FunctionDeclaration { name: name.clone(), body: None.into() })))    
+                        }
                     }
                     Declaration::Variable(var_decl) => Ok(BlockItem::Declaration(Declaration::Variable(var_decl.clone()))),
                 }
