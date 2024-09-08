@@ -1,6 +1,13 @@
 use anyhow::{bail, Result};
 
-use crate::{ir::make_temporary, parser::{BlockItem, BlockStatement, BreakStatement, ContinueStatement, Declaration, DoWhileStatement, ExpressionStatement, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, WhileStatement}};
+use crate::{
+    ir::make_temporary,
+    parser::{
+        BlockItem, BlockStatement, BreakStatement, ContinueStatement, Declaration,
+        DoWhileStatement, ExpressionStatement, ForStatement, FunctionDeclaration, IfStatement,
+        ProgramStatement, ReturnStatement, Statement, WhileStatement,
+    },
+};
 
 pub trait Label {
     fn label(&self, current_label: String) -> Result<BlockItem>;
@@ -8,15 +15,27 @@ pub trait Label {
 
 impl Label for ProgramStatement {
     fn label(&self, current_label: String) -> Result<BlockItem> {
-        let labeled_items = self.stmts.iter().map(|item| item.label(current_label.clone())).collect::<Result<Vec<_>>>()?;
-        Ok(BlockItem::Statement(Statement::Program(ProgramStatement { stmts: labeled_items })))
+        let labeled_items = self
+            .stmts
+            .iter()
+            .map(|item| item.label(current_label.clone()))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(BlockItem::Statement(Statement::Program(ProgramStatement {
+            stmts: labeled_items,
+        })))
     }
 }
 
 impl Label for BlockStatement {
     fn label(&self, current_label: String) -> Result<BlockItem> {
-        let labeled_items = self.stmts.iter().map(|item| item.label(current_label.clone())).collect::<Result<Vec<_>>>()?;
-        Ok(BlockItem::Statement(Statement::Compound(BlockStatement { stmts: labeled_items })))
+        let labeled_items = self
+            .stmts
+            .iter()
+            .map(|item| item.label(current_label.clone()))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(BlockItem::Statement(Statement::Compound(BlockStatement {
+            stmts: labeled_items,
+        })))
     }
 }
 
@@ -24,11 +43,20 @@ impl Label for IfStatement {
     fn label(&self, current_label: String) -> Result<BlockItem> {
         let labeled_then_body = self.then_branch.label(current_label.clone())?;
         let labeled_else_body = if self.else_branch.is_some() {
-            Some(self.else_branch.clone().unwrap().label(current_label.clone())?)
+            Some(
+                self.else_branch
+                    .clone()
+                    .unwrap()
+                    .label(current_label.clone())?,
+            )
         } else {
             None
         };
-        Ok(BlockItem::Statement(Statement::If(IfStatement { condition: self.condition.clone(), then_branch: labeled_then_body.into(), else_branch: labeled_else_body.into() })))
+        Ok(BlockItem::Statement(Statement::If(IfStatement {
+            condition: self.condition.clone(),
+            then_branch: labeled_then_body.into(),
+            else_branch: labeled_else_body.into(),
+        })))
     }
 }
 
@@ -38,7 +66,9 @@ impl Label for BreakStatement {
             bail!("break statement not within loop");
         }
 
-        Ok(BlockItem::Statement(Statement::Break(BreakStatement { label: current_label })))
+        Ok(BlockItem::Statement(Statement::Break(BreakStatement {
+            label: current_label,
+        })))
     }
 }
 
@@ -48,7 +78,11 @@ impl Label for ContinueStatement {
             bail!("continue statement not within loop");
         }
 
-        Ok(BlockItem::Statement(Statement::Continue(ContinueStatement { label: current_label })))
+        Ok(BlockItem::Statement(Statement::Continue(
+            ContinueStatement {
+                label: current_label,
+            },
+        )))
     }
 }
 
@@ -57,7 +91,11 @@ impl Label for WhileStatement {
         let new_label = format!("While.{}", make_temporary());
         let labeled_body = self.body.label(new_label.clone())?;
 
-        Ok(BlockItem::Statement(Statement::While(WhileStatement { label: new_label, condition: self.condition.clone(), body: labeled_body.into() })))
+        Ok(BlockItem::Statement(Statement::While(WhileStatement {
+            label: new_label,
+            condition: self.condition.clone(),
+            body: labeled_body.into(),
+        })))
     }
 }
 
@@ -66,7 +104,11 @@ impl Label for DoWhileStatement {
         let new_label = format!("DoWhile.{}", make_temporary());
         let labeled_body = self.body.label(new_label.clone())?;
 
-        Ok(BlockItem::Statement(Statement::DoWhile(DoWhileStatement { label: new_label, body: labeled_body.into(), condition: self.condition.clone() })))
+        Ok(BlockItem::Statement(Statement::DoWhile(DoWhileStatement {
+            label: new_label,
+            body: labeled_body.into(),
+            condition: self.condition.clone(),
+        })))
     }
 }
 
@@ -75,13 +117,21 @@ impl Label for ForStatement {
         let new_label = format!("For.{}", make_temporary());
         let labeled_body = self.body.label(new_label.clone())?;
 
-        Ok(BlockItem::Statement(Statement::For(ForStatement { label: new_label, init: self.init.clone(), condition: self.condition.clone(), post: self.post.clone(), body: labeled_body.into() })))
+        Ok(BlockItem::Statement(Statement::For(ForStatement {
+            label: new_label,
+            init: self.init.clone(),
+            condition: self.condition.clone(),
+            post: self.post.clone(),
+            body: labeled_body.into(),
+        })))
     }
 }
 
 impl Label for ReturnStatement {
     fn label(&self, _current_label: String) -> Result<BlockItem> {
-        Ok(BlockItem::Statement(Statement::Return(ReturnStatement { expr: self.expr.clone() })))
+        Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
+            expr: self.expr.clone(),
+        })))
     }
 }
 
@@ -116,21 +166,30 @@ impl Label for BlockItem {
                 let labeled_statement = s.label(current_label)?;
                 Ok(labeled_statement)
             }
-    
-            BlockItem::Declaration(decl) => {
-                match decl {
-                    Declaration::Function(FunctionDeclaration { name, body }) => {
-                        if body.is_some() {
-                            let labeled_body = body.clone().unwrap().label(current_label)?;
-                            Ok(BlockItem::Declaration(Declaration::Function(FunctionDeclaration { name: name.clone(), body: Some(labeled_body).into() })))    
-                        } else {
-                            Ok(BlockItem::Declaration(Declaration::Function(FunctionDeclaration { name: name.clone(), body: None.into() })))    
-                        }
+
+            BlockItem::Declaration(decl) => match decl {
+                Declaration::Function(FunctionDeclaration { name, body }) => {
+                    if body.is_some() {
+                        let labeled_body = body.clone().unwrap().label(current_label)?;
+                        Ok(BlockItem::Declaration(Declaration::Function(
+                            FunctionDeclaration {
+                                name: name.clone(),
+                                body: Some(labeled_body).into(),
+                            },
+                        )))
+                    } else {
+                        Ok(BlockItem::Declaration(Declaration::Function(
+                            FunctionDeclaration {
+                                name: name.clone(),
+                                body: None.into(),
+                            },
+                        )))
                     }
-                    Declaration::Variable(var_decl) => Ok(BlockItem::Declaration(Declaration::Variable(var_decl.clone()))),
                 }
+                Declaration::Variable(var_decl) => Ok(BlockItem::Declaration(
+                    Declaration::Variable(var_decl.clone()),
+                )),
             },
         }
-    
     }
 }

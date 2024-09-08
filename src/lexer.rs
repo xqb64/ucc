@@ -30,7 +30,10 @@ impl Iterator for Lexer {
 
         let punctuation_re = regex::Regex::new(r"^[-+*/%~(){};!<>=?:]").unwrap();
         let punctuation_double_re = regex::Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\|").unwrap();
-        let keyword_re = regex::Regex::new(r"^int\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b").unwrap();
+        let keyword_re = regex::Regex::new(
+            r"^int\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b",
+        )
+        .unwrap();
         let constant_re = regex::Regex::new(r"^[0-9]+\b").unwrap();
         let identifier_re = regex::Regex::new(r"^[a-zA-Z_]\w*\b").unwrap();
 

@@ -144,11 +144,11 @@ impl Codegen for IRFunction {
 impl Codegen for Vec<IRInstruction> {
     fn codegen(&self) -> AsmNode {
         let mut instructions = vec![];
-        
+
         for instr in self {
             instructions.extend::<Vec<AsmInstruction>>(instr.codegen().into());
         }
-        
+
         AsmNode::Instructions(instructions)
     }
 }

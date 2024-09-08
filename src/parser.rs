@@ -140,7 +140,9 @@ impl Parser {
             stmts.push(self.parse_statement()?);
         }
         self.consume(&Token::RBrace)?;
-        Ok(BlockItem::Statement(Statement::Compound(BlockStatement { stmts })))
+        Ok(BlockItem::Statement(Statement::Compound(BlockStatement {
+            stmts,
+        })))
     }
 
     fn parse_if_statement(&mut self) -> Result<BlockItem> {
@@ -159,7 +161,11 @@ impl Parser {
             None
         };
 
-        Ok(BlockItem::Statement(Statement::If(IfStatement { condition, then_branch: then_branch.into(), else_branch: else_branch.into() })))
+        Ok(BlockItem::Statement(Statement::If(IfStatement {
+            condition,
+            then_branch: then_branch.into(),
+            else_branch: else_branch.into(),
+        })))
     }
 
     fn parse_do_while_statement(&mut self) -> Result<BlockItem> {
@@ -175,7 +181,11 @@ impl Parser {
         println!("here5");
         self.consume(&Token::Semicolon)?;
         println!("here6");
-        Ok(BlockItem::Statement(Statement::DoWhile(DoWhileStatement { condition, body: body.into(), label: "".to_owned() })))
+        Ok(BlockItem::Statement(Statement::DoWhile(DoWhileStatement {
+            condition,
+            body: body.into(),
+            label: "".to_owned(),
+        })))
     }
 
     fn parse_while_statement(&mut self) -> Result<BlockItem> {
@@ -190,7 +200,11 @@ impl Parser {
             _ => {}
         }
 
-        Ok(BlockItem::Statement(Statement::While(WhileStatement { condition, body: body.into(), label: "".to_owned() })))
+        Ok(BlockItem::Statement(Statement::While(WhileStatement {
+            condition,
+            body: body.into(),
+            label: "".to_owned(),
+        })))
     }
 
     fn parse_for_statement(&mut self) -> Result<BlockItem> {
@@ -221,24 +235,36 @@ impl Parser {
         let post = if self.is_next(&[Token::RParen]) {
             None
         } else {
-            let expr = self.parse_expression()?; 
+            let expr = self.parse_expression()?;
             self.consume(&Token::RParen)?;
             Some(expr)
         };
 
         let body = self.parse_statement()?;
 
-        Ok(BlockItem::Statement(Statement::For(ForStatement { init, condition, post, body: body.into(), label: "".to_owned() })))
+        Ok(BlockItem::Statement(Statement::For(ForStatement {
+            init,
+            condition,
+            post,
+            body: body.into(),
+            label: "".to_owned(),
+        })))
     }
 
     fn parse_break_statement(&mut self) -> Result<BlockItem> {
         self.consume(&Token::Semicolon)?;
-        Ok(BlockItem::Statement(Statement::Break(BreakStatement { label: "".to_owned() })))
+        Ok(BlockItem::Statement(Statement::Break(BreakStatement {
+            label: "".to_owned(),
+        })))
     }
 
     fn parse_continue_statement(&mut self) -> Result<BlockItem> {
         self.consume(&Token::Semicolon)?;
-        Ok(BlockItem::Statement(Statement::Continue(ContinueStatement { label: "".to_owned() })))
+        Ok(BlockItem::Statement(Statement::Continue(
+            ContinueStatement {
+                label: "".to_owned(),
+            },
+        )))
     }
 
     fn parse_return_statement(&mut self) -> Result<BlockItem> {
@@ -424,7 +450,10 @@ impl Parser {
                 _ => unreachable!(),
             }
         } else {
-            println!("self.current, self.previous: {:?}, {:?}", self.current, self.previous);
+            println!(
+                "self.current, self.previous: {:?}, {:?}",
+                self.current, self.previous
+            );
             bail!("expected primary");
         }
     }
