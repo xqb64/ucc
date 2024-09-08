@@ -196,7 +196,7 @@ impl Parser {
         println!("here5");
         self.consume(&Token::Semicolon)?;
         println!("here6");
-        Ok(BlockItem::Statement(Statement::DoWhile(DoWhileStatement { condition, body: body.into() })))
+        Ok(BlockItem::Statement(Statement::DoWhile(DoWhileStatement { condition, body: body.into(), label: "".to_owned() })))
     }
 
     fn parse_while_statement(&mut self) -> Result<BlockItem> {
@@ -211,7 +211,7 @@ impl Parser {
             _ => {}
         }
 
-        Ok(BlockItem::Statement(Statement::While(WhileStatement { condition, body: body.into() })))
+        Ok(BlockItem::Statement(Statement::While(WhileStatement { condition, body: body.into(), label: "".to_owned() })))
     }
 
     fn parse_for_statement(&mut self) -> Result<BlockItem> {
@@ -249,7 +249,7 @@ impl Parser {
 
         let body = self.parse_statement()?;
 
-        Ok(BlockItem::Statement(Statement::For(ForStatement { init, condition, post, body: body.into() })))
+        Ok(BlockItem::Statement(Statement::For(ForStatement { init, condition, post, body: body.into(), label: "".to_owned() })))
     }
 
     fn parse_break_statement(&mut self) -> Result<BlockItem> {
@@ -535,12 +535,14 @@ pub struct BlockStatement {
 pub struct DoWhileStatement {
     pub condition: Expression,
     pub body: Box<BlockItem>,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WhileStatement {
     pub condition: Expression,
     pub body: Box<BlockItem>,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -549,6 +551,7 @@ pub struct ForStatement {
     pub condition: Option<Expression>,
     pub post: Option<Expression>,
     pub body: Box<BlockItem>,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
