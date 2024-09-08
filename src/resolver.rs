@@ -89,6 +89,7 @@ pub fn resolve_statement(
                 stmts: resolved_block_items,
             }))
         }
+        Statement::If(if_stmt) => todo!(),
     }
 }
 
@@ -133,5 +134,6 @@ fn resolve_exp(exp: &Expression, variable_map: &mut HashMap<String, String>) -> 
                 rhs: resolved_rhs.into(),
             }))
         }
+        _ => todo!(),
     }
 }

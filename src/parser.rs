@@ -63,6 +63,8 @@ impl Parser {
             self.parse_declaration()
         } else if self.is_next(&[Token::Return]) {
             self.parse_return_statement()
+        } else if self.is_next(&[Token::If]) {
+            self.parse_if_statement()
         } else if self.is_next(&[Token::Semicolon]) {
             Ok(BlockItem::Statement(Statement::Null))
         } else {
@@ -124,6 +126,28 @@ impl Parser {
         )))
     }
 
+    fn parse_if_statement(&mut self) -> Result<BlockItem> {
+        self.consume(&Token::LParen)?;
+
+        let condition = self.parse_expression()?;
+
+        self.consume(&Token::RParen)?;
+
+        let then_branch = self.parse_statement()?;
+
+        if let BlockItem::Declaration(decl) = &then_branch {
+            bail!("expected statement, got declaration: {:?}", decl);
+        }
+
+        let else_branch = if self.is_next(&[Token::Else]) {
+            Some(self.parse_statement()?)
+        } else {
+            None
+        };
+
+        Ok(BlockItem::Statement(Statement::If(IfStatement { condition, then_branch: then_branch.into(), else_branch: else_branch.into() })))
+    }
+
     fn parse_return_statement(&mut self) -> Result<BlockItem> {
         let expr = self.parse_expression()?;
         self.consume(&Token::Semicolon)?;
@@ -137,7 +161,7 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expression> {
-        let mut result = self.or()?;
+        let mut result = self.conditional()?;
         while self.is_next(&[Token::Equal]) {
             result = Expression::Assign(AssignExpression {
                 lhs: result.into(),
@@ -146,6 +170,22 @@ impl Parser {
             });
         }
         Ok(result)
+    }
+
+    fn conditional(&mut self) -> Result<Expression> {
+        let result = self.or()?;
+        if self.is_next(&[Token::QuestionMark]) {
+            let then_expr = self.parse_expression()?;
+            self.consume(&Token::Colon)?;
+            let else_expr = self.parse_expression()?;
+            Ok(Expression::Conditional(ConditionalExpression {
+                condition: result.into(),
+                then_expr: then_expr.into(),
+                else_expr: else_expr.into(),
+            }))
+        } else {
+            Ok(result)
+        }
     }
 
     fn or(&mut self) -> Result<Expression> {
@@ -333,6 +373,7 @@ pub enum Statement {
     Program(ProgramStatement),
     Return(ReturnStatement),
     Expression(ExpressionStatement),
+    If(IfStatement),
     Null,
 }
 
@@ -353,6 +394,13 @@ pub struct ReturnStatement {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct IfStatement {
+    pub condition: Expression,
+    pub then_branch: Box<BlockItem>,
+    pub else_branch: Box<Option<BlockItem>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExpressionStatement {
     pub expr: Expression,
 }
@@ -364,6 +412,7 @@ pub enum Expression {
     Unary(UnaryExpression),
     Binary(BinaryExpression),
     Assign(AssignExpression),
+    Conditional(ConditionalExpression),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -408,4 +457,11 @@ pub struct AssignExpression {
     pub lhs: Box<Expression>,
     pub rhs: Box<Expression>,
     pub op: Token,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConditionalExpression {
+    pub condition: Box<Expression>,
+    pub then_expr: Box<Expression>,
+    pub else_expr: Box<Expression>,
 }

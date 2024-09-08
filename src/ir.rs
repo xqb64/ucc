@@ -1,7 +1,5 @@
 use crate::parser::{
-    AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, Declaration, Expression,
-    ExpressionStatement, FunctionDeclaration, ProgramStatement, ReturnStatement, Statement,
-    UnaryExpression, UnaryExpressionKind, VariableDeclaration,
+    AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, Declaration, Expression, ExpressionStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression, UnaryExpressionKind, VariableDeclaration
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -215,6 +213,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 unimplemented!()
             }
         }
+        _ => todo!(),
     }
 }
 
@@ -245,6 +244,7 @@ impl Irfy for Statement {
             Statement::Program(prog) => prog.irfy(),
             Statement::Return(ret_stmt) => ret_stmt.irfy(),
             Statement::Expression(expr_stmt) => expr_stmt.irfy(),
+            Self::If(if_stmt) => if_stmt.irfy(),
             Statement::Null => IRNode::Instructions(vec![]),
         }
     }
@@ -259,6 +259,12 @@ impl Irfy for ProgramStatement {
         }
 
         IRNode::Program(IRProgram { functions })
+    }
+}
+
+impl Irfy for IfStatement {
+    fn irfy(&self) -> IRNode {
+        unimplemented!()
     }
 }
 
