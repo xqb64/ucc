@@ -23,7 +23,11 @@ impl Label for BlockStatement {
 impl Label for IfStatement {
     fn label(&self, current_label: String) -> Result<BlockItem> {
         let labeled_then_body = self.then_branch.label(current_label.clone())?;
-        let labeled_else_body = label_optional_block_item(&self.else_branch, current_label.clone())?;
+        let labeled_else_body = if self.else_branch.is_some() {
+            Some(self.else_branch.clone().unwrap().label(current_label.clone())?)
+        } else {
+            None
+        };
         Ok(BlockItem::Statement(Statement::If(IfStatement { condition: self.condition.clone(), then_branch: labeled_then_body.into(), else_branch: labeled_else_body.into() })))
     }
 }
@@ -128,18 +132,5 @@ impl Label for BlockItem {
             },
         }
     
-    }
-}
-
-
-fn label_optional_block_item(block_item: &Option<BlockItem>, current_label: String) -> Result<Option<BlockItem>> {
-    match block_item {
-        Some(b) => {
-            let labeled_block_item = b.label( current_label)?;
-
-            Ok(Some(labeled_block_item))
-        }
-
-        None => Ok(None),
     }
 }
