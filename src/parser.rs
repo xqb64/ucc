@@ -144,7 +144,7 @@ impl Parser {
         };
 
         // FIXME: this is a hack to make the tests pass
-        if let Some(BlockItem::Declaration(Declaration::Variable(_))) = then_branch.first() {
+        if let Some(BlockItem::Declaration(_)) = then_branch.first() {
             bail!("variable declaration not allowed in then branch");
         }
 
