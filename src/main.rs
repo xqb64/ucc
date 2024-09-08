@@ -84,6 +84,16 @@ fn run(opts: &Opt) -> Result<()> {
         .arg(opts.path.with_extension("s"))
         .status()?;
 
+    if opts.c {
+        std::process::Command::new("gcc")
+            .arg("-c")
+            .arg(opts.path.with_extension("s"))
+            .arg("-o")
+            .arg(opts.path.with_extension("o"))
+            .status()?;
+        std::process::exit(0);
+    }
+
     Ok(())
 }
 
@@ -119,4 +129,7 @@ struct Opt {
 
     #[structopt(name = "codegen", long)]
     codegen: bool,
+
+    #[structopt(name = "c", short)]
+    c: bool,
 }
