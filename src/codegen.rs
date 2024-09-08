@@ -57,6 +57,9 @@ pub enum AsmInstruction {
     },
     Label(String),
     AllocateStack(usize),
+    DeallocateStack(usize),
+    Push(AsmOperand),
+    Call(String),
     Ret,
 }
 
@@ -78,10 +81,15 @@ pub enum AsmOperand {
     Register(AsmRegister),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AsmRegister {
     AX,
+    CX,
     DX,
+    DI,
+    SI,
+    R8,
+    R9,
     R10,
     R11,
 }
@@ -129,6 +137,34 @@ impl Codegen for IRFunction {
         let mut instructions = vec![];
 
         instructions.push(AsmInstruction::AllocateStack(0));
+
+        let registers = vec![
+            AsmRegister::DI,
+            AsmRegister::SI,
+            AsmRegister::DX,
+            AsmRegister::CX,
+            AsmRegister::R8,
+            AsmRegister::R9,
+        ];
+
+        let mut reg_idx = 0;
+
+        for arg in self.params.iter().take(6) {
+            instructions.push(AsmInstruction::Mov {
+                src: AsmOperand::Register(registers[reg_idx]),
+                dst: AsmOperand::Pseudo(arg.to_owned()),
+            });
+            reg_idx += 1;
+        }
+
+        let mut stack_offset = 16;
+        for arg in self.params.iter().skip(6) {
+            instructions.push(AsmInstruction::Mov {
+                src: AsmOperand::Stack(stack_offset),
+                dst: AsmOperand::Pseudo(arg.to_owned()),
+            });
+            stack_offset += 8;
+        }
 
         for instr in &self.body {
             instructions.extend::<Vec<AsmInstruction>>(instr.codegen().into());
@@ -292,7 +328,74 @@ impl Codegen for IRInstruction {
                 src: src.codegen().into(),
                 dst: dst.codegen().into(),
             }]),
-            _ => todo!(),
+            IRInstruction::Call { target, args, dst } => {
+                let arg_registers = [
+                    AsmRegister::DI,
+                    AsmRegister::SI,
+                    AsmRegister::DX,
+                    AsmRegister::CX,
+                    AsmRegister::R8,
+                    AsmRegister::R9,
+                ];
+
+                let register_args = args.iter().take(6).collect::<Vec<_>>();
+                let stack_args = args.iter().skip(6).collect::<Vec<_>>();
+
+                let stack_padding;
+                if stack_args.len() % 2 != 0 {
+                    stack_padding = 8;
+                } else {
+                    stack_padding = 0;
+                }
+
+                let mut instructions = vec![];
+
+                if stack_padding != 0 {
+                    instructions.push(AsmInstruction::AllocateStack(stack_padding));
+                }
+
+                let mut reg_index = 0;
+                for reg_arg in register_args {
+                    let reg = arg_registers[reg_index];
+                    let asm_arg = reg_arg.codegen().into();
+                    instructions.push(AsmInstruction::Mov {
+                        src: asm_arg,
+                        dst: AsmOperand::Register(reg),
+                    });
+                    reg_index += 1;
+                }
+
+                for stack_arg in stack_args.iter().rev() {
+                    let asm_arg = stack_arg.codegen().into();
+                    match asm_arg {
+                        AsmOperand::Imm(_) | AsmOperand::Register(_) => {
+                            instructions.push(AsmInstruction::Push(asm_arg));
+                        }
+                        _ => {
+                            instructions.push(AsmInstruction::Mov {
+                                src: asm_arg,
+                                dst: AsmOperand::Register(AsmRegister::AX),
+                            });
+                            instructions.push(AsmInstruction::Push(AsmOperand::Register(AsmRegister::AX)));
+                        }
+                    }
+                }
+
+                instructions.push(AsmInstruction::Call(target.to_owned()));
+
+                let bytes_to_remove = 8 * stack_args.len() + stack_padding;
+                if bytes_to_remove != 0 {
+                    instructions.push(AsmInstruction::DeallocateStack(bytes_to_remove));
+                }
+
+                let asm_dst = dst.codegen().into();
+                instructions.push(AsmInstruction::Mov {
+                    src: AsmOperand::Register(AsmRegister::AX),
+                    dst: asm_dst,
+                });
+
+                AsmNode::Instructions(instructions)
+            }
         }
     }
 }
@@ -339,6 +442,7 @@ impl ReplacePseudo for AsmInstruction {
                 condition: condition.clone(),
                 operand: operand.replace_pseudo(),
             },
+            AsmInstruction::Push(operand) => AsmInstruction::Push(operand.replace_pseudo()),
             _ => self.clone(),
         }
     }

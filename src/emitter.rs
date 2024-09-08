@@ -33,6 +33,8 @@ impl Emit for AsmProgram {
             func.emit(f)?;
         }
 
+        writeln!(f, ".section	.note.GNU-stack,\"\",@progbits")?;
+
         writeln!(f)?;
 
         Ok(())
@@ -53,7 +55,14 @@ impl Emit for AsmFunction {
     fn emit(&mut self, f: &mut File) -> Result<()> {
         if let Some(instr) = self.instructions.get_mut(0) {
             let offset_manager = OFFSET_MANAGER.lock().unwrap();
-            *instr = AsmInstruction::AllocateStack(offset_manager.offset.unsigned_abs() as usize);
+            
+            let mut stack_frame_bytelen = offset_manager.offset.unsigned_abs() as usize;
+            let rem = stack_frame_bytelen % 16;
+            if rem != 0 {
+                stack_frame_bytelen += 16 - rem;
+            }
+            
+            *instr = AsmInstruction::AllocateStack(stack_frame_bytelen);
         }
 
         writeln!(f, "\t.globl {}", self.name)?;
@@ -169,7 +178,12 @@ impl Emit for AsmInstruction {
                 match operand {
                     AsmOperand::Register(reg) => match reg {
                         AsmRegister::AX => write!(f, "%al")?,
+                        AsmRegister::CX => write!(f, "%cl")?,
                         AsmRegister::DX => write!(f, "%dl")?,
+                        AsmRegister::DI => write!(f, "%dil")?,
+                        AsmRegister::SI => write!(f, "%sil")?,
+                        AsmRegister::R8 => write!(f, "%r8b")?,
+                        AsmRegister::R9 => write!(f, "%r9b")?,
                         AsmRegister::R10 => write!(f, "%r10b")?,
                         AsmRegister::R11 => write!(f, "%r11b")?,
                     },
@@ -180,6 +194,30 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::Label(label) => {
                 writeln!(f, ".L{}:", label)?;
+            }
+            AsmInstruction::DeallocateStack(n) => {
+                writeln!(f, "addq ${}, %rsp", n)?;
+            }
+            AsmInstruction::Call(target) => {
+                writeln!(f, "call {}", target)?;
+            }
+            AsmInstruction::Push(operand) => {
+                write!(f, "pushq ")?;
+                match operand {
+                    AsmOperand::Register(reg) => match reg {
+                        AsmRegister::AX => write!(f, "%rax")?,
+                        AsmRegister::CX => write!(f, "%rcx")?,
+                        AsmRegister::DX => write!(f, "%rdx")?,
+                        AsmRegister::DI => write!(f, "%rdi")?,
+                        AsmRegister::SI => write!(f, "%rsi")?,
+                        AsmRegister::R8 => write!(f, "%r8")?,
+                        AsmRegister::R9 => write!(f, "%r9")?,
+                        AsmRegister::R10 => write!(f, "%r10")?,
+                        AsmRegister::R11 => write!(f, "%r11")?,
+                    },
+                    _ => operand.emit(f)?,
+                }
+                writeln!(f)?;
             }
         }
 
@@ -204,6 +242,11 @@ impl Emit for AsmRegister {
         match self {
             AsmRegister::AX => write!(f, "%eax")?,
             AsmRegister::DX => write!(f, "%edx")?,
+            AsmRegister::CX => write!(f, "%ecx")?,
+            AsmRegister::DI => write!(f, "%edi")?,
+            AsmRegister::SI => write!(f, "%esi")?,
+            AsmRegister::R8 => write!(f, "%r8d")?,
+            AsmRegister::R9 => write!(f, "%r9d")?,
             AsmRegister::R10 => write!(f, "%r10d")?,
             AsmRegister::R11 => write!(f, "%r11d")?,
         }

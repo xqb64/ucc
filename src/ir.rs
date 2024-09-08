@@ -542,6 +542,8 @@ impl Irfy for FunctionDeclaration {
             return None;
         }
 
+
+
         for stmt in self.body.iter() {
             instructions.extend::<Vec<IRInstruction>>(stmt.irfy().unwrap().into());
         }
