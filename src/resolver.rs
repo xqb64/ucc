@@ -89,10 +89,10 @@ pub fn resolve_statement(
         }
         Statement::If(IfStatement { condition, then_branch, else_branch }) => {
             let resolved_condition = resolve_exp(condition, variable_map)?;
-            let resolved_then_branch = resolve_block_item(&then_branch, variable_map)?;
+            let resolved_then_branch = then_branch.iter().map(|block_item| resolve_block_item(block_item, variable_map)).collect::<Result<Vec<_>>>()?;
             let mut resolved_else_branch = None;
             if else_branch.is_some() {
-                resolved_else_branch = Some(resolve_block_item(&else_branch.clone().unwrap(), variable_map)?); 
+                resolved_else_branch = Some(else_branch.as_ref().unwrap().iter().map(|block_item| resolve_block_item(block_item, variable_map)).collect::<Result<Vec<_>>>()?);
             }
             Ok(Statement::If(IfStatement {
                 condition: resolved_condition,

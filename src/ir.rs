@@ -1,5 +1,5 @@
 use crate::parser::{
-    AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, Declaration, Expression, ExpressionStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression, UnaryExpressionKind, VariableDeclaration
+    AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, ConditionalExpression, Declaration, Expression, ExpressionStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression, UnaryExpressionKind, VariableDeclaration
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -213,7 +213,42 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 unimplemented!()
             }
         }
-        _ => todo!(),
+        Expression::Conditional(ConditionalExpression { condition, then_expr, else_expr }) => {
+            let tmp = make_temporary();
+
+            let result = IRValue::Var(format!("Cond.{}.result", tmp));
+
+            let e2_label = format!("Cond.{}.else", tmp);
+            let end_label = format!("Cond.{}.end", tmp);
+            let condition = emit_tacky(*condition, instructions);
+
+            instructions.push(IRInstruction::JumpIfZero {
+                condition: condition.clone(),
+                target: e2_label.clone(),
+            });
+
+            let e1 = emit_tacky(*then_expr, instructions);
+
+            instructions.push(IRInstruction::Copy {
+                src: e1,
+                dst: result.clone(),
+            });
+
+            instructions.push(IRInstruction::Jump(end_label.clone()));
+
+            instructions.push(IRInstruction::Label(e2_label));
+
+            let e2 = emit_tacky(*else_expr, instructions);
+
+            instructions.push(IRInstruction::Copy {
+                src: e2,
+                dst: result.clone(),
+            });
+
+            instructions.push(IRInstruction::Label(end_label));
+
+            result
+        }
     }
 }
 
@@ -264,7 +299,37 @@ impl Irfy for ProgramStatement {
 
 impl Irfy for IfStatement {
     fn irfy(&self) -> IRNode {
-        unimplemented!()
+        let mut instructions = vec![];
+
+        let tmp = make_temporary();
+
+        let else_label = format!("Else.{}", tmp);
+        let end_label = format!("End.{}", tmp);
+
+        let condition = emit_tacky(self.condition.clone(), &mut instructions);
+
+        instructions.push(IRInstruction::JumpIfZero {
+            condition,
+            target: else_label.clone(),
+        });
+
+        for stmt in &self.then_branch {
+            instructions.extend::<Vec<IRInstruction>>(stmt.irfy().into());
+        }
+
+        instructions.push(IRInstruction::Jump(end_label.clone()));
+
+        instructions.push(IRInstruction::Label(else_label.clone()));
+
+        if self.else_branch.is_some() {
+            for stmt in self.else_branch.clone().unwrap() {
+                instructions.extend::<Vec<IRInstruction>>(stmt.irfy().into());
+            }    
+        }
+
+        instructions.push(IRInstruction::Label(end_label));
+
+        IRNode::Instructions(instructions)
     }
 }
 
