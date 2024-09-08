@@ -54,17 +54,18 @@ fn run(opts: &Opt) -> Result<()> {
     let mut variable_map = HashMap::new();
     let validated_ast = ast.resolve(&mut variable_map)?;
 
-    let labeled_ast = validated_ast.label(String::new())?;
-
     let mut symbol_table = HashMap::new();
+
+    let labeled_ast = validated_ast.label(String::new())?;
     typecheck_block(&labeled_ast, &mut symbol_table)?;
+
 
     if opts.validate {
         println!("{:?}", labeled_ast);
         std::process::exit(0);
     }
 
-    let tac = labeled_ast.irfy();
+    let tac = labeled_ast.irfy().unwrap();
 
     if opts.tacky {
         println!("{:?}", tac);

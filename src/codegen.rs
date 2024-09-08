@@ -292,6 +292,7 @@ impl Codegen for IRInstruction {
                 src: src.codegen().into(),
                 dst: dst.codegen().into(),
             }]),
+            _ => todo!(),
         }
     }
 }
