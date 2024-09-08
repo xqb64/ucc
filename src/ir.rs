@@ -282,6 +282,7 @@ impl Irfy for Statement {
             Statement::If(if_stmt) => if_stmt.irfy(),
             Statement::Compound(block_stmt) => block_stmt.irfy(),
             Statement::Null => IRNode::Instructions(vec![]),
+            _ => unimplemented!(),
         }
     }
 }

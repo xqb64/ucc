@@ -111,6 +111,7 @@ pub fn resolve_statement(
                 stmts: resolved_block_items,
             }))
         }
+        _ => unimplemented!()
     }
 }
 

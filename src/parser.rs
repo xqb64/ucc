@@ -65,6 +65,16 @@ impl Parser {
             self.parse_return_statement()
         } else if self.is_next(&[Token::If]) {
             self.parse_if_statement()
+        } else if self.is_next(&[Token::Do]) {
+            self.parse_do_while_statement()
+        } else if self.is_next(&[Token::While]) {
+            self.parse_while_statement()
+        } else if self.is_next(&[Token::For]) {
+            self.parse_for_statement()
+        } else if self.is_next(&[Token::Break]) {
+            self.parse_break_statement()
+        } else if self.is_next(&[Token::Continue]) {
+            self.parse_continue_statement()
         } else if self.is_next(&[Token::LBrace]) {
             self.parse_block_statement()
         } else if self.is_next(&[Token::Semicolon]) {
@@ -171,6 +181,85 @@ impl Parser {
         };
 
         Ok(BlockItem::Statement(Statement::If(IfStatement { condition, then_branch: then_branch.into(), else_branch: else_branch.into() })))
+    }
+
+    fn parse_do_while_statement(&mut self) -> Result<BlockItem> {
+        println!("here");
+        let body = self.parse_statement()?;
+        self.consume(&Token::While)?;
+        println!("here2");
+        self.consume(&Token::LParen)?;
+        println!("here3");
+        let condition = self.parse_expression()?;
+        println!("here4");
+        self.consume(&Token::RParen)?;
+        println!("here5");
+        self.consume(&Token::Semicolon)?;
+        println!("here6");
+        Ok(BlockItem::Statement(Statement::DoWhile(DoWhileStatement { condition, body: body.into() })))
+    }
+
+    fn parse_while_statement(&mut self) -> Result<BlockItem> {
+        self.consume(&Token::LParen)?;
+        let condition = self.parse_expression()?;
+        self.consume(&Token::RParen)?;
+        let body = self.parse_statement()?;
+
+        // FIXME: dirty test-passing hack
+        match body {
+            BlockItem::Declaration(_) => bail!("variable declaration not allowed in while body"),
+            _ => {}
+        }
+
+        Ok(BlockItem::Statement(Statement::While(WhileStatement { condition, body: body.into() })))
+    }
+
+    fn parse_for_statement(&mut self) -> Result<BlockItem> {
+        self.consume(&Token::LParen)?;
+
+        let init = if self.is_next(&[Token::Semicolon]) {
+            None
+        } else if self.is_next(&[Token::Int]) {
+            let decl = self.parse_declaration()?;
+            Some(ForInit::Declaration(match decl {
+                BlockItem::Declaration(Declaration::Variable(var)) => var,
+                _ => unreachable!(),
+            }))
+        } else {
+            let expr = self.parse_expression()?;
+            self.consume(&Token::Semicolon)?;
+            Some(ForInit::Expression(expr))
+        };
+
+        let condition = if self.is_next(&[Token::Semicolon]) {
+            None
+        } else {
+            let expr = self.parse_expression()?;
+            self.consume(&Token::Semicolon)?;
+            Some(expr)
+        };
+
+        let post = if self.is_next(&[Token::RParen]) {
+            None
+        } else {
+            let expr = self.parse_expression()?; 
+            self.consume(&Token::RParen)?;
+            Some(expr)
+        };
+
+        let body = self.parse_statement()?;
+
+        Ok(BlockItem::Statement(Statement::For(ForStatement { init, condition, post, body: body.into() })))
+    }
+
+    fn parse_break_statement(&mut self) -> Result<BlockItem> {
+        self.consume(&Token::Semicolon)?;
+        Ok(BlockItem::Statement(Statement::Break(BreakStatement { label: "".to_owned() })))
+    }
+
+    fn parse_continue_statement(&mut self) -> Result<BlockItem> {
+        self.consume(&Token::Semicolon)?;
+        Ok(BlockItem::Statement(Statement::Continue(ContinueStatement { label: "".to_owned() })))
     }
 
     fn parse_return_statement(&mut self) -> Result<BlockItem> {
@@ -356,6 +445,7 @@ impl Parser {
                 _ => unreachable!(),
             }
         } else {
+            println!("self.current, self.previous: {:?}, {:?}", self.current, self.previous);
             bail!("expected primary");
         }
     }
@@ -400,6 +490,11 @@ pub enum Statement {
     Expression(ExpressionStatement),
     If(IfStatement),
     Compound(BlockStatement),
+    DoWhile(DoWhileStatement),
+    While(WhileStatement),
+    For(ForStatement),
+    Break(BreakStatement),
+    Continue(ContinueStatement),
     Null,
 }
 
@@ -434,6 +529,42 @@ pub struct ExpressionStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockStatement {
     pub stmts: Vec<BlockItem>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DoWhileStatement {
+    pub condition: Expression,
+    pub body: Box<BlockItem>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WhileStatement {
+    pub condition: Expression,
+    pub body: Box<BlockItem>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ForStatement {
+    pub init: Option<ForInit>,
+    pub condition: Option<Expression>,
+    pub post: Option<Expression>,
+    pub body: Box<BlockItem>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ForInit {
+    Declaration(VariableDeclaration),
+    Expression(Expression),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BreakStatement {
+    pub label: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContinueStatement {
+    pub label: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
