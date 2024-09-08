@@ -30,7 +30,7 @@ impl Iterator for Lexer {
 
         let punctuation_re = regex::Regex::new(r"^[-+*/%~(){};!<>=?:]").unwrap();
         let punctuation_double_re = regex::Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\|").unwrap();
-        let keyword_re = regex::Regex::new(r"^int\b|^void\b|^return\b|^if\b|^else\b").unwrap();
+        let keyword_re = regex::Regex::new(r"^int\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b").unwrap();
         let constant_re = regex::Regex::new(r"^[0-9]+\b").unwrap();
         let identifier_re = regex::Regex::new(r"^[a-zA-Z_]\w*\b").unwrap();
 
@@ -76,6 +76,11 @@ impl Iterator for Lexer {
                 "return" => Token::Return,
                 "if" => Token::If,
                 "else" => Token::Else,
+                "do" => Token::Do,
+                "while" => Token::While,
+                "for" => Token::For,
+                "break" => Token::Break,
+                "continue" => Token::Continue,
                 _ => unreachable!(),
             }
         } else if let Some(m) = constant_re.find(src) {
@@ -102,6 +107,11 @@ pub enum Token {
     Return,
     If,
     Else,
+    Do,
+    While,
+    For,
+    Break,
+    Continue,
     LParen,
     RParen,
     LBrace,
