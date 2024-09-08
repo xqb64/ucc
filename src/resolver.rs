@@ -4,9 +4,7 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AssignExpression, BinaryExpression, BlockItem, Declaration, Expression,
-        ExpressionStatement, FunctionDeclaration, ProgramStatement, ReturnStatement, Statement,
-        UnaryExpression, VariableDeclaration,
+        AssignExpression, BinaryExpression, BlockItem, ConditionalExpression, Declaration, Expression, ExpressionStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression, VariableDeclaration
     },
 };
 
@@ -89,7 +87,19 @@ pub fn resolve_statement(
                 stmts: resolved_block_items,
             }))
         }
-        Statement::If(if_stmt) => todo!(),
+        Statement::If(IfStatement { condition, then_branch, else_branch }) => {
+            let resolved_condition = resolve_exp(condition, variable_map)?;
+            let resolved_then_branch = resolve_block_item(&then_branch, variable_map)?;
+            let mut resolved_else_branch = None;
+            if else_branch.is_some() {
+                resolved_else_branch = Some(resolve_block_item(&else_branch.clone().unwrap(), variable_map)?); 
+            }
+            Ok(Statement::If(IfStatement {
+                condition: resolved_condition,
+                then_branch: resolved_then_branch.into(),
+                else_branch: resolved_else_branch.into(),
+            }))
+        }
     }
 }
 
@@ -134,6 +144,21 @@ fn resolve_exp(exp: &Expression, variable_map: &mut HashMap<String, String>) -> 
                 rhs: resolved_rhs.into(),
             }))
         }
-        _ => todo!(),
+        Expression::Conditional(ConditionalExpression { condition, then_expr, else_expr }) => {
+            let resolved_condition = resolve_exp(&*condition, variable_map)?;
+            let resolved_then_expr = resolve_exp(&*then_expr, variable_map)?;
+            let resolved_else_expr = resolve_exp(&*else_expr, variable_map)?;
+
+            match (&resolved_condition, &resolved_then_expr, &resolved_else_expr) {
+                (Expression::Binary(_), Expression::Assign(_), Expression::Assign(_)) => bail!("invalid ternary assignment"),
+                _ => {}
+            }
+
+            Ok(Expression::Conditional(ConditionalExpression {
+                condition: resolved_condition.into(),
+                then_expr: resolved_then_expr.into(),
+                else_expr: resolved_else_expr.into(),
+            }))
+        }
     }
 }
