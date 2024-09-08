@@ -28,9 +28,9 @@ impl Iterator for Lexer {
 
         let src = &self.src[self.pos..];
 
-        let punctuation_re = regex::Regex::new(r"^[-+*/%~(){};!<>=]").unwrap();
+        let punctuation_re = regex::Regex::new(r"^[-+*/%~(){};!<>=?:]").unwrap();
         let punctuation_double_re = regex::Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\|").unwrap();
-        let keyword_re = regex::Regex::new(r"^int\b|^void\b|^return\b").unwrap();
+        let keyword_re = regex::Regex::new(r"^int\b|^void\b|^return\b|^if\b|^else\b").unwrap();
         let constant_re = regex::Regex::new(r"^[0-9]+\b").unwrap();
         let identifier_re = regex::Regex::new(r"^[a-zA-Z_]\w*\b").unwrap();
 
@@ -56,6 +56,8 @@ impl Iterator for Lexer {
                 "%" => Token::Percent,
                 "~" => Token::Tilde,
                 "!" => Token::Bang,
+                "?" => Token::QuestionMark,
+                ":" => Token::Colon,
                 "<" => Token::Less,
                 ">" => Token::Greater,
                 "(" => Token::LParen,
@@ -72,6 +74,8 @@ impl Iterator for Lexer {
                 "int" => Token::Int,
                 "void" => Token::Void,
                 "return" => Token::Return,
+                "if" => Token::If,
+                "else" => Token::Else,
                 _ => unreachable!(),
             }
         } else if let Some(m) = constant_re.find(src) {
@@ -96,6 +100,8 @@ pub enum Token {
     Int,
     Void,
     Return,
+    If,
+    Else,
     LParen,
     RParen,
     LBrace,
@@ -107,6 +113,8 @@ pub enum Token {
     Percent,
     Tilde,
     Bang,
+    QuestionMark,
+    Colon,
     DoubleHyphen,
     DoubleAmpersand,
     DoublePipe,
