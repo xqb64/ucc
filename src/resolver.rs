@@ -22,7 +22,6 @@ fn resolve_declaration(
     decl: &Declaration,
     variable_map: &mut HashMap<String, Variable>,
 ) -> Result<Declaration> {
-    println!("RESOLVING: {:?}", decl);
     match decl.to_owned() {
         Declaration::Variable(VariableDeclaration { name, mut init }) => {
             if variable_map.contains_key(&name)
@@ -40,8 +39,6 @@ fn resolve_declaration(
                     name: unique_name.clone(),
                 },
             );
-
-            println!("insereted: {:?}, see: {:?}", name, variable_map);
 
             if init.is_some() {
                 init = Some(resolve_exp(&init.unwrap(), variable_map)?);
@@ -266,7 +263,6 @@ fn resolve_exp(
 }
 
 fn copy_variable_map(variable_map: &HashMap<String, Variable>) -> HashMap<String, Variable> {
-    println!("old_variable_map: {:?}", variable_map);
     let spam = variable_map
         .iter()
         .map(|(k, v)| {
@@ -279,7 +275,6 @@ fn copy_variable_map(variable_map: &HashMap<String, Variable>) -> HashMap<String
             )
         })
         .collect();
-    println!("new_variable_map: {:?}", spam);
     spam
 }
 
@@ -287,7 +282,6 @@ fn resolve_for_init(
     init: &ForInit,
     variable_map: &mut HashMap<String, Variable>,
 ) -> Result<ForInit> {
-    println!("resolving for init: {:?}", init);
     match init {
         ForInit::Expression(expr) => {
             let resolved_expr = resolve_optional_expr(expr, variable_map)?;
