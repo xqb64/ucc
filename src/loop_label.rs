@@ -168,12 +168,13 @@ impl Label for BlockItem {
             }
 
             BlockItem::Declaration(decl) => match decl {
-                Declaration::Function(FunctionDeclaration { name, body }) => {
+                Declaration::Function(FunctionDeclaration { name, params, body }) => {
                     if body.is_some() {
                         let labeled_body = body.clone().unwrap().label(current_label)?;
                         Ok(BlockItem::Declaration(Declaration::Function(
                             FunctionDeclaration {
                                 name: name.clone(),
+                                params: params.clone(),
                                 body: Some(labeled_body).into(),
                             },
                         )))
@@ -181,6 +182,7 @@ impl Label for BlockItem {
                         Ok(BlockItem::Declaration(Declaration::Function(
                             FunctionDeclaration {
                                 name: name.clone(),
+                                params: params.clone(),
                                 body: None.into(),
                             },
                         )))

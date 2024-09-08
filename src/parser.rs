@@ -103,16 +103,52 @@ impl Parser {
     }
 
     fn parse_function_declaration(&mut self, name: &str) -> Result<BlockItem> {
-        self.consume(&Token::Void)?;
-        self.consume(&Token::RParen)?;
-        self.consume(&Token::LBrace)?;
-        let body = self.parse_block_statement()?;
+        let params = self.parse_parameters()?;
+
+        println!("params: {:?}", params);
+
+        let body = if self.check(&Token::Semicolon) {
+            self.consume(&Token::Semicolon)?;
+            None
+        } else if self.check(&Token::LBrace) {
+            self.consume(&Token::LBrace)?;
+            Some(self.parse_block_statement()?)
+        } else {
+            bail!("Expected block statement or semicolon, got: {:?}", self.current);
+        };
         Ok(BlockItem::Declaration(Declaration::Function(
             FunctionDeclaration {
                 name: name.to_owned(),
-                body: Some(body).into(),
+                params,
+                body: body.into(),
             },
         )))
+    }
+
+    fn parse_parameters(&mut self) -> Result<Vec<String>> {
+        if self.is_next(&[Token::Void]) {
+            self.consume(&Token::RParen)?;
+            return Ok(vec![]);
+        } else if self.is_next(&[Token::RParen]) {
+            return Ok(vec![]);
+        }
+
+        let mut params = vec![];
+
+        loop {
+            self.consume(&Token::Int)?;
+            let param = self
+                .consume(&Token::Identifier("".to_owned()))?
+                .unwrap()
+                .as_string();
+            params.push(param);
+            if self.is_next(&[Token::RParen]) {
+                break;
+            }
+            self.consume(&Token::Comma).unwrap();
+        }
+
+        Ok(params)
     }
 
     fn parse_variable_declaration(&mut self, name: &str) -> Result<BlockItem> {
@@ -433,7 +469,35 @@ impl Parser {
                 },
             }));
         }
-        self.primary()
+        self.call()
+    }
+
+    fn call(&mut self) -> Result<Expression> {
+        let mut expr = self.primary()?;
+        loop {
+            if self.is_next(&[Token::LParen]) {
+                let mut args = vec![];
+                if !self.check(&Token::RParen) {
+                    loop {
+                        args.push(self.parse_expression()?);
+                        if !self.is_next(&[Token::Comma]) {
+                            break;
+                        }
+                    }
+                }
+                self.consume(&Token::RParen)?;
+                expr = Expression::Call(CallExpression {
+                    name: match expr {
+                        Expression::Variable(var) => var,
+                        _ => unreachable!()
+                    },
+                    args,
+                });
+            } else {
+                break;
+            }
+        }
+        Ok(expr)
     }
 
     fn primary(&mut self) -> Result<Expression> {
@@ -514,6 +578,7 @@ pub struct ProgramStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionDeclaration {
     pub name: String,
+    pub params: Vec<String>,
     pub body: Box<Option<BlockItem>>,
 }
 
@@ -586,6 +651,7 @@ pub enum Expression {
     Binary(BinaryExpression),
     Assign(AssignExpression),
     Conditional(ConditionalExpression),
+    Call(CallExpression),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -637,4 +703,10 @@ pub struct ConditionalExpression {
     pub condition: Box<Expression>,
     pub then_expr: Box<Expression>,
     pub else_expr: Box<Expression>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CallExpression {
+    pub name: String,
+    pub args: Vec<Expression>,
 }

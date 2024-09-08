@@ -67,6 +67,7 @@ impl Resolve for FunctionDeclaration {
         let resolved_block_items = body.resolve(variable_map)?;
         Ok(BlockItem::Declaration(Declaration::Function(FunctionDeclaration {
             name: self.name.clone(),
+            params: self.params.clone(),
             body: Some(resolved_block_items).into(),
         })))
 
@@ -288,6 +289,7 @@ fn resolve_exp(
                 else_expr: resolved_else_expr.into(),
             }))
         }
+        _ => todo!(),
     }
 }
 
