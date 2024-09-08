@@ -5,3 +5,4 @@ pub mod lexer;
 pub mod loop_label;
 pub mod parser;
 pub mod resolver;
+pub mod typechecker;

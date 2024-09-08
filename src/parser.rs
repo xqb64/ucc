@@ -6,6 +6,7 @@ pub struct Parser {
     pub tokens: VecDeque<Token>,
     pub current: Option<Token>,
     pub previous: Option<Token>,
+    pub depth: usize,
 }
 
 impl Parser {
@@ -14,6 +15,7 @@ impl Parser {
             tokens,
             current: None,
             previous: None,
+            depth: 0,
         }
     }
 
@@ -105,8 +107,6 @@ impl Parser {
     fn parse_function_declaration(&mut self, name: &str) -> Result<BlockItem> {
         let params = self.parse_parameters()?;
 
-        println!("params: {:?}", params);
-
         let body = if self.check(&Token::Semicolon) {
             self.consume(&Token::Semicolon)?;
             None
@@ -114,13 +114,17 @@ impl Parser {
             self.consume(&Token::LBrace)?;
             Some(self.parse_block_statement()?)
         } else {
-            bail!("Expected block statement or semicolon, got: {:?}", self.current);
+            bail!(
+                "Expected block statement or semicolon, got: {:?}",
+                self.current
+            );
         };
         Ok(BlockItem::Declaration(Declaration::Function(
             FunctionDeclaration {
                 name: name.to_owned(),
                 params,
                 body: body.into(),
+                is_global: self.depth == 0,
             },
         )))
     }
@@ -171,11 +175,13 @@ impl Parser {
     }
 
     fn parse_block_statement(&mut self) -> Result<BlockItem> {
+        self.depth += 1;
         let mut stmts = vec![];
         while !self.check(&Token::RBrace) {
             stmts.push(self.parse_statement()?);
         }
         self.consume(&Token::RBrace)?;
+        self.depth -= 1;
         Ok(BlockItem::Statement(Statement::Compound(BlockStatement {
             stmts,
         })))
@@ -489,7 +495,7 @@ impl Parser {
                 expr = Expression::Call(CallExpression {
                     name: match expr {
                         Expression::Variable(var) => var,
-                        _ => unreachable!()
+                        _ => unreachable!(),
                     },
                     args,
                 });
@@ -580,6 +586,7 @@ pub struct FunctionDeclaration {
     pub name: String,
     pub params: Vec<String>,
     pub body: Box<Option<BlockItem>>,
+    pub is_global: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

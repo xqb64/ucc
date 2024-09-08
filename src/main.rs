@@ -11,6 +11,7 @@ use ucc::lexer::{Lexer, Token};
 use ucc::loop_label::Label;
 use ucc::parser::Parser;
 use ucc::resolver::Resolve;
+use ucc::typechecker::typecheck_block;
 
 fn main() {
     let opts = Opt::from_args();
@@ -54,6 +55,9 @@ fn run(opts: &Opt) -> Result<()> {
     let validated_ast = ast.resolve(&mut variable_map)?;
 
     let labeled_ast = validated_ast.label(String::new())?;
+
+    let mut symbol_table = HashMap::new();
+    typecheck_block(&labeled_ast, &mut symbol_table)?;
 
     if opts.validate {
         println!("{:?}", labeled_ast);

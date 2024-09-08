@@ -4,18 +4,15 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement,
-        ConditionalExpression, ContinueStatement, Declaration, DoWhileStatement, Expression,
-        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement,
-        ProgramStatement, ReturnStatement, Statement, UnaryExpression, VariableDeclaration,
-        WhileStatement,
+        AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, ConditionalExpression, ContinueStatement, Declaration, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression, VariableDeclaration, WhileStatement
     },
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Variable {
-    from_current_block: bool,
     name: String,
+    from_current_scope: bool,
+    has_linkage: bool,
 }
 
 pub trait Resolve {
@@ -33,8 +30,10 @@ impl Resolve for Declaration {
 
 impl Resolve for VariableDeclaration {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>) -> Result<BlockItem> {
+        println!("searching for variable: {}", self.name);
+        println!("variable_map: {:?}", variable_map);
         if variable_map.contains_key(&self.name)
-            && variable_map.get(&self.name).unwrap().from_current_block
+            && variable_map.get(&self.name).unwrap().from_current_scope
         {
             bail!("redeclaration of variable: {}", self.name);
         }
@@ -44,8 +43,9 @@ impl Resolve for VariableDeclaration {
         variable_map.insert(
             self.name.clone(),
             Variable {
-                from_current_block: true,
+                from_current_scope: true,
                 name: unique_name.clone(),
+                has_linkage: false,
             },
         );
 
@@ -63,12 +63,63 @@ impl Resolve for VariableDeclaration {
 
 impl Resolve for FunctionDeclaration {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>) -> Result<BlockItem> {
-        let mut body = self.body.as_ref().clone().unwrap();
-        let resolved_block_items = body.resolve(variable_map)?;
+        if self.body.is_some() && !self.is_global {
+            bail!("function definition in non-global scope");
+        }
+
+        // FIXME: stupid hack to prevent redeclaration of function parameters
+        for param in &self.params {
+            if self.body.is_some() {
+                match self.body.clone().unwrap() {
+                    BlockItem::Statement(Statement::Compound(block)) => {
+                        for stmt in &block.stmts {
+                            match stmt {
+                                BlockItem::Declaration(decl) => {
+                                    match decl {
+                                        Declaration::Variable(var_decl) => {
+                                            if var_decl.name == *param {
+                                                bail!("parameter name cannot be the same as a variable name in the function body");
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {}
+                }    
+            }
+        }
+
+        if variable_map.contains_key(&self.name) {
+            let prev_entry = variable_map.get(&self.name).unwrap();
+            if prev_entry.from_current_scope && !prev_entry.has_linkage {
+                bail!("redeclaration of function: {}", self.name);
+            }
+        }
+
+        variable_map.insert(self.name.clone(), Variable { from_current_scope: true, name: self.name.clone(), has_linkage: true });
+
+        let mut inner_map = copy_variable_map(variable_map);
+        let mut new_params = vec![];
+
+        for param in &self.params {
+            new_params.push(resolve_param(&param, &mut inner_map)?);
+        }
+
+        let mut new_body = None;
+
+        if self.body.is_some() {
+            new_body = Some(self.body.clone().unwrap().resolve(&mut inner_map)?);
+        }
+
         Ok(BlockItem::Declaration(Declaration::Function(FunctionDeclaration {
             name: self.name.clone(),
-            params: self.params.clone(),
-            body: Some(resolved_block_items).into(),
+            params: new_params,
+            body: new_body.into(),
+            is_global: self.is_global,
         })))
 
     }
@@ -289,7 +340,23 @@ fn resolve_exp(
                 else_expr: resolved_else_expr.into(),
             }))
         }
-        _ => todo!(),
+        Expression::Call(CallExpression { name, args }) => {
+            if variable_map.contains_key(&name) {
+                let new_func_name = variable_map.get(&name).unwrap().name.clone();
+                let resolved_args = args
+                    .iter()
+                    .map(|arg| resolve_exp(arg, variable_map))
+                    .collect::<Result<Vec<_>>>()?;
+
+                Ok(Expression::Call(CallExpression {
+                    name: new_func_name,
+                    args: resolved_args,
+                }))
+    
+            } else {
+                bail!("undeclared function");
+            }
+        }
     }
 }
 
@@ -300,8 +367,9 @@ fn copy_variable_map(variable_map: &HashMap<String, Variable>) -> HashMap<String
             (
                 k.clone(),
                 Variable {
-                    from_current_block: false,
+                    from_current_scope: false,
                     name: v.name.clone(),
+                    has_linkage: v.has_linkage,
                 },
             )
         })
@@ -351,4 +419,24 @@ fn resolve_optional_block_item(
     } else {
         Ok(None)
     }
+}
+
+fn resolve_param(param: &str, variable_map: &mut HashMap<String, Variable>) -> Result<String> {
+    if variable_map.contains_key(param) && variable_map.get(param).unwrap().from_current_scope {
+        bail!("redeclaration of parameter: {}", param);
+    }
+
+    let unique_name = format!("var.{}.{}", param, make_temporary());
+
+    variable_map.insert(
+        param.to_string(),
+        Variable {
+            from_current_scope: true,
+            name: unique_name.clone(),
+            has_linkage: false,
+        },
+    );
+
+    Ok(unique_name)
+
 }
