@@ -127,8 +127,6 @@ impl Parser {
     }
 
     fn parse_if_statement(&mut self) -> Result<BlockItem> {
-        // if (condition) then_branch else else_branch
-        // but with possible braces around then_branch and else_branch
         self.consume(&Token::LParen)?;
         let condition = self.parse_expression()?;
         self.consume(&Token::RParen)?;
