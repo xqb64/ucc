@@ -10,7 +10,7 @@ use ucc::ir::Irfy;
 use ucc::lexer::{Lexer, Token};
 use ucc::loop_label::Label;
 use ucc::parser::Parser;
-use ucc::resolver::resolve_statement;
+use ucc::resolver::Resolve;
 
 fn main() {
     let opts = Opt::from_args();
@@ -43,7 +43,7 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let mut parser = Parser::new(tokens);
-    let ast = parser.parse()?;
+    let mut ast = parser.parse()?;
 
     if opts.parse {
         println!("{:?}", ast);
@@ -51,7 +51,7 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let mut variable_map = HashMap::new();
-    let validated_ast = resolve_statement(&ast, &mut variable_map)?;
+    let validated_ast = ast.resolve(&mut variable_map)?;
 
     let labeled_ast = validated_ast.label(String::new())?;
 
