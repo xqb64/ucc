@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AssignExpression, BinaryExpression, BlockItem, ConditionalExpression, Declaration, Expression, ExpressionStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression, VariableDeclaration
+        AssignExpression, BinaryExpression, BlockItem, BlockStatement, ConditionalExpression, Declaration, Expression, ExpressionStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression, VariableDeclaration
     },
 };
 
@@ -32,14 +32,12 @@ fn resolve_declaration(
             }))
         }
         Declaration::Function(func) => {
-            let resolved_block_items = func
-                .body
-                .iter()
-                .map(|block_item| resolve_block_item(block_item, variable_map))
-                .collect::<Result<Vec<_>>>()?;
+            // FIXMEL: dirty
+            let body = func.body.as_ref().clone().unwrap();
+            let resolved_block_items = resolve_block_item(&body, variable_map)?;
             Ok(Declaration::Function(FunctionDeclaration {
                 name: func.name.clone(),
-                body: resolved_block_items,
+                body: Some(resolved_block_items).into(),
             }))
         }
     }
@@ -98,6 +96,12 @@ pub fn resolve_statement(
                 condition: resolved_condition,
                 then_branch: resolved_then_branch.into(),
                 else_branch: resolved_else_branch.into(),
+            }))
+        }
+        Statement::Compound(BlockStatement { stmts }) => {
+            let resolved_block_items = stmts.iter().map(|block_item| resolve_block_item(block_item, variable_map)).collect::<Result<Vec<_>>>()?;
+            Ok(Statement::Compound(BlockStatement {
+                stmts: resolved_block_items,
             }))
         }
     }

@@ -65,6 +65,8 @@ impl Parser {
             self.parse_return_statement()
         } else if self.is_next(&[Token::If]) {
             self.parse_if_statement()
+        } else if self.is_next(&[Token::LBrace]) {
+            self.parse_block_statement()
         } else if self.is_next(&[Token::Semicolon]) {
             Ok(BlockItem::Statement(Statement::Null))
         } else {
@@ -94,15 +96,11 @@ impl Parser {
         self.consume(&Token::Void)?;
         self.consume(&Token::RParen)?;
         self.consume(&Token::LBrace)?;
-        let mut body = vec![];
-        while !self.check(&Token::RBrace) {
-            body.push(self.parse_statement()?);
-        }
-        self.consume(&Token::RBrace)?;
+        let body = self.parse_block_statement()?;
         Ok(BlockItem::Declaration(Declaration::Function(
             FunctionDeclaration {
                 name: name.to_owned(),
-                body,
+                body: Some(body).into(),
             },
         )))
     }
@@ -126,6 +124,15 @@ impl Parser {
         )))
     }
 
+    fn parse_block_statement(&mut self) -> Result<BlockItem> {
+        let mut stmts = vec![];
+        while !self.check(&Token::RBrace) {
+            stmts.push(self.parse_statement()?);
+        }
+        self.consume(&Token::RBrace)?;
+        Ok(BlockItem::Statement(Statement::Compound(BlockStatement { stmts })))
+    }
+
     fn parse_if_statement(&mut self) -> Result<BlockItem> {
         self.consume(&Token::LParen)?;
         let condition = self.parse_expression()?;
@@ -142,8 +149,10 @@ impl Parser {
         };
 
         // FIXME: this is a hack to make the tests pass
-        if let Some(BlockItem::Declaration(_)) = then_branch.first() {
-            bail!("variable declaration not allowed in then branch");
+        if then_branch.len() == 1 {
+            if let Some(BlockItem::Declaration(_)) = then_branch.first() {
+               bail!("variable declaration not allowed in then branch");
+            }
         }
 
         let else_branch = if self.is_next(&[Token::Else]) {
@@ -390,6 +399,7 @@ pub enum Statement {
     Return(ReturnStatement),
     Expression(ExpressionStatement),
     If(IfStatement),
+    Compound(BlockStatement),
     Null,
 }
 
@@ -401,7 +411,7 @@ pub struct ProgramStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionDeclaration {
     pub name: String,
-    pub body: Vec<BlockItem>,
+    pub body: Box<Option<BlockItem>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -419,6 +429,11 @@ pub struct IfStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExpressionStatement {
     pub expr: Expression,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlockStatement {
+    pub stmts: Vec<BlockItem>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

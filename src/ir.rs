@@ -1,5 +1,5 @@
 use crate::parser::{
-    AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, ConditionalExpression, Declaration, Expression, ExpressionStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression, UnaryExpressionKind, VariableDeclaration
+    AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, ConditionalExpression, Declaration, Expression, ExpressionStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression, UnaryExpressionKind, VariableDeclaration
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -279,7 +279,8 @@ impl Irfy for Statement {
             Statement::Program(prog) => prog.irfy(),
             Statement::Return(ret_stmt) => ret_stmt.irfy(),
             Statement::Expression(expr_stmt) => expr_stmt.irfy(),
-            Self::If(if_stmt) => if_stmt.irfy(),
+            Statement::If(if_stmt) => if_stmt.irfy(),
+            Statement::Compound(block_stmt) => block_stmt.irfy(),
             Statement::Null => IRNode::Instructions(vec![]),
         }
     }
@@ -294,6 +295,18 @@ impl Irfy for ProgramStatement {
         }
 
         IRNode::Program(IRProgram { functions })
+    }
+}
+
+impl Irfy for BlockStatement {
+    fn irfy(&self) -> IRNode {
+        let mut instructions = vec![];
+
+        for item in &self.stmts {
+            instructions.extend::<Vec<IRInstruction>>(item.irfy().into());
+        }
+
+        IRNode::Instructions(instructions)
     }
 }
 
@@ -366,7 +379,7 @@ impl Irfy for FunctionDeclaration {
     fn irfy(&self) -> IRNode {
         let mut instructions = vec![];
 
-        for stmt in &self.body {
+        for stmt in self.body.iter() {
             instructions.extend::<Vec<IRInstruction>>(stmt.irfy().into());
         }
 
