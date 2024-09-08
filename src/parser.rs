@@ -147,35 +147,14 @@ impl Parser {
         self.consume(&Token::LParen)?;
         let condition = self.parse_expression()?;
         self.consume(&Token::RParen)?;
-        let then_branch = if self.is_next(&[Token::LBrace]) {
-            let mut stmts = vec![];
-            while !self.check(&Token::RBrace) {
-                stmts.push(self.parse_statement()?);
-            }
-            self.consume(&Token::RBrace)?;
-            stmts
-        } else {
-            vec![self.parse_statement()?]
-        };
+        let then_branch = self.parse_statement()?;
 
-        // FIXME: this is a hack to make the tests pass
-        if then_branch.len() == 1 {
-            if let Some(BlockItem::Declaration(_)) = then_branch.first() {
-               bail!("variable declaration not allowed in then branch");
-            }
+        if let BlockItem::Declaration(_) = then_branch {
+            bail!("variable declaration not allowed in if body");
         }
 
         let else_branch = if self.is_next(&[Token::Else]) {
-            if self.is_next(&[Token::LBrace]) {
-                let mut stmts = vec![];
-                while !self.check(&Token::RBrace) {
-                    stmts.push(self.parse_statement()?);
-                }
-                self.consume(&Token::RBrace)?;
-                Some(stmts)
-            } else {
-                Some(vec![self.parse_statement()?])
-            }
+            Some(self.parse_statement()?)
         } else {
             None
         };
@@ -218,17 +197,17 @@ impl Parser {
         self.consume(&Token::LParen)?;
 
         let init = if self.is_next(&[Token::Semicolon]) {
-            None
+            ForInit::Expression(None)
         } else if self.is_next(&[Token::Int]) {
             let decl = self.parse_declaration()?;
-            Some(ForInit::Declaration(match decl {
+            ForInit::Declaration(match decl {
                 BlockItem::Declaration(Declaration::Variable(var)) => var,
                 _ => unreachable!(),
-            }))
+            })
         } else {
             let expr = self.parse_expression()?;
             self.consume(&Token::Semicolon)?;
-            Some(ForInit::Expression(expr))
+            ForInit::Expression(Some(expr))
         };
 
         let condition = if self.is_next(&[Token::Semicolon]) {
@@ -517,8 +496,8 @@ pub struct ReturnStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct IfStatement {
     pub condition: Expression,
-    pub then_branch: Vec<BlockItem>,
-    pub else_branch: Option<Vec<BlockItem>>,
+    pub then_branch: Box<BlockItem>,
+    pub else_branch: Box<Option<BlockItem>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -547,7 +526,7 @@ pub struct WhileStatement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForStatement {
-    pub init: Option<ForInit>,
+    pub init: ForInit,
     pub condition: Option<Expression>,
     pub post: Option<Expression>,
     pub body: Box<BlockItem>,
@@ -557,7 +536,7 @@ pub struct ForStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ForInit {
     Declaration(VariableDeclaration),
-    Expression(Expression),
+    Expression(Option<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

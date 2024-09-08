@@ -8,6 +8,7 @@ use ucc::codegen::{Codegen, Fixup, ReplacePseudo};
 use ucc::emitter::Emit;
 use ucc::ir::Irfy;
 use ucc::lexer::{Lexer, Token};
+use ucc::loop_label::label_statement;
 use ucc::parser::Parser;
 use ucc::resolver::resolve_statement;
 
@@ -52,12 +53,14 @@ fn run(opts: &Opt) -> Result<()> {
     let mut variable_map = HashMap::new();
     let validated_ast = resolve_statement(&ast, &mut variable_map)?;
 
+    let labeled_ast = label_statement(&validated_ast, String::new())?;
+
     if opts.validate {
-        println!("{:?}", validated_ast);
+        println!("{:?}", labeled_ast);
         std::process::exit(0);
     }
 
-    let tac = validated_ast.irfy();
+    let tac = labeled_ast.irfy();
 
     if opts.tacky {
         println!("{:?}", tac);

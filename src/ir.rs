@@ -327,18 +327,14 @@ impl Irfy for IfStatement {
             target: else_label.clone(),
         });
 
-        for stmt in &self.then_branch {
-            instructions.extend::<Vec<IRInstruction>>(stmt.irfy().into());
-        }
+        instructions.extend::<Vec<IRInstruction>>(self.then_branch.irfy().into());
 
         instructions.push(IRInstruction::Jump(end_label.clone()));
 
         instructions.push(IRInstruction::Label(else_label.clone()));
 
         if self.else_branch.is_some() {
-            for stmt in self.else_branch.clone().unwrap() {
-                instructions.extend::<Vec<IRInstruction>>(stmt.irfy().into());
-            }    
+            instructions.extend::<Vec<IRInstruction>>(self.else_branch.clone().unwrap().irfy().into());
         }
 
         instructions.push(IRInstruction::Label(end_label));

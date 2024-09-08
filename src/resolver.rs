@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AssignExpression, BinaryExpression, BlockItem, BlockStatement, ConditionalExpression, Declaration, Expression, ExpressionStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression, VariableDeclaration
+        AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, ConditionalExpression, ContinueStatement, Declaration, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression, VariableDeclaration, WhileStatement
     },
 };
 
@@ -18,6 +18,7 @@ fn resolve_declaration(
     decl: &Declaration,
     variable_map: &mut HashMap<String, Variable>,
 ) -> Result<Declaration> {
+    println!("RESOLVING: {:?}", decl);
     match decl.to_owned() {
         Declaration::Variable(VariableDeclaration { name, mut init }) => {
             if variable_map.contains_key(&name) && variable_map.get(&name).unwrap().from_current_block {
@@ -27,6 +28,8 @@ fn resolve_declaration(
             let unique_name = format!("var.{}.{}", name, make_temporary());
 
             variable_map.insert(name.clone(), Variable { from_current_block: true, name: unique_name.clone() });
+
+            println!("insereted: {:?}, see: {:?}", name, variable_map);
 
             if init.is_some() {
                 init = Some(resolve_exp(&init.unwrap(), variable_map)?);
@@ -93,10 +96,10 @@ pub fn resolve_statement(
         }
         Statement::If(IfStatement { condition, then_branch, else_branch }) => {
             let resolved_condition = resolve_exp(condition, variable_map)?;
-            let resolved_then_branch = then_branch.iter().map(|block_item| resolve_block_item(block_item, variable_map)).collect::<Result<Vec<_>>>()?;
+            let resolved_then_branch = resolve_block_item(&then_branch, variable_map)?;
             let mut resolved_else_branch = None;
             if else_branch.is_some() {
-                resolved_else_branch = Some(else_branch.as_ref().unwrap().iter().map(|block_item| resolve_block_item(block_item, variable_map)).collect::<Result<Vec<_>>>()?);
+                resolved_else_branch = resolve_optional_block_item(&else_branch, variable_map)?;
             }
             Ok(Statement::If(IfStatement {
                 condition: resolved_condition,
@@ -111,7 +114,42 @@ pub fn resolve_statement(
                 stmts: resolved_block_items,
             }))
         }
-        _ => unimplemented!()
+        Statement::For(ForStatement { init, condition, post, body, label }) => {
+            let mut new_variable_map = copy_variable_map(variable_map);
+            let resolved_init = resolve_for_init(init, &mut new_variable_map)?;
+            let resolved_condition = resolve_optional_expr(condition, &mut new_variable_map)?;
+            let resolved_post = resolve_optional_expr(post, &mut new_variable_map)?;
+            let resolved_body = resolve_block_item(body, &mut new_variable_map)?;
+            Ok(Statement::For(ForStatement {
+                init: resolved_init,
+                condition: resolved_condition,
+                post: resolved_post,
+                body: resolved_body.into(),
+                label: label.clone()
+            }))
+        }
+        Statement::DoWhile(DoWhileStatement { body, condition, label }) => {
+            let mut new_variable_map = copy_variable_map(variable_map);
+            let resolved_body = resolve_block_item(body, &mut new_variable_map)?;
+            let resolved_condition = resolve_exp(condition, &mut new_variable_map)?;
+            Ok(Statement::DoWhile(DoWhileStatement {
+                body: resolved_body.into(),
+                condition: resolved_condition,
+                label: label.clone(),
+            }))
+        }
+        Statement::While(WhileStatement { condition, body, label }) => {
+            let mut new_variable_map = copy_variable_map(variable_map);
+            let resolved_condition = resolve_exp(condition, &mut new_variable_map)?;
+            let resolved_body = resolve_block_item(body, &mut new_variable_map)?;
+            Ok(Statement::While(WhileStatement {
+                condition: resolved_condition,
+                body: resolved_body.into(),
+                label: label.clone(),
+            }))
+        }
+        Statement::Break(BreakStatement { label }) => Ok(Statement::Break(BreakStatement { label: label.clone() })),
+        Statement::Continue(ContinueStatement { label }) => Ok(Statement::Continue(ContinueStatement { label: label.clone() })),
     }
 }
 
@@ -176,5 +214,44 @@ fn resolve_exp(exp: &Expression, variable_map: &mut HashMap<String, Variable>) -
 }
 
 fn copy_variable_map(variable_map: &HashMap<String, Variable>) -> HashMap<String, Variable> {
-    variable_map.iter().map(|(k, v)| (k.clone(), Variable { from_current_block: false, name: v.name.clone() })).collect()
+    println!("old_variable_map: {:?}", variable_map);
+    let spam = variable_map.iter().map(|(k, v)| (k.clone(), Variable { from_current_block: false, name: v.name.clone() })).collect();
+    println!("new_variable_map: {:?}", spam);
+    spam
+}
+
+fn resolve_for_init(init: &ForInit, variable_map: &mut HashMap<String, Variable>) -> Result<ForInit> {
+    println!("resolving for init: {:?}", init);
+    match init {
+        ForInit::Expression(expr) => {
+            let resolved_expr = resolve_optional_expr(expr, variable_map)?;
+            Ok(ForInit::Expression(resolved_expr))
+        }
+        ForInit::Declaration(decl) => {
+            let resolved_decl = resolve_declaration(&Declaration::Variable(decl.to_owned()), variable_map)?;
+            let var_decl = match resolved_decl {
+                Declaration::Variable(var_decl) => var_decl,
+                _ => bail!("for init must be a variable declaration"),
+            };
+            Ok(ForInit::Declaration(var_decl))
+        }
+    }
+}
+
+fn resolve_optional_expr(expr: &Option<Expression>, variable_map: &mut HashMap<String, Variable>) -> Result<Option<Expression>> {
+    if expr.is_some() {
+        let resolved_expr = resolve_exp(&expr.as_ref().unwrap(), variable_map)?;
+        Ok(Some(resolved_expr))
+    } else {
+        Ok(None)
+    }
+}
+
+fn resolve_optional_block_item(block_item: &Option<BlockItem>, variable_map: &mut HashMap<String, Variable>) -> Result<Option<BlockItem>> {
+    if block_item.is_some() {
+        let resolved_block_item = resolve_block_item(&block_item.as_ref().unwrap(), variable_map)?;
+        Ok(Some(resolved_block_item))
+    } else {
+        Ok(None)
+    }
 }
