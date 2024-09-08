@@ -8,19 +8,25 @@ use crate::{
     },
 };
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Variable {
+    from_current_block: bool,
+    name: String,
+}
+
 fn resolve_declaration(
     decl: &Declaration,
-    variable_map: &mut HashMap<String, String>,
+    variable_map: &mut HashMap<String, Variable>,
 ) -> Result<Declaration> {
     match decl.to_owned() {
         Declaration::Variable(VariableDeclaration { name, mut init }) => {
-            if variable_map.contains_key(&name) {
+            if variable_map.contains_key(&name) && variable_map.get(&name).unwrap().from_current_block {
                 bail!("redeclaration of variable: {}", name);
             }
 
             let unique_name = format!("var.{}.{}", name, make_temporary());
 
-            variable_map.insert(name.clone(), unique_name.clone());
+            variable_map.insert(name.clone(), Variable { from_current_block: true, name: unique_name.clone() });
 
             if init.is_some() {
                 init = Some(resolve_exp(&init.unwrap(), variable_map)?);
@@ -45,7 +51,7 @@ fn resolve_declaration(
 
 pub fn resolve_block_item(
     item: &BlockItem,
-    variable_map: &mut HashMap<String, String>,
+    variable_map: &mut HashMap<String, Variable>,
 ) -> Result<BlockItem> {
     match item {
         BlockItem::Declaration(decl) => {
@@ -61,7 +67,7 @@ pub fn resolve_block_item(
 
 pub fn resolve_statement(
     s: &Statement,
-    variable_map: &mut HashMap<String, String>,
+    variable_map: &mut HashMap<String, Variable>,
 ) -> Result<Statement> {
     match s {
         Statement::Expression(ExpressionStatement { expr }) => {
@@ -99,7 +105,8 @@ pub fn resolve_statement(
             }))
         }
         Statement::Compound(BlockStatement { stmts }) => {
-            let resolved_block_items = stmts.iter().map(|block_item| resolve_block_item(block_item, variable_map)).collect::<Result<Vec<_>>>()?;
+            let mut new_variable_map = copy_variable_map(variable_map);
+            let resolved_block_items = stmts.iter().map(|block_item| resolve_block_item(block_item, &mut new_variable_map)).collect::<Result<Vec<_>>>()?;
             Ok(Statement::Compound(BlockStatement {
                 stmts: resolved_block_items,
             }))
@@ -107,7 +114,7 @@ pub fn resolve_statement(
     }
 }
 
-fn resolve_exp(exp: &Expression, variable_map: &mut HashMap<String, String>) -> Result<Expression> {
+fn resolve_exp(exp: &Expression, variable_map: &mut HashMap<String, Variable>) -> Result<Expression> {
     match exp.to_owned() {
         Expression::Assign(AssignExpression { op, ref lhs, rhs }) => {
             if let Expression::Variable(_) = &**lhs {
@@ -127,7 +134,7 @@ fn resolve_exp(exp: &Expression, variable_map: &mut HashMap<String, String>) -> 
             let variable = variable_map
                 .get(&name)
                 .ok_or_else(|| anyhow::anyhow!("undeclared variable: {}", name))?;
-            Ok(Expression::Variable(variable.clone()))
+            Ok(Expression::Variable(variable.name.clone()))
         }
         Expression::Constant(konst) => Ok(Expression::Constant(konst)),
         Expression::Unary(UnaryExpression { kind, expr }) => {
@@ -165,4 +172,8 @@ fn resolve_exp(exp: &Expression, variable_map: &mut HashMap<String, String>) -> 
             }))
         }
     }
+}
+
+fn copy_variable_map(variable_map: &HashMap<String, Variable>) -> HashMap<String, Variable> {
+    variable_map.iter().map(|(k, v)| (k.clone(), Variable { from_current_block: false, name: v.name.clone() })).collect()
 }
