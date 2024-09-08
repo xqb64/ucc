@@ -83,12 +83,6 @@ fn run(opts: &Opt) -> Result<()> {
 
     asm_prog.emit(&mut f)?;
 
-    std::process::Command::new("gcc")
-        .arg("-o")
-        .arg(opts.path.with_extension(""))
-        .arg(opts.path.with_extension("s"))
-        .status()?;
-
     if opts.c {
         std::process::Command::new("gcc")
             .arg("-c")
@@ -98,6 +92,12 @@ fn run(opts: &Opt) -> Result<()> {
             .status()?;
         std::process::exit(0);
     }
+
+    std::process::Command::new("gcc")
+        .arg("-o")
+        .arg(opts.path.with_extension(""))
+        .arg(opts.path.with_extension("s"))
+        .status()?;
 
     Ok(())
 }
