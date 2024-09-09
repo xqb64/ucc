@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 
 use crate::{parser::{
     AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement,
@@ -6,7 +5,7 @@ use crate::{parser::{
     DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration,
     IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression,
     UnaryExpressionKind, VariableDeclaration, WhileStatement,
-}, typechecker::{IdentifierAttrs, InitialValue, Symbol}};
+}, typechecker::{IdentifierAttrs, InitialValue, SYMBOL_TABLE}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IRProgram {
@@ -657,9 +656,9 @@ impl From<IRNode> for Vec<IRInstruction> {
     }
 }
 
-pub fn convert_symbols_to_tacky(symbols: &mut HashMap<String, Symbol>) -> Vec<IRNode> {
+pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
     let mut tacky_defs = vec![];
-    for (name, entry) in symbols {
+    for (name, entry) in SYMBOL_TABLE.lock().unwrap().iter() {
         match entry.attrs {
             IdentifierAttrs::StaticAttr { initial_value, global } => {
                 match initial_value {

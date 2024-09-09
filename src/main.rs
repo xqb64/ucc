@@ -54,10 +54,8 @@ fn run(opts: &Opt) -> Result<()> {
     let mut variable_map = HashMap::new();
     let validated_ast = ast.resolve(&mut variable_map)?;
 
-    let mut symbol_table = HashMap::new();
-
     let labeled_ast = validated_ast.label(String::new())?;
-    typecheck_block(&labeled_ast, &mut symbol_table)?;
+    typecheck_block(&labeled_ast)?;
 
     if opts.validate {
         println!("{:?}", labeled_ast);
@@ -65,7 +63,7 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let mut tac = labeled_ast.irfy().unwrap();
-    let tacky_defs = convert_symbols_to_tacky(&mut symbol_table);
+    let tacky_defs = convert_symbols_to_tacky();
 
     if let IRNode::Program(prog) = &mut tac {
         prog.static_vars = tacky_defs;
@@ -76,7 +74,7 @@ fn run(opts: &Opt) -> Result<()> {
         std::process::exit(0);
     }
 
-    let mut asm_prog = tac.codegen(&mut symbol_table).replace_pseudo(&mut symbol_table).fixup();
+    let mut asm_prog = tac.codegen().replace_pseudo().fixup();
 
     if opts.codegen {
         println!("{:?}", asm_prog);
