@@ -596,23 +596,7 @@ impl Irfy for FunctionDeclaration {
         }
 
         for stmt in self.body.iter() {
-            match stmt {
-                BlockItem::Declaration(decl) => match decl {
-                    Declaration::Variable(var_decl) => {
-                        println!("Here: decl {:?}", var_decl);
-                        if !var_decl.is_global && var_decl.storage_class.is_some() {
-                            println!("we're here!");
-                            continue;
-                        } else {
-                            instructions.extend::<Vec<IRInstruction>>(var_decl.irfy().unwrap().into());
-                        }
-                    }
-                    Declaration::Function(_func_decl) => {}
-                }
-                BlockItem::Statement(stmt) => {
-                    instructions.extend::<Vec<IRInstruction>>(stmt.irfy().unwrap().into());
-                }
-            }
+            instructions.extend::<Vec<IRInstruction>>(stmt.irfy().unwrap().into());
         }
 
         instructions.push(IRInstruction::Ret(IRValue::Constant(0)));
