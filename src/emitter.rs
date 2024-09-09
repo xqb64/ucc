@@ -5,6 +5,7 @@ use crate::codegen::AsmNode;
 use crate::codegen::AsmOperand;
 use crate::codegen::AsmProgram;
 use crate::codegen::AsmRegister;
+use crate::codegen::AsmStaticVariable;
 use crate::codegen::AsmUnaryOp;
 use crate::codegen::ConditionCode;
 use crate::codegen::OFFSET_MANAGER;
@@ -23,6 +24,7 @@ impl Emit for AsmNode {
             AsmNode::Function(func) => func.emit(f),
             AsmNode::Operand(operand) => operand.emit(f),
             AsmNode::Instructions(instrs) => instrs.emit(f),
+            AsmNode::StaticVariable(static_var) => static_var.emit(f),
         }
     }
 }
@@ -31,6 +33,10 @@ impl Emit for AsmProgram {
     fn emit(&mut self, f: &mut File) -> Result<()> {
         for func in self.functions.iter_mut() {
             func.emit(f)?;
+        }
+
+        for static_var in self.static_vars.iter_mut() {
+            static_var.emit(f)?;
         }
 
         writeln!(f, ".section	.note.GNU-stack,\"\",@progbits")?;
@@ -51,18 +57,40 @@ impl Emit for Vec<AsmInstruction> {
     }
 }
 
+impl Emit for AsmStaticVariable {
+    fn emit(&mut self, f: &mut File) -> Result<()> {
+        writeln!(f, ".section .data")?;
+
+        if self.global {
+            writeln!(f, ".globl {}", self.name)?;
+        }
+
+        writeln!(f, "{}:", self.name)?;
+        writeln!(f, "\t.align 4")?;
+        writeln!(f, "\t.long {}", self.value)?;
+        Ok(())
+    }
+}
+
 impl Emit for AsmFunction {
     fn emit(&mut self, f: &mut File) -> Result<()> {
+        writeln!(f, ".section .text")?;
+
         if let Some(instr) = self.instructions.get_mut(0) {
             let offset_manager = OFFSET_MANAGER.lock().unwrap();
 
-            let mut stack_frame_bytelen = offset_manager.offset.unsigned_abs() as usize;
-            let rem = stack_frame_bytelen % 16;
-            if rem != 0 {
-                stack_frame_bytelen += 16 - rem;
+            if !offset_manager.offsets.is_empty() {
+                let mut stack_frame_bytelen = offset_manager.offset.unsigned_abs() as usize;
+                let rem = stack_frame_bytelen % 16;
+                if rem != 0 {
+                    stack_frame_bytelen += 16 - rem;
+                }
+    
+                *instr = AsmInstruction::AllocateStack(stack_frame_bytelen);    
+            } else {
+                // remove instr
+                self.instructions.remove(0);
             }
-
-            *instr = AsmInstruction::AllocateStack(stack_frame_bytelen);
         }
 
         writeln!(f, "\t.globl {}", self.name)?;
@@ -232,6 +260,7 @@ impl Emit for AsmOperand {
             AsmOperand::Register(reg) => reg.emit(f)?,
             AsmOperand::Stack(n) => write!(f, "{}(%rbp)", n)?,
             AsmOperand::Pseudo(_) => unreachable!(),
+            AsmOperand::Data(identifier) => write!(f, "{}(%rip)", identifier)?,
         }
         Ok(())
     }

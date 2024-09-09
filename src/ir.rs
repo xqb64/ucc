@@ -11,6 +11,7 @@ use crate::{parser::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct IRProgram {
     pub functions: Vec<IRNode>,
+    pub static_vars: Vec<IRNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -338,12 +339,24 @@ impl Irfy for ProgramStatement {
         let mut functions = vec![];
 
         for func in &self.stmts {
-            if let Some(func) = func.irfy() {
-                functions.push(func.into());
+            match func {
+                BlockItem::Declaration(decl) => match decl {
+                    Declaration::Function(func_decl) => {
+                        if let Some(ir_func) = func_decl.irfy() {
+                            functions.push(ir_func);
+                        }
+                    }
+                    Declaration::Variable(var_decl) => {
+                        if var_decl.is_global {}
+                        if !var_decl.is_global && var_decl.storage_class.is_some() {}
+
+                    }
+                }
+                BlockItem::Statement(stmt) => {}
             }
         }
 
-        Some(IRNode::Program(IRProgram { functions }))
+        Some(IRNode::Program(IRProgram { functions, static_vars: vec![] }))
     }
 }
 
@@ -614,6 +627,7 @@ impl From<IRNode> for Vec<IRInstruction> {
     fn from(node: IRNode) -> Self {
         match node {
             IRNode::Instructions(instrs) => instrs,
+            IRNode::StaticVariable(_) => vec![],
             _ => unreachable!(),
         }
     }

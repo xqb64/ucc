@@ -1,22 +1,32 @@
-use crate::ir::{BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRStaticVariable, IRValue, UnaryOp};
+use std::collections::HashMap;
+use crate::{ir::{BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRStaticVariable, IRValue, UnaryOp}, typechecker::{IdentifierAttrs, Symbol}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AsmNode {
     Program(AsmProgram),
     Function(AsmFunction),
+    StaticVariable(AsmStaticVariable),
     Operand(AsmOperand),
     Instructions(Vec<AsmInstruction>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AsmProgram {
-    pub functions: Vec<AsmFunction>,
+    pub functions: Vec<AsmNode>,
+    pub static_vars: Vec<AsmNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AsmFunction {
     pub name: String,
     pub instructions: Vec<AsmInstruction>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AsmStaticVariable {
+    pub name: String,
+    pub value: i32,
+    pub global: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,6 +89,7 @@ pub enum AsmOperand {
     Pseudo(String),
     Stack(i32),
     Register(AsmRegister),
+    Data(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -129,13 +140,18 @@ impl Codegen for IRProgram {
         for func in &self.functions {
             functions.push(func.codegen().into());
         }
-        AsmNode::Program(AsmProgram { functions })
+
+        let mut static_vars = vec![];
+        for static_var in &self.static_vars {
+            static_vars.push(static_var.codegen().into());
+        }
+        AsmNode::Program(AsmProgram { functions, static_vars })
     }
 }
 
 impl Codegen for IRStaticVariable {
     fn codegen(&self) -> AsmNode {
-        AsmNode::Instructions(vec![])
+        AsmNode::StaticVariable(AsmStaticVariable { name: self.name.clone(), value: self.value, global: self.global })
     }
 }
 
@@ -409,82 +425,116 @@ impl Codegen for IRInstruction {
 }
 
 pub trait ReplacePseudo {
-    fn replace_pseudo(&self) -> Self;
+    fn replace_pseudo(&self, symbol_table: &mut HashMap<String, Symbol>) -> Self;
 }
 
 impl ReplacePseudo for AsmNode {
-    fn replace_pseudo(&self) -> Self {
+    fn replace_pseudo(&self, symbol_table: &mut HashMap<String, Symbol>) -> Self {
         match self {
-            AsmNode::Program(prog) => AsmNode::Program(prog.replace_pseudo()),
-            AsmNode::Function(func) => AsmNode::Function(func.replace_pseudo()),
-            AsmNode::Operand(op) => AsmNode::Operand(op.replace_pseudo()),
-            _ => unreachable!(),
+            AsmNode::Program(prog) => AsmNode::Program(prog.replace_pseudo(symbol_table)),
+            AsmNode::Function(func) => AsmNode::Function(func.replace_pseudo(symbol_table)),
+            AsmNode::Operand(op) => AsmNode::Operand(op.replace_pseudo(symbol_table)),
+            AsmNode::Instructions(instrs) => AsmNode::Instructions(instrs.to_owned().replace_pseudo(symbol_table)),
+            AsmNode::StaticVariable(static_var) => AsmNode::StaticVariable(static_var.to_owned().replace_pseudo(symbol_table)),
+            _ => {
+                unreachable!()
+            }
         }
     }
 }
 
+impl ReplacePseudo for AsmStaticVariable {
+    fn replace_pseudo(&self, symbol_table: &mut HashMap<String, Symbol>) -> Self {
+        self.clone()
+    }
+}
+
+impl ReplacePseudo for Vec<AsmInstruction> {
+    fn replace_pseudo(&self, symbol_table: &mut HashMap<String, Symbol>) -> Self {
+        let mut instructions = vec![];
+        for instr in self {
+            instructions.push(instr.replace_pseudo(symbol_table));
+        }
+        instructions
+    }
+}
+
 impl ReplacePseudo for AsmInstruction {
-    fn replace_pseudo(&self) -> Self {
+    fn replace_pseudo(&self, symbol_table: &mut HashMap<String, Symbol>) -> Self {
         match self {
             AsmInstruction::Mov { src, dst } => AsmInstruction::Mov {
-                src: src.replace_pseudo(),
-                dst: dst.replace_pseudo(),
+                src: src.replace_pseudo(symbol_table),
+                dst: dst.replace_pseudo(symbol_table),
             },
             AsmInstruction::Unary { op, operand } => AsmInstruction::Unary {
                 op: *op,
-                operand: operand.replace_pseudo(),
+                operand: operand.replace_pseudo(symbol_table),
             },
             AsmInstruction::Binary { op, lhs, rhs } => AsmInstruction::Binary {
                 op: *op,
-                lhs: lhs.replace_pseudo(),
-                rhs: rhs.replace_pseudo(),
+                lhs: lhs.replace_pseudo(symbol_table),
+                rhs: rhs.replace_pseudo(symbol_table),
             },
-            AsmInstruction::Idiv(operand) => AsmInstruction::Idiv(operand.replace_pseudo()),
+            AsmInstruction::Idiv(operand) => AsmInstruction::Idiv(operand.replace_pseudo(symbol_table)),
             AsmInstruction::AllocateStack(n) => AsmInstruction::AllocateStack(*n),
             AsmInstruction::Ret => AsmInstruction::Ret,
             AsmInstruction::Cmp { lhs, rhs } => AsmInstruction::Cmp {
-                lhs: lhs.replace_pseudo(),
-                rhs: rhs.replace_pseudo(),
+                lhs: lhs.replace_pseudo(symbol_table),
+                rhs: rhs.replace_pseudo(symbol_table),
             },
             AsmInstruction::SetCC { condition, operand } => AsmInstruction::SetCC {
                 condition: condition.clone(),
-                operand: operand.replace_pseudo(),
+                operand: operand.replace_pseudo(symbol_table),
             },
-            AsmInstruction::Push(operand) => AsmInstruction::Push(operand.replace_pseudo()),
+            AsmInstruction::Push(operand) => AsmInstruction::Push(operand.replace_pseudo(symbol_table)),
             _ => self.clone(),
         }
     }
 }
 
 impl ReplacePseudo for AsmOperand {
-    fn replace_pseudo(&self) -> Self {
+    fn replace_pseudo(&self, symbol_table: &mut HashMap<String, Symbol>) -> Self {
         match self {
             AsmOperand::Imm(_) => self.clone(),
             AsmOperand::Pseudo(name) => {
                 let mut offset_manager = OFFSET_MANAGER.lock().unwrap();
-                AsmOperand::Stack(offset_manager.get_offset(name))
+                if let Some(symbol) = symbol_table.get(name) {
+                    match symbol.attrs {
+                        IdentifierAttrs::StaticAttr { initial_value, global } => {
+                            AsmOperand::Data(name.clone())
+                        }
+                        _ => {
+                            let offset = offset_manager.get_offset(name);
+                            AsmOperand::Stack(offset)
+                        }
+                    }
+                } else {
+                    let offset = offset_manager.get_offset(name);
+                    AsmOperand::Stack(offset)
+                }
             }
             AsmOperand::Stack(_) => self.clone(),
             AsmOperand::Register(_) => self.clone(),
+            AsmOperand::Data(_) => self.clone(),
         }
     }
 }
 
 impl ReplacePseudo for AsmProgram {
-    fn replace_pseudo(&self) -> Self {
+    fn replace_pseudo(&self, symbol_table: &mut HashMap<String, Symbol>) -> Self {
         let mut functions = vec![];
         for func in &self.functions {
-            functions.push(func.replace_pseudo());
+            functions.push(func.replace_pseudo(symbol_table));
         }
-        AsmProgram { functions }
+        AsmProgram { functions, static_vars: self.static_vars.clone() }
     }
 }
 
 impl ReplacePseudo for AsmFunction {
-    fn replace_pseudo(&self) -> Self {
+    fn replace_pseudo(&self, symbol_table: &mut HashMap<String, Symbol>) -> Self {
         let mut instructions = vec![];
         for instr in &self.instructions {
-            instructions.push(instr.replace_pseudo());
+            instructions.push(instr.replace_pseudo(symbol_table));
         }
         AsmFunction {
             name: self.name.clone(),
@@ -504,6 +554,7 @@ impl Fixup for AsmNode {
             AsmNode::Function(func) => AsmNode::Function(func.fixup()),
             AsmNode::Instructions(instrs) => AsmNode::Instructions(instrs.fixup()),
             AsmNode::Operand(op) => AsmNode::Operand(op.clone()),
+            AsmNode::StaticVariable(static_var) => AsmNode::StaticVariable(static_var.clone()),
         }
     }
 }
@@ -516,7 +567,7 @@ impl Fixup for AsmProgram {
             functions.push(func.fixup());
         }
 
-        AsmProgram { functions }
+        AsmProgram { functions, static_vars: self.static_vars.clone() }
     }
 }
 
@@ -539,6 +590,30 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
+                    (AsmOperand::Data(src), AsmOperand::Stack(dst_n)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                src: AsmOperand::Data(src.clone()),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Mov {
+                                src: AsmOperand::Register(AsmRegister::R10),
+                                dst: AsmOperand::Stack(*dst_n),
+                            },
+                        ]);
+                    }
+                    (AsmOperand::Stack(src_n), AsmOperand::Data(dst)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                src: AsmOperand::Stack(*src_n),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Mov {
+                                src: AsmOperand::Register(AsmRegister::R10),
+                                dst: AsmOperand::Data(dst.clone()),
+                            },
+                        ]);
+                    }
                     _ => instructions.push(instr.clone()),
                 },
                 AsmInstruction::Binary { op, lhs, rhs } => match op {
@@ -553,6 +628,32 @@ impl Fixup for AsmFunction {
                                     op: *op,
                                     lhs: AsmOperand::Register(AsmRegister::R10),
                                     rhs: AsmOperand::Stack(*dst_n),
+                                },
+                            ]);
+                        }
+                        (AsmOperand::Data(src), AsmOperand::Stack(dst_n)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    src: AsmOperand::Data(src.clone()),
+                                    dst: AsmOperand::Register(AsmRegister::R10),
+                                },
+                                AsmInstruction::Binary {
+                                    op: *op,
+                                    lhs: AsmOperand::Register(AsmRegister::R10),
+                                    rhs: AsmOperand::Stack(*dst_n),
+                                },
+                            ]);
+                        }
+                        (AsmOperand::Data(src), AsmOperand::Data(dst)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    src: AsmOperand::Data(src.clone()),
+                                    dst: AsmOperand::Register(AsmRegister::R10),
+                                },
+                                AsmInstruction::Binary {
+                                    op: *op,
+                                    lhs: AsmOperand::Register(AsmRegister::R10),
+                                    rhs: AsmOperand::Data(dst.clone()),
                                 },
                             ]);
                         }
@@ -601,6 +702,42 @@ impl Fixup for AsmFunction {
                             AsmInstruction::Cmp {
                                 lhs: AsmOperand::Register(AsmRegister::R10),
                                 rhs: AsmOperand::Stack(dst_n),
+                            },
+                        ]);
+                    }
+                    (AsmOperand::Data(src), AsmOperand::Stack(dst_n)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                src: AsmOperand::Data(src.clone()),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Cmp {
+                                lhs: AsmOperand::Register(AsmRegister::R10),
+                                rhs: AsmOperand::Stack(dst_n),
+                            },
+                        ]);
+                    }
+                    (AsmOperand::Stack(src_n), AsmOperand::Data(dst)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                src: AsmOperand::Stack(src_n),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Cmp {
+                                lhs: AsmOperand::Register(AsmRegister::R10),
+                                rhs: AsmOperand::Data(dst.clone()),
+                            },
+                        ]);
+                    }
+                    (AsmOperand::Data(src), AsmOperand::Data(dst)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                src: AsmOperand::Data(src),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Cmp {
+                                lhs: AsmOperand::Register(AsmRegister::R10),
+                                rhs: AsmOperand::Data(dst.clone()),
                             },
                         ]);
                     }

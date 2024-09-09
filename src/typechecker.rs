@@ -107,8 +107,6 @@ fn typecheck_variable_declaration(
                 },
             };
 
-            println!("inserting: {:?}", symbol);
-
             symbol_table.insert(var_decl.name.clone(), symbol);
         }
         false => {
@@ -137,7 +135,6 @@ fn typecheck_variable_declaration(
                             global: true,
                         },
                     };
-                    println!("inserting: {:?}", symbol);
                     symbol_table.insert(var_decl.name.clone(), symbol);
                 }
             } else if var_decl
@@ -159,7 +156,6 @@ fn typecheck_variable_declaration(
                         global: false,
                     },
                 };
-                println!("inserting: {:?}", symbol);
 
                 symbol_table.insert(var_decl.name.clone(), symbol);
             } else {
@@ -167,7 +163,6 @@ fn typecheck_variable_declaration(
                     ty: Type::Int,
                     attrs: IdentifierAttrs::LocalAttr,
                 };
-                println!("inserting: {:?}", symbol);
                 symbol_table.insert(var_decl.name.clone(), symbol);
                 if var_decl.init.is_some() {
                     typecheck_expr(var_decl.init.as_ref().unwrap(), symbol_table)?;
@@ -192,8 +187,6 @@ fn typecheck_function_declaration(
         .storage_class
         .is_some_and(|sc| sc != StorageClass::Static)
         || func_decl.storage_class.is_none();
-
-    println!("is global: {}", is_global);
 
     if symbol_table.contains_key(&func_decl.name) {
         let old_decl = symbol_table.get(&func_decl.name).unwrap();
@@ -240,7 +233,6 @@ fn typecheck_function_declaration(
             global: is_global,
         },
     };
-    println!("inserting: {:?}", symbol);
     symbol_table.insert(func_decl.name.clone(), symbol);
 
     if has_body {
@@ -249,7 +241,6 @@ fn typecheck_function_declaration(
                 ty: Type::Int,
                 attrs: IdentifierAttrs::LocalAttr,
             };
-            println!("inserting: {:?}", symbol);
             symbol_table.insert(param.clone(), symbol);
         }
 

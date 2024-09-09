@@ -65,7 +65,6 @@ impl Parser {
             let mut specifier_list = vec![];
             specifier_list.push(self.previous.clone().unwrap());
             specifier_list.extend(self.consume_while(&Token::Identifier("".to_owned()))?);
-            println!("specifier_list: {:?}", specifier_list);
             self.parse_declaration(&specifier_list)
         } else if self.is_next(&[Token::Return]) {
             self.parse_return_statement()

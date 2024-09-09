@@ -6,7 +6,7 @@ use structopt::StructOpt;
 
 use ucc::codegen::{Codegen, Fixup, ReplacePseudo};
 use ucc::emitter::Emit;
-use ucc::ir::{convert_symbols_to_tacky, Irfy};
+use ucc::ir::{convert_symbols_to_tacky, IRNode, Irfy};
 use ucc::lexer::{Lexer, Token};
 use ucc::loop_label::Label;
 use ucc::parser::Parser;
@@ -64,16 +64,19 @@ fn run(opts: &Opt) -> Result<()> {
         std::process::exit(0);
     }
 
-    let tac = labeled_ast.irfy().unwrap();
+    let mut tac = labeled_ast.irfy().unwrap();
     let tacky_defs = convert_symbols_to_tacky(&mut symbol_table);
 
+    if let IRNode::Program(prog) = &mut tac {
+        prog.static_vars = tacky_defs;
+    }
+
     if opts.tacky {
-        println!("{:?}", tac);
-        println!("{:?}", tacky_defs);
+        println!("tac: {:?}", tac);
         std::process::exit(0);
     }
 
-    let mut asm_prog = tac.codegen().replace_pseudo().fixup();
+    let mut asm_prog = tac.codegen().replace_pseudo(&mut symbol_table).fixup();
 
     if opts.codegen {
         println!("{:?}", asm_prog);
@@ -83,6 +86,7 @@ fn run(opts: &Opt) -> Result<()> {
     let mut f = File::create(opts.path.with_extension("s"))?;
 
     asm_prog.emit(&mut f)?;
+
 
     if opts.c {
         std::process::Command::new("gcc")
