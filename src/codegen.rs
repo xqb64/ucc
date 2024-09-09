@@ -436,15 +436,12 @@ impl ReplacePseudo for AsmNode {
             AsmNode::Operand(op) => AsmNode::Operand(op.replace_pseudo(symbol_table)),
             AsmNode::Instructions(instrs) => AsmNode::Instructions(instrs.to_owned().replace_pseudo(symbol_table)),
             AsmNode::StaticVariable(static_var) => AsmNode::StaticVariable(static_var.to_owned().replace_pseudo(symbol_table)),
-            _ => {
-                unreachable!()
-            }
         }
     }
 }
 
 impl ReplacePseudo for AsmStaticVariable {
-    fn replace_pseudo(&self, symbol_table: &mut HashMap<String, Symbol>) -> Self {
+    fn replace_pseudo(&self, _symbol_table: &mut HashMap<String, Symbol>) -> Self {
         self.clone()
     }
 }
@@ -500,7 +497,7 @@ impl ReplacePseudo for AsmOperand {
                 let mut offset_manager = OFFSET_MANAGER.lock().unwrap();
                 if let Some(symbol) = symbol_table.get(name) {
                     match symbol.attrs {
-                        IdentifierAttrs::StaticAttr { initial_value, global } => {
+                        IdentifierAttrs::StaticAttr { initial_value: _, global: _ } => {
                             AsmOperand::Data(name.clone())
                         }
                         _ => {

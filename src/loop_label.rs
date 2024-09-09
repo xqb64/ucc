@@ -16,12 +16,12 @@ pub trait Label {
 impl Label for ProgramStatement {
     fn label(&self, current_label: String) -> Result<BlockItem> {
         let labeled_items = self
-            .stmts
+            .block_items
             .iter()
             .map(|item| item.label(current_label.clone()))
             .collect::<Result<Vec<_>>>()?;
         Ok(BlockItem::Statement(Statement::Program(ProgramStatement {
-            stmts: labeled_items,
+            block_items: labeled_items,
         })))
     }
 }

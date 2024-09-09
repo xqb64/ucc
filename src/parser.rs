@@ -47,7 +47,7 @@ impl Parser {
         while self.current.is_some() {
             stmts.push(self.parse_statement()?);
         }
-        Ok(Statement::Program(ProgramStatement { stmts }))
+        Ok(Statement::Program(ProgramStatement { block_items: stmts }))
     }
 
     fn is_next(&mut self, tokens: &[Token]) -> bool {
@@ -649,7 +649,7 @@ pub enum Statement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProgramStatement {
-    pub stmts: Vec<BlockItem>,
+    pub block_items: Vec<BlockItem>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

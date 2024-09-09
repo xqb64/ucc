@@ -246,12 +246,12 @@ impl Resolve for ReturnStatement {
 impl Resolve for ProgramStatement {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>) -> Result<BlockItem> {
         let resolved_block_items = self
-            .stmts
+            .block_items
             .iter_mut()
             .map(|block_item| block_item.resolve(variable_map))
             .collect::<Result<Vec<_>>>()?;
         Ok(BlockItem::Statement(Statement::Program(ProgramStatement {
-            stmts: resolved_block_items,
+            block_items: resolved_block_items,
         })))
     }
 }

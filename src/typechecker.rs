@@ -269,7 +269,7 @@ pub fn typecheck_block(
 
 fn typecheck_statement(stmt: &Statement, symbol_table: &mut HashMap<String, Symbol>) -> Result<()> {
     match stmt {
-        Statement::Program(ProgramStatement { stmts }) => {
+        Statement::Program(ProgramStatement { block_items: stmts }) => {
             for block_item in stmts {
                 typecheck_block(block_item, symbol_table)?;
             }

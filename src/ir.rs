@@ -336,27 +336,36 @@ impl Irfy for Statement {
 
 impl Irfy for ProgramStatement {
     fn irfy(&self) -> Option<IRNode> {
-        let mut functions = vec![];
+        let mut instructions = vec![];
 
-        for func in &self.stmts {
-            match func {
+        for block_item in &self.block_items {
+            match block_item {
                 BlockItem::Declaration(decl) => match decl {
                     Declaration::Function(func_decl) => {
                         if let Some(ir_func) = func_decl.irfy() {
-                            functions.push(ir_func);
+                            instructions.push(ir_func);
                         }
                     }
                     Declaration::Variable(var_decl) => {
-                        if var_decl.is_global {}
-                        if !var_decl.is_global && var_decl.storage_class.is_some() {}
+                        if var_decl.is_global {
+                            continue;
+                        }
+                        if !var_decl.is_global && var_decl.storage_class.is_some() {
+                            println!("we're heereee");
+                            continue;
+                        }
 
                     }
                 }
-                BlockItem::Statement(stmt) => {}
+                BlockItem::Statement(stmt) => {
+                    if let Some(ir_stmt) = stmt.irfy() {
+                        instructions.push(ir_stmt.into());
+                    }
+                }
             }
         }
 
-        Some(IRNode::Program(IRProgram { functions, static_vars: vec![] }))
+        Some(IRNode::Program(IRProgram { functions: instructions, static_vars: vec![] }))
     }
 }
 
@@ -364,10 +373,25 @@ impl Irfy for BlockStatement {
     fn irfy(&self) -> Option<IRNode> {
         let mut instructions = vec![];
 
-        for item in &self.stmts {
-            if let Some(item) = item.irfy() {
-                instructions.extend::<Vec<IRInstruction>>(item.into());
+        for stmt in &self.stmts {
+            match stmt {
+                BlockItem::Declaration(decl) => match decl {
+                    Declaration::Variable(var_decl) => {
+                        if !var_decl.is_global && var_decl.storage_class.is_some() {
+                            continue;
+                        } else {
+                            instructions.extend::<Vec<IRInstruction>>(var_decl.irfy().unwrap().into());
+                        }
+                    }
+                    Declaration::Function(_func_decl) => {}
+                }
+                BlockItem::Statement(stmt) => {
+                    if let Some(ir_stmt) = stmt.irfy() {
+                        instructions.extend::<Vec<IRInstruction>>(ir_stmt.into());
+                    }
+                }
             }
+
         }
 
         Some(IRNode::Instructions(instructions))
@@ -572,7 +596,23 @@ impl Irfy for FunctionDeclaration {
         }
 
         for stmt in self.body.iter() {
-            instructions.extend::<Vec<IRInstruction>>(stmt.irfy().unwrap().into());
+            match stmt {
+                BlockItem::Declaration(decl) => match decl {
+                    Declaration::Variable(var_decl) => {
+                        println!("Here: decl {:?}", var_decl);
+                        if !var_decl.is_global && var_decl.storage_class.is_some() {
+                            println!("we're here!");
+                            continue;
+                        } else {
+                            instructions.extend::<Vec<IRInstruction>>(var_decl.irfy().unwrap().into());
+                        }
+                    }
+                    Declaration::Function(_func_decl) => {}
+                }
+                BlockItem::Statement(stmt) => {
+                    instructions.extend::<Vec<IRInstruction>>(stmt.irfy().unwrap().into());
+                }
+            }
         }
 
         instructions.push(IRInstruction::Ret(IRValue::Constant(0)));
