@@ -93,7 +93,10 @@ impl Emit for AsmFunction {
             }
         }
 
-        writeln!(f, "\t.globl {}", self.name)?;
+        if self.global {
+            writeln!(f, "\t.globl {}", self.name)?;
+        }
+
         writeln!(f, "{}:", self.name)?;
 
         writeln!(f, "\tpushq %rbp")?;

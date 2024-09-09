@@ -20,6 +20,7 @@ pub struct AsmProgram {
 pub struct AsmFunction {
     pub name: String,
     pub instructions: Vec<AsmInstruction>,
+    pub global: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -119,44 +120,44 @@ pub enum AsmBinaryOp {
 }
 
 pub trait Codegen {
-    fn codegen(&self) -> AsmNode;
+    fn codegen(&self, symbol_table: &mut HashMap<String, Symbol>) -> AsmNode;
 }
 
 impl Codegen for IRNode {
-    fn codegen(&self) -> AsmNode {
+    fn codegen(&self, symbol_table: &mut HashMap<String, Symbol>) -> AsmNode {
         match self {
-            IRNode::Program(prog) => prog.codegen(),
-            IRNode::Function(func) => func.codegen(),
-            IRNode::Instructions(instrs) => instrs.codegen(),
-            IRNode::Value(value) => value.codegen(),
-            IRNode::StaticVariable(static_var) => static_var.codegen(),
+            IRNode::Program(prog) => prog.codegen(symbol_table),
+            IRNode::Function(func) => func.codegen(symbol_table),
+            IRNode::Instructions(instrs) => instrs.codegen(symbol_table),
+            IRNode::Value(value) => value.codegen(symbol_table),
+            IRNode::StaticVariable(static_var) => static_var.codegen(symbol_table),
         }
     }
 }
 
 impl Codegen for IRProgram {
-    fn codegen(&self) -> AsmNode {
+    fn codegen(&self, symbol_table: &mut HashMap<String, Symbol>) -> AsmNode {
         let mut functions = vec![];
         for func in &self.functions {
-            functions.push(func.codegen().into());
+            functions.push(func.codegen(symbol_table).into());
         }
 
         let mut static_vars = vec![];
         for static_var in &self.static_vars {
-            static_vars.push(static_var.codegen().into());
+            static_vars.push(static_var.codegen(symbol_table).into());
         }
         AsmNode::Program(AsmProgram { functions, static_vars })
     }
 }
 
 impl Codegen for IRStaticVariable {
-    fn codegen(&self) -> AsmNode {
+    fn codegen(&self, symbol_table: &mut HashMap<String, Symbol>) -> AsmNode {
         AsmNode::StaticVariable(AsmStaticVariable { name: self.name.clone(), value: self.value, global: self.global })
     }
 }
 
 impl Codegen for IRFunction {
-    fn codegen(&self) -> AsmNode {
+    fn codegen(&self, symbol_table: &mut HashMap<String, Symbol>) -> AsmNode {
         let mut instructions = vec![];
 
         instructions.push(AsmInstruction::AllocateStack(0));
@@ -190,22 +191,33 @@ impl Codegen for IRFunction {
         }
 
         for instr in &self.body {
-            instructions.extend::<Vec<AsmInstruction>>(instr.codegen().into());
+            instructions.extend::<Vec<AsmInstruction>>(instr.codegen(symbol_table).into());
         }
+
+        let symbol = match symbol_table.get(&self.name) {
+            Some(symbol) => symbol,
+            None => unreachable!(),
+        };
+
+        let global = match symbol.attrs {
+            IdentifierAttrs::FuncAttr { defined: _, global } => global,
+            _ => unreachable!(),
+        };
 
         AsmNode::Function(AsmFunction {
             name: self.name.clone(),
             instructions,
+            global,
         })
     }
 }
 
 impl Codegen for Vec<IRInstruction> {
-    fn codegen(&self) -> AsmNode {
+    fn codegen(&self, symbol_table: &mut HashMap<String, Symbol>) -> AsmNode {
         let mut instructions = vec![];
 
         for instr in self {
-            instructions.extend::<Vec<AsmInstruction>>(instr.codegen().into());
+            instructions.extend::<Vec<AsmInstruction>>(instr.codegen(symbol_table).into());
         }
 
         AsmNode::Instructions(instructions)
@@ -213,7 +225,7 @@ impl Codegen for Vec<IRInstruction> {
 }
 
 impl Codegen for IRValue {
-    fn codegen(&self) -> AsmNode {
+    fn codegen(&self, symbol_table: &mut HashMap<String, Symbol>) -> AsmNode {
         match self {
             IRValue::Constant(n) => AsmNode::Operand(AsmOperand::Imm(*n)),
             IRValue::Var(name) => AsmNode::Operand(AsmOperand::Pseudo(name.to_owned())),
@@ -222,37 +234,37 @@ impl Codegen for IRValue {
 }
 
 impl Codegen for IRInstruction {
-    fn codegen(&self) -> AsmNode {
+    fn codegen(&self, symbol_table: &mut HashMap<String, Symbol>) -> AsmNode {
         match self {
             IRInstruction::Unary { op, src, dst } => match op {
                 UnaryOp::Negate | UnaryOp::Complement => AsmNode::Instructions(vec![
                     AsmInstruction::Mov {
-                        src: src.codegen().into(),
-                        dst: dst.codegen().into(),
+                        src: src.codegen(symbol_table).into(),
+                        dst: dst.codegen(symbol_table).into(),
                     },
                     AsmInstruction::Unary {
                         op: (*op).into(),
-                        operand: dst.codegen().into(),
+                        operand: dst.codegen(symbol_table).into(),
                     },
                 ]),
                 UnaryOp::Not => AsmNode::Instructions(vec![
                     AsmInstruction::Cmp {
                         lhs: AsmOperand::Imm(0),
-                        rhs: src.codegen().into(),
+                        rhs: src.codegen(symbol_table).into(),
                     },
                     AsmInstruction::Mov {
                         src: AsmOperand::Imm(0),
-                        dst: dst.codegen().into(),
+                        dst: dst.codegen(symbol_table).into(),
                     },
                     AsmInstruction::SetCC {
                         condition: ConditionCode::E,
-                        operand: dst.codegen().into(),
+                        operand: dst.codegen(symbol_table).into(),
                     },
                 ]),
             },
             IRInstruction::Ret(value) => AsmNode::Instructions(vec![
                 AsmInstruction::Mov {
-                    src: value.codegen().into(),
+                    src: value.codegen(symbol_table).into(),
                     dst: AsmOperand::Register(AsmRegister::AX),
                 },
                 AsmInstruction::Ret,
@@ -260,37 +272,37 @@ impl Codegen for IRInstruction {
             IRInstruction::Binary { op, lhs, rhs, dst } => match op {
                 BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => AsmNode::Instructions(vec![
                     AsmInstruction::Mov {
-                        src: lhs.codegen().into(),
-                        dst: dst.codegen().into(),
+                        src: lhs.codegen(symbol_table).into(),
+                        dst: dst.codegen(symbol_table).into(),
                     },
                     AsmInstruction::Binary {
                         op: (*op).into(),
-                        lhs: rhs.codegen().into(),
-                        rhs: dst.codegen().into(),
+                        lhs: rhs.codegen(symbol_table).into(),
+                        rhs: dst.codegen(symbol_table).into(),
                     },
                 ]),
                 BinaryOp::Div => AsmNode::Instructions(vec![
                     AsmInstruction::Mov {
-                        src: lhs.codegen().into(),
+                        src: lhs.codegen(symbol_table).into(),
                         dst: AsmOperand::Register(AsmRegister::AX),
                     },
                     AsmInstruction::Cdq,
-                    AsmInstruction::Idiv(rhs.codegen().into()),
+                    AsmInstruction::Idiv(rhs.codegen(symbol_table).into()),
                     AsmInstruction::Mov {
                         src: AsmOperand::Register(AsmRegister::AX),
-                        dst: dst.codegen().into(),
+                        dst: dst.codegen(symbol_table).into(),
                     },
                 ]),
                 BinaryOp::Rem => AsmNode::Instructions(vec![
                     AsmInstruction::Mov {
-                        src: lhs.codegen().into(),
+                        src: lhs.codegen(symbol_table).into(),
                         dst: AsmOperand::Register(AsmRegister::AX),
                     },
                     AsmInstruction::Cdq,
-                    AsmInstruction::Idiv(rhs.codegen().into()),
+                    AsmInstruction::Idiv(rhs.codegen(symbol_table).into()),
                     AsmInstruction::Mov {
                         src: AsmOperand::Register(AsmRegister::DX),
-                        dst: dst.codegen().into(),
+                        dst: dst.codegen(symbol_table).into(),
                     },
                 ]),
                 BinaryOp::Less
@@ -300,12 +312,12 @@ impl Codegen for IRInstruction {
                 | BinaryOp::Equal
                 | BinaryOp::NotEqual => AsmNode::Instructions(vec![
                     AsmInstruction::Cmp {
-                        lhs: rhs.codegen().into(),
-                        rhs: lhs.codegen().into(),
+                        lhs: rhs.codegen(symbol_table).into(),
+                        rhs: lhs.codegen(symbol_table).into(),
                     },
                     AsmInstruction::Mov {
                         src: AsmOperand::Imm(0),
-                        dst: dst.codegen().into(),
+                        dst: dst.codegen(symbol_table).into(),
                     },
                     AsmInstruction::SetCC {
                         condition: match op {
@@ -317,14 +329,14 @@ impl Codegen for IRInstruction {
                             BinaryOp::NotEqual => ConditionCode::NE,
                             _ => unreachable!(),
                         },
-                        operand: dst.codegen().into(),
+                        operand: dst.codegen(symbol_table).into(),
                     },
                 ]),
             },
             IRInstruction::JumpIfZero { condition, target } => AsmNode::Instructions(vec![
                 AsmInstruction::Cmp {
                     lhs: AsmOperand::Imm(0),
-                    rhs: condition.codegen().into(),
+                    rhs: condition.codegen(symbol_table).into(),
                 },
                 AsmInstruction::JmpCC {
                     condition: ConditionCode::E,
@@ -334,7 +346,7 @@ impl Codegen for IRInstruction {
             IRInstruction::JumpIfNotZero { condition, target } => AsmNode::Instructions(vec![
                 AsmInstruction::Cmp {
                     lhs: AsmOperand::Imm(0),
-                    rhs: condition.codegen().into(),
+                    rhs: condition.codegen(symbol_table).into(),
                 },
                 AsmInstruction::JmpCC {
                     condition: ConditionCode::NE,
@@ -348,8 +360,8 @@ impl Codegen for IRInstruction {
                 AsmNode::Instructions(vec![AsmInstruction::Label(label.to_owned())])
             }
             IRInstruction::Copy { src, dst } => AsmNode::Instructions(vec![AsmInstruction::Mov {
-                src: src.codegen().into(),
-                dst: dst.codegen().into(),
+                src: src.codegen(symbol_table).into(),
+                dst: dst.codegen(symbol_table).into(),
             }]),
             IRInstruction::Call { target, args, dst } => {
                 let arg_registers = [
@@ -380,7 +392,7 @@ impl Codegen for IRInstruction {
                 let mut reg_index = 0;
                 for reg_arg in register_args {
                     let reg = arg_registers[reg_index];
-                    let asm_arg = reg_arg.codegen().into();
+                    let asm_arg = reg_arg.codegen(symbol_table).into();
                     instructions.push(AsmInstruction::Mov {
                         src: asm_arg,
                         dst: AsmOperand::Register(reg),
@@ -389,7 +401,7 @@ impl Codegen for IRInstruction {
                 }
 
                 for stack_arg in stack_args.iter().rev() {
-                    let asm_arg = stack_arg.codegen().into();
+                    let asm_arg = stack_arg.codegen(symbol_table).into();
                     match asm_arg {
                         AsmOperand::Imm(_) | AsmOperand::Register(_) => {
                             instructions.push(AsmInstruction::Push(asm_arg));
@@ -412,7 +424,7 @@ impl Codegen for IRInstruction {
                     instructions.push(AsmInstruction::DeallocateStack(bytes_to_remove));
                 }
 
-                let asm_dst = dst.codegen().into();
+                let asm_dst = dst.codegen(symbol_table).into();
                 instructions.push(AsmInstruction::Mov {
                     src: AsmOperand::Register(AsmRegister::AX),
                     dst: asm_dst,
@@ -536,6 +548,7 @@ impl ReplacePseudo for AsmFunction {
         AsmFunction {
             name: self.name.clone(),
             instructions,
+            global: self.global,
         }
     }
 }
@@ -759,6 +772,7 @@ impl Fixup for AsmFunction {
         AsmFunction {
             name: self.name.clone(),
             instructions,
+            global: self.global,
         }
     }
 }

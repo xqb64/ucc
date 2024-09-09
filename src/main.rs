@@ -76,7 +76,7 @@ fn run(opts: &Opt) -> Result<()> {
         std::process::exit(0);
     }
 
-    let mut asm_prog = tac.codegen().replace_pseudo(&mut symbol_table).fixup();
+    let mut asm_prog = tac.codegen(&mut symbol_table).replace_pseudo(&mut symbol_table).fixup();
 
     if opts.codegen {
         println!("{:?}", asm_prog);
