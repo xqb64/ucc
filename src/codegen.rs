@@ -1,4 +1,4 @@
-use crate::ir::{BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRValue, UnaryOp};
+use crate::ir::{BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRStaticVariable, IRValue, UnaryOp};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AsmNode {
@@ -118,6 +118,7 @@ impl Codegen for IRNode {
             IRNode::Function(func) => func.codegen(),
             IRNode::Instructions(instrs) => instrs.codegen(),
             IRNode::Value(value) => value.codegen(),
+            IRNode::StaticVariable(static_var) => static_var.codegen(),
         }
     }
 }
@@ -129,6 +130,12 @@ impl Codegen for IRProgram {
             functions.push(func.codegen().into());
         }
         AsmNode::Program(AsmProgram { functions })
+    }
+}
+
+impl Codegen for IRStaticVariable {
+    fn codegen(&self) -> AsmNode {
+        AsmNode::Instructions(vec![])
     }
 }
 

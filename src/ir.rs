@@ -1,14 +1,16 @@
-use crate::parser::{
+use std::collections::HashMap;
+
+use crate::{parser::{
     AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement,
     BreakStatement, CallExpression, ConditionalExpression, ContinueStatement, Declaration,
     DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration,
     IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression,
     UnaryExpressionKind, VariableDeclaration, WhileStatement,
-};
+}, typechecker::{IdentifierAttrs, InitialValue, Symbol}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IRProgram {
-    pub functions: Vec<IRFunction>,
+    pub functions: Vec<IRNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -16,6 +18,7 @@ pub struct IRFunction {
     pub name: String,
     pub params: Vec<String>,
     pub body: Vec<IRInstruction>,
+    pub global: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -298,6 +301,14 @@ pub enum IRNode {
     Function(IRFunction),
     Instructions(Vec<IRInstruction>),
     Value(IRValue),
+    StaticVariable(IRStaticVariable),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IRStaticVariable {
+    pub name: String,
+    pub value: i32,
+    pub global: bool,
 }
 
 pub trait Irfy {
@@ -557,6 +568,7 @@ impl Irfy for FunctionDeclaration {
             name: self.name.clone(),
             params: self.params.clone(),
             body: instructions,
+            global: self.is_global,
         }))
     }
 }
@@ -605,4 +617,21 @@ impl From<IRNode> for Vec<IRInstruction> {
             _ => unreachable!(),
         }
     }
+}
+
+pub fn convert_symbols_to_tacky(symbols: &mut HashMap<String, Symbol>) -> Vec<IRNode> {
+    let mut tacky_defs = vec![];
+    for (name, entry) in symbols {
+        match entry.attrs {
+            IdentifierAttrs::StaticAttr { initial_value, global } => {
+                match initial_value {
+                    InitialValue::Initial(konst) => tacky_defs.push(IRNode::StaticVariable(IRStaticVariable { name: name.clone(), value: konst, global })),
+                    InitialValue::Tentative => tacky_defs.push(IRNode::StaticVariable(IRStaticVariable { name: name.clone(), value: 0, global })),
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    tacky_defs
 }

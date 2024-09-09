@@ -6,7 +6,7 @@ use structopt::StructOpt;
 
 use ucc::codegen::{Codegen, Fixup, ReplacePseudo};
 use ucc::emitter::Emit;
-use ucc::ir::Irfy;
+use ucc::ir::{convert_symbols_to_tacky, Irfy};
 use ucc::lexer::{Lexer, Token};
 use ucc::loop_label::Label;
 use ucc::parser::Parser;
@@ -65,9 +65,11 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let tac = labeled_ast.irfy().unwrap();
+    let tacky_defs = convert_symbols_to_tacky(&mut symbol_table);
 
     if opts.tacky {
         println!("{:?}", tac);
+        println!("{:?}", tacky_defs);
         std::process::exit(0);
     }
 

@@ -15,8 +15,8 @@ pub enum Type {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Symbol {
-    ty: Type,
-    attrs: IdentifierAttrs,
+    pub ty: Type,
+    pub attrs: IdentifierAttrs,
 }
 
 fn typecheck_variable_declaration(
@@ -83,8 +83,8 @@ fn typecheck_variable_declaration(
                         initial_value: old_init,
                         global: _,
                     } => {
-                        if let InitialValue::Initial(ref old_const) = old_init {
-                            if let InitialValue::Initial(ref new_const) = initial_value {
+                        if let InitialValue::Initial(_) = old_init {
+                            if let InitialValue::Initial(_) = initial_value {
                                 bail!("Conflicting file-scope variable definitions");
                             } else {
                                 initial_value = old_init;
@@ -206,7 +206,7 @@ fn typecheck_function_declaration(
         }
 
         already_defined = match old_decl.attrs {
-            IdentifierAttrs::FuncAttr { defined, global } => defined,
+            IdentifierAttrs::FuncAttr { defined, global: _ } => defined,
             _ => unreachable!(),
         };
 
@@ -437,7 +437,7 @@ fn typecheck_expr(e: &Expression, symbol_table: &mut HashMap<String, Symbol>) ->
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
-enum IdentifierAttrs {
+pub enum IdentifierAttrs {
     FuncAttr {
         defined: bool,
         global: bool,
@@ -450,7 +450,7 @@ enum IdentifierAttrs {
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
-enum InitialValue {
+pub enum InitialValue {
     Tentative,
     Initial(i32),
     NoInitializer,
