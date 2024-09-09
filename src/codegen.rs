@@ -376,7 +376,8 @@ impl Codegen for IRInstruction {
                                 src: asm_arg,
                                 dst: AsmOperand::Register(AsmRegister::AX),
                             });
-                            instructions.push(AsmInstruction::Push(AsmOperand::Register(AsmRegister::AX)));
+                            instructions
+                                .push(AsmInstruction::Push(AsmOperand::Register(AsmRegister::AX)));
                         }
                     }
                 }

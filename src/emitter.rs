@@ -55,13 +55,13 @@ impl Emit for AsmFunction {
     fn emit(&mut self, f: &mut File) -> Result<()> {
         if let Some(instr) = self.instructions.get_mut(0) {
             let offset_manager = OFFSET_MANAGER.lock().unwrap();
-            
+
             let mut stack_frame_bytelen = offset_manager.offset.unsigned_abs() as usize;
             let rem = stack_frame_bytelen % 16;
             if rem != 0 {
                 stack_frame_bytelen += 16 - rem;
             }
-            
+
             *instr = AsmInstruction::AllocateStack(stack_frame_bytelen);
         }
 

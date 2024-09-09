@@ -1,5 +1,9 @@
 use crate::parser::{
-    AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, ConditionalExpression, ContinueStatement, Declaration, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
+    AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement,
+    BreakStatement, CallExpression, ConditionalExpression, ContinueStatement, Declaration,
+    DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration,
+    IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression,
+    UnaryExpressionKind, VariableDeclaration, WhileStatement,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,7 +45,7 @@ pub enum IRInstruction {
         target: String,
     },
     Label(String),
-    Call { 
+    Call {
         target: String,
         args: Vec<IRValue>,
         dst: IRValue,
@@ -371,8 +375,9 @@ impl Irfy for IfStatement {
         instructions.push(IRInstruction::Label(else_label.clone()));
 
         if self.else_branch.is_some() {
-            instructions
-                .extend::<Vec<IRInstruction>>(self.else_branch.clone().unwrap().irfy().unwrap().into());
+            instructions.extend::<Vec<IRInstruction>>(
+                self.else_branch.clone().unwrap().irfy().unwrap().into(),
+            );
         }
 
         instructions.push(IRInstruction::Label(end_label));
@@ -384,18 +389,18 @@ impl Irfy for IfStatement {
 impl Irfy for BreakStatement {
     fn irfy(&self) -> Option<IRNode> {
         Some(IRNode::Instructions(vec![IRInstruction::Jump(format!(
-                    "{}.break",
-                    self.label.clone()
-                ))]))
+            "{}.break",
+            self.label.clone()
+        ))]))
     }
 }
 
 impl Irfy for ContinueStatement {
     fn irfy(&self) -> Option<IRNode> {
         Some(IRNode::Instructions(vec![IRInstruction::Jump(format!(
-                    "{}.continue",
-                    self.label.clone()
-                ))]))
+            "{}.continue",
+            self.label.clone()
+        ))]))
     }
 }
 
@@ -412,7 +417,7 @@ impl Irfy for DoWhileStatement {
         if let Some(body) = self.body.irfy() {
             instructions.extend::<Vec<IRInstruction>>(body.into());
         }
-        
+
         instructions.push(IRInstruction::Label(continue_label.clone()));
 
         let condition = emit_tacky(self.condition.clone(), &mut instructions);
@@ -542,8 +547,6 @@ impl Irfy for FunctionDeclaration {
             return None;
         }
 
-
-
         for stmt in self.body.iter() {
             instructions.extend::<Vec<IRInstruction>>(stmt.irfy().unwrap().into());
         }
@@ -551,10 +554,10 @@ impl Irfy for FunctionDeclaration {
         instructions.push(IRInstruction::Ret(IRValue::Constant(0)));
 
         Some(IRNode::Function(IRFunction {
-                    name: self.name.clone(),
-                    params: self.params.clone(),
-                    body: instructions,
-                }))
+            name: self.name.clone(),
+            params: self.params.clone(),
+            body: instructions,
+        }))
     }
 }
 
@@ -590,7 +593,7 @@ impl From<IRNode> for IRFunction {
             _ => {
                 println!("{:?}", node);
                 unreachable!()
-            },
+            }
         }
     }
 }

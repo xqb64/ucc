@@ -4,7 +4,11 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, ConditionalExpression, ContinueStatement, Declaration, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression, VariableDeclaration, WhileStatement
+        AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement,
+        CallExpression, ConditionalExpression, ContinueStatement, Declaration, DoWhileStatement,
+        Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement,
+        ProgramStatement, ReturnStatement, Statement, StorageClass, UnaryExpression,
+        VariableDeclaration, WhileStatement,
     },
 };
 
@@ -30,35 +34,88 @@ impl Resolve for Declaration {
 
 impl Resolve for VariableDeclaration {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>) -> Result<BlockItem> {
-        println!("searching for variable: {}", self.name);
-        println!("variable_map: {:?}", variable_map);
-        if variable_map.contains_key(&self.name)
-            && variable_map.get(&self.name).unwrap().from_current_scope
-        {
-            bail!("redeclaration of variable: {}", self.name);
+        match self.is_global {
+            true => {
+                variable_map.insert(
+                    self.name.clone(),
+                    Variable {
+                        from_current_scope: true,
+                        name: self.name.clone(),
+                        has_linkage: false,
+                    },
+                );
+
+                Ok(BlockItem::Declaration(Declaration::Variable(
+                    VariableDeclaration {
+                        name: self.name.clone(),
+                        init: self.init.clone(),
+                        storage_class: self.storage_class,
+                        is_global: self.is_global,
+                    },
+                )))
+            }
+            false => {
+                if variable_map.contains_key(&self.name) {
+                    let prev_entry = variable_map.get(&self.name).unwrap();
+                    if prev_entry.from_current_scope {
+                        if !(prev_entry.has_linkage
+                            && self
+                                .storage_class
+                                .is_some_and(|sc| sc == StorageClass::Extern))
+                        {
+                            bail!("conflicting local declarations: {}", self.name);
+                        }
+                    }
+                }
+
+                if self
+                    .storage_class
+                    .is_some_and(|sc| sc == StorageClass::Extern)
+                {
+                    variable_map.insert(
+                        self.name.clone(),
+                        Variable {
+                            from_current_scope: true,
+                            name: self.name.clone(),
+                            has_linkage: true,
+                        },
+                    );
+
+                    return Ok(BlockItem::Declaration(Declaration::Variable(
+                        VariableDeclaration {
+                            name: self.name.clone(),
+                            init: self.init.clone(),
+                            storage_class: self.storage_class,
+                            is_global: self.is_global,
+                        },
+                    )));
+                } else {
+                    let unique_name = format!("var.{}.{}", self.name, make_temporary());
+
+                    variable_map.insert(
+                        self.name.clone(),
+                        Variable {
+                            from_current_scope: true,
+                            name: unique_name.clone(),
+                            has_linkage: false,
+                        },
+                    );
+
+                    if self.init.is_some() {
+                        self.init = Some(resolve_exp(&self.init.clone().unwrap(), variable_map)?);
+                    }
+
+                    Ok(BlockItem::Declaration(Declaration::Variable(
+                        VariableDeclaration {
+                            name: unique_name,
+                            init: self.init.clone(),
+                            storage_class: self.storage_class,
+                            is_global: self.is_global,
+                        },
+                    )))
+                }
+            }
         }
-
-        let unique_name = format!("var.{}.{}", self.name, make_temporary());
-
-        variable_map.insert(
-            self.name.clone(),
-            Variable {
-                from_current_scope: true,
-                name: unique_name.clone(),
-                has_linkage: false,
-            },
-        );
-
-        if self.init.is_some() {
-            self.init = Some(resolve_exp(&self.init.clone().unwrap(), variable_map)?);
-        }
-
-        Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration {
-            name: unique_name,
-            init: self.init.clone(),
-            storage_class: self.storage_class,
-        })))
-
     }
 }
 
@@ -68,6 +125,14 @@ impl Resolve for FunctionDeclaration {
             bail!("function definition in non-global scope");
         }
 
+        if self
+            .storage_class
+            .is_some_and(|sc| sc == StorageClass::Static)
+            && !self.is_global
+        {
+            bail!("storage class specifier in non-global scope");
+        }
+
         // FIXME: stupid hack to prevent redeclaration of function parameters
         for param in &self.params {
             if self.body.is_some() {
@@ -75,22 +140,20 @@ impl Resolve for FunctionDeclaration {
                     BlockItem::Statement(Statement::Compound(block)) => {
                         for stmt in &block.stmts {
                             match stmt {
-                                BlockItem::Declaration(decl) => {
-                                    match decl {
-                                        Declaration::Variable(var_decl) => {
-                                            if var_decl.name == *param {
-                                                bail!("parameter name cannot be the same as a variable name in the function body");
-                                            }
+                                BlockItem::Declaration(decl) => match decl {
+                                    Declaration::Variable(var_decl) => {
+                                        if var_decl.name == *param {
+                                            bail!("parameter name cannot be the same as a variable name in the function body");
                                         }
-                                        _ => {}
                                     }
-                                }
+                                    _ => {}
+                                },
                                 _ => {}
                             }
                         }
                     }
                     _ => {}
-                }    
+                }
             }
         }
 
@@ -101,7 +164,14 @@ impl Resolve for FunctionDeclaration {
             }
         }
 
-        variable_map.insert(self.name.clone(), Variable { from_current_scope: true, name: self.name.clone(), has_linkage: true });
+        variable_map.insert(
+            self.name.clone(),
+            Variable {
+                from_current_scope: true,
+                name: self.name.clone(),
+                has_linkage: true,
+            },
+        );
 
         let mut inner_map = copy_variable_map(variable_map);
         let mut new_params = vec![];
@@ -116,14 +186,15 @@ impl Resolve for FunctionDeclaration {
             new_body = Some(self.body.clone().unwrap().resolve(&mut inner_map)?);
         }
 
-        Ok(BlockItem::Declaration(Declaration::Function(FunctionDeclaration {
-            name: self.name.clone(),
-            params: new_params,
-            body: new_body.into(),
-            is_global: self.is_global,
-            storage_class: self.storage_class,
-        })))
-
+        Ok(BlockItem::Declaration(Declaration::Function(
+            FunctionDeclaration {
+                name: self.name.clone(),
+                params: new_params,
+                body: new_body.into(),
+                is_global: self.is_global,
+                storage_class: self.storage_class,
+            },
+        )))
     }
 }
 
@@ -157,17 +228,18 @@ impl Resolve for Statement {
 impl Resolve for ExpressionStatement {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>) -> Result<BlockItem> {
         let resolved_exp = resolve_exp(&self.expr, variable_map)?;
-        Ok(BlockItem::Statement(Statement::Expression(ExpressionStatement {
-            expr: resolved_exp,
-        })))
+        Ok(BlockItem::Statement(Statement::Expression(
+            ExpressionStatement { expr: resolved_exp },
+        )))
     }
 }
 
 impl Resolve for ReturnStatement {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>) -> Result<BlockItem> {
         let resolved_exp = resolve_exp(&self.expr, variable_map)?;
-        Ok(BlockItem::Statement(Statement::Return(ReturnStatement { expr: resolved_exp })))
-
+        Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
+            expr: resolved_exp,
+        })))
     }
 }
 
@@ -190,7 +262,8 @@ impl Resolve for IfStatement {
         let resolved_then_branch = self.then_branch.resolve(variable_map)?;
         let mut resolved_else_branch = None;
         if self.else_branch.is_some() {
-            resolved_else_branch = resolve_optional_block_item(&mut self.else_branch, variable_map)?;
+            resolved_else_branch =
+                resolve_optional_block_item(&mut self.else_branch, variable_map)?;
         }
         Ok(BlockItem::Statement(Statement::If(IfStatement {
             condition: resolved_condition,
@@ -203,7 +276,8 @@ impl Resolve for IfStatement {
 impl Resolve for BlockStatement {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>) -> Result<BlockItem> {
         let mut new_variable_map = copy_variable_map(variable_map);
-        let resolved_block_items = self.stmts
+        let resolved_block_items = self
+            .stmts
             .iter_mut()
             .map(|block_item| block_item.resolve(&mut new_variable_map))
             .collect::<Result<Vec<_>>>()?;
@@ -266,9 +340,11 @@ impl Resolve for BreakStatement {
 
 impl Resolve for ContinueStatement {
     fn resolve(&mut self, _variable_map: &mut HashMap<String, Variable>) -> Result<BlockItem> {
-        Ok(BlockItem::Statement(Statement::Continue(ContinueStatement {
-            label: self.label.clone(),
-        })))
+        Ok(BlockItem::Statement(Statement::Continue(
+            ContinueStatement {
+                label: self.label.clone(),
+            },
+        )))
     }
 }
 
@@ -354,7 +430,6 @@ fn resolve_exp(
                     name: new_func_name,
                     args: resolved_args,
                 }))
-    
             } else {
                 bail!("undeclared function");
             }
@@ -440,5 +515,4 @@ fn resolve_param(param: &str, variable_map: &mut HashMap<String, Variable>) -> R
     );
 
     Ok(unique_name)
-
 }

@@ -2,7 +2,7 @@ use crate::parser::{
     AssignExpression, BinaryExpression, BlockItem, BlockStatement, CallExpression,
     ConditionalExpression, Declaration, DoWhileStatement, Expression, ExpressionStatement, ForInit,
     ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement,
-    UnaryExpression, VariableDeclaration, WhileStatement,
+    StorageClass, UnaryExpression, VariableDeclaration, WhileStatement,
 };
 use anyhow::{bail, Ok, Result};
 use std::collections::HashMap;
@@ -13,25 +13,167 @@ pub enum Type {
     Func(usize),
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct Symbol {
     ty: Type,
-    defined: bool,
+    attrs: IdentifierAttrs,
 }
 
 fn typecheck_variable_declaration(
     var_decl: &VariableDeclaration,
     symbol_table: &mut HashMap<String, Symbol>,
 ) -> Result<()> {
-    symbol_table.insert(
-        var_decl.name.clone(),
-        Symbol {
-            ty: Type::Int,
-            defined: false,
-        },
-    );
+    match var_decl.is_global {
+        true => {
+            let mut initial_value;
 
-    if var_decl.init.is_some() {
-        typecheck_expr(var_decl.init.as_ref().unwrap(), symbol_table)?;
+            if let Some(Expression::Constant(konst)) = var_decl.init {
+                initial_value = InitialValue::Initial(konst);
+            } else if var_decl.init.is_none() {
+                if var_decl
+                    .storage_class
+                    .is_some_and(|sc| sc == StorageClass::Extern)
+                {
+                    initial_value = InitialValue::NoInitializer;
+                } else {
+                    initial_value = InitialValue::Tentative;
+                }
+            } else {
+                bail!("no constant initializer");
+            }
+
+            let mut is_global = var_decl
+                .storage_class
+                .is_some_and(|sc| sc != StorageClass::Static) || var_decl.storage_class.is_none();
+
+            if symbol_table.contains_key(&var_decl.name) {
+                let old_decl = symbol_table.get(&var_decl.name).unwrap();
+
+                if old_decl.ty != Type::Int {
+                    bail!("Function {} redeclared as variable", var_decl.name);
+                }
+
+                if var_decl
+                    .storage_class
+                    .is_some_and(|sc| sc == StorageClass::Extern)
+                {
+                    is_global = match old_decl.attrs {
+                        IdentifierAttrs::StaticAttr {
+                            initial_value: _,
+                            global,
+                        } => global,
+                        _ => unreachable!(),
+                    };
+                } else {
+                    if is_global
+                        != match old_decl.attrs {
+                            IdentifierAttrs::StaticAttr {
+                                initial_value: _,
+                                global,
+                            } => global,
+                            _ => unreachable!(),
+                        }
+                    {
+                        bail!("Conflicting variable linkage {:?}", var_decl);
+                    }
+                }
+
+                match old_decl.attrs {
+                    IdentifierAttrs::StaticAttr {
+                        initial_value: old_init,
+                        global: _,
+                    } => {
+                        if let InitialValue::Initial(ref old_const) = old_init {
+                            if let InitialValue::Initial(ref new_const) = initial_value {
+                                bail!("Conflicting file-scope variable definitions");
+                            } else {
+                                initial_value = old_init;
+                            }
+                        } else if let InitialValue::Tentative = old_init {
+                            if let InitialValue::Tentative = initial_value {
+                                initial_value = InitialValue::Tentative;
+                            }
+                        }
+                    }
+                    _ => {}
+                };
+            }
+
+            let symbol = Symbol {
+                ty: Type::Int,
+                attrs: IdentifierAttrs::StaticAttr {
+                    initial_value,
+                    global: is_global,
+                },
+            };
+
+            println!("inserting: {:?}", symbol);
+
+            symbol_table.insert(var_decl.name.clone(), symbol);
+        }
+        false => {
+            let initial_value;
+            if var_decl
+                .storage_class
+                .is_some_and(|sc| sc == StorageClass::Extern)
+            {
+                if var_decl.init.is_some() {
+                    bail!(
+                        "Extern local variable {} cannot have an initializer",
+                        var_decl.name
+                    );
+                }
+
+                if symbol_table.contains_key(&var_decl.name) {
+                    let old_decl = symbol_table.get(&var_decl.name).unwrap();
+                    if old_decl.ty != Type::Int {
+                        bail!("Function {} redeclared as variable", var_decl.name);
+                    }
+                } else {
+                    let symbol = Symbol {
+                        ty: Type::Int,
+                        attrs: IdentifierAttrs::StaticAttr {
+                            initial_value: InitialValue::NoInitializer,
+                            global: true,
+                        },
+                    };
+                    println!("inserting: {:?}", symbol);
+                    symbol_table.insert(var_decl.name.clone(), symbol);
+                }
+            } else if var_decl
+                .storage_class
+                .is_some_and(|sc| sc == StorageClass::Static)
+            {
+                if let Some(Expression::Constant(konst)) = var_decl.init {
+                    initial_value = InitialValue::Initial(konst);
+                } else if var_decl.init.is_none() {
+                    initial_value = InitialValue::Initial(0);
+                } else {
+                    bail!("no constant initializer");
+                }
+
+                let symbol = Symbol {
+                    ty: Type::Int,
+                    attrs: IdentifierAttrs::StaticAttr {
+                        initial_value,
+                        global: false,
+                    },
+                };
+                println!("inserting: {:?}", symbol);
+
+                symbol_table.insert(var_decl.name.clone(), symbol);
+            } else {
+                let symbol = Symbol {
+                    ty: Type::Int,
+                    attrs: IdentifierAttrs::LocalAttr,
+                };
+                println!("inserting: {:?}", symbol);
+                symbol_table.insert(var_decl.name.clone(), symbol);
+                if var_decl.init.is_some() {
+                    typecheck_expr(var_decl.init.as_ref().unwrap(), symbol_table)?;
+                }
+            }
+        }
     }
 
     Ok(())
@@ -46,6 +188,13 @@ fn typecheck_function_declaration(
 
     let mut already_defined = false;
 
+    let mut is_global = func_decl
+        .storage_class
+        .is_some_and(|sc| sc != StorageClass::Static)
+        || func_decl.storage_class.is_none();
+
+    println!("is global: {}", is_global);
+
     if symbol_table.contains_key(&func_decl.name) {
         let old_decl = symbol_table.get(&func_decl.name).unwrap();
 
@@ -56,30 +205,52 @@ fn typecheck_function_declaration(
             );
         }
 
-        already_defined = old_decl.defined;
+        already_defined = match old_decl.attrs {
+            IdentifierAttrs::FuncAttr { defined, global } => defined,
+            _ => unreachable!(),
+        };
 
         if already_defined && has_body {
             bail!("Function {} already defined", func_decl.name);
         }
+
+        match old_decl.attrs {
+            IdentifierAttrs::FuncAttr { defined: _, global } => {
+                if global
+                    && func_decl
+                        .storage_class
+                        .is_some_and(|sc| sc == StorageClass::Static)
+                {
+                    bail!(
+                        "Static function declaration follows non-static {}",
+                        func_decl.name
+                    );
+                }
+
+                is_global = global;
+            }
+            _ => unreachable!(),
+        }
     }
 
-    symbol_table.insert(
-        func_decl.name.clone(),
-        Symbol {
-            ty: fun_type,
+    let symbol = Symbol {
+        ty: fun_type,
+        attrs: IdentifierAttrs::FuncAttr {
             defined: already_defined || has_body,
+            global: is_global,
         },
-    );
+    };
+    println!("inserting: {:?}", symbol);
+    symbol_table.insert(func_decl.name.clone(), symbol);
 
     if has_body {
         for param in &func_decl.params {
-            symbol_table.insert(
-                param.clone(),
-                Symbol {
-                    ty: Type::Int,
-                    defined: true,
-                },
-            );
+            let symbol = Symbol {
+                ty: Type::Int,
+                attrs: IdentifierAttrs::LocalAttr,
+            };
+            println!("inserting: {:?}", symbol);
+            symbol_table.insert(param.clone(), symbol);
         }
 
         typecheck_block(&func_decl.body.as_ref().clone().unwrap(), symbol_table)?;
@@ -163,6 +334,15 @@ fn typecheck_statement(stmt: &Statement, symbol_table: &mut HashMap<String, Symb
             body,
             label: _,
         }) => {
+            match init {
+                ForInit::Declaration(decl) => {
+                    if decl.storage_class.is_some() {
+                        bail!("Storage class specifier in for loop initializer");
+                    }
+                }
+                _ => {}
+            }
+
             if let ForInit::Expression(Some(for_init_expr)) = init {
                 typecheck_expr(for_init_expr, symbol_table)?;
             }
@@ -254,4 +434,24 @@ fn typecheck_expr(e: &Expression, symbol_table: &mut HashMap<String, Symbol>) ->
         }
         Expression::Constant(_) => Ok(()),
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+enum IdentifierAttrs {
+    FuncAttr {
+        defined: bool,
+        global: bool,
+    },
+    StaticAttr {
+        initial_value: InitialValue,
+        global: bool,
+    },
+    LocalAttr,
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+enum InitialValue {
+    Tentative,
+    Initial(i32),
+    NoInitializer,
 }

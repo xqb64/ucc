@@ -110,14 +110,23 @@ impl Parser {
             self.parse_variable_declaration(&name, storage_class)
         } else if self.is_next(&[Token::Semicolon]) {
             Ok(BlockItem::Declaration(Declaration::Variable(
-                VariableDeclaration { name, init: None, storage_class },
+                VariableDeclaration {
+                    name,
+                    init: None,
+                    storage_class,
+                    is_global: self.depth == 0,
+                },
             )))
         } else {
             bail!("expected function or variable declaration");
         }
     }
 
-    fn parse_function_declaration(&mut self, name: &str, storage_class: Option<StorageClass>) -> Result<BlockItem> {
+    fn parse_function_declaration(
+        &mut self,
+        name: &str,
+        storage_class: Option<StorageClass>,
+    ) -> Result<BlockItem> {
         let params = self.parse_parameters()?;
 
         let body = if self.check(&Token::Semicolon) {
@@ -143,7 +152,10 @@ impl Parser {
         )))
     }
 
-    fn parse_type_and_storage_specifiers(&mut self, specifier_list: &[Token]) -> Result<(Token, Option<StorageClass>)> {
+    fn parse_type_and_storage_specifiers(
+        &mut self,
+        specifier_list: &[Token],
+    ) -> Result<(Token, Option<StorageClass>)> {
         let mut types = vec![];
         let mut storage_classes = vec![];
 
@@ -152,7 +164,7 @@ impl Parser {
                 types.push(specifier.clone());
             } else {
                 storage_classes.push(specifier.clone());
-            } 
+            }
         }
 
         if types.len() != 1 {
@@ -160,7 +172,10 @@ impl Parser {
         }
 
         if storage_classes.len() > 1 {
-            bail!("expected at most one storage class specifier, got: {:?}", storage_classes);
+            bail!(
+                "expected at most one storage class specifier, got: {:?}",
+                storage_classes
+            );
         }
 
         let _type = Token::Int;
@@ -205,14 +220,19 @@ impl Parser {
         Ok(params)
     }
 
-    fn parse_variable_declaration(&mut self, name: &str, storage_class: Option<StorageClass>) -> Result<BlockItem> {
+    fn parse_variable_declaration(
+        &mut self,
+        name: &str,
+        storage_class: Option<StorageClass>,
+    ) -> Result<BlockItem> {
         let init = Some(self.parse_expression()?);
         self.consume(&Token::Semicolon)?;
         Ok(BlockItem::Declaration(Declaration::Variable(
             VariableDeclaration {
                 name: name.to_owned(),
                 init,
-                storage_class
+                storage_class,
+                is_global: self.depth == 0,
             },
         )))
     }
@@ -303,7 +323,8 @@ impl Parser {
             let mut specifier_list = vec![];
             specifier_list.push(self.previous.clone().unwrap());
             specifier_list.extend(self.consume_while(&Token::Identifier("".to_owned()))?);
-            let (_type, _storage_class) = self.parse_type_and_storage_specifiers(&specifier_list)?;
+            let (_type, _storage_class) =
+                self.parse_type_and_storage_specifiers(&specifier_list)?;
             let decl = self.parse_declaration(&specifier_list)?;
             ForInit::Declaration(match decl {
                 BlockItem::Declaration(Declaration::Variable(var)) => var,
@@ -609,6 +630,7 @@ pub struct VariableDeclaration {
     pub name: String,
     pub init: Option<Expression>,
     pub storage_class: Option<StorageClass>,
+    pub is_global: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

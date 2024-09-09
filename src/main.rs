@@ -59,7 +59,6 @@ fn run(opts: &Opt) -> Result<()> {
     let labeled_ast = validated_ast.label(String::new())?;
     typecheck_block(&labeled_ast, &mut symbol_table)?;
 
-
     if opts.validate {
         println!("{:?}", labeled_ast);
         std::process::exit(0);
