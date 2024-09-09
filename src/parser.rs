@@ -61,8 +61,12 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<BlockItem> {
-        if self.is_next(&[Token::Int]) {
-            self.parse_declaration()
+        if self.is_next(&[Token::Int, Token::Static, Token::Extern]) {
+            let mut specifier_list = vec![];
+            specifier_list.push(self.previous.clone().unwrap());
+            specifier_list.extend(self.consume_while(&Token::Identifier("".to_owned()))?);
+            println!("specifier_list: {:?}", specifier_list);
+            self.parse_declaration(&specifier_list)
         } else if self.is_next(&[Token::Return]) {
             self.parse_return_statement()
         } else if self.is_next(&[Token::If]) {
@@ -86,25 +90,34 @@ impl Parser {
         }
     }
 
-    fn parse_declaration(&mut self) -> Result<BlockItem> {
+    fn consume_while(&mut self, token: &Token) -> Result<Vec<Token>> {
+        let mut tokens = vec![];
+        while !self.check(token) {
+            tokens.push(self.advance().unwrap());
+        }
+        Ok(tokens)
+    }
+
+    fn parse_declaration(&mut self, specifier_list: &[Token]) -> Result<BlockItem> {
+        let (_ty, storage_class) = self.parse_type_and_storage_specifiers(specifier_list)?;
         let name = self
             .consume(&Token::Identifier("".to_owned()))?
             .unwrap()
             .as_string();
         if self.is_next(&[Token::LParen]) {
-            self.parse_function_declaration(&name)
+            self.parse_function_declaration(&name, storage_class)
         } else if self.is_next(&[Token::Equal]) {
-            self.parse_variable_declaration(&name)
+            self.parse_variable_declaration(&name, storage_class)
         } else if self.is_next(&[Token::Semicolon]) {
             Ok(BlockItem::Declaration(Declaration::Variable(
-                VariableDeclaration { name, init: None },
+                VariableDeclaration { name, init: None, storage_class },
             )))
         } else {
             bail!("expected function or variable declaration");
         }
     }
 
-    fn parse_function_declaration(&mut self, name: &str) -> Result<BlockItem> {
+    fn parse_function_declaration(&mut self, name: &str, storage_class: Option<StorageClass>) -> Result<BlockItem> {
         let params = self.parse_parameters()?;
 
         let body = if self.check(&Token::Semicolon) {
@@ -125,8 +138,45 @@ impl Parser {
                 params,
                 body: body.into(),
                 is_global: self.depth == 0,
+                storage_class,
             },
         )))
+    }
+
+    fn parse_type_and_storage_specifiers(&mut self, specifier_list: &[Token]) -> Result<(Token, Option<StorageClass>)> {
+        let mut types = vec![];
+        let mut storage_classes = vec![];
+
+        for specifier in specifier_list {
+            if specifier == &Token::Int || specifier == &Token::Void {
+                types.push(specifier.clone());
+            } else {
+                storage_classes.push(specifier.clone());
+            } 
+        }
+
+        if types.len() != 1 {
+            bail!("expected one type specifier, got: {:?} in specifier_list: {:?}, self.previous: {:?}, self.current: {:?}", types, specifier_list, self.previous, self.current);
+        }
+
+        if storage_classes.len() > 1 {
+            bail!("expected at most one storage class specifier, got: {:?}", storage_classes);
+        }
+
+        let _type = Token::Int;
+
+        let storage_class;
+        if storage_classes.len() == 1 {
+            storage_class = match storage_classes[0] {
+                Token::Static => Some(StorageClass::Static),
+                Token::Extern => Some(StorageClass::Extern),
+                _ => unreachable!(),
+            };
+        } else {
+            storage_class = None;
+        }
+
+        Ok((_type, storage_class))
     }
 
     fn parse_parameters(&mut self) -> Result<Vec<String>> {
@@ -155,13 +205,14 @@ impl Parser {
         Ok(params)
     }
 
-    fn parse_variable_declaration(&mut self, name: &str) -> Result<BlockItem> {
+    fn parse_variable_declaration(&mut self, name: &str, storage_class: Option<StorageClass>) -> Result<BlockItem> {
         let init = Some(self.parse_expression()?);
         self.consume(&Token::Semicolon)?;
         Ok(BlockItem::Declaration(Declaration::Variable(
             VariableDeclaration {
                 name: name.to_owned(),
                 init,
+                storage_class
             },
         )))
     }
@@ -211,18 +262,12 @@ impl Parser {
     }
 
     fn parse_do_while_statement(&mut self) -> Result<BlockItem> {
-        println!("here");
         let body = self.parse_statement()?;
         self.consume(&Token::While)?;
-        println!("here2");
         self.consume(&Token::LParen)?;
-        println!("here3");
         let condition = self.parse_expression()?;
-        println!("here4");
         self.consume(&Token::RParen)?;
-        println!("here5");
         self.consume(&Token::Semicolon)?;
-        println!("here6");
         Ok(BlockItem::Statement(Statement::DoWhile(DoWhileStatement {
             condition,
             body: body.into(),
@@ -254,8 +299,12 @@ impl Parser {
 
         let init = if self.is_next(&[Token::Semicolon]) {
             ForInit::Expression(None)
-        } else if self.is_next(&[Token::Int]) {
-            let decl = self.parse_declaration()?;
+        } else if self.is_next(&[Token::Int, Token::Static, Token::Extern]) {
+            let mut specifier_list = vec![];
+            specifier_list.push(self.previous.clone().unwrap());
+            specifier_list.extend(self.consume_while(&Token::Identifier("".to_owned()))?);
+            let (_type, _storage_class) = self.parse_type_and_storage_specifiers(&specifier_list)?;
+            let decl = self.parse_declaration(&specifier_list)?;
             ForInit::Declaration(match decl {
                 BlockItem::Declaration(Declaration::Variable(var)) => var,
                 _ => unreachable!(),
@@ -559,6 +608,7 @@ pub enum Declaration {
 pub struct VariableDeclaration {
     pub name: String,
     pub init: Option<Expression>,
+    pub storage_class: Option<StorageClass>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -587,6 +637,13 @@ pub struct FunctionDeclaration {
     pub params: Vec<String>,
     pub body: Box<Option<BlockItem>>,
     pub is_global: bool,
+    pub storage_class: Option<StorageClass>,
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum StorageClass {
+    Static,
+    Extern,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -56,6 +56,7 @@ impl Resolve for VariableDeclaration {
         Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration {
             name: unique_name,
             init: self.init.clone(),
+            storage_class: self.storage_class,
         })))
 
     }
@@ -120,6 +121,7 @@ impl Resolve for FunctionDeclaration {
             params: new_params,
             body: new_body.into(),
             is_global: self.is_global,
+            storage_class: self.storage_class,
         })))
 
     }
