@@ -11,7 +11,7 @@ use ucc::lexer::{Lexer, Token};
 use ucc::loop_label::Label;
 use ucc::parser::Parser;
 use ucc::resolver::Resolve;
-use ucc::typechecker::typecheck_block;
+use ucc::typechecker::Typecheck;
 
 fn main() {
     let opts = Opt::from_args();
@@ -55,7 +55,8 @@ fn run(opts: &Opt) -> Result<()> {
     let validated_ast = ast.resolve(&mut variable_map)?;
 
     let labeled_ast = validated_ast.label(String::new())?;
-    typecheck_block(&labeled_ast)?;
+    
+    labeled_ast.typecheck()?;
 
     if opts.validate {
         println!("{:?}", labeled_ast);
