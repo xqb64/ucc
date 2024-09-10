@@ -552,22 +552,42 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<Expression> {
-        if self.is_next(&[Token::Hyphen, Token::Tilde, Token::Bang]) {
+        if self.is_next(&[Token::Hyphen, Token::Tilde, Token::Bang, Token::LParen]) {
             let op = self.previous.clone().unwrap();
-            let expr = self.unary()?;
-            return Ok(Expression::Unary(UnaryExpression {
-                expr: expr.into(),
-                kind: match op {
-                    Token::Hyphen => UnaryExpressionKind::Negate,
-                    Token::Tilde => UnaryExpressionKind::Complement,
-                    Token::Bang => UnaryExpressionKind::Not,
-                    _ => unreachable!(),
-                },
-                _type: Type::Dummy,
-            }));
+    
+            match op {
+                Token::LParen => {
+                    let specifier_list = self.consume_while(&Token::RParen)?;
+                    self.consume(&Token::RParen)?;
+                    let expr = self.unary()?;
+                    let spam = Ok(Expression::Cast(CastExpression {
+                        target_type: self.parse_type(&specifier_list)?,
+                        expr: expr.into(),
+                        _type: Type::Dummy,
+                    }));
+                    println!("returning spam: {:?}", spam);
+
+                    return spam;
+                }
+                _ => {
+                    // Handle unary operators
+                    let expr = self.unary()?;
+                    return Ok(Expression::Unary(UnaryExpression {
+                        expr: expr.into(),
+                        kind: match op {
+                            Token::Hyphen => UnaryExpressionKind::Negate,
+                            Token::Tilde => UnaryExpressionKind::Complement,
+                            Token::Bang => UnaryExpressionKind::Not,
+                            _ => unreachable!(),
+                        },
+                        _type: Type::Dummy,
+                    }));
+                }
+            }
         }
         self.call()
     }
+    
 
     fn call(&mut self) -> Result<Expression> {
         let mut expr = self.primary()?;
@@ -605,12 +625,6 @@ impl Parser {
                 _ => unreachable!(),
             }
         } else if self.is_next(&[Token::LParen]) {
-            if self.is_next(&[Token::Int, Token::Void, Token::Long]) {
-                let mut specifier_list = vec![];
-                specifier_list.push(self.previous.clone().unwrap());
-                specifier_list.extend(self.consume_while(&&Token::RParen)?);
-                return self.parse_cast_expression(&specifier_list);
-            }
             self.parse_grouping()
         } else if self.is_next(&[Token::Identifier("".to_owned())]) {
             match self.previous.as_ref().unwrap() {
@@ -638,17 +652,6 @@ impl Parser {
         let expr = self.parse_expression();
         self.consume(&Token::RParen)?;
         expr
-    }
-
-    fn parse_cast_expression(&mut self, specifier_list: &[Token]) -> Result<Expression> {
-        let target_type = self.parse_type(specifier_list)?;
-        self.consume(&Token::RParen)?;
-        let expr = self.parse_expression()?;
-        Ok(Expression::Cast(CastExpression {
-            target_type,
-            expr: expr.into(),
-            _type: Type::Dummy,
-        }))
     }
 }
 
