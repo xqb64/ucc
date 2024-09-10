@@ -130,8 +130,6 @@ impl Parser {
     ) -> Result<BlockItem> {
         let params = self.parse_parameters()?;
 
-        println!("params: {:?}", params);
-
         let body = if self.check(&Token::Semicolon) {
             self.consume(&Token::Semicolon)?;
             None

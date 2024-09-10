@@ -674,7 +674,7 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                 InitialValue::Initial(konst) => {
                     tacky_defs.push(IRNode::StaticVariable(IRStaticVariable {
                         name: name.clone(),
-                        value: konst,
+                        value: todo!(),
                         global,
                     }))
                 }
