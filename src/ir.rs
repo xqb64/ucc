@@ -88,7 +88,7 @@ pub enum BinaryOp {
 
 fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
     match e {
-        Expression::Constant(konst) => IRValue::Constant(konst),
+        Expression::Constant(konst) => todo!(),
         Expression::Unary(UnaryExpression { kind, expr }) => {
             let src = emit_tacky(*expr, instructions);
             let dst_name = format!("var.{}", make_temporary());

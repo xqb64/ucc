@@ -1,4 +1,4 @@
-use crate::lexer::Token;
+use crate::lexer::{Const, Token};
 use anyhow::{bail, Result};
 use std::collections::VecDeque;
 
@@ -573,9 +573,9 @@ impl Parser {
     }
 
     fn primary(&mut self) -> Result<Expression> {
-        if self.is_next(&[Token::Constant(0)]) {
+        if self.is_next(&[Token::Constant(Const::Int(0)), Token::Constant(Const::Long(0))]) {
             match self.previous.as_ref().unwrap() {
-                Token::Constant(n) => self.parse_number(*n),
+                Token::Constant(n) => self.parse_number(n),
                 _ => unreachable!(),
             }
         } else if self.is_next(&[Token::LParen]) {
@@ -594,8 +594,8 @@ impl Parser {
         }
     }
 
-    fn parse_number(&self, n: i32) -> Result<Expression> {
-        Ok(Expression::Constant(n))
+    fn parse_number(&self, n: &Const) -> Result<Expression> {
+        Ok(Expression::Constant(*n))
     }
 
     fn parse_variable(&self, var: &str) -> Result<Expression> {
@@ -727,7 +727,7 @@ pub struct ContinueStatement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
-    Constant(i32),
+    Constant(Const),
     Variable(String),
     Unary(UnaryExpression),
     Binary(BinaryExpression),

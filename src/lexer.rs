@@ -31,10 +31,10 @@ impl Iterator for Lexer {
         let punctuation_re = regex::Regex::new(r"^[-+*/%~(){};!<>=?:,]").unwrap();
         let punctuation_double_re = regex::Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\|").unwrap();
         let keyword_re = regex::Regex::new(
-            r"^int\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b|^static\b|^extern\b",
+            r"^int\b|^long\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b|^static\b|^extern\b",
         )
         .unwrap();
-        let constant_re = regex::Regex::new(r"^[0-9]+\b").unwrap();
+        let constant_re = regex::Regex::new(r"^[0-9]+[lL]?\b").unwrap();
         let identifier_re = regex::Regex::new(r"^[a-zA-Z_]\w*\b").unwrap();
 
         let token = if let Some(m) = punctuation_double_re.find(src) {
@@ -76,6 +76,7 @@ impl Iterator for Lexer {
             self.pos += m.as_str().len();
             match m.as_str() {
                 "int" => Token::Int,
+                "long" => Token::Long,
                 "void" => Token::Void,
                 "return" => Token::Return,
                 "if" => Token::If,
@@ -91,7 +92,17 @@ impl Iterator for Lexer {
             }
         } else if let Some(m) = constant_re.find(src) {
             self.pos += m.as_str().len();
-            Token::Constant(m.as_str().parse().unwrap())
+            
+            if m.as_str().ends_with('l') || m.as_str().ends_with('L') {
+                Token::Constant(Const::Long(m.as_str().trim_end_matches(|c| c == 'l' || c == 'L').parse().unwrap()))
+            } else {
+                let as_i64 = m.as_str().parse::<i64>().unwrap();
+                let konst = i32::try_from(as_i64)
+                    .map(Const::Int)
+                    .unwrap_or_else(|_| Const::Long(as_i64));
+
+                Token::Constant(konst)
+            }
         } else if let Some(m) = identifier_re.find(src) {
             self.pos += m.as_str().len();
             Token::Identifier(m.as_str().to_string())
@@ -109,6 +120,7 @@ impl Iterator for Lexer {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     Int,
+    Long,
     Void,
     Return,
     If,
@@ -146,12 +158,12 @@ pub enum Token {
     Comma,
     Semicolon,
     Identifier(String),
-    Constant(i32),
+    Constant(Const),
     Error,
 }
 
 impl Token {
-    pub fn as_const(&self) -> i32 {
+    pub fn as_const(&self) -> Const {
         match self {
             Token::Constant(n) => *n,
             _ => unreachable!(),
@@ -164,4 +176,10 @@ impl Token {
             _ => unreachable!(),
         }
     }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum Const {
+    Int(i32),
+    Long(i64),
 }

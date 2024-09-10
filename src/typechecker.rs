@@ -52,7 +52,7 @@ impl Typecheck for VariableDeclaration {
                 let mut initial_value;
 
                 if let Some(Expression::Constant(konst)) = self.init {
-                    initial_value = InitialValue::Initial(konst);
+                    initial_value = todo!();
                 } else if self.init.is_none() {
                     if self
                         .storage_class
@@ -176,7 +176,7 @@ impl Typecheck for VariableDeclaration {
                     .is_some_and(|sc| sc == StorageClass::Static)
                 {
                     if let Some(Expression::Constant(konst)) = self.init {
-                        initial_value = InitialValue::Initial(konst);
+                        initial_value = todo!();
                     } else if self.init.is_none() {
                         initial_value = InitialValue::Initial(0);
                     } else {
