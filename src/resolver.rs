@@ -51,6 +51,7 @@ impl Resolve for VariableDeclaration {
                         init: self.init.clone(),
                         storage_class: self.storage_class,
                         is_global: self.is_global,
+                        _type: self._type.clone(),
                     },
                 )))
             }
@@ -86,6 +87,7 @@ impl Resolve for VariableDeclaration {
                             init: self.init.clone(),
                             storage_class: self.storage_class,
                             is_global: self.is_global,
+                            _type: self._type.clone(),
                         },
                     )))
                 } else {
@@ -110,6 +112,7 @@ impl Resolve for VariableDeclaration {
                             init: self.init.clone(),
                             storage_class: self.storage_class,
                             is_global: self.is_global,
+                            _type: self._type.clone(),
                         },
                     )))
                 }
@@ -184,6 +187,7 @@ impl Resolve for FunctionDeclaration {
                 body: new_body.into(),
                 is_global: self.is_global,
                 storage_class: self.storage_class,
+                _type: self._type.clone(),
             },
         )))
     }
@@ -422,6 +426,7 @@ fn resolve_exp(
                 bail!("undeclared function");
             }
         }
+        _ => todo!(),
     }
 }
 

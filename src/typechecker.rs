@@ -2,16 +2,11 @@ use crate::parser::{
     AssignExpression, BinaryExpression, BlockItem, BlockStatement, CallExpression,
     ConditionalExpression, Declaration, DoWhileStatement, Expression, ExpressionStatement, ForInit,
     ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement,
-    StorageClass, UnaryExpression, VariableDeclaration, WhileStatement,
+    StorageClass, UnaryExpression, VariableDeclaration, WhileStatement, Type,
 };
 use anyhow::{bail, Ok, Result};
 use std::{collections::HashMap, sync::Mutex};
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Type {
-    Int,
-    Func(usize),
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Symbol {
@@ -217,7 +212,7 @@ impl Typecheck for VariableDeclaration {
 
 impl Typecheck for FunctionDeclaration {
     fn typecheck(&self) -> Result<()> {
-        let fun_type = Type::Func(self.params.len());
+        let fun_type = todo!();
         let has_body = self.body.is_some();
 
         let mut already_defined = false;
@@ -397,12 +392,12 @@ impl Typecheck for Expression {
                     bail!("{} is not a function", name);
                 }
 
-                if let Type::Func(param_count) = f_type {
-                    if param_count != args.len() {
+                if let Type::Func { ret, params } = f_type {
+                    if params.len() != args.len() {
                         bail!(
                             "Function {} expects {} arguments, got {}",
                             name,
-                            param_count,
+                            params.len(),
                             args.len()
                         );
                     }
@@ -452,6 +447,7 @@ impl Typecheck for Expression {
                 Ok(())
             }
             Expression::Constant(_) => Ok(()),
+            _ => todo!(),
         }
     }
 }

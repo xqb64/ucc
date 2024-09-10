@@ -174,6 +174,7 @@ impl Label for BlockItem {
                     body,
                     is_global,
                     storage_class,
+                    _type,
                 }) => {
                     if body.is_some() {
                         let labeled_body = body.clone().unwrap().label(current_label)?;
@@ -184,6 +185,7 @@ impl Label for BlockItem {
                                 body: Some(labeled_body).into(),
                                 is_global: *is_global,
                                 storage_class: *storage_class,
+                                _type: _type.clone(),
                             },
                         )))
                     } else {
@@ -194,6 +196,7 @@ impl Label for BlockItem {
                                 body: None.into(),
                                 is_global: *is_global,
                                 storage_class: *storage_class,
+                                _type: _type.clone(),
                             },
                         )))
                     }

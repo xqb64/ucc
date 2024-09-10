@@ -61,7 +61,7 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<BlockItem> {
-        if self.is_next(&[Token::Int, Token::Static, Token::Extern]) {
+        if self.is_next(&[Token::Int, Token::Long, Token::Static, Token::Extern]) {
             let mut specifier_list = vec![];
             specifier_list.push(self.previous.clone().unwrap());
             specifier_list.extend(self.consume_while(&Token::Identifier("".to_owned()))?);
@@ -98,15 +98,15 @@ impl Parser {
     }
 
     fn parse_declaration(&mut self, specifier_list: &[Token]) -> Result<BlockItem> {
-        let (_ty, storage_class) = self.parse_type_and_storage_specifiers(specifier_list)?;
+        let (_type, storage_class) = self.parse_type_and_storage_specifiers(specifier_list)?;
         let name = self
             .consume(&Token::Identifier("".to_owned()))?
             .unwrap()
             .as_string();
         if self.is_next(&[Token::LParen]) {
-            self.parse_function_declaration(&name, storage_class)
+            self.parse_function_declaration(&name, _type, storage_class)
         } else if self.is_next(&[Token::Equal]) {
-            self.parse_variable_declaration(&name, storage_class)
+            self.parse_variable_declaration(&name, _type, storage_class)
         } else if self.is_next(&[Token::Semicolon]) {
             Ok(BlockItem::Declaration(Declaration::Variable(
                 VariableDeclaration {
@@ -114,6 +114,7 @@ impl Parser {
                     init: None,
                     storage_class,
                     is_global: self.depth == 0,
+                    _type,
                 },
             )))
         } else {
@@ -124,9 +125,12 @@ impl Parser {
     fn parse_function_declaration(
         &mut self,
         name: &str,
+        _type: Type,
         storage_class: Option<StorageClass>,
     ) -> Result<BlockItem> {
         let params = self.parse_parameters()?;
+
+        println!("params: {:?}", params);
 
         let body = if self.check(&Token::Semicolon) {
             self.consume(&Token::Semicolon)?;
@@ -143,32 +147,44 @@ impl Parser {
         Ok(BlockItem::Declaration(Declaration::Function(
             FunctionDeclaration {
                 name: name.to_owned(),
-                params,
+                params: params.iter().map(|(_, name)| name.to_owned()).collect(),
                 body: body.into(),
                 is_global: self.depth == 0,
                 storage_class,
+                _type: Type::Func {
+                    params: params.iter().map(|(t, _)| t.clone()).collect(),
+                    ret: Box::new(_type),
+                },
             },
         )))
+    }
+
+    fn parse_type(&mut self, specifier_list: &[Token]) -> Result<Type> {
+        if specifier_list == [Token::Int] {
+            Ok(Type::Int)
+        } else if specifier_list == [Token::Int, Token::Long] || specifier_list == [Token::Long, Token::Int] || specifier_list == [Token::Long] {
+            Ok(Type::Long)
+        } else {
+            bail!("invalid type specifier: {:?}", specifier_list);
+        }
     }
 
     fn parse_type_and_storage_specifiers(
         &mut self,
         specifier_list: &[Token],
-    ) -> Result<(Token, Option<StorageClass>)> {
+    ) -> Result<(Type, Option<StorageClass>)> {
         let mut types = vec![];
         let mut storage_classes = vec![];
 
         for specifier in specifier_list {
-            if specifier == &Token::Int || specifier == &Token::Void {
+            if specifier == &Token::Int || specifier == &Token::Long || specifier == &Token::Void {
                 types.push(specifier.clone());
             } else {
                 storage_classes.push(specifier.clone());
             }
         }
 
-        if types.len() != 1 {
-            bail!("expected one type specifier, got: {:?} in specifier_list: {:?}, self.previous: {:?}, self.current: {:?}", types, specifier_list, self.previous, self.current);
-        }
+        let _type = self.parse_type(&types)?;
 
         if storage_classes.len() > 1 {
             bail!(
@@ -176,8 +192,6 @@ impl Parser {
                 storage_classes
             );
         }
-
-        let _type = Token::Int;
 
         let storage_class = if storage_classes.len() == 1 {
             match storage_classes[0] {
@@ -192,7 +206,7 @@ impl Parser {
         Ok((_type, storage_class))
     }
 
-    fn parse_parameters(&mut self) -> Result<Vec<String>> {
+    fn parse_parameters(&mut self) -> Result<Vec<(Type, String)>> {
         if self.is_next(&[Token::Void]) {
             self.consume(&Token::RParen)?;
             return Ok(vec![]);
@@ -203,16 +217,18 @@ impl Parser {
         let mut params = vec![];
 
         loop {
-            self.consume(&Token::Int)?;
+            let specifier_list = self.consume_while(&Token::Identifier("".to_owned()))?;
+            
+            let _type = self.parse_type(&specifier_list)?;
             let param = self
                 .consume(&Token::Identifier("".to_owned()))?
                 .unwrap()
                 .as_string();
-            params.push(param);
+            params.push((_type, param));
             if self.is_next(&[Token::RParen]) {
                 break;
             }
-            self.consume(&Token::Comma).unwrap();
+            self.consume(&Token::Comma)?;
         }
 
         Ok(params)
@@ -221,6 +237,7 @@ impl Parser {
     fn parse_variable_declaration(
         &mut self,
         name: &str,
+        _type: Type,
         storage_class: Option<StorageClass>,
     ) -> Result<BlockItem> {
         let init = Some(self.parse_expression()?);
@@ -231,6 +248,7 @@ impl Parser {
                 init,
                 storage_class,
                 is_global: self.depth == 0,
+                _type,
             },
         )))
     }
@@ -315,7 +333,7 @@ impl Parser {
 
         let init = if self.is_next(&[Token::Semicolon]) {
             ForInit::Expression(None)
-        } else if self.is_next(&[Token::Int, Token::Static, Token::Extern]) {
+        } else if self.is_next(&[Token::Int, Token::Long, Token::Static, Token::Extern]) {
             let mut specifier_list = vec![];
             specifier_list.push(self.previous.clone().unwrap());
             specifier_list.extend(self.consume_while(&Token::Identifier("".to_owned()))?);
@@ -579,6 +597,12 @@ impl Parser {
                 _ => unreachable!(),
             }
         } else if self.is_next(&[Token::LParen]) {
+            if self.is_next(&[Token::Int, Token::Void, Token::Long]) {
+                let mut specifier_list = vec![];
+                specifier_list.push(self.previous.clone().unwrap());
+                specifier_list.extend(self.consume_while(&&Token::RParen)?);
+                return self.parse_cast_expression(&specifier_list);
+            }
             self.parse_grouping()
         } else if self.is_next(&[Token::Identifier("".to_owned())]) {
             match self.previous.as_ref().unwrap() {
@@ -607,6 +631,16 @@ impl Parser {
         self.consume(&Token::RParen)?;
         expr
     }
+
+    fn parse_cast_expression(&mut self, specifier_list: &[Token]) -> Result<Expression> {
+        let target_type = self.parse_type(specifier_list)?;
+        self.consume(&Token::RParen)?;
+        let expr = self.parse_expression()?;
+        Ok(Expression::Cast(CastExpression {
+            target_type,
+            expr: expr.into(),
+        }))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -624,9 +658,17 @@ pub enum Declaration {
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariableDeclaration {
     pub name: String,
+    pub _type: Type,
     pub init: Option<Expression>,
     pub storage_class: Option<StorageClass>,
     pub is_global: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Type {
+    Int,
+    Long,
+    Func { params: Vec<Type>, ret: Box<Type> },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -652,6 +694,7 @@ pub struct ProgramStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionDeclaration {
     pub name: String,
+    pub _type: Type,
     pub params: Vec<String>,
     pub body: Box<Option<BlockItem>>,
     pub is_global: bool,
@@ -734,6 +777,7 @@ pub enum Expression {
     Assign(AssignExpression),
     Conditional(ConditionalExpression),
     Call(CallExpression),
+    Cast(CastExpression),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -791,4 +835,10 @@ pub struct ConditionalExpression {
 pub struct CallExpression {
     pub name: String,
     pub args: Vec<Expression>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CastExpression {
+    pub target_type: Type,
+    pub expr: Box<Expression>,
 }
