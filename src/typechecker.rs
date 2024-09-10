@@ -91,39 +91,35 @@ impl Typecheck for VariableDeclaration {
                             } => global,
                             _ => unreachable!(),
                         };
-                    } else {
-                        if is_global
-                            != match old_decl.attrs {
-                                IdentifierAttrs::StaticAttr {
-                                    initial_value: _,
-                                    global,
-                                } => global,
-                                _ => unreachable!(),
-                            }
-                        {
-                            bail!("Conflicting variable linkage {:?}", self);
+                    } else if is_global
+                        != match old_decl.attrs {
+                            IdentifierAttrs::StaticAttr {
+                                initial_value: _,
+                                global,
+                            } => global,
+                            _ => unreachable!(),
                         }
+                    {
+                        bail!("Conflicting variable linkage {:?}", self);
                     }
 
-                    match old_decl.attrs {
-                        IdentifierAttrs::StaticAttr {
-                            initial_value: old_init,
-                            global: _,
-                        } => {
-                            if let InitialValue::Initial(_) = old_init {
-                                if let InitialValue::Initial(_) = initial_value {
-                                    bail!("Conflicting file-scope variable definitions");
-                                } else {
-                                    initial_value = old_init;
-                                }
-                            } else if let InitialValue::Tentative = old_init {
-                                if let InitialValue::Tentative = initial_value {
-                                    initial_value = InitialValue::Tentative;
-                                }
+                    if let IdentifierAttrs::StaticAttr {
+                        initial_value: old_init,
+                        global: _,
+                    } = old_decl.attrs
+                    {
+                        if let InitialValue::Initial(_) = old_init {
+                            if let InitialValue::Initial(_) = initial_value {
+                                bail!("Conflicting file-scope variable definitions");
+                            } else {
+                                initial_value = old_init;
+                            }
+                        } else if let InitialValue::Tentative = old_init {
+                            if let InitialValue::Tentative = initial_value {
+                                initial_value = InitialValue::Tentative;
                             }
                         }
-                        _ => {}
-                    };
+                    }
                 }
 
                 let symbol = Symbol {
@@ -358,13 +354,10 @@ impl Typecheck for Statement {
                 body,
                 label: _,
             }) => {
-                match init {
-                    ForInit::Declaration(decl) => {
-                        if decl.storage_class.is_some() {
-                            bail!("Storage class specifier in for loop initializer");
-                        }
+                if let ForInit::Declaration(decl) = init {
+                    if decl.storage_class.is_some() {
+                        bail!("Storage class specifier in for loop initializer");
                     }
-                    _ => {}
                 }
 
                 if let ForInit::Expression(Some(for_init_expr)) = init {

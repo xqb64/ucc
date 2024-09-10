@@ -223,7 +223,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                     src: result.clone(),
                     dst: IRValue::Var(var.clone()),
                 });
-                return IRValue::Var(var);
+                IRValue::Var(var)
             } else {
                 unimplemented!()
             }
@@ -359,7 +359,7 @@ impl Irfy for ProgramStatement {
                 },
                 BlockItem::Statement(stmt) => {
                     if let Some(ir_stmt) = stmt.irfy() {
-                        instructions.push(ir_stmt.into());
+                        instructions.push(ir_stmt);
                     }
                 }
             }
@@ -459,7 +459,7 @@ impl Irfy for DoWhileStatement {
     fn irfy(&self) -> Option<IRNode> {
         let mut instructions = vec![];
 
-        let start_label = format!("{}", self.label);
+        let start_label = self.label.clone();
         let continue_label = format!("{}.continue", self.label);
         let break_label = format!("{}.break", self.label);
 
@@ -663,11 +663,12 @@ impl From<IRNode> for Vec<IRInstruction> {
 pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
     let mut tacky_defs = vec![];
     for (name, entry) in SYMBOL_TABLE.lock().unwrap().iter() {
-        match entry.attrs {
-            IdentifierAttrs::StaticAttr {
-                initial_value,
-                global,
-            } => match initial_value {
+        if let IdentifierAttrs::StaticAttr {
+            initial_value,
+            global,
+        } = entry.attrs
+        {
+            match initial_value {
                 InitialValue::Initial(konst) => {
                     tacky_defs.push(IRNode::StaticVariable(IRStaticVariable {
                         name: name.clone(),
@@ -683,8 +684,7 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                     }))
                 }
                 _ => {}
-            },
-            _ => {}
+            }
         }
     }
     tacky_defs

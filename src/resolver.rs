@@ -57,14 +57,13 @@ impl Resolve for VariableDeclaration {
             false => {
                 if variable_map.contains_key(&self.name) {
                     let prev_entry = variable_map.get(&self.name).unwrap();
-                    if prev_entry.from_current_scope {
-                        if !(prev_entry.has_linkage
+                    if prev_entry.from_current_scope
+                        && !(prev_entry.has_linkage
                             && self
                                 .storage_class
                                 .is_some_and(|sc| sc == StorageClass::Extern))
-                        {
-                            bail!("conflicting local declarations: {}", self.name);
-                        }
+                    {
+                        bail!("conflicting local declarations: {}", self.name);
                     }
                 }
 
@@ -81,14 +80,14 @@ impl Resolve for VariableDeclaration {
                         },
                     );
 
-                    return Ok(BlockItem::Declaration(Declaration::Variable(
+                    Ok(BlockItem::Declaration(Declaration::Variable(
                         VariableDeclaration {
                             name: self.name.clone(),
                             init: self.init.clone(),
                             storage_class: self.storage_class,
                             is_global: self.is_global,
                         },
-                    )));
+                    )))
                 } else {
                     let unique_name = format!("var.{}.{}", self.name, make_temporary());
 
@@ -136,23 +135,15 @@ impl Resolve for FunctionDeclaration {
         // FIXME: stupid hack to prevent redeclaration of function parameters
         for param in &self.params {
             if self.body.is_some() {
-                match self.body.clone().unwrap() {
-                    BlockItem::Statement(Statement::Compound(block)) => {
-                        for stmt in &block.stmts {
-                            match stmt {
-                                BlockItem::Declaration(decl) => match decl {
-                                    Declaration::Variable(var_decl) => {
-                                        if var_decl.name == *param {
-                                            bail!("parameter name cannot be the same as a variable name in the function body");
-                                        }
-                                    }
-                                    _ => {}
-                                },
-                                _ => {}
+                if let BlockItem::Statement(Statement::Compound(block)) = self.body.clone().unwrap()
+                {
+                    for stmt in &block.stmts {
+                        if let BlockItem::Declaration(Declaration::Variable(var_decl)) = stmt {
+                            if var_decl.name == *param {
+                                bail!("parameter name cannot be the same as a variable name in the function body");
                             }
                         }
                     }
-                    _ => {}
                 }
             }
         }
@@ -177,7 +168,7 @@ impl Resolve for FunctionDeclaration {
         let mut new_params = vec![];
 
         for param in &self.params {
-            new_params.push(resolve_param(&param, &mut inner_map)?);
+            new_params.push(resolve_param(param, &mut inner_map)?);
         }
 
         let mut new_body = None;
@@ -355,7 +346,7 @@ fn resolve_exp(
     match exp.to_owned() {
         Expression::Assign(AssignExpression { op, ref lhs, rhs }) => {
             if let Expression::Variable(_) = &**lhs {
-                let resolved_lhs = resolve_exp(&lhs, variable_map)?;
+                let resolved_lhs = resolve_exp(lhs, variable_map)?;
                 let resolved_rhs = resolve_exp(&rhs, variable_map)?;
 
                 Ok(Expression::Assign(AssignExpression {
@@ -375,7 +366,7 @@ fn resolve_exp(
         }
         Expression::Constant(konst) => Ok(Expression::Constant(konst)),
         Expression::Unary(UnaryExpression { kind, expr }) => {
-            let resolved_expr = resolve_exp(&*expr, variable_map)?;
+            let resolved_expr = resolve_exp(&expr, variable_map)?;
 
             Ok(Expression::Unary(UnaryExpression {
                 kind,
@@ -383,8 +374,8 @@ fn resolve_exp(
             }))
         }
         Expression::Binary(BinaryExpression { kind, lhs, rhs }) => {
-            let resolved_lhs = resolve_exp(&*lhs, variable_map)?;
-            let resolved_rhs = resolve_exp(&*rhs, variable_map)?;
+            let resolved_lhs = resolve_exp(&lhs, variable_map)?;
+            let resolved_rhs = resolve_exp(&rhs, variable_map)?;
 
             Ok(Expression::Binary(BinaryExpression {
                 kind,
@@ -397,19 +388,16 @@ fn resolve_exp(
             then_expr,
             else_expr,
         }) => {
-            let resolved_condition = resolve_exp(&*condition, variable_map)?;
-            let resolved_then_expr = resolve_exp(&*then_expr, variable_map)?;
-            let resolved_else_expr = resolve_exp(&*else_expr, variable_map)?;
+            let resolved_condition = resolve_exp(&condition, variable_map)?;
+            let resolved_then_expr = resolve_exp(&then_expr, variable_map)?;
+            let resolved_else_expr = resolve_exp(&else_expr, variable_map)?;
 
-            match (
+            if let (Expression::Binary(_), Expression::Assign(_), Expression::Assign(_)) = (
                 &resolved_condition,
                 &resolved_then_expr,
                 &resolved_else_expr,
             ) {
-                (Expression::Binary(_), Expression::Assign(_), Expression::Assign(_)) => {
-                    bail!("invalid ternary assignment")
-                }
-                _ => {}
+                bail!("invalid ternary assignment")
             }
 
             Ok(Expression::Conditional(ConditionalExpression {
@@ -479,7 +467,7 @@ fn resolve_optional_expr(
     variable_map: &mut HashMap<String, Variable>,
 ) -> Result<Option<Expression>> {
     if expr.is_some() {
-        let resolved_expr = resolve_exp(&expr.as_ref().unwrap(), variable_map)?;
+        let resolved_expr = resolve_exp(expr.as_ref().unwrap(), variable_map)?;
         Ok(Some(resolved_expr))
     } else {
         Ok(None)

@@ -179,16 +179,15 @@ impl Parser {
 
         let _type = Token::Int;
 
-        let storage_class;
-        if storage_classes.len() == 1 {
-            storage_class = match storage_classes[0] {
+        let storage_class = if storage_classes.len() == 1 {
+            match storage_classes[0] {
                 Token::Static => Some(StorageClass::Static),
                 Token::Extern => Some(StorageClass::Extern),
                 _ => unreachable!(),
-            };
+            }
         } else {
-            storage_class = None;
-        }
+            None
+        };
 
         Ok((_type, storage_class))
     }
@@ -300,10 +299,8 @@ impl Parser {
         self.consume(&Token::RParen)?;
         let body = self.parse_statement()?;
 
-        // FIXME: dirty test-passing hack
-        match body {
-            BlockItem::Declaration(_) => bail!("variable declaration not allowed in while body"),
-            _ => {}
+        if let BlockItem::Declaration(_) = body {
+            bail!("variable declaration not allowed in while body");
         }
 
         Ok(BlockItem::Statement(Statement::While(WhileStatement {

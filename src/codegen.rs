@@ -143,12 +143,12 @@ impl Codegen for IRProgram {
     fn codegen(&self) -> AsmNode {
         let mut functions = vec![];
         for func in &self.functions {
-            functions.push(func.codegen().into());
+            functions.push(func.codegen());
         }
 
         let mut static_vars = vec![];
         for static_var in &self.static_vars {
-            static_vars.push(static_var.codegen().into());
+            static_vars.push(static_var.codegen());
         }
         AsmNode::Program(AsmProgram {
             functions,
@@ -173,7 +173,7 @@ impl Codegen for IRFunction {
 
         instructions.push(AsmInstruction::AllocateStack(0));
 
-        let registers = vec![
+        let registers = [
             AsmRegister::DI,
             AsmRegister::SI,
             AsmRegister::DX,
@@ -182,14 +182,11 @@ impl Codegen for IRFunction {
             AsmRegister::R9,
         ];
 
-        let mut reg_idx = 0;
-
-        for arg in self.params.iter().take(6) {
+        for (reg_idx, arg) in self.params.iter().take(6).enumerate() {
             instructions.push(AsmInstruction::Mov {
                 src: AsmOperand::Register(registers[reg_idx]),
                 dst: AsmOperand::Pseudo(arg.to_owned()),
             });
-            reg_idx += 1;
         }
 
         let mut stack_offset = 16;
@@ -387,12 +384,7 @@ impl Codegen for IRInstruction {
                 let register_args = args.iter().take(6).collect::<Vec<_>>();
                 let stack_args = args.iter().skip(6).collect::<Vec<_>>();
 
-                let stack_padding;
-                if stack_args.len() % 2 != 0 {
-                    stack_padding = 8;
-                } else {
-                    stack_padding = 0;
-                }
+                let stack_padding = if stack_args.len() % 2 != 0 { 8 } else { 0 };
 
                 let mut instructions = vec![];
 
@@ -400,15 +392,13 @@ impl Codegen for IRInstruction {
                     instructions.push(AsmInstruction::AllocateStack(stack_padding));
                 }
 
-                let mut reg_index = 0;
-                for reg_arg in register_args {
+                for (reg_index, reg_arg) in register_args.into_iter().enumerate() {
                     let reg = arg_registers[reg_index];
                     let asm_arg = reg_arg.codegen().into();
                     instructions.push(AsmInstruction::Mov {
                         src: asm_arg,
                         dst: AsmOperand::Register(reg),
                     });
-                    reg_index += 1;
                 }
 
                 for stack_arg in stack_args.iter().rev() {
