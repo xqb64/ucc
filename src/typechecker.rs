@@ -50,7 +50,7 @@ impl Typecheck for VariableDeclaration {
         match self.is_global {
             true => {
                 let mut initial_value;
-    
+
                 if let Some(Expression::Constant(konst)) = self.init {
                     initial_value = InitialValue::Initial(konst);
                 } else if self.init.is_none() {
@@ -65,9 +65,9 @@ impl Typecheck for VariableDeclaration {
                 } else {
                     bail!("no constant initializer");
                 }
-    
+
                 let mut is_global = self.storage_class != Some(StorageClass::Static);
-    
+
                 if SYMBOL_TABLE.lock().unwrap().contains_key(&self.name) {
                     let old_decl = SYMBOL_TABLE
                         .lock()
@@ -75,11 +75,11 @@ impl Typecheck for VariableDeclaration {
                         .get(&self.name)
                         .cloned()
                         .unwrap();
-    
+
                     if old_decl.ty != Type::Int {
                         bail!("Function {} redeclared as variable", self.name);
                     }
-    
+
                     if self
                         .storage_class
                         .is_some_and(|sc| sc == StorageClass::Extern)
@@ -104,7 +104,7 @@ impl Typecheck for VariableDeclaration {
                             bail!("Conflicting variable linkage {:?}", self);
                         }
                     }
-    
+
                     match old_decl.attrs {
                         IdentifierAttrs::StaticAttr {
                             initial_value: old_init,
@@ -125,7 +125,7 @@ impl Typecheck for VariableDeclaration {
                         _ => {}
                     };
                 }
-    
+
                 let symbol = Symbol {
                     ty: Type::Int,
                     attrs: IdentifierAttrs::StaticAttr {
@@ -133,7 +133,7 @@ impl Typecheck for VariableDeclaration {
                         global: is_global,
                     },
                 };
-    
+
                 SYMBOL_TABLE
                     .lock()
                     .unwrap()
@@ -151,7 +151,7 @@ impl Typecheck for VariableDeclaration {
                             self.name
                         );
                     }
-    
+
                     if SYMBOL_TABLE.lock().unwrap().contains_key(&self.name) {
                         let old_decl = SYMBOL_TABLE
                             .lock()
@@ -186,7 +186,7 @@ impl Typecheck for VariableDeclaration {
                     } else {
                         bail!("no constant initializer");
                     }
-    
+
                     let symbol = Symbol {
                         ty: Type::Int,
                         attrs: IdentifierAttrs::StaticAttr {
@@ -194,7 +194,7 @@ impl Typecheck for VariableDeclaration {
                             global: false,
                         },
                     };
-    
+
                     SYMBOL_TABLE
                         .lock()
                         .unwrap()
@@ -223,11 +223,11 @@ impl Typecheck for FunctionDeclaration {
     fn typecheck(&self) -> Result<()> {
         let fun_type = Type::Func(self.params.len());
         let has_body = self.body.is_some();
-    
+
         let mut already_defined = false;
-    
+
         let mut is_global = self.storage_class != Some(StorageClass::Static);
-    
+
         if SYMBOL_TABLE.lock().unwrap().contains_key(&self.name) {
             let old_decl = SYMBOL_TABLE
                 .lock()
@@ -235,23 +235,23 @@ impl Typecheck for FunctionDeclaration {
                 .get(&self.name)
                 .cloned()
                 .unwrap();
-    
+
             if old_decl.ty != fun_type {
                 bail!(
                     "Incompatible function declarations for function {}",
                     self.name
                 );
             }
-    
+
             already_defined = match old_decl.attrs {
                 IdentifierAttrs::FuncAttr { defined, global: _ } => defined,
                 _ => unreachable!(),
             };
-    
+
             if already_defined && has_body {
                 bail!("Function {} already defined", self.name);
             }
-    
+
             match old_decl.attrs {
                 IdentifierAttrs::FuncAttr { defined: _, global } => {
                     if global
@@ -264,13 +264,13 @@ impl Typecheck for FunctionDeclaration {
                             self.name
                         );
                     }
-    
+
                     is_global = global;
                 }
                 _ => unreachable!(),
             }
         }
-    
+
         let symbol = Symbol {
             ty: fun_type,
             attrs: IdentifierAttrs::FuncAttr {
@@ -282,7 +282,7 @@ impl Typecheck for FunctionDeclaration {
             .lock()
             .unwrap()
             .insert(self.name.clone(), symbol);
-    
+
         if has_body {
             for param in &self.params {
                 let symbol = Symbol {
@@ -291,11 +291,11 @@ impl Typecheck for FunctionDeclaration {
                 };
                 SYMBOL_TABLE.lock().unwrap().insert(param.clone(), symbol);
             }
-    
+
             self.body.as_ref().clone().unwrap().typecheck()?;
         }
-    
-        Ok(())    
+
+        Ok(())
     }
 }
 
@@ -306,7 +306,7 @@ impl Typecheck for Statement {
                 for block_item in stmts {
                     block_item.typecheck()?;
                 }
-    
+
                 Ok(())
             }
             Statement::Expression(ExpressionStatement { expr }) => expr.typecheck(),
@@ -314,7 +314,7 @@ impl Typecheck for Statement {
                 for stmt in stmts {
                     stmt.typecheck()?;
                 }
-    
+
                 Ok(())
             }
             Statement::If(IfStatement {
@@ -324,11 +324,11 @@ impl Typecheck for Statement {
             }) => {
                 condition.typecheck()?;
                 then_branch.typecheck()?;
-    
+
                 if else_branch.is_some() {
                     else_branch.as_ref().clone().unwrap().typecheck()?;
                 }
-    
+
                 Ok(())
             }
             Statement::While(WhileStatement {
@@ -338,7 +338,7 @@ impl Typecheck for Statement {
             }) => {
                 condition.typecheck()?;
                 body.typecheck()?;
-    
+
                 Ok(())
             }
             Statement::DoWhile(DoWhileStatement {
@@ -348,7 +348,7 @@ impl Typecheck for Statement {
             }) => {
                 condition.typecheck()?;
                 body.typecheck()?;
-    
+
                 Ok(())
             }
             Statement::For(ForStatement {
@@ -366,31 +366,31 @@ impl Typecheck for Statement {
                     }
                     _ => {}
                 }
-    
+
                 if let ForInit::Expression(Some(for_init_expr)) = init {
                     for_init_expr.typecheck()?;
                 }
-    
+
                 if condition.is_some() {
                     condition.as_ref().unwrap().typecheck()?;
                 }
-    
+
                 if post.is_some() {
                     post.as_ref().unwrap().typecheck()?;
                 }
-    
+
                 body.typecheck()?;
-    
+
                 Ok(())
             }
             Statement::Return(ReturnStatement { expr }) => {
                 expr.typecheck()?;
-    
+
                 Ok(())
             }
             Statement::Break(_) | Statement::Continue(_) | Statement::Null => Ok(()),
         }
-        }
+    }
 }
 
 impl Typecheck for Expression {
@@ -399,11 +399,11 @@ impl Typecheck for Expression {
             Expression::Call(CallExpression { name, args }) => {
                 let f = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
                 let f_type = f.ty.clone();
-    
+
                 if f_type == Type::Int {
                     bail!("{} is not a function", name);
                 }
-    
+
                 if let Type::Func(param_count) = f_type {
                     if param_count != args.len() {
                         bail!(
@@ -414,11 +414,11 @@ impl Typecheck for Expression {
                         );
                     }
                 }
-    
+
                 for arg in args {
                     arg.typecheck()?;
                 }
-    
+
                 Ok(())
             }
             Expression::Variable(var) => {
@@ -427,19 +427,19 @@ impl Typecheck for Expression {
                         bail!("{} is not a variable", var);
                     }
                 }
-    
+
                 Ok(())
             }
             Expression::Binary(BinaryExpression { kind: _, lhs, rhs }) => {
                 lhs.typecheck()?;
                 rhs.typecheck()?;
-    
+
                 Ok(())
             }
             Expression::Assign(AssignExpression { op: _, lhs, rhs }) => {
                 lhs.typecheck()?;
                 rhs.typecheck()?;
-    
+
                 Ok(())
             }
             Expression::Conditional(ConditionalExpression {
@@ -450,20 +450,18 @@ impl Typecheck for Expression {
                 condition.typecheck()?;
                 then_expr.typecheck()?;
                 else_expr.typecheck()?;
-    
+
                 Ok(())
             }
             Expression::Unary(UnaryExpression { kind: _, expr }) => {
                 expr.typecheck()?;
-    
+
                 Ok(())
             }
             Expression::Constant(_) => Ok(()),
         }
-    
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum IdentifierAttrs {

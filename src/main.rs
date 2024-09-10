@@ -55,7 +55,7 @@ fn run(opts: &Opt) -> Result<()> {
     let validated_ast = ast.resolve(&mut variable_map)?;
 
     let labeled_ast = validated_ast.label(String::new())?;
-    
+
     labeled_ast.typecheck()?;
 
     if opts.validate {
