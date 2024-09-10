@@ -23,10 +23,7 @@ lazy_static::lazy_static! {
     pub static ref SYMBOL_TABLE: Mutex<HashMap<String, Symbol>> = Mutex::new(HashMap::new());
 }
 
-fn typecheck_variable_declaration(
-    var_decl: &VariableDeclaration,
-    
-) -> Result<()> {
+fn typecheck_variable_declaration(var_decl: &VariableDeclaration) -> Result<()> {
     match var_decl.is_global {
         true => {
             let mut initial_value;
@@ -46,12 +43,15 @@ fn typecheck_variable_declaration(
                 bail!("no constant initializer");
             }
 
-            let mut is_global = var_decl
-                .storage_class
-                .is_some_and(|sc| sc != StorageClass::Static) || var_decl.storage_class.is_none();
+            let mut is_global = var_decl.storage_class != Some(StorageClass::Static);
 
             if SYMBOL_TABLE.lock().unwrap().contains_key(&var_decl.name) {
-                let old_decl = SYMBOL_TABLE.lock().unwrap().get(&var_decl.name).cloned().unwrap();
+                let old_decl = SYMBOL_TABLE
+                    .lock()
+                    .unwrap()
+                    .get(&var_decl.name)
+                    .cloned()
+                    .unwrap();
 
                 if old_decl.ty != Type::Int {
                     bail!("Function {} redeclared as variable", var_decl.name);
@@ -111,7 +111,10 @@ fn typecheck_variable_declaration(
                 },
             };
 
-            SYMBOL_TABLE.lock().unwrap().insert(var_decl.name.clone(), symbol);
+            SYMBOL_TABLE
+                .lock()
+                .unwrap()
+                .insert(var_decl.name.clone(), symbol);
         }
         false => {
             let initial_value;
@@ -127,7 +130,12 @@ fn typecheck_variable_declaration(
                 }
 
                 if SYMBOL_TABLE.lock().unwrap().contains_key(&var_decl.name) {
-                    let old_decl = SYMBOL_TABLE.lock().unwrap().get(&var_decl.name).cloned().unwrap();
+                    let old_decl = SYMBOL_TABLE
+                        .lock()
+                        .unwrap()
+                        .get(&var_decl.name)
+                        .cloned()
+                        .unwrap();
                     if old_decl.ty != Type::Int {
                         bail!("Function {} redeclared as variable", var_decl.name);
                     }
@@ -139,7 +147,10 @@ fn typecheck_variable_declaration(
                             global: true,
                         },
                     };
-                    SYMBOL_TABLE.lock().unwrap().insert(var_decl.name.clone(), symbol);
+                    SYMBOL_TABLE
+                        .lock()
+                        .unwrap()
+                        .insert(var_decl.name.clone(), symbol);
                 }
             } else if var_decl
                 .storage_class
@@ -161,13 +172,19 @@ fn typecheck_variable_declaration(
                     },
                 };
 
-                SYMBOL_TABLE.lock().unwrap().insert(var_decl.name.clone(), symbol);
+                SYMBOL_TABLE
+                    .lock()
+                    .unwrap()
+                    .insert(var_decl.name.clone(), symbol);
             } else {
                 let symbol = Symbol {
                     ty: Type::Int,
                     attrs: IdentifierAttrs::LocalAttr,
                 };
-                SYMBOL_TABLE.lock().unwrap().insert(var_decl.name.clone(), symbol);
+                SYMBOL_TABLE
+                    .lock()
+                    .unwrap()
+                    .insert(var_decl.name.clone(), symbol);
                 if var_decl.init.is_some() {
                     typecheck_expr(var_decl.init.as_ref().unwrap())?;
                 }
@@ -178,22 +195,21 @@ fn typecheck_variable_declaration(
     Ok(())
 }
 
-fn typecheck_function_declaration(
-    func_decl: &FunctionDeclaration,
-    
-) -> Result<()> {
+fn typecheck_function_declaration(func_decl: &FunctionDeclaration) -> Result<()> {
     let fun_type = Type::Func(func_decl.params.len());
     let has_body = func_decl.body.is_some();
 
     let mut already_defined = false;
 
-    let mut is_global = func_decl
-        .storage_class
-        .is_some_and(|sc| sc != StorageClass::Static)
-        || func_decl.storage_class.is_none();
+    let mut is_global = func_decl.storage_class != Some(StorageClass::Static);
 
     if SYMBOL_TABLE.lock().unwrap().contains_key(&func_decl.name) {
-        let old_decl = SYMBOL_TABLE.lock().unwrap().get(&func_decl.name).cloned().unwrap();
+        let old_decl = SYMBOL_TABLE
+            .lock()
+            .unwrap()
+            .get(&func_decl.name)
+            .cloned()
+            .unwrap();
 
         if old_decl.ty != fun_type {
             bail!(
@@ -237,7 +253,10 @@ fn typecheck_function_declaration(
             global: is_global,
         },
     };
-    SYMBOL_TABLE.lock().unwrap().insert(func_decl.name.clone(), symbol);
+    SYMBOL_TABLE
+        .lock()
+        .unwrap()
+        .insert(func_decl.name.clone(), symbol);
 
     if has_body {
         for param in &func_decl.params {
@@ -254,24 +273,17 @@ fn typecheck_function_declaration(
     Ok(())
 }
 
-pub fn typecheck_block(
-    block: &BlockItem,
-    
-) -> Result<()> {
+pub fn typecheck_block(block: &BlockItem) -> Result<()> {
     match block {
         BlockItem::Declaration(decl) => match decl {
-            Declaration::Variable(var_decl) => {
-                typecheck_variable_declaration(var_decl)
-            }
-            Declaration::Function(func_decl) => {
-                typecheck_function_declaration(func_decl)
-            }
+            Declaration::Variable(var_decl) => typecheck_variable_declaration(var_decl),
+            Declaration::Function(func_decl) => typecheck_function_declaration(func_decl),
         },
-        BlockItem::Statement(stmt) => typecheck_statement(stmt, ),
+        BlockItem::Statement(stmt) => typecheck_statement(stmt),
     }
 }
 
-fn typecheck_statement(stmt: &Statement, ) -> Result<()> {
+fn typecheck_statement(stmt: &Statement) -> Result<()> {
     match stmt {
         Statement::Program(ProgramStatement { block_items: stmts }) => {
             for block_item in stmts {
@@ -280,7 +292,7 @@ fn typecheck_statement(stmt: &Statement, ) -> Result<()> {
 
             Ok(())
         }
-        Statement::Expression(ExpressionStatement { expr }) => typecheck_expr(expr, ),
+        Statement::Expression(ExpressionStatement { expr }) => typecheck_expr(expr),
         Statement::Compound(BlockStatement { stmts }) => {
             for stmt in stmts {
                 typecheck_block(stmt)?;
@@ -363,7 +375,7 @@ fn typecheck_statement(stmt: &Statement, ) -> Result<()> {
     }
 }
 
-fn typecheck_expr(e: &Expression, ) -> Result<()> {
+fn typecheck_expr(e: &Expression) -> Result<()> {
     match e {
         Expression::Call(CallExpression { name, args }) => {
             let f = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();

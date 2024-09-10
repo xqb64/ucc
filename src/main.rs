@@ -85,7 +85,6 @@ fn run(opts: &Opt) -> Result<()> {
 
     asm_prog.emit(&mut f)?;
 
-
     if opts.c {
         std::process::Command::new("gcc")
             .arg("-c")

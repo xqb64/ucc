@@ -85,8 +85,8 @@ impl Emit for AsmFunction {
                 if rem != 0 {
                     stack_frame_bytelen += 16 - rem;
                 }
-    
-                *instr = AsmInstruction::AllocateStack(stack_frame_bytelen);    
+
+                *instr = AsmInstruction::AllocateStack(stack_frame_bytelen);
             } else {
                 // remove instr
                 self.instructions.remove(0);

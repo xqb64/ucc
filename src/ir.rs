@@ -1,11 +1,13 @@
-
-use crate::{parser::{
-    AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement,
-    BreakStatement, CallExpression, ConditionalExpression, ContinueStatement, Declaration,
-    DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration,
-    IfStatement, ProgramStatement, ReturnStatement, Statement, UnaryExpression,
-    UnaryExpressionKind, VariableDeclaration, WhileStatement,
-}, typechecker::{IdentifierAttrs, InitialValue, SYMBOL_TABLE}};
+use crate::{
+    parser::{
+        AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement,
+        BreakStatement, CallExpression, ConditionalExpression, ContinueStatement, Declaration,
+        DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement,
+        FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement,
+        UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement,
+    },
+    typechecker::{IdentifierAttrs, InitialValue, SYMBOL_TABLE},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IRProgram {
@@ -353,9 +355,8 @@ impl Irfy for ProgramStatement {
                             println!("we're heereee");
                             continue;
                         }
-
                     }
-                }
+                },
                 BlockItem::Statement(stmt) => {
                     if let Some(ir_stmt) = stmt.irfy() {
                         instructions.push(ir_stmt.into());
@@ -364,7 +365,10 @@ impl Irfy for ProgramStatement {
             }
         }
 
-        Some(IRNode::Program(IRProgram { functions: instructions, static_vars: vec![] }))
+        Some(IRNode::Program(IRProgram {
+            functions: instructions,
+            static_vars: vec![],
+        }))
     }
 }
 
@@ -379,18 +383,18 @@ impl Irfy for BlockStatement {
                         if !var_decl.is_global && var_decl.storage_class.is_some() {
                             continue;
                         } else {
-                            instructions.extend::<Vec<IRInstruction>>(var_decl.irfy().unwrap().into());
+                            instructions
+                                .extend::<Vec<IRInstruction>>(var_decl.irfy().unwrap().into());
                         }
                     }
                     Declaration::Function(_func_decl) => {}
-                }
+                },
                 BlockItem::Statement(stmt) => {
                     if let Some(ir_stmt) = stmt.irfy() {
                         instructions.extend::<Vec<IRInstruction>>(ir_stmt.into());
                     }
                 }
             }
-
         }
 
         Some(IRNode::Instructions(instructions))
@@ -660,13 +664,26 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
     let mut tacky_defs = vec![];
     for (name, entry) in SYMBOL_TABLE.lock().unwrap().iter() {
         match entry.attrs {
-            IdentifierAttrs::StaticAttr { initial_value, global } => {
-                match initial_value {
-                    InitialValue::Initial(konst) => tacky_defs.push(IRNode::StaticVariable(IRStaticVariable { name: name.clone(), value: konst, global })),
-                    InitialValue::Tentative => tacky_defs.push(IRNode::StaticVariable(IRStaticVariable { name: name.clone(), value: 0, global })),
-                    _ => {}
+            IdentifierAttrs::StaticAttr {
+                initial_value,
+                global,
+            } => match initial_value {
+                InitialValue::Initial(konst) => {
+                    tacky_defs.push(IRNode::StaticVariable(IRStaticVariable {
+                        name: name.clone(),
+                        value: konst,
+                        global,
+                    }))
                 }
-            }
+                InitialValue::Tentative => {
+                    tacky_defs.push(IRNode::StaticVariable(IRStaticVariable {
+                        name: name.clone(),
+                        value: 0,
+                        global,
+                    }))
+                }
+                _ => {}
+            },
             _ => {}
         }
     }

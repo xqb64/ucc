@@ -1,4 +1,9 @@
-use crate::{ir::{BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRStaticVariable, IRValue, UnaryOp}, typechecker::{IdentifierAttrs, SYMBOL_TABLE}};
+use crate::{
+    ir::{
+        BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRStaticVariable, IRValue, UnaryOp,
+    },
+    typechecker::{IdentifierAttrs, SYMBOL_TABLE},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AsmNode {
@@ -145,13 +150,20 @@ impl Codegen for IRProgram {
         for static_var in &self.static_vars {
             static_vars.push(static_var.codegen().into());
         }
-        AsmNode::Program(AsmProgram { functions, static_vars })
+        AsmNode::Program(AsmProgram {
+            functions,
+            static_vars,
+        })
     }
 }
 
 impl Codegen for IRStaticVariable {
     fn codegen(&self) -> AsmNode {
-        AsmNode::StaticVariable(AsmStaticVariable { name: self.name.clone(), value: self.value, global: self.global })
+        AsmNode::StaticVariable(AsmStaticVariable {
+            name: self.name.clone(),
+            value: self.value,
+            global: self.global,
+        })
     }
 }
 
@@ -445,8 +457,12 @@ impl ReplacePseudo for AsmNode {
             AsmNode::Program(prog) => AsmNode::Program(prog.replace_pseudo()),
             AsmNode::Function(func) => AsmNode::Function(func.replace_pseudo()),
             AsmNode::Operand(op) => AsmNode::Operand(op.replace_pseudo()),
-            AsmNode::Instructions(instrs) => AsmNode::Instructions(instrs.to_owned().replace_pseudo()),
-            AsmNode::StaticVariable(static_var) => AsmNode::StaticVariable(static_var.to_owned().replace_pseudo()),
+            AsmNode::Instructions(instrs) => {
+                AsmNode::Instructions(instrs.to_owned().replace_pseudo())
+            }
+            AsmNode::StaticVariable(static_var) => {
+                AsmNode::StaticVariable(static_var.to_owned().replace_pseudo())
+            }
         }
     }
 }
@@ -508,9 +524,10 @@ impl ReplacePseudo for AsmOperand {
                 let mut offset_manager = OFFSET_MANAGER.lock().unwrap();
                 if let Some(symbol) = SYMBOL_TABLE.lock().unwrap().get(name) {
                     match symbol.attrs {
-                        IdentifierAttrs::StaticAttr { initial_value: _, global: _ } => {
-                            AsmOperand::Data(name.clone())
-                        }
+                        IdentifierAttrs::StaticAttr {
+                            initial_value: _,
+                            global: _,
+                        } => AsmOperand::Data(name.clone()),
                         _ => {
                             let offset = offset_manager.get_offset(name);
                             AsmOperand::Stack(offset)
@@ -534,7 +551,10 @@ impl ReplacePseudo for AsmProgram {
         for func in &self.functions {
             functions.push(func.replace_pseudo());
         }
-        AsmProgram { functions, static_vars: self.static_vars.clone() }
+        AsmProgram {
+            functions,
+            static_vars: self.static_vars.clone(),
+        }
     }
 }
 
@@ -576,7 +596,10 @@ impl Fixup for AsmProgram {
             functions.push(func.fixup());
         }
 
-        AsmProgram { functions, static_vars: self.static_vars.clone() }
+        AsmProgram {
+            functions,
+            static_vars: self.static_vars.clone(),
+        }
     }
 }
 
