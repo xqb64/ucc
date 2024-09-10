@@ -46,7 +46,7 @@ impl Typecheck for VariableDeclaration {
             true => {
                 let mut initial_value;
 
-                if let Some(Expression::Constant(konst)) = self.init {
+                if let Some(Expression::Constant(konst)) = &self.init {
                     initial_value = todo!();
                 } else if self.init.is_none() {
                     if self
@@ -170,7 +170,7 @@ impl Typecheck for VariableDeclaration {
                     .storage_class
                     .is_some_and(|sc| sc == StorageClass::Static)
                 {
-                    if let Some(Expression::Constant(konst)) = self.init {
+                    if let Some(Expression::Constant(konst)) = &self.init {
                         initial_value = todo!();
                     } else if self.init.is_none() {
                         initial_value = InitialValue::Initial(0);
@@ -384,7 +384,7 @@ impl Typecheck for Statement {
 impl Typecheck for Expression {
     fn typecheck(&self) -> Result<()> {
         match self {
-            Expression::Call(CallExpression { name, args }) => {
+            Expression::Call(CallExpression { name, args, _type }) => {
                 let f = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
                 let f_type = f.ty.clone();
 
@@ -410,21 +410,21 @@ impl Typecheck for Expression {
                 Ok(())
             }
             Expression::Variable(var) => {
-                if let Some(symbol) = SYMBOL_TABLE.lock().unwrap().get(var) {
+                if let Some(symbol) = SYMBOL_TABLE.lock().unwrap().get(&var.value) {
                     if symbol.ty != Type::Int {
-                        bail!("{} is not a variable", var);
+                        bail!("{} is not a variable", var.value);
                     }
                 }
 
                 Ok(())
             }
-            Expression::Binary(BinaryExpression { kind: _, lhs, rhs }) => {
+            Expression::Binary(BinaryExpression { kind: _, lhs, rhs, _type }) => {
                 lhs.typecheck()?;
                 rhs.typecheck()?;
 
                 Ok(())
             }
-            Expression::Assign(AssignExpression { op: _, lhs, rhs }) => {
+            Expression::Assign(AssignExpression { op: _, lhs, rhs, _type }) => {
                 lhs.typecheck()?;
                 rhs.typecheck()?;
 
@@ -434,6 +434,7 @@ impl Typecheck for Expression {
                 condition,
                 then_expr,
                 else_expr,
+                _type
             }) => {
                 condition.typecheck()?;
                 then_expr.typecheck()?;
@@ -441,7 +442,7 @@ impl Typecheck for Expression {
 
                 Ok(())
             }
-            Expression::Unary(UnaryExpression { kind: _, expr }) => {
+            Expression::Unary(UnaryExpression { kind: _, expr, _type }) => {
                 expr.typecheck()?;
 
                 Ok(())

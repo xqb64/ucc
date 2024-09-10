@@ -4,11 +4,7 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement,
-        CallExpression, ConditionalExpression, ContinueStatement, Declaration, DoWhileStatement,
-        Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement,
-        ProgramStatement, ReturnStatement, Statement, StorageClass, UnaryExpression,
-        VariableDeclaration, WhileStatement,
+        AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, StorageClass, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
     },
 };
 
@@ -348,7 +344,7 @@ fn resolve_exp(
     variable_map: &mut HashMap<String, Variable>,
 ) -> Result<Expression> {
     match exp.to_owned() {
-        Expression::Assign(AssignExpression { op, ref lhs, rhs }) => {
+        Expression::Assign(AssignExpression { op, ref lhs, rhs, _type }) => {
             if let Expression::Variable(_) = &**lhs {
                 let resolved_lhs = resolve_exp(lhs, variable_map)?;
                 let resolved_rhs = resolve_exp(&rhs, variable_map)?;
@@ -357,27 +353,29 @@ fn resolve_exp(
                     op,
                     lhs: resolved_lhs.into(),
                     rhs: resolved_rhs.into(),
+                    _type,
                 }))
             } else {
                 bail!("left-hand side of assignment must be a variable");
             }
         }
-        Expression::Variable(name) => {
+        Expression::Variable(var) => {
             let variable = variable_map
-                .get(&name)
-                .ok_or_else(|| anyhow::anyhow!("undeclared variable: {}", name))?;
-            Ok(Expression::Variable(variable.name.clone()))
+                .get(&var.value)
+                .ok_or_else(|| anyhow::anyhow!("undeclared variable: {}", var.value))?;
+            Ok(Expression::Variable(VariableExpression { value: variable.name.clone(), _type: Type::Dummy }))
         }
         Expression::Constant(konst) => Ok(Expression::Constant(konst)),
-        Expression::Unary(UnaryExpression { kind, expr }) => {
+        Expression::Unary(UnaryExpression { kind, expr, _type }) => {
             let resolved_expr = resolve_exp(&expr, variable_map)?;
 
             Ok(Expression::Unary(UnaryExpression {
                 kind,
                 expr: resolved_expr.into(),
+                _type,
             }))
         }
-        Expression::Binary(BinaryExpression { kind, lhs, rhs }) => {
+        Expression::Binary(BinaryExpression { kind, lhs, rhs, _type }) => {
             let resolved_lhs = resolve_exp(&lhs, variable_map)?;
             let resolved_rhs = resolve_exp(&rhs, variable_map)?;
 
@@ -385,12 +383,14 @@ fn resolve_exp(
                 kind,
                 lhs: resolved_lhs.into(),
                 rhs: resolved_rhs.into(),
+                _type,
             }))
         }
         Expression::Conditional(ConditionalExpression {
             condition,
             then_expr,
             else_expr,
+            _type,
         }) => {
             let resolved_condition = resolve_exp(&condition, variable_map)?;
             let resolved_then_expr = resolve_exp(&then_expr, variable_map)?;
@@ -408,9 +408,10 @@ fn resolve_exp(
                 condition: resolved_condition.into(),
                 then_expr: resolved_then_expr.into(),
                 else_expr: resolved_else_expr.into(),
+                _type,
             }))
         }
-        Expression::Call(CallExpression { name, args }) => {
+        Expression::Call(CallExpression { name, args, _type }) => {
             if variable_map.contains_key(&name) {
                 let new_func_name = variable_map.get(&name).unwrap().name.clone();
                 let resolved_args = args
@@ -421,12 +422,21 @@ fn resolve_exp(
                 Ok(Expression::Call(CallExpression {
                     name: new_func_name,
                     args: resolved_args,
+                    _type,
                 }))
             } else {
                 bail!("undeclared function");
             }
         }
-        _ => todo!(),
+        Expression::Cast(CastExpression { target_type, expr, _type }) => {
+            let resolved_expr = resolve_exp(&expr, variable_map)?;
+
+            Ok(Expression::Cast(CastExpression {
+                target_type,
+                expr: resolved_expr.into(),
+                _type,
+            }))
+        }
     }
 }
 

@@ -412,6 +412,7 @@ impl Parser {
                 lhs: result.into(),
                 rhs: self.assignment()?.into(),
                 op: Token::Equal,
+                _type: Type::Dummy,
             });
         }
         Ok(result)
@@ -427,6 +428,7 @@ impl Parser {
                 condition: result.into(),
                 then_expr: then_expr.into(),
                 else_expr: else_expr.into(),
+                _type: Type::Dummy,
             }))
         } else {
             Ok(result)
@@ -440,6 +442,7 @@ impl Parser {
                 kind: BinaryExpressionKind::Or,
                 lhs: result.into(),
                 rhs: self.and()?.into(),
+                _type: Type::Dummy,
             });
         }
         Ok(result)
@@ -452,6 +455,7 @@ impl Parser {
                 kind: BinaryExpressionKind::And,
                 lhs: result.into(),
                 rhs: self.equality()?.into(),
+                _type: Type::Dummy,
             });
         }
         Ok(result)
@@ -472,6 +476,7 @@ impl Parser {
                 },
                 lhs: result.into(),
                 rhs: self.relational()?.into(),
+                _type: Type::Dummy,
             });
         }
         Ok(result)
@@ -499,6 +504,7 @@ impl Parser {
                 kind,
                 lhs: result.into(),
                 rhs: self.term()?.into(),
+                _type: Type::Dummy,
             });
         }
         Ok(result)
@@ -519,6 +525,7 @@ impl Parser {
                 kind,
                 lhs: result.into(),
                 rhs: self.factor()?.into(),
+                _type: Type::Dummy,
             });
         }
         Ok(result)
@@ -540,6 +547,7 @@ impl Parser {
                 kind,
                 lhs: result.into(),
                 rhs: self.unary()?.into(),
+                _type: Type::Dummy,
             });
         }
         Ok(result)
@@ -557,6 +565,7 @@ impl Parser {
                     Token::Bang => UnaryExpressionKind::Not,
                     _ => unreachable!(),
                 },
+                _type: Type::Dummy,
             }));
         }
         self.call()
@@ -578,10 +587,11 @@ impl Parser {
                 self.consume(&Token::RParen)?;
                 expr = Expression::Call(CallExpression {
                     name: match expr {
-                        Expression::Variable(var) => var,
+                        Expression::Variable(var) => var.value,
                         _ => unreachable!(),
                     },
                     args,
+                    _type: Type::Dummy,
                 });
             } else {
                 break;
@@ -619,11 +629,11 @@ impl Parser {
     }
 
     fn parse_number(&self, n: &Const) -> Result<Expression> {
-        Ok(Expression::Constant(*n))
+        Ok(Expression::Constant(ConstantExpression { value: *n, _type: Type::Dummy }))
     }
 
     fn parse_variable(&self, var: &str) -> Result<Expression> {
-        Ok(Expression::Variable(var.to_owned()))
+        Ok(Expression::Variable(VariableExpression { value: var.to_owned(), _type: Type::Dummy }))
     }
 
     fn parse_grouping(&mut self) -> Result<Expression> {
@@ -639,6 +649,7 @@ impl Parser {
         Ok(Expression::Cast(CastExpression {
             target_type,
             expr: expr.into(),
+            _type: Type::Dummy,
         }))
     }
 }
@@ -669,6 +680,7 @@ pub enum Type {
     Int,
     Long,
     Func { params: Vec<Type>, ret: Box<Type> },
+    Dummy,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -770,8 +782,8 @@ pub struct ContinueStatement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
-    Constant(Const),
-    Variable(String),
+    Constant(ConstantExpression),
+    Variable(VariableExpression),
     Unary(UnaryExpression),
     Binary(BinaryExpression),
     Assign(AssignExpression),
@@ -781,9 +793,22 @@ pub enum Expression {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ConstantExpression {
+    pub value: Const,
+    pub _type: Type,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariableExpression {
+    pub value: String,
+    pub _type: Type,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct UnaryExpression {
     pub kind: UnaryExpressionKind,
     pub expr: Box<Expression>,
+    pub _type: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -798,6 +823,7 @@ pub struct BinaryExpression {
     pub kind: BinaryExpressionKind,
     pub lhs: Box<Expression>,
     pub rhs: Box<Expression>,
+    pub _type: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -822,6 +848,7 @@ pub struct AssignExpression {
     pub lhs: Box<Expression>,
     pub rhs: Box<Expression>,
     pub op: Token,
+    pub _type: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -829,16 +856,19 @@ pub struct ConditionalExpression {
     pub condition: Box<Expression>,
     pub then_expr: Box<Expression>,
     pub else_expr: Box<Expression>,
+    pub _type: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CallExpression {
     pub name: String,
     pub args: Vec<Expression>,
+    pub _type: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CastExpression {
     pub target_type: Type,
     pub expr: Box<Expression>,
+    pub _type: Type,
 }

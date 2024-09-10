@@ -89,7 +89,7 @@ pub enum BinaryOp {
 fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
     match e {
         Expression::Constant(konst) => todo!(),
-        Expression::Unary(UnaryExpression { kind, expr }) => {
+        Expression::Unary(UnaryExpression { kind, expr, _type }) => {
             let src = emit_tacky(*expr, instructions);
             let dst_name = format!("var.{}", make_temporary());
             let dst = IRValue::Var(dst_name.clone());
@@ -106,7 +106,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
 
             dst
         }
-        Expression::Binary(BinaryExpression { kind, lhs, rhs }) => match kind {
+        Expression::Binary(BinaryExpression { kind, lhs, rhs, _type }) => match kind {
             BinaryExpressionKind::And => {
                 let tmp = make_temporary();
 
@@ -214,16 +214,16 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 dst
             }
         },
-        Expression::Variable(name) => IRValue::Var(name),
-        Expression::Assign(AssignExpression { op: _, lhs, rhs }) => {
+        Expression::Variable(var) => IRValue::Var(var.value),
+        Expression::Assign(AssignExpression { op: _, lhs, rhs, _type }) => {
             let result = emit_tacky(*rhs, instructions);
 
             if let Expression::Variable(var) = *lhs {
                 instructions.push(IRInstruction::Copy {
                     src: result.clone(),
-                    dst: IRValue::Var(var.clone()),
+                    dst: IRValue::Var(var.value.clone()),
                 });
-                IRValue::Var(var)
+                IRValue::Var(var.value)
             } else {
                 unimplemented!()
             }
@@ -232,6 +232,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
             condition,
             then_expr,
             else_expr,
+            _type
         }) => {
             let tmp = make_temporary();
 
@@ -268,7 +269,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
 
             result
         }
-        Expression::Call(CallExpression { name, args }) => {
+        Expression::Call(CallExpression { name, args, _type }) => {
             let mut arg_values = vec![];
 
             for arg in args {
