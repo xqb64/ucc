@@ -457,13 +457,17 @@ impl Typecheck for Statement {
                     }
                 }
 
-                if let ForInit::Declaration(decl) = init {
-                    decl.typecheck()?;
-                }
+                let typechecked_decl = if let ForInit::Declaration(decl) = init {
+                    Some(decl.typecheck()?)
+                } else {
+                    None
+                };
 
-                if let ForInit::Expression(Some(for_init_expr)) = init {
-                    typecheck_expr(for_init_expr)?;
-                }
+                let typechecked_for_init = if let ForInit::Expression(Some(for_init_expr)) = init {
+                    Some(typecheck_expr(for_init_expr)?)
+                } else {
+                    None
+                };
 
                 let typechecked_condition = if condition.is_some() {
                     Some(typecheck_expr(condition.as_ref().unwrap())?)
@@ -477,13 +481,20 @@ impl Typecheck for Statement {
                     None
                 };
 
-                body.typecheck()?;
+                let typechecked_body = body.typecheck()?;
 
                 Ok(BlockItem::Statement(Statement::For(ForStatement {
-                    init: init.clone(),
+                    init: match (typechecked_decl, typechecked_for_init) {
+                        (Some(decl), None) => ForInit::Declaration(match decl {
+                            BlockItem::Declaration(Declaration::Variable(var_decl)) => var_decl,
+                            _ => unreachable!(),
+                        }),
+                        (None, Some(expr)) => ForInit::Expression(Some(expr)),
+                        _ => ForInit::Expression(None),
+                    },
                     condition: typechecked_condition,
                     post: typechecked_post,
-                    body: body.clone(),
+                    body: typechecked_body.into(),
                     label: label.clone(),
                 })))
             }

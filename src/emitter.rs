@@ -136,9 +136,9 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::Movsx { src, dst} => {
                 write!(f, "movsx ")?;
-                src.emit(f, asm_type)?;
+                src.emit(f, &mut AsmType::Longword)?;
                 write!(f, ", ")?;
-                dst.emit(f, asm_type)?;
+                dst.emit(f, &mut AsmType::Quadword)?;
                 writeln!(f)?;
             }
             AsmInstruction::Ret => {
@@ -263,7 +263,7 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::Push(operand) => {
                 write!(f, "pushq ")?;
-                operand.emit(f, asm_type)?;
+                operand.emit(f, &mut AsmType::Quadword)?;
                 writeln!(f)?;
             }
         }

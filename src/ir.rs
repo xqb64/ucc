@@ -101,8 +101,6 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
         Expression::Constant(const_expr) => IRValue::Constant(const_expr.value),
         Expression::Unary(UnaryExpression { kind, expr, _type }) => {
             let src = emit_tacky(*expr, instructions);
-            println!("here in unary");
-            println!("type: {:?}", _type);
             let dst = make_tacky_variable(_type.clone());
             let op = match kind {
                 UnaryExpressionKind::Negate => UnaryOp::Negate,
@@ -259,7 +257,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
         }) => {
             let tmp = make_temporary();
 
-            let result = IRValue::Var(format!("Cond.{}.result", tmp));
+            let result = make_tacky_variable(_type.clone());
 
             let e2_label = format!("Cond.{}.else", tmp);
             let end_label = format!("Cond.{}.end", tmp);
