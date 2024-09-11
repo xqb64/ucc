@@ -268,7 +268,9 @@ impl Codegen for IRInstruction {
     fn codegen(&self) -> AsmNode {
         match self {
             IRInstruction::Unary { op, src, dst } => {
+                println!("here in unary");
                 let asm_type = get_asm_type(&dst);
+                println!("here in unary enough");
 
                 match op {
                     UnaryOp::Negate | UnaryOp::Complement => AsmNode::Instructions(vec![
@@ -310,7 +312,9 @@ impl Codegen for IRInstruction {
                 AsmInstruction::Ret,
             ]),
             IRInstruction::Binary { op, lhs, rhs, dst } => { 
+                println!("here in binary");
                 let asm_type = get_asm_type(&lhs);
+                println!("here in binary enough");
 
                 match op {
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => AsmNode::Instructions(vec![
@@ -394,7 +398,9 @@ impl Codegen for IRInstruction {
                 }
             },
             IRInstruction::JumpIfZero { condition, target } => {
+                println!("here in jump if zero");
                 let asm_type = get_asm_type(&condition);
+                println!("here in jump if zero enough");
 
                 AsmNode::Instructions(vec![
                     AsmInstruction::Cmp {
@@ -409,7 +415,9 @@ impl Codegen for IRInstruction {
                 ])
             }
             IRInstruction::JumpIfNotZero { condition, target } => { 
+                println!("here in jump if not zero");
                 let asm_type = get_asm_type(&condition);
+                println!("here in jump if not zero enough");
 
                 AsmNode::Instructions(vec![
                     AsmInstruction::Cmp {

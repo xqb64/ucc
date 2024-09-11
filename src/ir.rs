@@ -101,6 +101,8 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
         Expression::Constant(const_expr) => IRValue::Constant(const_expr.value),
         Expression::Unary(UnaryExpression { kind, expr, _type }) => {
             let src = emit_tacky(*expr, instructions);
+            println!("here in unary");
+            println!("type: {:?}", _type);
             let dst = make_tacky_variable(_type.clone());
             let op = match kind {
                 UnaryExpressionKind::Negate => UnaryOp::Negate,
@@ -128,8 +130,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                     let false_label = format!("And.{}.shortcircuit", tmp);
                     let end_label = format!("And.{}.end", tmp);
 
-                    let result = format!("var.{}", make_temporary());
-                    let result = IRValue::Var(result.clone());
+                    let result = make_tacky_variable(_type.clone());
 
                     let lhs = emit_tacky(*lhs, instructions);
                     instructions.push(IRInstruction::JumpIfZero {
@@ -167,8 +168,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                     let true_label = format!("Or.{}.shortcircuit", tmp);
                     let end_label = format!("Or.{}.end", tmp);
 
-                    let result = format!("var.{}", make_temporary());
-                    let result = IRValue::Var(result.clone());
+                    let result = make_tacky_variable(_type.clone());
 
                     let lhs = emit_tacky(*lhs, instructions);
                     instructions.push(IRInstruction::JumpIfNotZero {
@@ -205,6 +205,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                     let rhs = emit_tacky(*rhs, instructions);
 
                     let dst = make_tacky_variable(t.clone());
+                    println!("dst is: {:?}", dst);
 
                     let op = match kind {
                         BinaryExpressionKind::Add => BinaryOp::Add,
@@ -298,7 +299,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 arg_values.push(emit_tacky(arg, instructions));
             }
 
-            let result = IRValue::Var(format!("var.{}", make_temporary()));
+            let result = make_tacky_variable(_type.clone());
 
             instructions.push(IRInstruction::Call {
                 target: name,
@@ -344,7 +345,7 @@ pub fn make_tacky_variable(_type: Type) -> IRValue {
         attrs: IdentifierAttrs::LocalAttr,
         _type,
     };
-    println!("inserting into symbol table with name: {} -- {:?}", var_name, symbol);
+    println!("inserting symbol: {:?}", symbol);
     SYMBOL_TABLE.lock().unwrap().insert(
         var_name.clone(),
         symbol,

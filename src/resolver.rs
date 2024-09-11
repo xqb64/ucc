@@ -107,6 +107,8 @@ impl Resolve for VariableDeclaration {
                         self.init = Some(resolve_exp(&self.init.clone().unwrap(), variable_map)?);
                     }
 
+                    println!("self.type: {:?}", self._type);
+
                     Ok(BlockItem::Declaration(Declaration::Variable(
                         VariableDeclaration {
                             name: unique_name,
