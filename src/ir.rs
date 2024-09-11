@@ -1,7 +1,13 @@
 use crate::{
-    lexer::Const, parser::{
-        AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
-    }, typechecker::{get_type, IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE}
+    lexer::Const,
+    parser::{
+        AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement,
+        BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement,
+        Declaration, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement,
+        FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, Type,
+        UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement,
+    },
+    typechecker::{get_type, IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -90,6 +96,7 @@ pub enum BinaryOp {
 }
 
 fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
+    let t = get_type(&e.clone());
     match e {
         Expression::Constant(const_expr) => IRValue::Constant(const_expr.value),
         Expression::Unary(UnaryExpression { kind, expr, _type }) => {
@@ -108,115 +115,129 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
 
             dst
         }
-        Expression::Binary(BinaryExpression { kind, lhs, rhs, _type }) => match kind {
-            BinaryExpressionKind::And => {
-                let tmp = make_temporary();
+        Expression::Binary(BinaryExpression {
+            kind,
+            lhs,
+            rhs,
+            _type,
+        }) => {
+            match kind {
+                BinaryExpressionKind::And => {
+                    let tmp = make_temporary();
 
-                let false_label = format!("And.{}.shortcircuit", tmp);
-                let end_label = format!("And.{}.end", tmp);
+                    let false_label = format!("And.{}.shortcircuit", tmp);
+                    let end_label = format!("And.{}.end", tmp);
 
-                let result = format!("var.{}", make_temporary());
-                let result = IRValue::Var(result.clone());
+                    let result = format!("var.{}", make_temporary());
+                    let result = IRValue::Var(result.clone());
 
-                let lhs = emit_tacky(*lhs, instructions);
-                instructions.push(IRInstruction::JumpIfZero {
-                    condition: lhs.clone(),
-                    target: false_label.clone(),
-                });
+                    let lhs = emit_tacky(*lhs, instructions);
+                    instructions.push(IRInstruction::JumpIfZero {
+                        condition: lhs.clone(),
+                        target: false_label.clone(),
+                    });
 
-                let rhs = emit_tacky(*rhs, instructions);
-                instructions.push(IRInstruction::JumpIfZero {
-                    condition: rhs.clone(),
-                    target: false_label.clone(),
-                });
+                    let rhs = emit_tacky(*rhs, instructions);
+                    instructions.push(IRInstruction::JumpIfZero {
+                        condition: rhs.clone(),
+                        target: false_label.clone(),
+                    });
 
-                instructions.push(IRInstruction::Copy {
-                    src: IRValue::Constant(Const::Int(1)),
-                    dst: result.clone(),
-                });
+                    instructions.push(IRInstruction::Copy {
+                        src: IRValue::Constant(Const::Int(1)),
+                        dst: result.clone(),
+                    });
 
-                instructions.push(IRInstruction::Jump(end_label.clone()));
+                    instructions.push(IRInstruction::Jump(end_label.clone()));
 
-                instructions.push(IRInstruction::Label(false_label.clone()));
+                    instructions.push(IRInstruction::Label(false_label.clone()));
 
-                instructions.push(IRInstruction::Copy {
-                    src: IRValue::Constant(Const::Int(0)),
-                    dst: result.clone(),
-                });
+                    instructions.push(IRInstruction::Copy {
+                        src: IRValue::Constant(Const::Int(0)),
+                        dst: result.clone(),
+                    });
 
-                instructions.push(IRInstruction::Label(end_label.clone()));
+                    instructions.push(IRInstruction::Label(end_label.clone()));
 
-                result
-            }
-            BinaryExpressionKind::Or => {
-                let tmp = make_temporary();
+                    result
+                }
+                BinaryExpressionKind::Or => {
+                    let tmp = make_temporary();
 
-                let true_label = format!("Or.{}.shortcircuit", tmp);
-                let end_label = format!("Or.{}.end", tmp);
+                    let true_label = format!("Or.{}.shortcircuit", tmp);
+                    let end_label = format!("Or.{}.end", tmp);
 
-                let result = format!("var.{}", make_temporary());
-                let result = IRValue::Var(result.clone());
+                    let result = format!("var.{}", make_temporary());
+                    let result = IRValue::Var(result.clone());
 
-                let lhs = emit_tacky(*lhs, instructions);
-                instructions.push(IRInstruction::JumpIfNotZero {
-                    condition: lhs.clone(),
-                    target: true_label.clone(),
-                });
+                    let lhs = emit_tacky(*lhs, instructions);
+                    instructions.push(IRInstruction::JumpIfNotZero {
+                        condition: lhs.clone(),
+                        target: true_label.clone(),
+                    });
 
-                let rhs = emit_tacky(*rhs, instructions);
-                instructions.push(IRInstruction::JumpIfNotZero {
-                    condition: rhs.clone(),
-                    target: true_label.clone(),
-                });
+                    let rhs = emit_tacky(*rhs, instructions);
+                    instructions.push(IRInstruction::JumpIfNotZero {
+                        condition: rhs.clone(),
+                        target: true_label.clone(),
+                    });
 
-                instructions.push(IRInstruction::Copy {
-                    src: IRValue::Constant(Const::Int(0)),
-                    dst: result.clone(),
-                });
+                    instructions.push(IRInstruction::Copy {
+                        src: IRValue::Constant(Const::Int(0)),
+                        dst: result.clone(),
+                    });
 
-                instructions.push(IRInstruction::Jump(end_label.clone()));
+                    instructions.push(IRInstruction::Jump(end_label.clone()));
 
-                instructions.push(IRInstruction::Label(true_label.clone()));
+                    instructions.push(IRInstruction::Label(true_label.clone()));
 
-                instructions.push(IRInstruction::Copy {
-                    src: IRValue::Constant(Const::Int(1)),
-                    dst: result.clone(),
-                });
+                    instructions.push(IRInstruction::Copy {
+                        src: IRValue::Constant(Const::Int(1)),
+                        dst: result.clone(),
+                    });
 
-                instructions.push(IRInstruction::Label(end_label.clone()));
+                    instructions.push(IRInstruction::Label(end_label.clone()));
 
-                result
-            }
-            _ => {
-                let lhs = emit_tacky(*lhs, instructions);
-                let rhs = emit_tacky(*rhs, instructions);
-                let dst = make_tacky_variable(_type.clone());
-                let op = match kind {
-                    BinaryExpressionKind::Add => BinaryOp::Add,
-                    BinaryExpressionKind::Sub => BinaryOp::Sub,
-                    BinaryExpressionKind::Mul => BinaryOp::Mul,
-                    BinaryExpressionKind::Div => BinaryOp::Div,
-                    BinaryExpressionKind::Rem => BinaryOp::Rem,
-                    BinaryExpressionKind::Less => BinaryOp::Less,
-                    BinaryExpressionKind::Greater => BinaryOp::Greater,
-                    BinaryExpressionKind::Equal => BinaryOp::Equal,
-                    BinaryExpressionKind::NotEqual => BinaryOp::NotEqual,
-                    BinaryExpressionKind::GreaterEqual => BinaryOp::GreaterEqual,
-                    BinaryExpressionKind::LessEqual => BinaryOp::LessEqual,
-                    _ => unreachable!(),
-                };
-                instructions.push(IRInstruction::Binary {
-                    op,
-                    lhs,
-                    rhs,
-                    dst: dst.clone(),
-                });
+                    result
+                }
+                _ => {
+                    let lhs = emit_tacky(*lhs, instructions);
+                    let rhs = emit_tacky(*rhs, instructions);
 
-                dst
+                    let dst = make_tacky_variable(t.clone());
+
+                    let op = match kind {
+                        BinaryExpressionKind::Add => BinaryOp::Add,
+                        BinaryExpressionKind::Sub => BinaryOp::Sub,
+                        BinaryExpressionKind::Mul => BinaryOp::Mul,
+                        BinaryExpressionKind::Div => BinaryOp::Div,
+                        BinaryExpressionKind::Rem => BinaryOp::Rem,
+                        BinaryExpressionKind::Less => BinaryOp::Less,
+                        BinaryExpressionKind::Greater => BinaryOp::Greater,
+                        BinaryExpressionKind::Equal => BinaryOp::Equal,
+                        BinaryExpressionKind::NotEqual => BinaryOp::NotEqual,
+                        BinaryExpressionKind::GreaterEqual => BinaryOp::GreaterEqual,
+                        BinaryExpressionKind::LessEqual => BinaryOp::LessEqual,
+                        _ => unreachable!(),
+                    };
+                    instructions.push(IRInstruction::Binary {
+                        op,
+                        lhs,
+                        rhs,
+                        dst: dst.clone(),
+                    });
+
+                    dst
+                }
             }
         },
         Expression::Variable(var) => IRValue::Var(var.value),
-        Expression::Assign(AssignExpression { op: _, lhs, rhs, _type }) => {
+        Expression::Assign(AssignExpression {
+            op: _,
+            lhs,
+            rhs,
+            _type,
+        }) => {
             let result = emit_tacky(*rhs, instructions);
 
             if let Expression::Variable(var) = *lhs {
@@ -233,7 +254,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
             condition,
             then_expr,
             else_expr,
-            _type
+            _type,
         }) => {
             let tmp = make_temporary();
 
@@ -287,9 +308,13 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
 
             result
         }
-        Expression::Cast(CastExpression { target_type, expr, _type }) => {
+        Expression::Cast(CastExpression {
+            target_type,
+            expr,
+            _type,
+        }) => {
             let result = emit_tacky(*expr.clone(), instructions);
-            
+
             if _type == get_type(&expr) {
                 return result;
             }
@@ -315,7 +340,15 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
 
 pub fn make_tacky_variable(_type: Type) -> IRValue {
     let var_name = format!("var.{}", make_temporary());
-    SYMBOL_TABLE.lock().unwrap().insert(var_name.clone(), Symbol { attrs: IdentifierAttrs::LocalAttr, _type });
+    let symbol = Symbol {
+        attrs: IdentifierAttrs::LocalAttr,
+        _type,
+    };
+    println!("inserting into symbol table with name: {} -- {:?}", var_name, symbol);
+    SYMBOL_TABLE.lock().unwrap().insert(
+        var_name.clone(),
+        symbol,
+    );
     IRValue::Var(var_name)
 }
 

@@ -6,9 +6,11 @@ use crate::codegen::AsmOperand;
 use crate::codegen::AsmProgram;
 use crate::codegen::AsmRegister;
 use crate::codegen::AsmStaticVariable;
+use crate::codegen::AsmType;
 use crate::codegen::AsmUnaryOp;
 use crate::codegen::ConditionCode;
 use crate::codegen::OFFSET_MANAGER;
+use crate::typechecker::StaticInit;
 use anyhow::Result;
 use std::fs::File;
 use std::io::Write;
@@ -67,7 +69,12 @@ impl Emit for AsmStaticVariable {
 
         writeln!(f, "{}:", self.name)?;
         writeln!(f, "\t.align 4")?;
-        writeln!(f, "\t.long {}", self.value)?;
+
+        match self.init {
+            StaticInit::Int(n) => writeln!(f, "\t.long {}", n)?,
+            StaticInit::Long(n) => writeln!(f, "\t.quad {}", n)?,
+        }
+
         Ok(())
     }
 }
@@ -116,8 +123,19 @@ impl Emit for AsmInstruction {
         }
 
         match self {
-            AsmInstruction::Mov { src, dst } => {
-                write!(f, "movl ")?;
+            AsmInstruction::Mov { src, dst, asm_type } => {
+                let suffix = match asm_type {
+                    AsmType::Longword => "l",
+                    AsmType::Quadword => "q",
+                };
+                write!(f, "mov{} ", suffix)?;
+                src.emit(f)?;
+                write!(f, ", ")?;
+                dst.emit(f)?;
+                writeln!(f)?;
+            }
+            AsmInstruction::Movsx { src, dst} => {
+                write!(f, "movsx ")?;
                 src.emit(f)?;
                 write!(f, ", ")?;
                 dst.emit(f)?;
@@ -129,10 +147,15 @@ impl Emit for AsmInstruction {
                 write!(f, "\tret")?;
                 writeln!(f)?;
             }
-            AsmInstruction::Unary { op, operand } => {
+            AsmInstruction::Unary { op, operand, asm_type } => {
+                let suffix = match asm_type {
+                    AsmType::Longword => "l",
+                    AsmType::Quadword => "q",
+                };
+
                 match op {
-                    AsmUnaryOp::Neg => write!(f, "negl ")?,
-                    AsmUnaryOp::Not => write!(f, "notl ")?,
+                    AsmUnaryOp::Neg => write!(f, "neg{} ", suffix)?,
+                    AsmUnaryOp::Not => write!(f, "not{} ", suffix)?,
                 }
                 operand.emit(f)?;
                 writeln!(f)?;
@@ -140,17 +163,22 @@ impl Emit for AsmInstruction {
             AsmInstruction::AllocateStack(n) => {
                 writeln!(f, "sub ${}, %rsp", n)?;
             }
-            AsmInstruction::Cdq => {
+            AsmInstruction::Cdq { asm_type } => {
                 writeln!(f, "cdq")?;
             }
-            AsmInstruction::Binary { op, lhs, rhs } => {
+            AsmInstruction::Binary { op, lhs, rhs, asm_type } => {
                 let instr = match op {
-                    AsmBinaryOp::Add => "addl",
-                    AsmBinaryOp::Sub => "subl",
-                    AsmBinaryOp::Mul => "imull",
+                    AsmBinaryOp::Add => "add",
+                    AsmBinaryOp::Sub => "sub",
+                    AsmBinaryOp::Mul => "imul",
                 };
 
-                write!(f, "{} ", instr)?;
+                let suffix = match asm_type {
+                    AsmType::Longword => "l",
+                    AsmType::Quadword => "q",
+                };
+
+                write!(f, "{}{} ", instr, suffix)?;
 
                 lhs.emit(f)?;
                 write!(f, ", ")?;
@@ -158,20 +186,34 @@ impl Emit for AsmInstruction {
 
                 writeln!(f)?;
             }
-            AsmInstruction::Idiv(operand) => {
-                write!(f, "idivl ")?;
+            AsmInstruction::Idiv { operand, asm_type } => {
+                let suffix = match asm_type {
+                    AsmType::Longword => "l",
+                    AsmType::Quadword => "q",
+                };
+                write!(f, "idiv{} ", suffix)?;
                 operand.emit(f)?;
                 writeln!(f)?;
             }
-            AsmInstruction::Imul { src, dst } => {
-                write!(f, "imull ")?;
+            AsmInstruction::Imul { src, dst, asm_type } => {
+                let suffix = match asm_type {
+                    AsmType::Longword => "l",
+                    AsmType::Quadword => "q",
+                };
+
+                write!(f, "imul{} ", suffix)?;
                 src.emit(f)?;
                 write!(f, ", ")?;
                 dst.emit(f)?;
                 writeln!(f)?;
             }
-            AsmInstruction::Cmp { lhs, rhs } => {
-                write!(f, "cmpl ")?;
+            AsmInstruction::Cmp { lhs, rhs, asm_type } => {
+                let suffix = match asm_type {
+                    AsmType::Longword => "l",
+                    AsmType::Quadword => "q",
+                };
+
+                write!(f, "cmp{} ", suffix)?;
                 lhs.emit(f)?;
                 write!(f, ", ")?;
                 rhs.emit(f)?;
@@ -217,6 +259,7 @@ impl Emit for AsmInstruction {
                         AsmRegister::R9 => write!(f, "%r9b")?,
                         AsmRegister::R10 => write!(f, "%r10b")?,
                         AsmRegister::R11 => write!(f, "%r11b")?,
+                        AsmRegister::SP => write!(f, "%sp")?,
                     },
                     _ => operand.emit(f)?,
                 }
@@ -245,6 +288,7 @@ impl Emit for AsmInstruction {
                         AsmRegister::R9 => write!(f, "%r9")?,
                         AsmRegister::R10 => write!(f, "%r10")?,
                         AsmRegister::R11 => write!(f, "%r11")?,
+                        AsmRegister::SP => write!(f, "%rsp")?,
                     },
                     _ => operand.emit(f)?,
                 }
@@ -281,6 +325,7 @@ impl Emit for AsmRegister {
             AsmRegister::R9 => write!(f, "%r9d")?,
             AsmRegister::R10 => write!(f, "%r10d")?,
             AsmRegister::R11 => write!(f, "%r11d")?,
+            AsmRegister::SP => write!(f, "%esp")?,
         }
         Ok(())
     }

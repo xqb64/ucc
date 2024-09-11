@@ -92,9 +92,14 @@ impl Iterator for Lexer {
             }
         } else if let Some(m) = constant_re.find(src) {
             self.pos += m.as_str().len();
-            
+
             if m.as_str().ends_with('l') || m.as_str().ends_with('L') {
-                Token::Constant(Const::Long(m.as_str().trim_end_matches(|c| c == 'l' || c == 'L').parse().unwrap()))
+                Token::Constant(Const::Long(
+                    m.as_str()
+                        .trim_end_matches(|c| c == 'l' || c == 'L')
+                        .parse()
+                        .unwrap(),
+                ))
             } else {
                 let as_i64 = m.as_str().parse::<i64>().unwrap();
                 let konst = i32::try_from(as_i64)

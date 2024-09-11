@@ -4,7 +4,7 @@ use std::{collections::VecDeque, fs::File, path::PathBuf};
 use anyhow::{bail, Result};
 use structopt::StructOpt;
 
-use ucc::codegen::{Codegen, Fixup, ReplacePseudo};
+use ucc::codegen::{build_asm_symbol_table, Codegen, Fixup, ReplacePseudo};
 use ucc::emitter::Emit;
 use ucc::ir::{convert_symbols_to_tacky, IRNode, Irfy};
 use ucc::lexer::{Lexer, Token};
@@ -56,14 +56,14 @@ fn run(opts: &Opt) -> Result<()> {
 
     let labeled_ast = validated_ast.label(String::new())?;
 
-    labeled_ast.typecheck()?;
+    let typechecked_ast = labeled_ast.typecheck()?;
 
     if opts.validate {
-        println!("{:?}", labeled_ast);
+        println!("{:?}", typechecked_ast);
         std::process::exit(0);
     }
 
-    let mut tac = labeled_ast.irfy().unwrap();
+    let mut tac = typechecked_ast.irfy().unwrap();
     let tacky_defs = convert_symbols_to_tacky();
 
     if let IRNode::Program(prog) = &mut tac {
@@ -74,6 +74,8 @@ fn run(opts: &Opt) -> Result<()> {
         println!("tac: {:?}", tac);
         std::process::exit(0);
     }
+
+    build_asm_symbol_table();
 
     let mut asm_prog = tac.codegen().replace_pseudo().fixup();
 

@@ -4,7 +4,12 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, StorageClass, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
+        AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement,
+        CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration,
+        DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement,
+        FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement,
+        StorageClass, Type, UnaryExpression, VariableDeclaration, VariableExpression,
+        WhileStatement,
     },
 };
 
@@ -344,7 +349,12 @@ fn resolve_exp(
     variable_map: &mut HashMap<String, Variable>,
 ) -> Result<Expression> {
     match exp.to_owned() {
-        Expression::Assign(AssignExpression { op, ref lhs, rhs, _type }) => {
+        Expression::Assign(AssignExpression {
+            op,
+            ref lhs,
+            rhs,
+            _type,
+        }) => {
             if let Expression::Variable(_) = &**lhs {
                 let resolved_lhs = resolve_exp(lhs, variable_map)?;
                 let resolved_rhs = resolve_exp(&rhs, variable_map)?;
@@ -363,7 +373,10 @@ fn resolve_exp(
             let variable = variable_map
                 .get(&var.value)
                 .ok_or_else(|| anyhow::anyhow!("undeclared variable: {}", var.value))?;
-            Ok(Expression::Variable(VariableExpression { value: variable.name.clone(), _type: Type::Dummy }))
+            Ok(Expression::Variable(VariableExpression {
+                value: variable.name.clone(),
+                _type: Type::Dummy,
+            }))
         }
         Expression::Constant(konst) => Ok(Expression::Constant(konst)),
         Expression::Unary(UnaryExpression { kind, expr, _type }) => {
@@ -375,7 +388,12 @@ fn resolve_exp(
                 _type,
             }))
         }
-        Expression::Binary(BinaryExpression { kind, lhs, rhs, _type }) => {
+        Expression::Binary(BinaryExpression {
+            kind,
+            lhs,
+            rhs,
+            _type,
+        }) => {
             let resolved_lhs = resolve_exp(&lhs, variable_map)?;
             let resolved_rhs = resolve_exp(&rhs, variable_map)?;
 
@@ -428,7 +446,11 @@ fn resolve_exp(
                 bail!("undeclared function");
             }
         }
-        Expression::Cast(CastExpression { target_type, expr, _type }) => {
+        Expression::Cast(CastExpression {
+            target_type,
+            expr,
+            _type,
+        }) => {
             let resolved_expr = resolve_exp(&expr, variable_map)?;
 
             Ok(Expression::Cast(CastExpression {

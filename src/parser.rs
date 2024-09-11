@@ -160,7 +160,10 @@ impl Parser {
     fn parse_type(&mut self, specifier_list: &[Token]) -> Result<Type> {
         if specifier_list == [Token::Int] {
             Ok(Type::Int)
-        } else if specifier_list == [Token::Int, Token::Long] || specifier_list == [Token::Long, Token::Int] || specifier_list == [Token::Long] {
+        } else if specifier_list == [Token::Int, Token::Long]
+            || specifier_list == [Token::Long, Token::Int]
+            || specifier_list == [Token::Long]
+        {
             Ok(Type::Long)
         } else {
             bail!("invalid type specifier: {:?}", specifier_list);
@@ -216,7 +219,7 @@ impl Parser {
 
         loop {
             let specifier_list = self.consume_while(&Token::Identifier("".to_owned()))?;
-            
+
             let _type = self.parse_type(&specifier_list)?;
             let param = self
                 .consume(&Token::Identifier("".to_owned()))?
@@ -554,7 +557,7 @@ impl Parser {
     fn unary(&mut self) -> Result<Expression> {
         if self.is_next(&[Token::Hyphen, Token::Tilde, Token::Bang]) {
             let op = self.previous.clone().unwrap();
-    
+
             // Handle unary operators
             let expr = self.unary()?;
             return Ok(Expression::Unary(UnaryExpression {
@@ -576,7 +579,7 @@ impl Parser {
 
             if t.is_err() {
                 return self.parse_grouping();
-            } 
+            }
 
             let spam = self.consume_while(&Token::RParen)?;
 
@@ -585,7 +588,7 @@ impl Parser {
             self.consume(&Token::RParen)?;
 
             let expr = self.unary()?;
-            
+
             return Ok(Expression::Cast(CastExpression {
                 target_type: t?,
                 expr: expr.into(),
@@ -599,9 +602,12 @@ impl Parser {
     fn lookahead_until(&mut self, token: &Token) -> Vec<Token> {
         let mut v = vec![];
         v.push(self.current.clone().unwrap());
-        v.iter().chain(&self.tokens).take_while(|&t| t != token).cloned().collect()
+        v.iter()
+            .chain(&self.tokens)
+            .take_while(|&t| t != token)
+            .cloned()
+            .collect()
     }
-    
 
     fn call(&mut self) -> Result<Expression> {
         let mut expr = self.primary()?;
@@ -633,7 +639,10 @@ impl Parser {
     }
 
     fn primary(&mut self) -> Result<Expression> {
-        if self.is_next(&[Token::Constant(Const::Int(0)), Token::Constant(Const::Long(0))]) {
+        if self.is_next(&[
+            Token::Constant(Const::Int(0)),
+            Token::Constant(Const::Long(0)),
+        ]) {
             match self.previous.as_ref().unwrap() {
                 Token::Constant(n) => self.parse_number(n),
                 _ => unreachable!(),
@@ -655,11 +664,17 @@ impl Parser {
     }
 
     fn parse_number(&self, n: &Const) -> Result<Expression> {
-        Ok(Expression::Constant(ConstantExpression { value: *n, _type: Type::Dummy }))
+        Ok(Expression::Constant(ConstantExpression {
+            value: *n,
+            _type: Type::Dummy,
+        }))
     }
 
     fn parse_variable(&self, var: &str) -> Result<Expression> {
-        Ok(Expression::Variable(VariableExpression { value: var.to_owned(), _type: Type::Dummy }))
+        Ok(Expression::Variable(VariableExpression {
+            value: var.to_owned(),
+            _type: Type::Dummy,
+        }))
     }
 
     fn parse_grouping(&mut self) -> Result<Expression> {

@@ -1,9 +1,16 @@
-use crate::{lexer::Const, parser::{
-    AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, StorageClass, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement
-}};
+use crate::{
+    lexer::Const,
+    parser::{
+        AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement,
+        CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration,
+        DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement,
+        FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement,
+        StorageClass, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration,
+        VariableExpression, WhileStatement,
+    },
+};
 use anyhow::{bail, Ok, Result};
 use std::{collections::HashMap, sync::Mutex};
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Symbol {
@@ -16,11 +23,11 @@ lazy_static::lazy_static! {
 }
 
 pub trait Typecheck {
-    fn typecheck(&self) -> Result<()>;
+    fn typecheck(&self) -> Result<BlockItem>;
 }
 
 impl Typecheck for BlockItem {
-    fn typecheck(&self) -> Result<()> {
+    fn typecheck(&self) -> Result<BlockItem> {
         match self {
             BlockItem::Declaration(decl) => decl.typecheck(),
             BlockItem::Statement(stmt) => stmt.typecheck(),
@@ -29,7 +36,7 @@ impl Typecheck for BlockItem {
 }
 
 impl Typecheck for Declaration {
-    fn typecheck(&self) -> Result<()> {
+    fn typecheck(&self) -> Result<BlockItem> {
         match self {
             Declaration::Variable(var_decl) => var_decl.typecheck(),
             Declaration::Function(func_decl) => func_decl.typecheck(),
@@ -38,7 +45,7 @@ impl Typecheck for Declaration {
 }
 
 impl Typecheck for VariableDeclaration {
-    fn typecheck(&self) -> Result<()> {
+    fn typecheck(&self) -> Result<BlockItem> {
         match self.is_global {
             true => {
                 let mut initial_value;
@@ -215,13 +222,18 @@ impl Typecheck for VariableDeclaration {
                 }
             }
         }
-
-        Ok(())
-    }
+        Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration {
+            _type: self._type.clone(),
+            name: self.name.clone(),
+            init: self.init.clone(),
+            storage_class: self.storage_class,
+            is_global: self.is_global,
+        })))
+}
 }
 
 impl Typecheck for FunctionDeclaration {
-    fn typecheck(&self) -> Result<()> {
+    fn typecheck(&self) -> Result<BlockItem> {
         let fun_type = self._type.clone();
         let has_body = self.body.is_some();
 
@@ -286,7 +298,7 @@ impl Typecheck for FunctionDeclaration {
             .unwrap()
             .insert(self.name.clone(), symbol);
 
-        if has_body {
+        let typechecked_body = if has_body {
             let fn_params = match fun_type {
                 Type::Func { params, ret: _ } => params.clone(),
                 _ => unreachable!(),
@@ -299,75 +311,108 @@ impl Typecheck for FunctionDeclaration {
                 SYMBOL_TABLE.lock().unwrap().insert(param.clone(), symbol);
             }
 
-            self.body.as_ref().clone().unwrap().typecheck()?;
-        }
+            Some(self.body.as_ref().clone().unwrap().typecheck()?)
+        } else {
+            None
+        };
 
-        Ok(())
+        Ok(BlockItem::Declaration(Declaration::Function(FunctionDeclaration {
+            _type: self._type.clone(),
+            name: self.name.clone(),
+            params: self.params.clone(),
+            body: typechecked_body.into(),
+            storage_class: self.storage_class,
+            is_global: self.is_global,
+        })))
     }
 }
 
 impl Typecheck for Statement {
-    fn typecheck(&self) -> Result<()> {
+    fn typecheck(&self) -> Result<BlockItem> {
         match self {
             Statement::Program(ProgramStatement { block_items: stmts }) => {
+                let mut typechecked_block_items = vec![];
+                
                 for block_item in stmts {
-                    block_item.typecheck()?;
+                   typechecked_block_items.push(block_item.typecheck()?);
                 }
 
-                Ok(())
+                Ok(BlockItem::Statement(Statement::Program(ProgramStatement {
+                    block_items: typechecked_block_items,
+                })))
             }
             Statement::Expression(ExpressionStatement { expr }) => {
-                typecheck_expr(expr)?;
+                let typechecked_expr = typecheck_expr(expr)?;
 
-                Ok(())
+                Ok(BlockItem::Statement(Statement::Expression(ExpressionStatement {
+                    expr: typechecked_expr,
+                })))
             }
             Statement::Compound(BlockStatement { stmts }) => {
+                let mut typechecked_stmts = vec![];
+
                 for stmt in stmts {
-                    stmt.typecheck()?;
+                    typechecked_stmts.push(stmt.typecheck()?);
                 }
 
-                Ok(())
+                Ok(BlockItem::Statement(Statement::Compound(BlockStatement {
+                    stmts: typechecked_stmts,
+                })))
             }
             Statement::If(IfStatement {
                 condition,
                 then_branch,
                 else_branch,
             }) => {
-                typecheck_expr(condition)?;
-                then_branch.typecheck()?;
+                let typechecked_condition = typecheck_expr(condition)?;
+                let typechecked_then_branch = then_branch.typecheck()?;
 
-                if else_branch.is_some() {
-                    else_branch.as_ref().clone().unwrap().typecheck()?;
-                }
+                let typechecked_else_branch = if else_branch.is_some() {
+                    Some(else_branch.as_ref().clone().unwrap().typecheck()?)
+                } else {
+                    None
+                };
 
-                Ok(())
+                Ok(BlockItem::Statement(Statement::If(IfStatement {
+                    condition: typechecked_condition,
+                    then_branch: typechecked_then_branch.into(),
+                    else_branch: typechecked_else_branch.into(),
+                })))
             }
             Statement::While(WhileStatement {
                 condition,
                 body,
-                label: _,
+                label,
             }) => {
-                typecheck_expr(condition)?;
-                body.typecheck()?;
+                let typechecked_condition = typecheck_expr(condition)?;
+                let typchecked_body = body.typecheck()?;
 
-                Ok(())
+                Ok(BlockItem::Statement(Statement::While(WhileStatement {
+                    condition: typechecked_condition,
+                    body: typchecked_body.into(),
+                    label: label.clone(),
+                })))
             }
             Statement::DoWhile(DoWhileStatement {
                 condition,
                 body,
-                label: _,
+                label,
             }) => {
-                typecheck_expr(condition)?;
-                body.typecheck()?;
+                let typechecked_expr = typecheck_expr(condition)?;
+                let typechecked_body = body.typecheck()?;
 
-                Ok(())
+                Ok(BlockItem::Statement(Statement::DoWhile(DoWhileStatement {
+                    condition: typechecked_expr,
+                    body: typechecked_body.into(),
+                    label: label.clone(),
+                })))
             }
             Statement::For(ForStatement {
                 init,
                 condition,
                 post,
                 body,
-                label: _,
+                label,
             }) => {
                 if let ForInit::Declaration(decl) = init {
                     if decl.storage_class.is_some() {
@@ -383,29 +428,42 @@ impl Typecheck for Statement {
                     typecheck_expr(for_init_expr)?;
                 }
 
-                if condition.is_some() {
-                    typecheck_expr(condition.as_ref().unwrap())?;
-                }
+                let typechecked_condition = if condition.is_some() {
+                    Some(typecheck_expr(condition.as_ref().unwrap())?)
+                } else {
+                    None
+                };
 
-                if post.is_some() {
-                    typecheck_expr(post.as_ref().unwrap())?;
-                }
+                let typechecked_post = if post.is_some() {
+                    Some(typecheck_expr(post.as_ref().unwrap())?)
+                } else {
+                    None
+                };
 
                 body.typecheck()?;
 
-                Ok(())
+                Ok(BlockItem::Statement(Statement::For(ForStatement {
+                    init: init.clone(),
+                    condition: typechecked_condition,
+                    post: typechecked_post,
+                    body: body.clone(),
+                    label: label.clone(),
+                })))
             }
             Statement::Return(ReturnStatement { expr }) => {
-                typecheck_expr(expr)?;
+                let typechecked_expr = typecheck_expr(expr)?;
 
-                Ok(())
+                Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
+                    expr: typechecked_expr,
+                })))
             }
-            Statement::Break(_) | Statement::Continue(_) | Statement::Null => Ok(()),
+            Statement::Break(_) | Statement::Continue(_) | Statement::Null => Ok(BlockItem::Statement(self.clone())),
         }
     }
 }
 
 fn typecheck_expr(expr: &Expression) -> Result<Expression> {
+    println!("typechecking {:?}", expr);
     match expr {
         Expression::Call(CallExpression { name, args, _type }) => {
             let f = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
@@ -427,7 +485,11 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                         converted_args.push(converted_arg);
                     }
 
-                    Ok(Expression::Call(CallExpression { name: name.clone(), args: converted_args, _type: *ret }))
+                    Ok(Expression::Call(CallExpression {
+                        name: name.clone(),
+                        args: converted_args,
+                        _type: *ret,
+                    }))
                 }
                 _ => bail!("Variable used as function name"),
             }
@@ -441,25 +503,45 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 .unwrap()
                 ._type;
 
-            let some_fn_type = Type::Func { params: vec![Type::Int], ret: Type::Int.into() };
+            println!("v_type: {:?}", v_type);
+
+            let some_fn_type = Type::Func {
+                params: vec![Type::Int],
+                ret: Type::Int.into(),
+            };
 
             if std::mem::discriminant(&v_type) == std::mem::discriminant(&some_fn_type) {
                 bail!("function used as a variable");
             }
 
-            Ok(Expression::Variable(VariableExpression { value: var.value.clone(), _type: v_type }))
+            Ok(Expression::Variable(VariableExpression {
+                value: var.value.clone(),
+                _type: v_type,
+            }))
         }
-        Expression::Binary(BinaryExpression { kind, lhs, rhs, _type }) => {
+        Expression::Binary(BinaryExpression {
+            kind,
+            lhs,
+            rhs,
+            _type,
+        }) => {
             let typed_lhs = typecheck_expr(lhs)?;
             let typed_rhs = typecheck_expr(rhs)?;
 
             match kind {
                 BinaryExpressionKind::And | BinaryExpressionKind::Or => {
-                    return Ok(Expression::Binary(BinaryExpression { kind: kind.clone(), lhs: Box::new(typed_lhs), rhs: Box::new(typed_rhs), _type: Type::Int }));
+                    return Ok(Expression::Binary(BinaryExpression {
+                        kind: kind.clone(),
+                        lhs: Box::new(typed_lhs),
+                        rhs: Box::new(typed_rhs),
+                        _type: Type::Int,
+                    }));
                 }
                 _ => {
                     let t1 = get_type(&typed_lhs);
                     let t2 = get_type(&typed_rhs);
+
+                    println!("t1: {:?}, t2: {:?}", t1, t2);
 
                     let common_type = get_common_type(&t1, &t2);
 
@@ -467,17 +549,32 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     let converted_rhs = convert_to(&typed_rhs, &common_type);
 
                     match kind {
-                        BinaryExpressionKind::Add | BinaryExpressionKind::Sub | BinaryExpressionKind::Mul | BinaryExpressionKind::Div | BinaryExpressionKind::Rem => {
-                            Ok(Expression::Binary(BinaryExpression { kind: kind.clone(), lhs: Box::new(converted_lhs), rhs: Box::new(converted_rhs), _type: common_type }))
-                        }
-                        _ => {
-                            Ok(Expression::Binary(BinaryExpression { kind: kind.clone(), lhs: Box::new(converted_lhs), rhs: Box::new(converted_rhs), _type: Type::Int }))
-                        }
+                        BinaryExpressionKind::Add
+                        | BinaryExpressionKind::Sub
+                        | BinaryExpressionKind::Mul
+                        | BinaryExpressionKind::Div
+                        | BinaryExpressionKind::Rem => Ok(Expression::Binary(BinaryExpression {
+                            kind: kind.clone(),
+                            lhs: Box::new(converted_lhs),
+                            rhs: Box::new(converted_rhs),
+                            _type: common_type,
+                        })),
+                        _ => Ok(Expression::Binary(BinaryExpression {
+                            kind: kind.clone(),
+                            lhs: Box::new(converted_lhs),
+                            rhs: Box::new(converted_rhs),
+                            _type: Type::Int,
+                        })),
                     }
                 }
             }
         }
-        Expression::Assign(AssignExpression { op, lhs, rhs, _type }) => {
+        Expression::Assign(AssignExpression {
+            op,
+            lhs,
+            rhs,
+            _type,
+        }) => {
             let typed_lhs = typecheck_expr(lhs)?;
             let typed_rhs = typecheck_expr(rhs)?;
 
@@ -485,16 +582,21 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
             let converted_right = convert_to(&typed_rhs, &left_type);
 
-            Ok(Expression::Assign(AssignExpression { op: op.clone(), lhs: Box::new(typed_lhs), rhs: Box::new(converted_right), _type: left_type }))
+            Ok(Expression::Assign(AssignExpression {
+                op: op.clone(),
+                lhs: Box::new(typed_lhs),
+                rhs: Box::new(converted_right),
+                _type: left_type,
+            }))
         }
         Expression::Conditional(ConditionalExpression {
             condition,
             then_expr,
             else_expr,
-            _type
+            _type,
         }) => {
             let typed_condition = typecheck_expr(condition)?;
-            
+
             let typed_then_expr = typecheck_expr(then_expr)?;
             let typed_else_expr = typecheck_expr(else_expr)?;
 
@@ -503,29 +605,50 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
             let common_type = get_common_type(&t1, &t2);
 
-            Ok(Expression::Conditional(ConditionalExpression { condition: typed_condition.into(), then_expr: typed_then_expr.into(), else_expr: typed_else_expr.into(), _type: common_type }))
+            Ok(Expression::Conditional(ConditionalExpression {
+                condition: typed_condition.into(),
+                then_expr: typed_then_expr.into(),
+                else_expr: typed_else_expr.into(),
+                _type: common_type,
+            }))
         }
         Expression::Unary(UnaryExpression { kind, expr, _type }) => {
             let typed_inner = typecheck_expr(&expr)?;
             match kind {
-                UnaryExpressionKind::Not => {
-                    Ok(Expression::Unary(UnaryExpression { kind: UnaryExpressionKind::Not, expr: Box::new(typed_inner), _type: Type::Int }))
-                }
-                _ => {
-                    Ok(Expression::Unary(UnaryExpression { kind: UnaryExpressionKind::Not, expr: Box::new(typed_inner.clone()), _type: get_type(&typed_inner) }))
-                }
+                UnaryExpressionKind::Not => Ok(Expression::Unary(UnaryExpression {
+                    kind: UnaryExpressionKind::Not,
+                    expr: Box::new(typed_inner),
+                    _type: Type::Int,
+                })),
+                _ => Ok(Expression::Unary(UnaryExpression {
+                    kind: UnaryExpressionKind::Not,
+                    expr: Box::new(typed_inner.clone()),
+                    _type: get_type(&typed_inner),
+                })),
             }
         }
-        Expression::Constant(ConstantExpression { value, _type }) => {
-            match value {
-                Const::Int(i) => Ok(Expression::Constant(ConstantExpression { value: Const::Int(*i), _type: Type::Int })),
-                Const::Long(l) => Ok(Expression::Constant(ConstantExpression { value: Const::Long(*l), _type: Type::Long })),
-            }
+        Expression::Constant(ConstantExpression { value, _type }) => match value {
+            Const::Int(i) => Ok(Expression::Constant(ConstantExpression {
+                value: Const::Int(*i),
+                _type: Type::Int,
+            })),
+            Const::Long(l) => Ok(Expression::Constant(ConstantExpression {
+                value: Const::Long(*l),
+                _type: Type::Long,
+            })),
         },
-        Expression::Cast(CastExpression { target_type, expr, _type }) => {
+        Expression::Cast(CastExpression {
+            target_type,
+            expr,
+            _type,
+        }) => {
             let typed_inner = typecheck_expr(expr)?;
 
-            Ok(Expression::Cast(CastExpression { target_type: target_type.clone(), expr: Box::new(typed_inner), _type: target_type.clone() }))
+            Ok(Expression::Cast(CastExpression {
+                target_type: target_type.clone(),
+                expr: Box::new(typed_inner),
+                _type: target_type.clone(),
+            }))
         }
     }
 }
@@ -542,19 +665,50 @@ fn convert_to(e: &Expression, _type: &Type) -> Expression {
     if get_type(e) == *_type {
         return e.clone();
     }
-    let cast_expr = Expression::Cast(CastExpression { target_type: _type.clone(), expr: Box::new(e.clone()), _type: _type.clone() });
+    let cast_expr = Expression::Cast(CastExpression {
+        target_type: _type.clone(),
+        expr: Box::new(e.clone()),
+        _type: _type.clone(),
+    });
     return cast_expr;
 }
 
 pub fn get_type(e: &Expression) -> Type {
     match e {
-        Expression::Assign(AssignExpression { op: _, lhs: _, rhs: _, _type }) => _type.clone(),
-        Expression::Binary(BinaryExpression { kind: _, lhs: _, rhs: _, _type }) => _type.clone(),
-        Expression::Call(CallExpression { name: _, args: _, _type }) => _type.clone(),
-        Expression::Cast(CastExpression { target_type: _, expr: _, _type }) => _type.clone(),
-        Expression::Conditional(ConditionalExpression { condition: _, then_expr: _, else_expr: _, _type }) => _type.clone(),
+        Expression::Assign(AssignExpression {
+            op: _,
+            lhs: _,
+            rhs: _,
+            _type,
+        }) => _type.clone(),
+        Expression::Binary(BinaryExpression {
+            kind: _,
+            lhs: _,
+            rhs: _,
+            _type,
+        }) => _type.clone(),
+        Expression::Call(CallExpression {
+            name: _,
+            args: _,
+            _type,
+        }) => _type.clone(),
+        Expression::Cast(CastExpression {
+            target_type: _,
+            expr: _,
+            _type,
+        }) => _type.clone(),
+        Expression::Conditional(ConditionalExpression {
+            condition: _,
+            then_expr: _,
+            else_expr: _,
+            _type,
+        }) => _type.clone(),
         Expression::Constant(ConstantExpression { value: _, _type }) => _type.clone(),
-        Expression::Unary(UnaryExpression { kind: _, expr: _, _type }) => _type.clone(),
+        Expression::Unary(UnaryExpression {
+            kind: _,
+            expr: _,
+            _type,
+        }) => _type.clone(),
         Expression::Variable(VariableExpression { value: _, _type }) => _type.clone(),
     }
 }
