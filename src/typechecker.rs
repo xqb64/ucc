@@ -136,14 +136,16 @@ impl Typecheck for VariableDeclaration {
                     .lock()
                     .unwrap()
                     .insert(self.name.clone(), symbol);
-            
-                Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration {
-                    _type: self._type.clone(),
-                    name: self.name.clone(),
-                    init: self.init.clone(),
-                    storage_class: self.storage_class,
-                    is_global: self.is_global,
-                })))
+
+                Ok(BlockItem::Declaration(Declaration::Variable(
+                    VariableDeclaration {
+                        _type: self._type.clone(),
+                        name: self.name.clone(),
+                        init: self.init.clone(),
+                        storage_class: self.storage_class,
+                        is_global: self.is_global,
+                    },
+                )))
             }
             false => {
                 let initial_value;
@@ -169,13 +171,15 @@ impl Typecheck for VariableDeclaration {
                             bail!("Function {} redeclared as variable", self.name);
                         }
 
-                        Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration {
-                            _type: self._type.clone(),
-                            name: self.name.clone(),
-                            init: None,
-                            storage_class: self.storage_class,
-                            is_global: self.is_global,
-                        })))
+                        Ok(BlockItem::Declaration(Declaration::Variable(
+                            VariableDeclaration {
+                                _type: self._type.clone(),
+                                name: self.name.clone(),
+                                init: None,
+                                storage_class: self.storage_class,
+                                is_global: self.is_global,
+                            },
+                        )))
                     } else {
                         let symbol = Symbol {
                             _type: self._type.clone(),
@@ -189,14 +193,16 @@ impl Typecheck for VariableDeclaration {
                             .lock()
                             .unwrap()
                             .insert(self.name.clone(), symbol);
-                        
-                        Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration {
-                            _type: self._type.clone(),
-                            name: self.name.clone(),
-                            init: None,
-                            storage_class: self.storage_class,
-                            is_global: self.is_global,
-                        })))
+
+                        Ok(BlockItem::Declaration(Declaration::Variable(
+                            VariableDeclaration {
+                                _type: self._type.clone(),
+                                name: self.name.clone(),
+                                init: None,
+                                storage_class: self.storage_class,
+                                is_global: self.is_global,
+                            },
+                        )))
                     }
                 } else if self
                     .storage_class
@@ -230,21 +236,20 @@ impl Typecheck for VariableDeclaration {
                         .unwrap()
                         .insert(self.name.clone(), symbol);
 
-                    Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration {
-                        _type: self._type.clone(),
-                        name: self.name.clone(),
-                        init: self.init.clone(),
-                        storage_class: self.storage_class,
-                        is_global: self.is_global,
-                    })))
-
-
+                    Ok(BlockItem::Declaration(Declaration::Variable(
+                        VariableDeclaration {
+                            _type: self._type.clone(),
+                            name: self.name.clone(),
+                            init: self.init.clone(),
+                            storage_class: self.storage_class,
+                            is_global: self.is_global,
+                        },
+                    )))
                 } else {
                     let symbol = Symbol {
                         _type: self._type.clone(),
                         attrs: IdentifierAttrs::LocalAttr,
                     };
-
 
                     SYMBOL_TABLE
                         .lock()
@@ -256,13 +261,15 @@ impl Typecheck for VariableDeclaration {
                         None
                     };
 
-                    Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration {
-                        _type: self._type.clone(),
-                        name: self.name.clone(),
-                        init: typechecked_init.into(),
-                        storage_class: self.storage_class,
-                        is_global: self.is_global,
-                    })))
+                    Ok(BlockItem::Declaration(Declaration::Variable(
+                        VariableDeclaration {
+                            _type: self._type.clone(),
+                            name: self.name.clone(),
+                            init: typechecked_init.into(),
+                            storage_class: self.storage_class,
+                            is_global: self.is_global,
+                        },
+                    )))
                 }
             }
         }
@@ -353,14 +360,16 @@ impl Typecheck for FunctionDeclaration {
             None
         };
 
-        Ok(BlockItem::Declaration(Declaration::Function(FunctionDeclaration {
-            _type: self._type.clone(),
-            name: self.name.clone(),
-            params: self.params.clone(),
-            body: typechecked_body.into(),
-            storage_class: self.storage_class,
-            is_global: self.is_global,
-        })))
+        Ok(BlockItem::Declaration(Declaration::Function(
+            FunctionDeclaration {
+                _type: self._type.clone(),
+                name: self.name.clone(),
+                params: self.params.clone(),
+                body: typechecked_body.into(),
+                storage_class: self.storage_class,
+                is_global: self.is_global,
+            },
+        )))
     }
 }
 
@@ -369,9 +378,9 @@ impl Typecheck for Statement {
         match self {
             Statement::Program(ProgramStatement { block_items: stmts }) => {
                 let mut typechecked_block_items = vec![];
-                
+
                 for block_item in stmts {
-                   typechecked_block_items.push(block_item.typecheck()?);
+                    typechecked_block_items.push(block_item.typecheck()?);
                 }
 
                 Ok(BlockItem::Statement(Statement::Program(ProgramStatement {
@@ -381,9 +390,11 @@ impl Typecheck for Statement {
             Statement::Expression(ExpressionStatement { expr }) => {
                 let typechecked_expr = typecheck_expr(expr)?;
 
-                Ok(BlockItem::Statement(Statement::Expression(ExpressionStatement {
-                    expr: typechecked_expr,
-                })))
+                Ok(BlockItem::Statement(Statement::Expression(
+                    ExpressionStatement {
+                        expr: typechecked_expr,
+                    },
+                )))
             }
             Statement::Compound(BlockStatement { stmts }) => {
                 let mut typechecked_stmts = vec![];
@@ -505,7 +516,9 @@ impl Typecheck for Statement {
                     expr: typechecked_expr,
                 })))
             }
-            Statement::Break(_) | Statement::Continue(_) | Statement::Null => Ok(BlockItem::Statement(self.clone())),
+            Statement::Break(_) | Statement::Continue(_) | Statement::Null => {
+                Ok(BlockItem::Statement(self.clone()))
+            }
         }
     }
 }
@@ -667,7 +680,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     kind: kind.clone(),
                     expr: Box::new(typed_inner.clone()),
                     _type: get_type(&typed_inner),
-                }))
+                })),
             }
         }
         Expression::Constant(ConstantExpression { value, _type }) => match value {

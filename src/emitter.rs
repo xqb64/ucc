@@ -134,7 +134,7 @@ impl Emit for AsmInstruction {
                 dst.emit(f, asm_type)?;
                 writeln!(f)?;
             }
-            AsmInstruction::Movsx { src, dst} => {
+            AsmInstruction::Movsx { src, dst } => {
                 write!(f, "movsx ")?;
                 src.emit(f, &mut AsmType::Longword)?;
                 write!(f, ", ")?;
@@ -147,7 +147,11 @@ impl Emit for AsmInstruction {
                 write!(f, "\tret")?;
                 writeln!(f)?;
             }
-            AsmInstruction::Unary { op, operand, asm_type } => {
+            AsmInstruction::Unary {
+                op,
+                operand,
+                asm_type,
+            } => {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
@@ -166,7 +170,12 @@ impl Emit for AsmInstruction {
             AsmInstruction::Cdq { asm_type } => {
                 writeln!(f, "cdq")?;
             }
-            AsmInstruction::Binary { op, lhs, rhs, asm_type } => {
+            AsmInstruction::Binary {
+                op,
+                lhs,
+                rhs,
+                asm_type,
+            } => {
                 let instr = match op {
                     AsmBinaryOp::Add => "add",
                     AsmBinaryOp::Sub => "sub",
@@ -288,34 +297,30 @@ impl Emit for AsmOperand {
 impl Emit for AsmRegister {
     fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         match asm_type {
-            AsmType::Longword => {
-                match self {
-                    AsmRegister::AX => write!(f, "%eax")?,
-                    AsmRegister::DX => write!(f, "%edx")?,
-                    AsmRegister::CX => write!(f, "%ecx")?,
-                    AsmRegister::DI => write!(f, "%edi")?,
-                    AsmRegister::SI => write!(f, "%esi")?,
-                    AsmRegister::R8 => write!(f, "%r8d")?,
-                    AsmRegister::R9 => write!(f, "%r9d")?,
-                    AsmRegister::R10 => write!(f, "%r10d")?,
-                    AsmRegister::R11 => write!(f, "%r11d")?,
-                    AsmRegister::SP => write!(f, "%esp")?,
-                }        
-            }
-            AsmType::Quadword => {
-                match self {
-                    AsmRegister::AX => write!(f, "%rax")?,
-                    AsmRegister::DX => write!(f, "%rdx")?,
-                    AsmRegister::CX => write!(f, "%rcx")?,
-                    AsmRegister::DI => write!(f, "%rdi")?,
-                    AsmRegister::SI => write!(f, "%rsi")?,
-                    AsmRegister::R8 => write!(f, "%r8")?,
-                    AsmRegister::R9 => write!(f, "%r9")?,
-                    AsmRegister::R10 => write!(f, "%r10")?,
-                    AsmRegister::R11 => write!(f, "%r11")?,
-                    AsmRegister::SP => write!(f, "%rsp")?,
-                }
-            }
+            AsmType::Longword => match self {
+                AsmRegister::AX => write!(f, "%eax")?,
+                AsmRegister::DX => write!(f, "%edx")?,
+                AsmRegister::CX => write!(f, "%ecx")?,
+                AsmRegister::DI => write!(f, "%edi")?,
+                AsmRegister::SI => write!(f, "%esi")?,
+                AsmRegister::R8 => write!(f, "%r8d")?,
+                AsmRegister::R9 => write!(f, "%r9d")?,
+                AsmRegister::R10 => write!(f, "%r10d")?,
+                AsmRegister::R11 => write!(f, "%r11d")?,
+                AsmRegister::SP => write!(f, "%esp")?,
+            },
+            AsmType::Quadword => match self {
+                AsmRegister::AX => write!(f, "%rax")?,
+                AsmRegister::DX => write!(f, "%rdx")?,
+                AsmRegister::CX => write!(f, "%rcx")?,
+                AsmRegister::DI => write!(f, "%rdi")?,
+                AsmRegister::SI => write!(f, "%rsi")?,
+                AsmRegister::R8 => write!(f, "%r8")?,
+                AsmRegister::R9 => write!(f, "%r9")?,
+                AsmRegister::R10 => write!(f, "%r10")?,
+                AsmRegister::R11 => write!(f, "%r11")?,
+                AsmRegister::SP => write!(f, "%rsp")?,
+            },
         }
 
         Ok(())
