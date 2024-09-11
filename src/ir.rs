@@ -1,12 +1,7 @@
 use crate::{
-    parser::{
-        AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement,
-        BreakStatement, CallExpression, ConditionalExpression, ContinueStatement, Declaration,
-        DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement,
-        FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement,
-        UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement,
-    },
-    typechecker::{IdentifierAttrs, InitialValue, SYMBOL_TABLE},
+    lexer::Const, parser::{
+        AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
+    }, typechecker::{get_type, IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE}
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,12 +50,20 @@ pub enum IRInstruction {
         args: Vec<IRValue>,
         dst: IRValue,
     },
+    SignExtend {
+        src: IRValue,
+        dst: IRValue,
+    },
+    Truncate {
+        src: IRValue,
+        dst: IRValue,
+    },
     Ret(IRValue),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IRValue {
-    Constant(i32),
+    Constant(Const),
     Var(String),
 }
 
@@ -88,11 +91,10 @@ pub enum BinaryOp {
 
 fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
     match e {
-        Expression::Constant(konst) => todo!(),
+        Expression::Constant(const_expr) => IRValue::Constant(const_expr.value),
         Expression::Unary(UnaryExpression { kind, expr, _type }) => {
             let src = emit_tacky(*expr, instructions);
-            let dst_name = format!("var.{}", make_temporary());
-            let dst = IRValue::Var(dst_name.clone());
+            let dst = make_tacky_variable(_type.clone());
             let op = match kind {
                 UnaryExpressionKind::Negate => UnaryOp::Negate,
                 UnaryExpressionKind::Complement => UnaryOp::Complement,
@@ -129,7 +131,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 });
 
                 instructions.push(IRInstruction::Copy {
-                    src: IRValue::Constant(1),
+                    src: IRValue::Constant(Const::Int(1)),
                     dst: result.clone(),
                 });
 
@@ -138,7 +140,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 instructions.push(IRInstruction::Label(false_label.clone()));
 
                 instructions.push(IRInstruction::Copy {
-                    src: IRValue::Constant(0),
+                    src: IRValue::Constant(Const::Int(0)),
                     dst: result.clone(),
                 });
 
@@ -168,7 +170,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 });
 
                 instructions.push(IRInstruction::Copy {
-                    src: IRValue::Constant(0),
+                    src: IRValue::Constant(Const::Int(0)),
                     dst: result.clone(),
                 });
 
@@ -177,7 +179,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 instructions.push(IRInstruction::Label(true_label.clone()));
 
                 instructions.push(IRInstruction::Copy {
-                    src: IRValue::Constant(1),
+                    src: IRValue::Constant(Const::Int(1)),
                     dst: result.clone(),
                 });
 
@@ -188,8 +190,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
             _ => {
                 let lhs = emit_tacky(*lhs, instructions);
                 let rhs = emit_tacky(*rhs, instructions);
-                let dst_name = format!("var.{}", make_temporary());
-                let dst = IRValue::Var(dst_name.clone());
+                let dst = make_tacky_variable(_type.clone());
                 let op = match kind {
                     BinaryExpressionKind::Add => BinaryOp::Add,
                     BinaryExpressionKind::Sub => BinaryOp::Sub,
@@ -286,8 +287,36 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
 
             result
         }
-        _ => todo!(),
+        Expression::Cast(CastExpression { target_type, expr, _type }) => {
+            let result = emit_tacky(*expr.clone(), instructions);
+            
+            if _type == get_type(&expr) {
+                return result;
+            }
+
+            let dst = make_tacky_variable(_type.clone());
+
+            if _type == Type::Long {
+                instructions.push(IRInstruction::SignExtend {
+                    src: result.clone(),
+                    dst: dst.clone(),
+                });
+            } else {
+                instructions.push(IRInstruction::Truncate {
+                    src: result.clone(),
+                    dst: dst.clone(),
+                });
+            }
+
+            dst
+        }
     }
+}
+
+pub fn make_tacky_variable(_type: Type) -> IRValue {
+    let var_name = format!("var.{}", make_temporary());
+    SYMBOL_TABLE.lock().unwrap().insert(var_name.clone(), Symbol { attrs: IdentifierAttrs::LocalAttr, _type });
+    IRValue::Var(var_name)
 }
 
 pub fn make_temporary() -> usize {
@@ -311,7 +340,8 @@ pub enum IRNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct IRStaticVariable {
     pub name: String,
-    pub value: i32,
+    pub _type: Type,
+    pub init: StaticInit,
     pub global: bool,
 }
 
@@ -604,7 +634,7 @@ impl Irfy for FunctionDeclaration {
             instructions.extend::<Vec<IRInstruction>>(stmt.irfy().unwrap().into());
         }
 
-        instructions.push(IRInstruction::Ret(IRValue::Constant(0)));
+        instructions.push(IRInstruction::Ret(IRValue::Constant(Const::Int(0))));
 
         Some(IRNode::Function(IRFunction {
             name: self.name.clone(),
@@ -671,18 +701,24 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
         } = entry.attrs
         {
             match initial_value {
-                InitialValue::Initial(konst) => {
+                InitialValue::Initial(init) => {
                     tacky_defs.push(IRNode::StaticVariable(IRStaticVariable {
                         name: name.clone(),
-                        value: todo!(),
                         global,
+                        init,
+                        _type: entry._type.clone(),
                     }))
                 }
                 InitialValue::Tentative => {
                     tacky_defs.push(IRNode::StaticVariable(IRStaticVariable {
                         name: name.clone(),
-                        value: 0,
+                        _type: entry._type.clone(),
                         global,
+                        init: match entry._type {
+                            Type::Int => StaticInit::Int(0),
+                            Type::Long => StaticInit::Long(0),
+                            _ => unimplemented!(),
+                        },
                     }))
                 }
                 _ => {}

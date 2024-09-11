@@ -161,7 +161,7 @@ impl Codegen for IRStaticVariable {
     fn codegen(&self) -> AsmNode {
         AsmNode::StaticVariable(AsmStaticVariable {
             name: self.name.clone(),
-            value: self.value,
+            value: todo!(),
             global: self.global,
         })
     }
@@ -235,7 +235,7 @@ impl Codegen for Vec<IRInstruction> {
 impl Codegen for IRValue {
     fn codegen(&self) -> AsmNode {
         match self {
-            IRValue::Constant(n) => AsmNode::Operand(AsmOperand::Imm(*n)),
+            IRValue::Constant(n) => AsmNode::Operand(AsmOperand::Imm(todo!())),
             IRValue::Var(name) => AsmNode::Operand(AsmOperand::Pseudo(name.to_owned())),
         }
     }
@@ -433,6 +433,7 @@ impl Codegen for IRInstruction {
 
                 AsmNode::Instructions(instructions)
             }
+            _ => todo!(),
         }
     }
 }

@@ -7,7 +7,7 @@ use std::{collections::HashMap, sync::Mutex};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Symbol {
-    pub ty: Type,
+    pub _type: Type,
     pub attrs: IdentifierAttrs,
 }
 
@@ -45,8 +45,8 @@ impl Typecheck for VariableDeclaration {
 
                 if let Some(Expression::Constant(konst)) = &self.init {
                     initial_value = match konst.value {
-                        Const::Int(i) => InitialValue::Initial(Init::Int(i)),
-                        Const::Long(l) => InitialValue::Initial(Init::Long(l)),
+                        Const::Int(i) => InitialValue::Initial(StaticInit::Int(i)),
+                        Const::Long(l) => InitialValue::Initial(StaticInit::Long(l)),
                     }
                 } else if self.init.is_none() {
                     if self
@@ -71,7 +71,7 @@ impl Typecheck for VariableDeclaration {
                         .cloned()
                         .unwrap();
 
-                    if old_decl.ty != self._type {
+                    if old_decl._type != self._type {
                         bail!("Function {} redeclared as variable", self.name);
                     }
 
@@ -118,7 +118,7 @@ impl Typecheck for VariableDeclaration {
                 }
 
                 let symbol = Symbol {
-                    ty: self._type.clone(),
+                    _type: self._type.clone(),
                     attrs: IdentifierAttrs::StaticAttr {
                         initial_value,
                         global: is_global,
@@ -150,12 +150,12 @@ impl Typecheck for VariableDeclaration {
                             .get(&self.name)
                             .cloned()
                             .unwrap();
-                        if old_decl.ty != self._type {
+                        if old_decl._type != self._type {
                             bail!("Function {} redeclared as variable", self.name);
                         }
                     } else {
                         let symbol = Symbol {
-                            ty: self._type.clone(),
+                            _type: self._type.clone(),
                             attrs: IdentifierAttrs::StaticAttr {
                                 initial_value: InitialValue::NoInitializer,
                                 global: true,
@@ -174,20 +174,20 @@ impl Typecheck for VariableDeclaration {
                     if let Some(Expression::Constant(konst)) = &self.init {
                         match konst.value {
                             Const::Int(i) => {
-                                initial_value = InitialValue::Initial(Init::Int(i));
+                                initial_value = InitialValue::Initial(StaticInit::Int(i));
                             }
                             Const::Long(l) => {
-                                initial_value = InitialValue::Initial(Init::Long(l));
+                                initial_value = InitialValue::Initial(StaticInit::Long(l));
                             }
                         }
                     } else if self.init.is_none() {
-                        initial_value = InitialValue::Initial(Init::Int(0));
+                        initial_value = InitialValue::Initial(StaticInit::Int(0));
                     } else {
                         bail!("no constant initializer");
                     }
 
                     let symbol = Symbol {
-                        ty: self._type.clone(),
+                        _type: self._type.clone(),
                         attrs: IdentifierAttrs::StaticAttr {
                             initial_value,
                             global: false,
@@ -201,7 +201,7 @@ impl Typecheck for VariableDeclaration {
                         .insert(self.name.clone(), symbol);
                 } else {
                     let symbol = Symbol {
-                        ty: self._type.clone(),
+                        _type: self._type.clone(),
                         attrs: IdentifierAttrs::LocalAttr,
                     };
                     println!("inserting variable {} with symbol {:?}", self.name, symbol);
@@ -237,7 +237,7 @@ impl Typecheck for FunctionDeclaration {
                 .cloned()
                 .unwrap();
 
-            if old_decl.ty != fun_type {
+            if old_decl._type != fun_type {
                 bail!(
                     "Incompatible function declarations for function {}",
                     self.name
@@ -273,7 +273,7 @@ impl Typecheck for FunctionDeclaration {
         }
 
         let symbol = Symbol {
-            ty: fun_type.clone(),
+            _type: fun_type.clone(),
             attrs: IdentifierAttrs::FuncAttr {
                 defined: already_defined || has_body,
                 global: is_global,
@@ -293,7 +293,7 @@ impl Typecheck for FunctionDeclaration {
             };
             for (param, _type) in self.params.iter().zip(fn_params.iter()) {
                 let symbol = Symbol {
-                    ty: _type.clone(),
+                    _type: _type.clone(),
                     attrs: IdentifierAttrs::LocalAttr,
                 };
                 SYMBOL_TABLE.lock().unwrap().insert(param.clone(), symbol);
@@ -409,7 +409,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
     match expr {
         Expression::Call(CallExpression { name, args, _type }) => {
             let f = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
-            let f_type = f.ty.clone();
+            let f_type = f._type.clone();
 
             match f_type {
                 Type::Func { params, ret } => {
@@ -439,7 +439,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 .get(&var.value)
                 .cloned()
                 .unwrap()
-                .ty;
+                ._type;
 
             let some_fn_type = Type::Func { params: vec![Type::Int], ret: Type::Int.into() };
 
@@ -546,7 +546,7 @@ fn convert_to(e: &Expression, _type: &Type) -> Expression {
     return cast_expr;
 }
 
-fn get_type(e: &Expression) -> Type {
+pub fn get_type(e: &Expression) -> Type {
     match e {
         Expression::Assign(AssignExpression { op: _, lhs: _, rhs: _, _type }) => _type.clone(),
         Expression::Binary(BinaryExpression { kind: _, lhs: _, rhs: _, _type }) => _type.clone(),
@@ -575,12 +575,12 @@ pub enum IdentifierAttrs {
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum InitialValue {
     Tentative,
-    Initial(Init),
+    Initial(StaticInit),
     NoInitializer,
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
-pub enum Init {
+pub enum StaticInit {
     Int(i32),
     Long(i64),
 }
