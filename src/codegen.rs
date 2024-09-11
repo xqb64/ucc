@@ -202,7 +202,7 @@ impl Codegen for IRFunction {
 
         for (reg_idx, arg) in self.params.iter().take(6).enumerate() {
             instructions.push(AsmInstruction::Mov {
-                asm_type: AsmType::Quadword,
+                asm_type: AsmType::Longword,
                 src: AsmOperand::Register(registers[reg_idx]),
                 dst: AsmOperand::Pseudo(arg.to_owned()),
             });
@@ -688,6 +688,10 @@ impl ReplacePseudo for AsmProgram {
 
 impl ReplacePseudo for AsmFunction {
     fn replace_pseudo(&self) -> Self {
+        // clear offsets
+        OFFSET_MANAGER.lock().unwrap().offsets.clear();
+        OFFSET_MANAGER.lock().unwrap().offset = -4;
+
         let mut instructions = vec![];
         for instr in &self.instructions {
             instructions.push(instr.replace_pseudo());
@@ -934,19 +938,24 @@ impl Fixup for AsmFunction {
                             ]);
                         }
                         (AsmOperand::Imm(konst), AsmOperand::Stack(dst_n)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Imm(*konst),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Binary {
-                                    asm_type: *asm_type,
-                                    op: *op,
-                                    lhs: AsmOperand::Register(AsmRegister::R10),
-                                    rhs: AsmOperand::Stack(*dst_n),
-                                },
-                            ])
+                            if *konst < i32::MIN as i64 || *konst > i32::MAX as i64 {
+                                instructions.extend(vec![
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Imm(*konst),
+                                        dst: AsmOperand::Register(AsmRegister::R10),
+                                    },
+                                    AsmInstruction::Binary {
+                                        asm_type: *asm_type,
+                                        op: *op,
+                                        lhs: AsmOperand::Register(AsmRegister::R10),
+                                        rhs: AsmOperand::Stack(*dst_n),
+                                    },
+                                ])
+                            }
+                            else {
+                                instructions.push(instr.clone());
+                            }
                         }
                         _ => instructions.push(instr.clone()),
                     },
