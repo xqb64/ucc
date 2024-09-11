@@ -268,7 +268,7 @@ impl Codegen for IRInstruction {
     fn codegen(&self) -> AsmNode {
         match self {
             IRInstruction::Unary { op, src, dst } => {
-                let asm_type = get_asm_type(&src);
+                let asm_type = get_asm_type(&dst);
 
                 match op {
                     UnaryOp::Negate | UnaryOp::Complement => AsmNode::Instructions(vec![
@@ -992,6 +992,20 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
+                    (AsmOperand::Imm(konst), _) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                asm_type: *asm_type,
+                                src: AsmOperand::Imm(konst),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Cmp {
+                                asm_type: *asm_type,
+                                lhs: AsmOperand::Register(AsmRegister::R10),
+                                rhs: rhs.clone(),
+                            },
+                        ]);
+                    }
                     _ => instructions.push(instr.clone()),
                 },
                 _ => instructions.push(instr.clone()),
@@ -1125,6 +1139,7 @@ fn get_asm_type(value: &IRValue) -> AsmType {
             Const::Long(_) => AsmType::Quadword,
         }
         IRValue::Var(var_name) => {
+            println!("getting: {}", var_name);
             match SYMBOL_TABLE.lock().unwrap().get(var_name).unwrap()._type {
                 Type::Int => AsmType::Longword,
                 Type::Long => AsmType::Quadword,

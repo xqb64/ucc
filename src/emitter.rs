@@ -16,29 +16,29 @@ use std::fs::File;
 use std::io::Write;
 
 pub trait Emit {
-    fn emit(&mut self, f: &mut File) -> Result<()>;
+    fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()>;
 }
 
 impl Emit for AsmNode {
-    fn emit(&mut self, f: &mut File) -> Result<()> {
+    fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         match self {
-            AsmNode::Program(prog) => prog.emit(f),
-            AsmNode::Function(func) => func.emit(f),
-            AsmNode::Operand(operand) => operand.emit(f),
-            AsmNode::Instructions(instrs) => instrs.emit(f),
-            AsmNode::StaticVariable(static_var) => static_var.emit(f),
+            AsmNode::Program(prog) => prog.emit(f, asm_type),
+            AsmNode::Function(func) => func.emit(f, asm_type),
+            AsmNode::Operand(operand) => operand.emit(f, asm_type),
+            AsmNode::Instructions(instrs) => instrs.emit(f, asm_type),
+            AsmNode::StaticVariable(static_var) => static_var.emit(f, asm_type),
         }
     }
 }
 
 impl Emit for AsmProgram {
-    fn emit(&mut self, f: &mut File) -> Result<()> {
+    fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         for func in self.functions.iter_mut() {
-            func.emit(f)?;
+            func.emit(f, asm_type)?;
         }
 
         for static_var in self.static_vars.iter_mut() {
-            static_var.emit(f)?;
+            static_var.emit(f, asm_type)?;
         }
 
         writeln!(f, ".section	.note.GNU-stack,\"\",@progbits")?;
@@ -50,9 +50,9 @@ impl Emit for AsmProgram {
 }
 
 impl Emit for Vec<AsmInstruction> {
-    fn emit(&mut self, f: &mut File) -> Result<()> {
+    fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         for instr in self.iter_mut() {
-            instr.emit(f)?;
+            instr.emit(f, asm_type)?;
         }
 
         Ok(())
@@ -60,7 +60,7 @@ impl Emit for Vec<AsmInstruction> {
 }
 
 impl Emit for AsmStaticVariable {
-    fn emit(&mut self, f: &mut File) -> Result<()> {
+    fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         writeln!(f, ".section .data")?;
 
         if self.global {
@@ -80,7 +80,7 @@ impl Emit for AsmStaticVariable {
 }
 
 impl Emit for AsmFunction {
-    fn emit(&mut self, f: &mut File) -> Result<()> {
+    fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         writeln!(f, ".section .text")?;
 
         if let Some(instr) = self.instructions.get_mut(0) {
@@ -109,14 +109,14 @@ impl Emit for AsmFunction {
         writeln!(f, "\tpushq %rbp")?;
         writeln!(f, "\tmovq %rsp, %rbp")?;
 
-        self.instructions.emit(f)?;
+        self.instructions.emit(f, asm_type)?;
 
         Ok(())
     }
 }
 
 impl Emit for AsmInstruction {
-    fn emit(&mut self, f: &mut File) -> Result<()> {
+    fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         if let AsmInstruction::Label(_) = self {
         } else {
             write!(f, "\t")?;
@@ -129,16 +129,16 @@ impl Emit for AsmInstruction {
                     AsmType::Quadword => "q",
                 };
                 write!(f, "mov{} ", suffix)?;
-                src.emit(f)?;
+                src.emit(f, asm_type)?;
                 write!(f, ", ")?;
-                dst.emit(f)?;
+                dst.emit(f, asm_type)?;
                 writeln!(f)?;
             }
             AsmInstruction::Movsx { src, dst} => {
                 write!(f, "movsx ")?;
-                src.emit(f)?;
+                src.emit(f, asm_type)?;
                 write!(f, ", ")?;
-                dst.emit(f)?;
+                dst.emit(f, asm_type)?;
                 writeln!(f)?;
             }
             AsmInstruction::Ret => {
@@ -157,7 +157,7 @@ impl Emit for AsmInstruction {
                     AsmUnaryOp::Neg => write!(f, "neg{} ", suffix)?,
                     AsmUnaryOp::Not => write!(f, "not{} ", suffix)?,
                 }
-                operand.emit(f)?;
+                operand.emit(f, asm_type)?;
                 writeln!(f)?;
             }
             AsmInstruction::AllocateStack(n) => {
@@ -180,9 +180,9 @@ impl Emit for AsmInstruction {
 
                 write!(f, "{}{} ", instr, suffix)?;
 
-                lhs.emit(f)?;
+                lhs.emit(f, asm_type)?;
                 write!(f, ", ")?;
-                rhs.emit(f)?;
+                rhs.emit(f, asm_type)?;
 
                 writeln!(f)?;
             }
@@ -192,7 +192,7 @@ impl Emit for AsmInstruction {
                     AsmType::Quadword => "q",
                 };
                 write!(f, "idiv{} ", suffix)?;
-                operand.emit(f)?;
+                operand.emit(f, asm_type)?;
                 writeln!(f)?;
             }
             AsmInstruction::Imul { src, dst, asm_type } => {
@@ -202,9 +202,9 @@ impl Emit for AsmInstruction {
                 };
 
                 write!(f, "imul{} ", suffix)?;
-                src.emit(f)?;
+                src.emit(f, asm_type)?;
                 write!(f, ", ")?;
-                dst.emit(f)?;
+                dst.emit(f, asm_type)?;
                 writeln!(f)?;
             }
             AsmInstruction::Cmp { lhs, rhs, asm_type } => {
@@ -214,9 +214,9 @@ impl Emit for AsmInstruction {
                 };
 
                 write!(f, "cmp{} ", suffix)?;
-                lhs.emit(f)?;
+                lhs.emit(f, asm_type)?;
                 write!(f, ", ")?;
-                rhs.emit(f)?;
+                rhs.emit(f, asm_type)?;
                 writeln!(f)?;
             }
             AsmInstruction::Jmp { target } => {
@@ -248,21 +248,7 @@ impl Emit for AsmInstruction {
 
                 write!(f, "set{} ", suffix)?;
 
-                match operand {
-                    AsmOperand::Register(reg) => match reg {
-                        AsmRegister::AX => write!(f, "%al")?,
-                        AsmRegister::CX => write!(f, "%cl")?,
-                        AsmRegister::DX => write!(f, "%dl")?,
-                        AsmRegister::DI => write!(f, "%dil")?,
-                        AsmRegister::SI => write!(f, "%sil")?,
-                        AsmRegister::R8 => write!(f, "%r8b")?,
-                        AsmRegister::R9 => write!(f, "%r9b")?,
-                        AsmRegister::R10 => write!(f, "%r10b")?,
-                        AsmRegister::R11 => write!(f, "%r11b")?,
-                        AsmRegister::SP => write!(f, "%sp")?,
-                    },
-                    _ => operand.emit(f)?,
-                }
+                operand.emit(f, asm_type)?;
 
                 writeln!(f)?;
             }
@@ -277,21 +263,7 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::Push(operand) => {
                 write!(f, "pushq ")?;
-                match operand {
-                    AsmOperand::Register(reg) => match reg {
-                        AsmRegister::AX => write!(f, "%rax")?,
-                        AsmRegister::CX => write!(f, "%rcx")?,
-                        AsmRegister::DX => write!(f, "%rdx")?,
-                        AsmRegister::DI => write!(f, "%rdi")?,
-                        AsmRegister::SI => write!(f, "%rsi")?,
-                        AsmRegister::R8 => write!(f, "%r8")?,
-                        AsmRegister::R9 => write!(f, "%r9")?,
-                        AsmRegister::R10 => write!(f, "%r10")?,
-                        AsmRegister::R11 => write!(f, "%r11")?,
-                        AsmRegister::SP => write!(f, "%rsp")?,
-                    },
-                    _ => operand.emit(f)?,
-                }
+                operand.emit(f, asm_type)?;
                 writeln!(f)?;
             }
         }
@@ -301,10 +273,10 @@ impl Emit for AsmInstruction {
 }
 
 impl Emit for AsmOperand {
-    fn emit(&mut self, f: &mut File) -> Result<()> {
+    fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         match self {
             AsmOperand::Imm(n) => write!(f, "${}", n)?,
-            AsmOperand::Register(reg) => reg.emit(f)?,
+            AsmOperand::Register(reg) => reg.emit(f, asm_type)?,
             AsmOperand::Stack(n) => write!(f, "{}(%rbp)", n)?,
             AsmOperand::Pseudo(_) => unreachable!(),
             AsmOperand::Data(identifier) => write!(f, "{}(%rip)", identifier)?,
@@ -314,19 +286,38 @@ impl Emit for AsmOperand {
 }
 
 impl Emit for AsmRegister {
-    fn emit(&mut self, f: &mut File) -> Result<()> {
-        match self {
-            AsmRegister::AX => write!(f, "%eax")?,
-            AsmRegister::DX => write!(f, "%edx")?,
-            AsmRegister::CX => write!(f, "%ecx")?,
-            AsmRegister::DI => write!(f, "%edi")?,
-            AsmRegister::SI => write!(f, "%esi")?,
-            AsmRegister::R8 => write!(f, "%r8d")?,
-            AsmRegister::R9 => write!(f, "%r9d")?,
-            AsmRegister::R10 => write!(f, "%r10d")?,
-            AsmRegister::R11 => write!(f, "%r11d")?,
-            AsmRegister::SP => write!(f, "%esp")?,
+    fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
+        match asm_type {
+            AsmType::Longword => {
+                match self {
+                    AsmRegister::AX => write!(f, "%eax")?,
+                    AsmRegister::DX => write!(f, "%edx")?,
+                    AsmRegister::CX => write!(f, "%ecx")?,
+                    AsmRegister::DI => write!(f, "%edi")?,
+                    AsmRegister::SI => write!(f, "%esi")?,
+                    AsmRegister::R8 => write!(f, "%r8d")?,
+                    AsmRegister::R9 => write!(f, "%r9d")?,
+                    AsmRegister::R10 => write!(f, "%r10d")?,
+                    AsmRegister::R11 => write!(f, "%r11d")?,
+                    AsmRegister::SP => write!(f, "%esp")?,
+                }        
+            }
+            AsmType::Quadword => {
+                match self {
+                    AsmRegister::AX => write!(f, "%rax")?,
+                    AsmRegister::DX => write!(f, "%rdx")?,
+                    AsmRegister::CX => write!(f, "%rcx")?,
+                    AsmRegister::DI => write!(f, "%rdi")?,
+                    AsmRegister::SI => write!(f, "%rsi")?,
+                    AsmRegister::R8 => write!(f, "%r8")?,
+                    AsmRegister::R9 => write!(f, "%r9")?,
+                    AsmRegister::R10 => write!(f, "%r10")?,
+                    AsmRegister::R11 => write!(f, "%r11")?,
+                    AsmRegister::SP => write!(f, "%rsp")?,
+                }
+            }
         }
+
         Ok(())
     }
 }

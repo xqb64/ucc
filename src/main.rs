@@ -4,7 +4,7 @@ use std::{collections::VecDeque, fs::File, path::PathBuf};
 use anyhow::{bail, Result};
 use structopt::StructOpt;
 
-use ucc::codegen::{build_asm_symbol_table, Codegen, Fixup, ReplacePseudo};
+use ucc::codegen::{build_asm_symbol_table, AsmType, Codegen, Fixup, ReplacePseudo};
 use ucc::emitter::Emit;
 use ucc::ir::{convert_symbols_to_tacky, IRNode, Irfy};
 use ucc::lexer::{Lexer, Token};
@@ -86,7 +86,7 @@ fn run(opts: &Opt) -> Result<()> {
 
     let mut f = File::create(opts.path.with_extension("s"))?;
 
-    asm_prog.emit(&mut f)?;
+    asm_prog.emit(&mut f, &mut AsmType::Longword)?;
 
     if opts.c {
         std::process::Command::new("gcc")
