@@ -9,7 +9,6 @@ use crate::codegen::AsmStaticVariable;
 use crate::codegen::AsmType;
 use crate::codegen::AsmUnaryOp;
 use crate::codegen::ConditionCode;
-use crate::codegen::OFFSET_MANAGER;
 use crate::typechecker::StaticInit;
 use anyhow::Result;
 use std::fs::File;
@@ -84,20 +83,9 @@ impl Emit for AsmFunction {
         writeln!(f, ".section .text")?;
 
         if let Some(instr) = self.instructions.get_mut(0) {
-            let offset_manager = OFFSET_MANAGER.lock().unwrap();
-
-            if !offset_manager.offsets.is_empty() {
-                let mut stack_frame_bytelen = offset_manager.offset.unsigned_abs() as usize;
-                let rem = stack_frame_bytelen % 16;
-                if rem != 0 {
-                    stack_frame_bytelen += 16 - rem;
-                }
-
-                *instr = AsmInstruction::AllocateStack(stack_frame_bytelen);
-            } else {
-                // remove instr
-                self.instructions.remove(0);
-            }
+            *instr = AsmInstruction::AllocateStack(self.stack_space);
+        } else {
+            self.instructions.remove(0);
         }
 
         if self.global {

@@ -26,6 +26,7 @@ pub struct AsmFunction {
     pub name: String,
     pub instructions: Vec<AsmInstruction>,
     pub global: bool,
+    pub stack_space: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -236,6 +237,7 @@ impl Codegen for IRFunction {
             name: self.name.clone(),
             instructions,
             global,
+            stack_space: 0,
         })
     }
 }
@@ -633,37 +635,69 @@ impl ReplacePseudo for AsmInstruction {
     }
 }
 
+lazy_static::lazy_static! {
+    static ref OFFSET_MANAGER: Mutex<OffsetManager> = Mutex::new(OffsetManager::new());
+}
+
+pub struct OffsetManager {
+    pub offsets: HashMap<String, i32>,
+    pub offset: i32,
+}
+
+impl OffsetManager {
+    pub fn new() -> Self {
+        OffsetManager {
+            offsets: HashMap::new(),
+            offset: 0,
+        }
+    }
+
+    pub fn get_offset(&mut self, name: &str) -> i32 {
+        // look up the name in symbol table, determine the type of the symbol
+        // and return appropriate offset, while making sure the stack is aligned
+
+        let symbol = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
+        let offset = match symbol._type {
+            Type::Int => 4,
+            Type::Long => 8,
+            _ => unreachable!(),
+        };
+        
+        self.offsets.insert(name.to_owned(), offset * -1);
+
+        self.offset -= offset;
+
+        self.offset
+    }
+}
+
 impl ReplacePseudo for AsmOperand {
     fn replace_pseudo(&self) -> Self {
         match self {
             AsmOperand::Imm(_) => self.clone(),
             AsmOperand::Pseudo(name) => {
-                let mut offset_manager = OFFSET_MANAGER.lock().unwrap();
-                if let Some(symbol) = SYMBOL_TABLE.lock().unwrap().get(name) {
+                if let Some(symbol) = SYMBOL_TABLE.lock().unwrap().get(name).cloned() {
                     match symbol.attrs {
                         IdentifierAttrs::StaticAttr {
                             initial_value: _,
                             global: _,
                         } => AsmOperand::Data(name.clone()),
                         _ => {
-                            let mut offset = offset_manager.get_offset(name);
-
                             let _type = match ASM_SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap() {
                                 AsmSymtabEntry::Object { _type, is_static: _ } => _type,
                                 _ => unreachable!(),
                             };
 
-                            if _type == AsmType::Quadword {
-                                offset -= 4;
-                                offset_manager.offset -= 4;                                
-                            }
-
-                            AsmOperand::Stack(offset)
+                            AsmOperand::Stack(VAR_TO_STACK_POS.lock().unwrap().var_to_stack_pos(name, _type).0.try_into().unwrap())
                         }
                     }
                 } else {
-                    let offset = offset_manager.get_offset(name);
-                    AsmOperand::Stack(offset)
+                    let _type = match ASM_SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap() {
+                        AsmSymtabEntry::Object { _type, is_static: _ } => _type,
+                        _ => unreachable!(),
+                    };
+
+                    AsmOperand::Stack(VAR_TO_STACK_POS.lock().unwrap().var_to_stack_pos(name, _type).0.try_into().unwrap())
                 }
             }
             AsmOperand::Stack(_) => self.clone(),
@@ -688,10 +722,7 @@ impl ReplacePseudo for AsmProgram {
 
 impl ReplacePseudo for AsmFunction {
     fn replace_pseudo(&self) -> Self {
-        // clear offsets
-        OFFSET_MANAGER.lock().unwrap().offsets.clear();
-        OFFSET_MANAGER.lock().unwrap().offset = -4;
-
+        VAR_TO_STACK_POS.lock().unwrap().clear();
         let mut instructions = vec![];
         for instr in &self.instructions {
             instructions.push(instr.replace_pseudo());
@@ -700,6 +731,7 @@ impl ReplacePseudo for AsmFunction {
             name: self.name.clone(),
             instructions,
             global: self.global,
+            stack_space: VAR_TO_STACK_POS.lock().unwrap().last_used_stack_pos.0.abs() as usize,
         }
     }
 }
@@ -1240,6 +1272,7 @@ impl Fixup for AsmFunction {
             name: self.name.clone(),
             instructions,
             global: self.global,
+            stack_space: self.stack_space,
         }
     }
 }
@@ -1323,33 +1356,6 @@ impl From<BinaryOp> for AsmBinaryOp {
     }
 }
 
-lazy_static::lazy_static! {
-    pub static ref OFFSET_MANAGER: std::sync::Mutex<OffsetManager> = std::sync::Mutex::new(OffsetManager::new());
-}
-
-pub struct OffsetManager {
-    pub offsets: std::collections::HashMap<String, i32>,
-    pub offset: i32,
-}
-
-impl OffsetManager {
-    fn new() -> OffsetManager {
-        OffsetManager {
-            offsets: std::collections::HashMap::new(),
-            offset: -4,
-        }
-    }
-
-    pub fn get_offset(&mut self, name: &str) -> i32 {
-        if !self.offsets.contains_key(name) {
-            self.offsets.insert(name.to_owned(), self.offset);
-            self.offset -= 4;
-        }
-
-        self.offsets[name]
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum AsmType {
     Longword,
@@ -1363,7 +1369,6 @@ fn get_asm_type(value: &IRValue) -> AsmType {
             Const::Long(_) => AsmType::Quadword,
         }
         IRValue::Var(var_name) => {
-            println!("getting: {}", var_name);
             match SYMBOL_TABLE.lock().unwrap().get(var_name).unwrap()._type {
                 Type::Int => AsmType::Longword,
                 Type::Long => AsmType::Quadword,
@@ -1406,8 +1411,6 @@ pub fn build_asm_symbol_table() {
 
         asm_symbol_table.insert(identifier.clone(), entry);
     }
-
-    println!("{:?}", asm_symbol_table); 
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1421,6 +1424,90 @@ pub enum AsmSymtabEntry {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub struct StackPosition(pub i64);
+
+pub struct VarToStackPos {
+    last_used_stack_pos: StackPosition,
+    var_to_stack_pos: HashMap<String, StackPosition>,
+}
+
+impl Default for VarToStackPos {
+    fn default() -> Self {
+        Self {
+            last_used_stack_pos: StackPosition(0),
+            var_to_stack_pos: HashMap::new(),
+        }
+    }
+}
+
+impl VarToStackPos {
+    pub fn var_to_stack_pos(
+        &mut self,
+        ident: &str,
+        asm_type: AsmType,
+    ) -> StackPosition {
+        let pos = self.var_to_stack_pos.entry(ident.to_owned()).or_insert_with(|| {
+            let alloc = OperandByteLen::from(asm_type) as i64;
+            self.last_used_stack_pos.0 -= alloc;
+
+            let alignment = Alignment::default_of(asm_type) as i64;
+            let rem = self.last_used_stack_pos.0 % alignment;
+            if rem != 0 {
+                self.last_used_stack_pos.0 -= alignment + rem;
+            }
+
+            self.last_used_stack_pos
+        });
+        *pos
+    }
+
+    pub fn clear(&mut self) {
+        self.var_to_stack_pos.clear();
+        self.last_used_stack_pos = StackPosition(0);
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum OperandByteLen {
+    B1 = 1,
+    B4 = 4,
+    B8 = 8,
+}
+
+impl<T: Into<AsmType>> From<T> for OperandByteLen {
+    fn from(t: T) -> Self {
+        let asm_type = t.into();
+        match asm_type {
+            AsmType::Longword => Self::B4,
+            AsmType::Quadword => Self::B8,
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Debug)]
+pub enum Alignment {
+    B4 = 4,
+    B8 = 8,
+    B16 = 16,
+}
+
+impl Alignment {
+    /// The required alignment, in stack and in asm sections (`.data`, `.rodata`, `.literal8`, ...),
+    ///   according to System V x64 ABI.
+    /// On any individual item, the actual declared alignment may be a multiple of this basic amount,
+    ///   eg b/c an instruction accessing it requires the operand to be aligned a certain amount.
+    pub fn default_of<T: Into<AsmType>>(t: T) -> Self {
+        let asm_type = t.into();
+        match asm_type {
+            AsmType::Longword => Self::B4,
+            AsmType::Quadword => Self::B8,
+        }
+    }
+}
+
+
 lazy_static::lazy_static! {
-    pub static ref ASM_SYMBOL_TABLE: Mutex<HashMap<String, AsmSymtabEntry>> = Mutex::new(HashMap::new());
+    static ref ASM_SYMBOL_TABLE: Mutex<HashMap<String, AsmSymtabEntry>> = Mutex::new(HashMap::new());
+    static ref VAR_TO_STACK_POS: Mutex<VarToStackPos> = Mutex::new(VarToStackPos::default());
 }
