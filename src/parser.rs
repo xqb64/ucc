@@ -552,40 +552,54 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<Expression> {
-        if self.is_next(&[Token::Hyphen, Token::Tilde, Token::Bang, Token::LParen]) {
+        if self.is_next(&[Token::Hyphen, Token::Tilde, Token::Bang]) {
             let op = self.previous.clone().unwrap();
     
-            match op {
-                Token::LParen => {
-                    let specifier_list = self.consume_while(&Token::RParen)?;
-                    self.consume(&Token::RParen)?;
-                    let expr = self.unary()?;
-                    let spam = Ok(Expression::Cast(CastExpression {
-                        target_type: self.parse_type(&specifier_list)?,
-                        expr: expr.into(),
-                        _type: Type::Dummy,
-                    }));
-                    println!("returning spam: {:?}", spam);
-
-                    return spam;
-                }
-                _ => {
-                    // Handle unary operators
-                    let expr = self.unary()?;
-                    return Ok(Expression::Unary(UnaryExpression {
-                        expr: expr.into(),
-                        kind: match op {
-                            Token::Hyphen => UnaryExpressionKind::Negate,
-                            Token::Tilde => UnaryExpressionKind::Complement,
-                            Token::Bang => UnaryExpressionKind::Not,
-                            _ => unreachable!(),
-                        },
-                        _type: Type::Dummy,
-                    }));
-                }
-            }
+            // Handle unary operators
+            let expr = self.unary()?;
+            return Ok(Expression::Unary(UnaryExpression {
+                expr: expr.into(),
+                kind: match op {
+                    Token::Hyphen => UnaryExpressionKind::Negate,
+                    Token::Tilde => UnaryExpressionKind::Complement,
+                    Token::Bang => UnaryExpressionKind::Not,
+                    _ => unreachable!(),
+                },
+                _type: Type::Dummy,
+            }));
         }
+
+        if self.is_next(&[Token::LParen]) {
+            let specifier_list = self.lookahead_until(&Token::RParen);
+
+            let t = self.parse_type(&specifier_list);
+
+            if t.is_err() {
+                return self.parse_grouping();
+            } 
+
+            let spam = self.consume_while(&Token::RParen)?;
+
+            assert_eq!(specifier_list, spam);
+
+            self.consume(&Token::RParen)?;
+
+            let expr = self.unary()?;
+            
+            return Ok(Expression::Cast(CastExpression {
+                target_type: t?,
+                expr: expr.into(),
+                _type: Type::Dummy,
+            }));
+        }
+
         self.call()
+    }
+
+    fn lookahead_until(&mut self, token: &Token) -> Vec<Token> {
+        let mut v = vec![];
+        v.push(self.current.clone().unwrap());
+        v.iter().chain(&self.tokens).take_while(|&t| t != token).cloned().collect()
     }
     
 
