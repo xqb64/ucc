@@ -727,11 +727,17 @@ impl ReplacePseudo for AsmFunction {
         for instr in &self.instructions {
             instructions.push(instr.replace_pseudo());
         }
+
+        let s = VAR_TO_STACK_POS.lock().unwrap().last_used_stack_pos.0.abs() as usize;
+
+        // find next multiple of 16 of s
+        let stack_space = (s + 15) & !15;
+
         AsmFunction {
             name: self.name.clone(),
             instructions,
             global: self.global,
-            stack_space: VAR_TO_STACK_POS.lock().unwrap().last_used_stack_pos.0.abs() as usize,
+            stack_space,
         }
     }
 }
