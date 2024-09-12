@@ -60,18 +60,40 @@ impl Emit for Vec<AsmInstruction> {
 
 impl Emit for AsmStaticVariable {
     fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
-        writeln!(f, ".section .data")?;
+        match self.init {
+            StaticInit::Int(n) => match n {
+                0 => writeln!(f, ".section .bss")?,
+                _ => writeln!(f, ".section .data")?,
+            }
+            StaticInit::Long(n) => match n {
+                0 => writeln!(f, ".section .bss")?,
+                _ => writeln!(f, ".section .data")?,
+            }
+        }
 
         if self.global {
             writeln!(f, ".globl {}", self.name)?;
         }
 
         writeln!(f, "{}:", self.name)?;
-        writeln!(f, "\t.align 4")?;
-
+        
+        match self.alignment {
+            1 => writeln!(f, "\t.align 1")?,
+            2 => writeln!(f, "\t.align 2")?,
+            4 => writeln!(f, "\t.align 4")?,
+            8 => writeln!(f, "\t.align 8")?,
+            _ => writeln!(f, "\t.align 16")?,
+        }
+        
         match self.init {
-            StaticInit::Int(n) => writeln!(f, "\t.long {}", n)?,
-            StaticInit::Long(n) => writeln!(f, "\t.quad {}", n)?,
+            StaticInit::Int(n) => match n {
+                0 => writeln!(f, "\t.zero 4")?,
+                _ => writeln!(f, "\t.long {}", n)?,
+            }
+            StaticInit::Long(n) => match n {
+                0 => writeln!(f, "\t.zero 8")?,
+                _ => writeln!(f, "\t.quad {}", n)?,
+            }
         }
 
         Ok(())
