@@ -255,17 +255,27 @@ impl Typecheck for VariableDeclaration {
                         .lock()
                         .unwrap()
                         .insert(self.name.clone(), symbol);
+                    
                     let typechecked_init = if self.init.is_some() {
                         Some(typecheck_expr(self.init.as_ref().unwrap())?)
                     } else {
                         None
                     };
 
+                    let left_type = self._type.clone();
+
+                    let converted_right = if typechecked_init.is_some() {
+                        Some(convert_to(&typechecked_init.as_ref().unwrap(), &left_type))
+                    } else {
+                        None
+                    };
+        
+
                     Ok(BlockItem::Declaration(Declaration::Variable(
                         VariableDeclaration {
                             _type: self._type.clone(),
                             name: self.name.clone(),
-                            init: typechecked_init.into(),
+                            init: converted_right.into(),
                             storage_class: self.storage_class,
                             is_global: self.is_global,
                         },
