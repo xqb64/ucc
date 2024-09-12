@@ -531,7 +531,7 @@ impl Codegen for IRInstruction {
 
                 let asm_dst = dst.codegen().into();
                 instructions.push(AsmInstruction::Mov {
-                    asm_type: AsmType::Longword,
+                    asm_type: AsmType::Quadword,
                     src: AsmOperand::Register(AsmRegister::AX),
                     dst: asm_dst,
                 });
@@ -1211,14 +1211,14 @@ impl Fixup for AsmFunction {
                     }
                     (_, AsmOperand::Stack(dst_n)) => {
                         instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: AsmOperand::Stack(dst_n),
-                                dst: AsmOperand::Register(AsmRegister::R11),
-                            },
                             AsmInstruction::Movsx {
                                 src: src.clone(),
                                 dst: AsmOperand::Register(AsmRegister::R11),
+                            },
+                            AsmInstruction::Mov {
+                                asm_type: AsmType::Quadword,
+                                src: AsmOperand::Register(AsmRegister::R11),
+                                dst: dst.clone(),
                             },
                         ]);
                     }
