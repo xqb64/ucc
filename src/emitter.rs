@@ -153,10 +153,13 @@ impl Emit for AsmInstruction {
                 writeln!(f)?;
             }
             AsmInstruction::AllocateStack(n) => {
-                writeln!(f, "sub ${}, %rsp", n)?;
+                writeln!(f, "subq ${}, %rsp", n)?;
             }
             AsmInstruction::Cdq { asm_type } => {
-                writeln!(f, "cdq")?;
+                match asm_type {
+                    AsmType::Longword => writeln!(f, "cdq")?,
+                    AsmType::Quadword => writeln!(f, "cqo")?
+                }
             }
             AsmInstruction::Binary {
                 op,
