@@ -181,7 +181,11 @@ impl Codegen for IRStaticVariable {
             name: self.name.clone(),
             init: self.init.clone(),
             global: self.global,
-            alignment: 8,
+            alignment: match self._type {
+                Type::Int => 4,
+                Type::Long => 8,
+                _ => unreachable!(),
+            },
         })
     }
 }
