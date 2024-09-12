@@ -216,7 +216,7 @@ impl Codegen for IRFunction {
         let mut stack_offset = 16;
         for arg in self.params.iter().skip(6) {
             instructions.push(AsmInstruction::Mov {
-                asm_type: AsmType::Quadword,
+                asm_type: AsmType::Longword,
                 src: AsmOperand::Stack(stack_offset),
                 dst: AsmOperand::Pseudo(arg.to_owned()),
             });
@@ -325,12 +325,12 @@ impl Codegen for IRInstruction {
                 match op {
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => AsmNode::Instructions(vec![
                         AsmInstruction::Mov {
-                            asm_type,
+                            asm_type: get_asm_type(&dst),
                             src: lhs.codegen().into(),
                             dst: dst.codegen().into(),
                         },
                         AsmInstruction::Binary {
-                            asm_type,
+                            asm_type: dbg!(get_asm_type(&dst)),
                             op: (*op).into(),
                             lhs: rhs.codegen().into(),
                             rhs: dst.codegen().into(),
@@ -791,12 +791,12 @@ impl Fixup for AsmFunction {
                     (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
-                                asm_type: *asm_type,
+                                asm_type: dbg!(*asm_type),
                                 src: AsmOperand::Stack(*src_n),
                                 dst: AsmOperand::Register(AsmRegister::R10),
                             },
                             AsmInstruction::Mov {
-                                asm_type: *asm_type,
+                                asm_type: dbg!(*asm_type),
                                 src: AsmOperand::Register(AsmRegister::R10),
                                 dst: AsmOperand::Stack(*dst_n),
                             },
@@ -889,12 +889,12 @@ impl Fixup for AsmFunction {
                         (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
-                                    asm_type: *asm_type,
+                                    asm_type: dbg!(asm_type.clone()),
                                     src: AsmOperand::Stack(*src_n),
                                     dst: AsmOperand::Register(AsmRegister::R10),
                                 },
                                 AsmInstruction::Binary {
-                                    asm_type: *asm_type,
+                                    asm_type: dbg!(asm_type.clone()),
                                     op: *op,
                                     lhs: AsmOperand::Register(AsmRegister::R10),
                                     rhs: AsmOperand::Stack(*dst_n),
