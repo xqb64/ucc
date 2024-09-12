@@ -762,6 +762,7 @@ fn get_common_type(type1: &Type, type2: &Type) -> Type {
 }
 
 pub fn get_size_of_type(t: &Type) -> usize {
+    println!("getting size of {:?}", t);
     match t {
         Type::Int => 4,
         Type::Uint => 4,

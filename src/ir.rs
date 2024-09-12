@@ -7,7 +7,7 @@ use crate::{
         FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, Type,
         UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement,
     },
-    typechecker::{get_type, IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE},
+    typechecker::{get_signedness, get_size_of_type, get_type, IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,6 +57,10 @@ pub enum IRInstruction {
         dst: IRValue,
     },
     SignExtend {
+        src: IRValue,
+        dst: IRValue,
+    },
+    ZeroExtend {
         src: IRValue,
         dst: IRValue,
     },
@@ -310,23 +314,33 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
             expr,
             _type,
         }) => {
-            println!("HERE");
-
             let result = emit_tacky(*expr.clone(), instructions);
+            let inner_type = get_type(&expr);
 
-            if target_type == get_type(&expr) {
+            if target_type == inner_type {
                 return result;
             }
 
             let dst = make_tacky_variable(target_type.clone());
 
-            if target_type == Type::Long {
+            println!("t, inner_type: {:?} -- {:?}", t, inner_type);
+            if get_size_of_type(&target_type) == get_size_of_type(&inner_type) {
+                instructions.push(IRInstruction::Copy {
+                    src: result.clone(),
+                    dst: dst.clone(),
+                });
+            } else if get_size_of_type(&target_type) < get_size_of_type(&inner_type) {
+                instructions.push(IRInstruction::Truncate {
+                    src: result.clone(),
+                    dst: dst.clone(),
+                });
+            } else if get_signedness(&inner_type) {
                 instructions.push(IRInstruction::SignExtend {
                     src: result.clone(),
                     dst: dst.clone(),
                 });
             } else {
-                instructions.push(IRInstruction::Truncate {
+                instructions.push(IRInstruction::ZeroExtend {
                     src: result.clone(),
                     dst: dst.clone(),
                 });
@@ -749,7 +763,9 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                         init: match entry._type {
                             Type::Int => StaticInit::Int(0),
                             Type::Long => StaticInit::Long(0),
-                            _ => unimplemented!(),
+                            Type::Ulong => StaticInit::Ulong(0),
+                            Type::Uint => StaticInit::Uint(0),
+                            _ => unimplemented!()
                         },
                     }))
                 }
