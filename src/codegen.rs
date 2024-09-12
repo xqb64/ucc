@@ -1190,48 +1190,12 @@ impl Fixup for AsmFunction {
                     }
                     _ => instructions.push(instr.clone()),
                 },
-                AsmInstruction::Movsx { src, dst } => match (src, dst) {
-                    (AsmOperand::Data(src), AsmOperand::Stack(dst_n)) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: AsmOperand::Data(src.to_owned()),
-                                dst: AsmOperand::Register(AsmRegister::R10),
-                            },
-                            AsmInstruction::Movsx {
-                                src: AsmOperand::Register(AsmRegister::R10),
-                                dst: AsmOperand::Register(AsmRegister::R11),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: AsmOperand::Register(AsmRegister::R11),
-                                dst: AsmOperand::Stack(*dst_n),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: AsmOperand::Imm(*src_n as i64),
-                                dst: AsmOperand::Register(AsmRegister::R10),
-                            },
-                            AsmInstruction::Movsx {
-                                src: AsmOperand::Register(AsmRegister::R10),
-                                dst: AsmOperand::Register(AsmRegister::R11),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: AsmOperand::Register(AsmRegister::R11),
-                                dst: AsmOperand::Stack(*dst_n),
-                            },
-                        ]);
-                    }
+                AsmInstruction::Movsx { src, dst } => match (src.clone(), dst.clone()) {
                     (AsmOperand::Imm(konst), AsmOperand::Stack(dst_n)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Longword,
-                                src: AsmOperand::Imm(*konst),
+                                src: AsmOperand::Imm(konst),
                                 dst: AsmOperand::Register(AsmRegister::R10),
                             },
                             AsmInstruction::Movsx {
@@ -1241,7 +1205,20 @@ impl Fixup for AsmFunction {
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Quadword,
                                 src: AsmOperand::Register(AsmRegister::R11),
-                                dst: AsmOperand::Stack(*dst_n),
+                                dst: AsmOperand::Stack(dst_n),
+                            },
+                        ]);
+                    }
+                    (_, AsmOperand::Stack(dst_n)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                asm_type: AsmType::Longword,
+                                src: AsmOperand::Stack(dst_n),
+                                dst: AsmOperand::Register(AsmRegister::R11),
+                            },
+                            AsmInstruction::Movsx {
+                                src: src.clone(),
+                                dst: AsmOperand::Register(AsmRegister::R11),
                             },
                         ]);
                     }

@@ -123,7 +123,7 @@ impl Emit for AsmInstruction {
                 writeln!(f)?;
             }
             AsmInstruction::Movsx { src, dst } => {
-                write!(f, "movsx ")?;
+                write!(f, "movslq ")?;
                 src.emit(f, &mut AsmType::Longword)?;
                 write!(f, ", ")?;
                 dst.emit(f, &mut AsmType::Quadword)?;
