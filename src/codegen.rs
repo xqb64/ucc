@@ -293,12 +293,12 @@ impl Codegen for IRInstruction {
                     ]),
                     UnaryOp::Not => AsmNode::Instructions(vec![
                         AsmInstruction::Cmp {
-                            asm_type,
+                            asm_type: get_asm_type(src),
                             lhs: AsmOperand::Imm(0),
                             rhs: src.codegen().into(),
                         },
                         AsmInstruction::Mov {
-                            asm_type,
+                            asm_type: get_asm_type(src),
                             src: AsmOperand::Imm(0),
                             dst: dst.codegen().into(),
                         },
@@ -476,8 +476,9 @@ impl Codegen for IRInstruction {
                 for (reg_index, reg_arg) in register_args.into_iter().enumerate() {
                     let reg = arg_registers[reg_index];
                     let asm_arg = reg_arg.codegen().into();
+                    
                     instructions.push(AsmInstruction::Mov {
-                        asm_type: AsmType::Longword,
+                        asm_type: get_asm_type(reg_arg),
                         src: asm_arg,
                         dst: AsmOperand::Register(reg),
                     });
@@ -506,7 +507,7 @@ impl Codegen for IRInstruction {
                                 instructions.push(AsmInstruction::Push(asm_arg));
                             } else {
                                 instructions.push(AsmInstruction::Mov {
-                                    asm_type: AsmType::Quadword,
+                                    asm_type: get_asm_type(&stack_arg),
                                     src: asm_arg,
                                     dst: AsmOperand::Register(AsmRegister::AX),
                                 });
@@ -535,7 +536,7 @@ impl Codegen for IRInstruction {
 
                 let asm_dst = dst.codegen().into();
                 instructions.push(AsmInstruction::Mov {
-                    asm_type: AsmType::Quadword,
+                    asm_type: get_asm_type(dst),
                     src: AsmOperand::Register(AsmRegister::AX),
                     dst: asm_dst,
                 });
@@ -621,11 +622,14 @@ impl ReplacePseudo for AsmInstruction {
             AsmInstruction::Idiv { operand, asm_type } => AsmInstruction::Idiv { asm_type: *asm_type, operand: operand.replace_pseudo() },
             AsmInstruction::AllocateStack(n) => AsmInstruction::AllocateStack(*n),
             AsmInstruction::Ret => AsmInstruction::Ret,
-            AsmInstruction::Cmp { lhs, rhs, asm_type } => AsmInstruction::Cmp {
-                asm_type: *asm_type,
-                lhs: lhs.replace_pseudo(),
-                rhs: rhs.replace_pseudo(),
-            },
+            AsmInstruction::Cmp { lhs, rhs, asm_type } => {
+                    println!("asm type: {:?}", asm_type);
+                    AsmInstruction::Cmp {
+                    asm_type: *asm_type,
+                    lhs: lhs.replace_pseudo(),
+                    rhs: rhs.replace_pseudo(),
+                }
+            }
             AsmInstruction::SetCC { condition, operand } => AsmInstruction::SetCC {
                 condition: condition.clone(),
                 operand: operand.replace_pseudo(),
@@ -857,7 +861,7 @@ impl Fixup for AsmFunction {
                         } else {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
-                                    asm_type: AsmType::Longword,
+                                    asm_type: asm_type.clone(),
                                     src: AsmOperand::Imm(*konst),
                                     dst: AsmOperand::Stack(*dst_n),
                                 },
