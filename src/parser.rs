@@ -63,7 +63,14 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<BlockItem> {
-        if self.is_next(&[Token::Int, Token::Long, Token::Static, Token::Extern]) {
+        if self.is_next(&[
+            Token::Int,
+            Token::Long,
+            Token::Signed,
+            Token::Unsigned,
+            Token::Static,
+            Token::Extern,
+        ]) {
             let mut specifier_list = vec![];
             specifier_list.push(self.previous.clone().unwrap());
             specifier_list.extend(self.consume_while(&Token::Identifier("".to_owned()))?);
@@ -163,16 +170,49 @@ impl Parser {
     }
 
     fn parse_type(&mut self, specifier_list: &[Token]) -> Result<Type> {
-        if specifier_list == [Token::Int] {
-            Ok(Type::Int)
-        } else if specifier_list == [Token::Int, Token::Long]
-            || specifier_list == [Token::Long, Token::Int]
-            || specifier_list == [Token::Long]
+        if self.contains_no_specifiers(&specifier_list)
+            || specifier_list.is_empty()
+            || self.contains_same_specifier_twice(specifier_list)
+            || self.contains_both_signed_and_unsigned(specifier_list)
         {
-            Ok(Type::Long)
-        } else {
-            bail!("invalid type specifier: {:?}", specifier_list);
+            bail!("invalid type specifier list: {:?}", specifier_list);
         }
+
+        if specifier_list.contains(&Token::Unsigned) && specifier_list.contains(&Token::Long) {
+            return Ok(Type::Ulong);
+        }
+
+        if specifier_list.contains(&Token::Unsigned) {
+            return Ok(Type::Uint);
+        }
+
+        if specifier_list.contains(&Token::Long) {
+            return Ok(Type::Long);
+        }
+
+        Ok(Type::Int)
+    }
+
+    fn contains_no_specifiers(&self, specifier_list: &[Token]) -> bool {
+        !specifier_list.iter().all(|specifier| match specifier {
+            Token::Int | Token::Long | Token::Signed | Token::Unsigned | Token::Void => true,
+            _ => false,
+        })
+    }
+
+    fn contains_same_specifier_twice(&self, specifier_list: &[Token]) -> bool {
+        let mut seen = vec![];
+        for specifier in specifier_list {
+            if seen.contains(specifier) {
+                return true;
+            }
+            seen.push(specifier.clone());
+        }
+        false
+    }
+
+    fn contains_both_signed_and_unsigned(&self, specifier_list: &[Token]) -> bool {
+        specifier_list.contains(&Token::Signed) && specifier_list.contains(&Token::Unsigned)
     }
 
     fn parse_type_and_storage_specifiers(
@@ -183,7 +223,12 @@ impl Parser {
         let mut storage_classes = vec![];
 
         for specifier in specifier_list {
-            if specifier == &Token::Int || specifier == &Token::Long || specifier == &Token::Void {
+            if specifier == &Token::Int
+                || specifier == &Token::Long
+                || specifier == &Token::Unsigned
+                || specifier == &Token::Signed
+                || specifier == &Token::Void
+            {
                 types.push(specifier.clone());
             } else {
                 storage_classes.push(specifier.clone());
@@ -339,7 +384,14 @@ impl Parser {
 
         let init = if self.is_next(&[Token::Semicolon]) {
             ForInit::Expression(None)
-        } else if self.is_next(&[Token::Int, Token::Long, Token::Static, Token::Extern]) {
+        } else if self.is_next(&[
+            Token::Int,
+            Token::Long,
+            Token::Signed,
+            Token::Unsigned,
+            Token::Static,
+            Token::Extern,
+        ]) {
             let mut specifier_list = vec![];
             specifier_list.push(self.previous.clone().unwrap());
             specifier_list.extend(self.consume_while(&Token::Identifier("".to_owned()))?);
@@ -400,6 +452,7 @@ impl Parser {
     }
 
     fn parse_return_statement(&mut self) -> Result<BlockItem> {
+        println!("in return: {:?}, {:?}", self.current, self.previous);
         let expr = self.parse_expression()?;
         self.consume(&Token::Semicolon)?;
         Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
@@ -579,11 +632,17 @@ impl Parser {
         }
 
         if self.is_next(&[Token::LParen]) {
+            println!("here in unary");
             let specifier_list = self.lookahead_until(&Token::RParen);
+
+            println!("here in specifier_list: {:?}", specifier_list);
 
             let t = self.parse_type(&specifier_list);
 
+            println!("t: {:?}", t);
+
             if t.is_err() {
+                println!("parsing grouping");
                 return self.parse_grouping();
             }
 
@@ -661,10 +720,6 @@ impl Parser {
                 _ => unreachable!(),
             }
         } else {
-            println!(
-                "self.current, self.previous: {:?}, {:?}",
-                self.current, self.previous
-            );
             bail!("expected primary");
         }
     }
@@ -715,6 +770,8 @@ pub struct VariableDeclaration {
 pub enum Type {
     Int,
     Long,
+    Uint,
+    Ulong,
     Func { params: Vec<Type>, ret: Box<Type> },
     Dummy,
 }

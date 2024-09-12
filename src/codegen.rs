@@ -3,7 +3,10 @@ use std::{collections::HashMap, sync::Mutex};
 use crate::{
     ir::{
         BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRStaticVariable, IRValue, UnaryOp,
-    }, lexer::Const, parser::Type, typechecker::{IdentifierAttrs, StaticInit, SYMBOL_TABLE}
+    },
+    lexer::Const,
+    parser::Type,
+    typechecker::{IdentifierAttrs, StaticInit, SYMBOL_TABLE},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -69,7 +72,7 @@ pub enum AsmInstruction {
         src: AsmOperand,
         dst: AsmOperand,
     },
-    Idiv { 
+    Idiv {
         asm_type: AsmType,
         operand: AsmOperand,
     },
@@ -208,7 +211,10 @@ impl Codegen for IRFunction {
         for (reg_idx, arg) in self.params.iter().take(6).enumerate() {
             let asm_type = ASM_SYMBOL_TABLE.lock().unwrap().get(arg).cloned().unwrap();
             let t = match asm_type {
-                AsmSymtabEntry::Object { _type, is_static: _ } => _type,
+                AsmSymtabEntry::Object {
+                    _type,
+                    is_static: _,
+                } => _type,
                 _ => unreachable!(),
             };
             instructions.push(AsmInstruction::Mov {
@@ -222,7 +228,10 @@ impl Codegen for IRFunction {
         for arg in self.params.iter().skip(6) {
             let asm_type = ASM_SYMBOL_TABLE.lock().unwrap().get(arg).cloned().unwrap();
             let t = match asm_type {
-                AsmSymtabEntry::Object { _type, is_static: _ } => _type,
+                AsmSymtabEntry::Object {
+                    _type,
+                    is_static: _,
+                } => _type,
                 _ => unreachable!(),
             };
             instructions.push(AsmInstruction::Mov {
@@ -275,7 +284,7 @@ impl Codegen for IRValue {
                 Const::Int(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
                 Const::Long(n) => AsmNode::Operand(AsmOperand::Imm(*n)),
                 _ => todo!(),
-            }
+            },
             IRValue::Var(name) => AsmNode::Operand(AsmOperand::Pseudo(name.to_owned())),
         }
     }
@@ -328,7 +337,7 @@ impl Codegen for IRInstruction {
                 },
                 AsmInstruction::Ret,
             ]),
-            IRInstruction::Binary { op, lhs, rhs, dst } => { 
+            IRInstruction::Binary { op, lhs, rhs, dst } => {
                 println!("here in binary");
                 let asm_type = get_asm_type(&lhs);
                 println!("here in binary enough");
@@ -353,12 +362,10 @@ impl Codegen for IRInstruction {
                             src: lhs.codegen().into(),
                             dst: AsmOperand::Register(AsmRegister::AX),
                         },
-                        AsmInstruction::Cdq {
-                            asm_type,
-                        },
+                        AsmInstruction::Cdq { asm_type },
                         AsmInstruction::Idiv {
                             asm_type,
-                            operand: rhs.codegen().into()
+                            operand: rhs.codegen().into(),
                         },
                         AsmInstruction::Mov {
                             asm_type,
@@ -375,7 +382,7 @@ impl Codegen for IRInstruction {
                         AsmInstruction::Cdq { asm_type },
                         AsmInstruction::Idiv {
                             asm_type,
-                            operand: rhs.codegen().into()
+                            operand: rhs.codegen().into(),
                         },
                         AsmInstruction::Mov {
                             asm_type,
@@ -413,7 +420,7 @@ impl Codegen for IRInstruction {
                         },
                     ]),
                 }
-            },
+            }
             IRInstruction::JumpIfZero { condition, target } => {
                 println!("here in jump if zero");
                 let asm_type = get_asm_type(&condition);
@@ -431,7 +438,7 @@ impl Codegen for IRInstruction {
                     },
                 ])
             }
-            IRInstruction::JumpIfNotZero { condition, target } => { 
+            IRInstruction::JumpIfNotZero { condition, target } => {
                 println!("here in jump if not zero");
                 let asm_type = get_asm_type(&condition);
                 println!("here in jump if not zero enough");
@@ -460,9 +467,9 @@ impl Codegen for IRInstruction {
                 AsmNode::Instructions(vec![AsmInstruction::Mov {
                     asm_type,
                     src: src.codegen().into(),
-                dst: dst.codegen().into(),
-            }])
-        }
+                    dst: dst.codegen().into(),
+                }])
+            }
             IRInstruction::Call { target, args, dst } => {
                 let arg_registers = [
                     AsmRegister::DI,
@@ -487,7 +494,7 @@ impl Codegen for IRInstruction {
                 for (reg_index, reg_arg) in register_args.into_iter().enumerate() {
                     let reg = arg_registers[reg_index];
                     let asm_arg = reg_arg.codegen().into();
-                    
+
                     instructions.push(AsmInstruction::Mov {
                         asm_type: get_asm_type(reg_arg),
                         src: asm_arg,
@@ -497,7 +504,6 @@ impl Codegen for IRInstruction {
 
                 for stack_arg in stack_args.iter().rev() {
                     let asm_arg = stack_arg.codegen().into();
-
 
                     match asm_arg {
                         AsmOperand::Imm(_) | AsmOperand::Register(_) => {
@@ -520,8 +526,9 @@ impl Codegen for IRInstruction {
                                     src: asm_arg,
                                     dst: AsmOperand::Register(AsmRegister::AX),
                                 });
-                                instructions
-                                    .push(AsmInstruction::Push(AsmOperand::Register(AsmRegister::AX)));    
+                                instructions.push(AsmInstruction::Push(AsmOperand::Register(
+                                    AsmRegister::AX,
+                                )));
                             }
                         }
                         _ => {
@@ -553,21 +560,17 @@ impl Codegen for IRInstruction {
                 AsmNode::Instructions(instructions)
             }
             IRInstruction::SignExtend { src, dst } => {
-                AsmNode::Instructions(vec![
-                    AsmInstruction::Movsx {
-                        src: src.codegen().into(),
-                        dst: dst.codegen().into(),
-                    },
-                ])
+                AsmNode::Instructions(vec![AsmInstruction::Movsx {
+                    src: src.codegen().into(),
+                    dst: dst.codegen().into(),
+                }])
             }
             IRInstruction::Truncate { src, dst } => {
-                AsmNode::Instructions(vec![
-                    AsmInstruction::Mov {
-                        asm_type: AsmType::Longword,
-                        src: src.codegen().into(),
-                        dst: dst.codegen().into(),
-                    },
-                ])
+                AsmNode::Instructions(vec![AsmInstruction::Mov {
+                    asm_type: AsmType::Longword,
+                    src: src.codegen().into(),
+                    dst: dst.codegen().into(),
+                }])
             }
         }
     }
@@ -617,23 +620,35 @@ impl ReplacePseudo for AsmInstruction {
                 src: src.replace_pseudo(),
                 dst: dst.replace_pseudo(),
             },
-            AsmInstruction::Unary { op, operand, asm_type } => AsmInstruction::Unary {
+            AsmInstruction::Unary {
+                op,
+                operand,
+                asm_type,
+            } => AsmInstruction::Unary {
                 asm_type: *asm_type,
                 op: *op,
                 operand: operand.replace_pseudo(),
             },
-            AsmInstruction::Binary { op, lhs, rhs, asm_type } => AsmInstruction::Binary {
+            AsmInstruction::Binary {
+                op,
+                lhs,
+                rhs,
+                asm_type,
+            } => AsmInstruction::Binary {
                 asm_type: *asm_type,
                 op: *op,
                 lhs: lhs.replace_pseudo(),
                 rhs: rhs.replace_pseudo(),
             },
-            AsmInstruction::Idiv { operand, asm_type } => AsmInstruction::Idiv { asm_type: *asm_type, operand: operand.replace_pseudo() },
+            AsmInstruction::Idiv { operand, asm_type } => AsmInstruction::Idiv {
+                asm_type: *asm_type,
+                operand: operand.replace_pseudo(),
+            },
             AsmInstruction::AllocateStack(n) => AsmInstruction::AllocateStack(*n),
             AsmInstruction::Ret => AsmInstruction::Ret,
             AsmInstruction::Cmp { lhs, rhs, asm_type } => {
-                    println!("asm type: {:?}", asm_type);
-                    AsmInstruction::Cmp {
+                println!("asm type: {:?}", asm_type);
+                AsmInstruction::Cmp {
                     asm_type: *asm_type,
                     lhs: lhs.replace_pseudo(),
                     rhs: rhs.replace_pseudo(),
@@ -644,9 +659,10 @@ impl ReplacePseudo for AsmInstruction {
                 operand: operand.replace_pseudo(),
             },
             AsmInstruction::Push(operand) => AsmInstruction::Push(operand.replace_pseudo()),
-            AsmInstruction::Movsx { src, dst } => {
-                AsmInstruction::Movsx { src: src.replace_pseudo(), dst: dst.replace_pseudo() }
-            }
+            AsmInstruction::Movsx { src, dst } => AsmInstruction::Movsx {
+                src: src.replace_pseudo(),
+                dst: dst.replace_pseudo(),
+            },
             _ => self.clone(),
         }
     }
@@ -679,7 +695,7 @@ impl OffsetManager {
             Type::Long => 8,
             _ => unreachable!(),
         };
-        
+
         self.offsets.insert(name.to_owned(), offset * -1);
 
         self.offset -= offset;
@@ -700,21 +716,49 @@ impl ReplacePseudo for AsmOperand {
                             global: _,
                         } => AsmOperand::Data(name.clone()),
                         _ => {
-                            let _type = match ASM_SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap() {
-                                AsmSymtabEntry::Object { _type, is_static: _ } => _type,
+                            let _type = match ASM_SYMBOL_TABLE
+                                .lock()
+                                .unwrap()
+                                .get(name)
+                                .cloned()
+                                .unwrap()
+                            {
+                                AsmSymtabEntry::Object {
+                                    _type,
+                                    is_static: _,
+                                } => _type,
                                 _ => unreachable!(),
                             };
 
-                            AsmOperand::Stack(VAR_TO_STACK_POS.lock().unwrap().var_to_stack_pos(name, _type).0.try_into().unwrap())
+                            AsmOperand::Stack(
+                                VAR_TO_STACK_POS
+                                    .lock()
+                                    .unwrap()
+                                    .var_to_stack_pos(name, _type)
+                                    .0
+                                    .try_into()
+                                    .unwrap(),
+                            )
                         }
                     }
                 } else {
                     let _type = match ASM_SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap() {
-                        AsmSymtabEntry::Object { _type, is_static: _ } => _type,
+                        AsmSymtabEntry::Object {
+                            _type,
+                            is_static: _,
+                        } => _type,
                         _ => unreachable!(),
                     };
 
-                    AsmOperand::Stack(VAR_TO_STACK_POS.lock().unwrap().var_to_stack_pos(name, _type).0.try_into().unwrap())
+                    AsmOperand::Stack(
+                        VAR_TO_STACK_POS
+                            .lock()
+                            .unwrap()
+                            .var_to_stack_pos(name, _type)
+                            .0
+                            .try_into()
+                            .unwrap(),
+                    )
                 }
             }
             AsmOperand::Stack(_) => self.clone(),
@@ -853,58 +897,52 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Imm(konst), AsmOperand::Stack(dst_n)) => {
-                        match asm_type {
-                            AsmType::Longword => {
-                                if *konst < i32::MIN as i64 || *konst > i32::MAX as i64 {
-                                    instructions.extend(vec![
-                                        AsmInstruction::Mov {
-                                            asm_type: *asm_type,
-                                            src: AsmOperand::Imm(*konst as i32 as i64),
-                                            dst: AsmOperand::Register(AsmRegister::R10),
-                                        },
-                                        AsmInstruction::Mov {
-                                            asm_type: *asm_type,
-                                            src: AsmOperand::Register(AsmRegister::R10),
-                                            dst: AsmOperand::Stack(*dst_n),
-                                        },
-                                    ]);
-                                } else {
-                                    instructions.extend(vec![
-                                        AsmInstruction::Mov {
-                                            asm_type: asm_type.clone(),
-                                            src: AsmOperand::Imm(*konst),
-                                            dst: AsmOperand::Stack(*dst_n),
-                                        },
-                                    ]);
-                                }
-                            }
-                            AsmType::Quadword => {
-                                if *konst < i32::MIN as i64 || *konst > i32::MAX as i64 {
-                                    instructions.extend(vec![
-                                        AsmInstruction::Mov {
-                                            asm_type: *asm_type,
-                                            src: AsmOperand::Imm(*konst),
-                                            dst: AsmOperand::Register(AsmRegister::R10),
-                                        },
-                                        AsmInstruction::Mov {
-                                            asm_type: *asm_type,
-                                            src: AsmOperand::Register(AsmRegister::R10),
-                                            dst: AsmOperand::Stack(*dst_n),
-                                        },
-                                    ]);
-                                } else {
-                                    instructions.extend(vec![
-                                        AsmInstruction::Mov {
-                                            asm_type: asm_type.clone(),
-                                            src: AsmOperand::Imm(*konst),
-                                            dst: AsmOperand::Stack(*dst_n),
-                                        },
-                                    ]);
-                                }        
+                    (AsmOperand::Imm(konst), AsmOperand::Stack(dst_n)) => match asm_type {
+                        AsmType::Longword => {
+                            if *konst < i32::MIN as i64 || *konst > i32::MAX as i64 {
+                                instructions.extend(vec![
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Imm(*konst as i32 as i64),
+                                        dst: AsmOperand::Register(AsmRegister::R10),
+                                    },
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Register(AsmRegister::R10),
+                                        dst: AsmOperand::Stack(*dst_n),
+                                    },
+                                ]);
+                            } else {
+                                instructions.extend(vec![AsmInstruction::Mov {
+                                    asm_type: asm_type.clone(),
+                                    src: AsmOperand::Imm(*konst),
+                                    dst: AsmOperand::Stack(*dst_n),
+                                }]);
                             }
                         }
-                    }
+                        AsmType::Quadword => {
+                            if *konst < i32::MIN as i64 || *konst > i32::MAX as i64 {
+                                instructions.extend(vec![
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Imm(*konst),
+                                        dst: AsmOperand::Register(AsmRegister::R10),
+                                    },
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Register(AsmRegister::R10),
+                                        dst: AsmOperand::Stack(*dst_n),
+                                    },
+                                ]);
+                            } else {
+                                instructions.extend(vec![AsmInstruction::Mov {
+                                    asm_type: asm_type.clone(),
+                                    src: AsmOperand::Imm(*konst),
+                                    dst: AsmOperand::Stack(*dst_n),
+                                }]);
+                            }
+                        }
+                    },
                     (AsmOperand::Imm(konst), AsmOperand::Data(dst)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
@@ -920,8 +958,13 @@ impl Fixup for AsmFunction {
                         ]);
                     }
                     _ => instructions.push(instr.clone()),
-                }
-                AsmInstruction::Binary { op, lhs, rhs, asm_type } => match op {
+                },
+                AsmInstruction::Binary {
+                    op,
+                    lhs,
+                    rhs,
+                    asm_type,
+                } => match op {
                     AsmBinaryOp::Add | AsmBinaryOp::Sub => match (lhs, rhs) {
                         (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
                             instructions.extend(vec![
@@ -983,8 +1026,7 @@ impl Fixup for AsmFunction {
                                         rhs: AsmOperand::Stack(*dst_n),
                                     },
                                 ])
-                            }
-                            else {
+                            } else {
                                 instructions.push(instr.clone());
                             }
                         }
@@ -1013,7 +1055,7 @@ impl Fixup for AsmFunction {
                                     src: AsmOperand::Register(AsmRegister::R11),
                                     dst: rhs.clone(),
                                 },
-                            ]);       
+                            ]);
                         }
                         (AsmOperand::Imm(konst), AsmOperand::Stack(_)) => {
                             // if konst can't fit in i32, we need to load it into a register
@@ -1040,8 +1082,8 @@ impl Fixup for AsmFunction {
                                         src: AsmOperand::Register(AsmRegister::R11),
                                         dst: rhs.clone(),
                                     },
-                                    ]);
-                            } else { 
+                                ]);
+                            } else {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
                                         asm_type: *asm_type,
@@ -1063,8 +1105,8 @@ impl Fixup for AsmFunction {
                         }
                         _ => instructions.push(instr.clone()),
                     },
-                }
-                AsmInstruction::Idiv{ operand, asm_type } => {
+                },
+                AsmInstruction::Idiv { operand, asm_type } => {
                     if let AsmOperand::Imm(konst) = operand {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
@@ -1072,12 +1114,15 @@ impl Fixup for AsmFunction {
                                 src: AsmOperand::Imm(*konst),
                                 dst: AsmOperand::Register(AsmRegister::R10),
                             },
-                            AsmInstruction::Idiv { asm_type: *asm_type, operand: AsmOperand::Register(AsmRegister::R10) },
+                            AsmInstruction::Idiv {
+                                asm_type: *asm_type,
+                                operand: AsmOperand::Register(AsmRegister::R10),
+                            },
                         ]);
                     } else {
                         instructions.push(instr.clone());
                     }
-                },
+                }
                 AsmInstruction::Cmp { lhs, rhs, asm_type } => match (lhs.clone(), rhs.clone()) {
                     (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
                         instructions.extend(vec![
@@ -1156,7 +1201,7 @@ impl Fixup for AsmFunction {
                         ]);
                     }
                     (AsmOperand::Imm(konst), _) => {
-                        if konst > i32::MAX as i64 || konst < i32::MIN as i64 {                            
+                        if konst > i32::MAX as i64 || konst < i32::MIN as i64 {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
                                     asm_type: *asm_type,
@@ -1239,7 +1284,7 @@ impl Fixup for AsmFunction {
                         }
                     }
                     _ => instructions.push(instr.clone()),
-                }
+                },
                 _ => instructions.push(instr.clone()),
             }
         }
@@ -1267,7 +1312,7 @@ impl Fixup for Vec<AsmInstruction> {
                                 src: AsmOperand::Stack(*src_n),
                                 dst: AsmOperand::Register(AsmRegister::R10),
                             },
-                            AsmInstruction::Mov {   
+                            AsmInstruction::Mov {
                                 asm_type: *asm_type,
                                 src: AsmOperand::Register(AsmRegister::R10),
                                 dst: AsmOperand::Stack(*dst_n),
@@ -1344,14 +1389,12 @@ fn get_asm_type(value: &IRValue) -> AsmType {
             Const::Int(_) => AsmType::Longword,
             Const::Long(_) => AsmType::Quadword,
             _ => todo!(),
-        }
-        IRValue::Var(var_name) => {
-            match SYMBOL_TABLE.lock().unwrap().get(var_name).unwrap()._type {
-                Type::Int => AsmType::Longword,
-                Type::Long => AsmType::Quadword,
-                _ => unreachable!(),
-            }
-        }
+        },
+        IRValue::Var(var_name) => match SYMBOL_TABLE.lock().unwrap().get(var_name).unwrap()._type {
+            Type::Int => AsmType::Longword,
+            Type::Long => AsmType::Quadword,
+            _ => unreachable!(),
+        },
     }
 }
 
@@ -1362,7 +1405,9 @@ pub fn build_asm_symbol_table() {
     for (identifier, symbol) in frontend_symtab.iter() {
         let entry = match symbol.attrs {
             IdentifierAttrs::FuncAttr { defined, .. } => AsmSymtabEntry::Function { defined },
-            IdentifierAttrs::StaticAttr { initial_value: _, .. } => {
+            IdentifierAttrs::StaticAttr {
+                initial_value: _, ..
+            } => {
                 let asm_type = match symbol._type {
                     Type::Int => AsmType::Longword,
                     Type::Long => AsmType::Quadword,
@@ -1372,7 +1417,7 @@ pub fn build_asm_symbol_table() {
                     _type: asm_type,
                     is_static: true,
                 }
-            },
+            }
             IdentifierAttrs::LocalAttr => {
                 let asm_type = match symbol._type {
                     Type::Int => AsmType::Longword,
@@ -1395,13 +1440,8 @@ pub fn build_asm_symbol_table() {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AsmSymtabEntry {
-    Function {
-        defined: bool,
-    },
-    Object {
-        _type: AsmType,
-        is_static: bool,
-    }
+    Function { defined: bool },
+    Object { _type: AsmType, is_static: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -1422,23 +1462,22 @@ impl Default for VarToStackPos {
 }
 
 impl VarToStackPos {
-    pub fn var_to_stack_pos(
-        &mut self,
-        ident: &str,
-        asm_type: AsmType,
-    ) -> StackPosition {
-        let pos = self.var_to_stack_pos.entry(ident.to_owned()).or_insert_with(|| {
-            let alloc = OperandByteLen::from(asm_type) as i64;
-            self.last_used_stack_pos.0 -= alloc;
+    pub fn var_to_stack_pos(&mut self, ident: &str, asm_type: AsmType) -> StackPosition {
+        let pos = self
+            .var_to_stack_pos
+            .entry(ident.to_owned())
+            .or_insert_with(|| {
+                let alloc = OperandByteLen::from(asm_type) as i64;
+                self.last_used_stack_pos.0 -= alloc;
 
-            let alignment = Alignment::default_of(asm_type) as i64;
-            let rem = self.last_used_stack_pos.0 % alignment;
-            if rem != 0 {
-                self.last_used_stack_pos.0 -= alignment + rem;
-            }
+                let alignment = Alignment::default_of(asm_type) as i64;
+                let rem = self.last_used_stack_pos.0 % alignment;
+                if rem != 0 {
+                    self.last_used_stack_pos.0 -= alignment + rem;
+                }
 
-            self.last_used_stack_pos
-        });
+                self.last_used_stack_pos
+            });
         *pos
     }
 
@@ -1485,7 +1524,6 @@ impl Alignment {
         }
     }
 }
-
 
 lazy_static::lazy_static! {
     pub static ref ASM_SYMBOL_TABLE: Mutex<HashMap<String, AsmSymtabEntry>> = Mutex::new(HashMap::new());

@@ -66,11 +66,11 @@ impl Emit for AsmStaticVariable {
             StaticInit::Int(n) => match n {
                 0 => writeln!(f, ".section .bss")?,
                 _ => writeln!(f, ".section .data")?,
-            }
+            },
             StaticInit::Long(n) => match n {
                 0 => writeln!(f, ".section .bss")?,
                 _ => writeln!(f, ".section .data")?,
-            }
+            },
         }
 
         if self.global {
@@ -78,7 +78,7 @@ impl Emit for AsmStaticVariable {
         }
 
         writeln!(f, "{}:", self.name)?;
-        
+
         match self.alignment {
             1 => writeln!(f, "\t.align 1")?,
             2 => writeln!(f, "\t.align 2")?,
@@ -86,16 +86,16 @@ impl Emit for AsmStaticVariable {
             8 => writeln!(f, "\t.align 8")?,
             _ => writeln!(f, "\t.align 16")?,
         }
-        
+
         match self.init {
             StaticInit::Int(n) => match n {
                 0 => writeln!(f, "\t.zero 4")?,
                 _ => writeln!(f, "\t.long {}", n)?,
-            }
+            },
             StaticInit::Long(n) => match n {
                 0 => writeln!(f, "\t.zero 8")?,
                 _ => writeln!(f, "\t.quad {}", n)?,
-            }
+            },
         }
 
         Ok(())
@@ -179,12 +179,10 @@ impl Emit for AsmInstruction {
             AsmInstruction::AllocateStack(n) => {
                 writeln!(f, "subq ${}, %rsp", n)?;
             }
-            AsmInstruction::Cdq { asm_type } => {
-                match asm_type {
-                    AsmType::Longword => writeln!(f, "cdq")?,
-                    AsmType::Quadword => writeln!(f, "cqo")?
-                }
-            }
+            AsmInstruction::Cdq { asm_type } => match asm_type {
+                AsmType::Longword => writeln!(f, "cdq")?,
+                AsmType::Quadword => writeln!(f, "cqo")?,
+            },
             AsmInstruction::Binary {
                 op,
                 lhs,

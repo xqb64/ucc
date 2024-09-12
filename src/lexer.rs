@@ -97,16 +97,23 @@ impl Iterator for Lexer {
         } else if let Some(m) = constant_re.find(src) {
             self.pos += m.as_str().len();
 
-            let suffix = constant_re.captures(src).unwrap().name("suffix").unwrap().as_str();
+            let suffix = constant_re
+                .captures(src)
+                .unwrap()
+                .name("suffix")
+                .unwrap()
+                .as_str();
             let just_number = m.as_str().trim_end_matches(suffix);
 
-            let normalized_suffix = suffix.chars().map(|ch| ch.to_ascii_lowercase()).collect::<String>();
+            let normalized_suffix = suffix
+                .chars()
+                .map(|ch| ch.to_ascii_lowercase())
+                .collect::<String>();
 
             match parse_integer(&normalized_suffix, just_number) {
                 Ok(konst) => Token::Constant(konst),
                 Err(_) => Token::Error,
             }
-
         } else if let Some(m) = identifier_re.find(src) {
             self.pos += m.as_str().len();
             Token::Identifier(m.as_str().to_string())
@@ -192,7 +199,7 @@ pub enum Const {
     ULong(u64),
 }
 
-fn parse_integer(suffix: &str,  just_number: &str) -> Result<Const> {
+fn parse_integer(suffix: &str, just_number: &str) -> Result<Const> {
     let konst = match suffix {
         "ul" | "lu" => just_number.parse::<u64>().map(Const::ULong)?,
         "l" => just_number.parse::<i64>().map(Const::Long)?,

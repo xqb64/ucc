@@ -257,7 +257,7 @@ impl Typecheck for VariableDeclaration {
                         .lock()
                         .unwrap()
                         .insert(self.name.clone(), symbol);
-                    
+
                     let typechecked_init = if self.init.is_some() {
                         Some(typecheck_expr(self.init.as_ref().unwrap())?)
                     } else {
@@ -271,7 +271,6 @@ impl Typecheck for VariableDeclaration {
                     } else {
                         None
                     };
-        
 
                     Ok(BlockItem::Declaration(Declaration::Variable(
                         VariableDeclaration {
@@ -527,7 +526,11 @@ impl Typecheck for Statement {
                 println!("target_type is: {:?}", target_type);
 
                 Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
-                    expr: Expression::Cast(CastExpression { target_type: target_type.clone().unwrap_or(Type::Int), expr: typechecked_expr.into(), _type: get_type(expr) }),
+                    expr: Expression::Cast(CastExpression {
+                        target_type: target_type.clone().unwrap_or(Type::Int),
+                        expr: typechecked_expr.into(),
+                        _type: get_type(expr),
+                    }),
                     target_type: target_type.clone(),
                 })))
             }
@@ -707,7 +710,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 value: Const::Long(*l),
                 _type: Type::Long,
             })),
-            _ => todo!()
+            _ => todo!(),
         },
         Expression::Cast(CastExpression {
             target_type,
