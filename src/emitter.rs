@@ -71,7 +71,14 @@ impl Emit for AsmStaticVariable {
                 0 => writeln!(f, ".section .bss")?,
                 _ => writeln!(f, ".section .data")?,
             },
-            _ => todo!(),
+            StaticInit::Uint(n) => match n {
+                0 => writeln!(f, ".section .bss")?,
+                _ => writeln!(f, ".section .data")?,
+            },
+            StaticInit::Ulong(n) => match n {
+                0 => writeln!(f, ".section .bss")?,
+                _ => writeln!(f, ".section .data")?,
+            },
         }
 
         if self.global {
@@ -97,7 +104,14 @@ impl Emit for AsmStaticVariable {
                 0 => writeln!(f, "\t.zero 8")?,
                 _ => writeln!(f, "\t.quad {}", n)?,
             },
-            _ => todo!(),
+            StaticInit::Uint(n) => match n {
+                0 => writeln!(f, "\t.zero 4")?,
+                _ => writeln!(f, "\t.long {}", n)?,
+            },
+            StaticInit::Ulong(n) => match n {
+                0 => writeln!(f, "\t.zero 8")?,
+                _ => writeln!(f, "\t.quad {}", n)?,
+            },
         }
 
         Ok(())
@@ -219,6 +233,15 @@ impl Emit for AsmInstruction {
                 operand.emit(f, asm_type)?;
                 writeln!(f)?;
             }
+            AsmInstruction::Div { operand, asm_type } => {
+                let suffix = match asm_type {
+                    AsmType::Longword => "l",
+                    AsmType::Quadword => "q",
+                };
+                write!(f, "div{} ", suffix)?;
+                operand.emit(f, asm_type)?;
+                writeln!(f)?;
+            }
             AsmInstruction::Imul { src, dst, asm_type } => {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
@@ -255,6 +278,10 @@ impl Emit for AsmInstruction {
                     ConditionCode::LE => "le",
                     ConditionCode::G => "g",
                     ConditionCode::GE => "ge",
+                    ConditionCode::A => "a",
+                    ConditionCode::AE => "ae",
+                    ConditionCode::B => "b",
+                    ConditionCode::BE => "be",
                 };
 
                 write!(f, "j{} ", suffix)?;
@@ -268,6 +295,10 @@ impl Emit for AsmInstruction {
                     ConditionCode::LE => "le",
                     ConditionCode::G => "g",
                     ConditionCode::GE => "ge",
+                    ConditionCode::A => "a",
+                    ConditionCode::AE => "ae",
+                    ConditionCode::B => "b",
+                    ConditionCode::BE => "be",
                 };
 
                 write!(f, "set{} ", suffix)?;
@@ -284,7 +315,7 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::Call(target) => {
                 // if function is not defined in symbol table, add @PLT
-                if let Some(symbol) = ASM_SYMBOL_TABLE.lock().unwrap().get(target) {
+                if let Some(symbol) = ASM_SYMBOL_TABLE.lock().unwrap().get(target).cloned() {
                     if let AsmSymtabEntry::Function { defined } = symbol {
                         if !defined {
                             writeln!(f, "call {}@PLT", target)?;
@@ -301,6 +332,7 @@ impl Emit for AsmInstruction {
                 operand.emit(f, &mut AsmType::Quadword)?;
                 writeln!(f)?;
             }
+            AsmInstruction::MovZeroExtend { .. } => unreachable!(),
         }
 
         Ok(())

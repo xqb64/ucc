@@ -323,7 +323,6 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
 
             let dst = make_tacky_variable(target_type.clone());
 
-            println!("t, inner_type: {:?} -- {:?}", t, inner_type);
             if get_size_of_type(&target_type) == get_size_of_type(&inner_type) {
                 instructions.push(IRInstruction::Copy {
                     src: result.clone(),
