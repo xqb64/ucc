@@ -504,12 +504,10 @@ impl Codegen for IRInstruction {
                         }
                         AsmOperand::Data(ref name) | AsmOperand::Pseudo(ref name) => {
                             let is_quadword = match SYMBOL_TABLE.lock().unwrap().get(name) {
-                                Some(symbol) => match symbol.attrs {
-                                    IdentifierAttrs::StaticAttr {
-                                        initial_value: _,
-                                        global: _,
-                                    } => true,
-                                    _ => false,
+                                Some(symbol) => match symbol._type {
+                                    Type::Int => false,
+                                    Type::Long => true,
+                                    _ => unreachable!(),
                                 },
                                 None => false,
                             };
