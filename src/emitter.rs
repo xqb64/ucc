@@ -6,10 +6,13 @@ use crate::codegen::AsmOperand;
 use crate::codegen::AsmProgram;
 use crate::codegen::AsmRegister;
 use crate::codegen::AsmStaticVariable;
+use crate::codegen::AsmSymtabEntry;
 use crate::codegen::AsmType;
 use crate::codegen::AsmUnaryOp;
 use crate::codegen::ConditionCode;
+use crate::codegen::ASM_SYMBOL_TABLE;
 use crate::typechecker::StaticInit;
+use crate::typechecker::SYMBOL_TABLE;
 use anyhow::Result;
 use std::fs::File;
 use std::io::Write;
@@ -281,7 +284,18 @@ impl Emit for AsmInstruction {
                 writeln!(f, "addq ${}, %rsp", n)?;
             }
             AsmInstruction::Call(target) => {
-                writeln!(f, "call {}", target)?;
+                // if function is not defined in symbol table, add @PLT
+                if let Some(symbol) = ASM_SYMBOL_TABLE.lock().unwrap().get(target) {
+                    if let AsmSymtabEntry::Function { defined } = symbol {
+                        if !defined {
+                            writeln!(f, "call {}@PLT", target)?;
+                        } else {
+                            writeln!(f, "call {}", target)?;
+                        }
+                    }
+                } else {
+                    writeln!(f, "call {}", target)?;
+                }
             }
             AsmInstruction::Push(operand) => {
                 write!(f, "pushq ")?;
