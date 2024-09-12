@@ -54,7 +54,8 @@ impl Typecheck for VariableDeclaration {
                     initial_value = match konst.value {
                         Const::Int(i) => InitialValue::Initial(StaticInit::Int(i)),
                         Const::Long(l) => InitialValue::Initial(StaticInit::Long(l)),
-                        _ => todo!(),
+                        Const::UInt(u) => InitialValue::Initial(StaticInit::Uint(u)),
+                        Const::ULong(ul) => InitialValue::Initial(StaticInit::Ulong(ul)),
                     }
                 } else if self.init.is_none() {
                     if self
@@ -217,7 +218,12 @@ impl Typecheck for VariableDeclaration {
                             Const::Long(l) => {
                                 initial_value = InitialValue::Initial(StaticInit::Long(l));
                             }
-                            _ => todo!(),
+                            Const::UInt(u) => {
+                                initial_value = InitialValue::Initial(StaticInit::Uint(u));
+                            }
+                            Const::ULong(ul) => {
+                                initial_value = InitialValue::Initial(StaticInit::Ulong(ul));
+                            }
                         }
                     } else if self.init.is_none() {
                         initial_value = InitialValue::Initial(StaticInit::Int(0));
@@ -710,7 +716,14 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 value: Const::Long(*l),
                 _type: Type::Long,
             })),
-            _ => todo!(),
+            Const::UInt(u) => Ok(Expression::Constant(ConstantExpression {
+                value: Const::UInt(*u),
+                _type: Type::Uint,
+            })),
+            Const::ULong(ul) => Ok(Expression::Constant(ConstantExpression {
+                value: Const::ULong(*ul),
+                _type: Type::Ulong,
+            })),
         },
         Expression::Cast(CastExpression {
             target_type,
@@ -731,8 +744,40 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 fn get_common_type(type1: &Type, type2: &Type) -> Type {
     if type1 == type2 {
         return type1.clone();
+    }
+    
+    if get_size_of_type(type1) == get_size_of_type(type2) {
+        if get_signedness(type1) == get_signedness(type2) {
+            return type2.clone();
+        } else {
+            return type1.clone();
+        }
+    }
+
+    if get_size_of_type(type1) > get_size_of_type(type2) {
+        return type1.clone();
     } else {
-        return Type::Long;
+        return type2.clone();
+    }
+}
+
+pub fn get_size_of_type(t: &Type) -> usize {
+    match t {
+        Type::Int => 4,
+        Type::Uint => 4,
+        Type::Long => 8,
+        Type::Ulong => 8,
+        _ => todo!(),
+    }
+}
+
+pub fn get_signedness(t: &Type) -> bool {
+    match t {
+        Type::Int => true,
+        Type::Uint => false,
+        Type::Long => true,
+        Type::Ulong => false,
+        _ => todo!(),
     }
 }
 
@@ -812,4 +857,6 @@ pub enum InitialValue {
 pub enum StaticInit {
     Int(i32),
     Long(i64),
+    Uint(u32),
+    Ulong(u64),
 }
