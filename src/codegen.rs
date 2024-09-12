@@ -220,8 +220,13 @@ impl Codegen for IRFunction {
 
         let mut stack_offset = 16;
         for arg in self.params.iter().skip(6) {
+            let asm_type = ASM_SYMBOL_TABLE.lock().unwrap().get(arg).cloned().unwrap();
+            let t = match asm_type {
+                AsmSymtabEntry::Object { _type, is_static: _ } => _type,
+                _ => unreachable!(),
+            };
             instructions.push(AsmInstruction::Mov {
-                asm_type: AsmType::Longword,
+                asm_type: t,
                 src: AsmOperand::Stack(stack_offset),
                 dst: AsmOperand::Pseudo(arg.to_owned()),
             });
