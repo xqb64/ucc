@@ -853,27 +853,55 @@ impl Fixup for AsmFunction {
                         ]);
                     }
                     (AsmOperand::Imm(konst), AsmOperand::Stack(dst_n)) => {
-                        if *konst < i32::MIN as i64 || *konst > i32::MAX as i64 {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Imm(*konst),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: AsmOperand::Stack(*dst_n),
-                                },
-                            ]);
-                        } else {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: asm_type.clone(),
-                                    src: AsmOperand::Imm(*konst),
-                                    dst: AsmOperand::Stack(*dst_n),
-                                },
-                            ]);
+                        match asm_type {
+                            AsmType::Longword => {
+                                if *konst < i32::MIN as i64 || *konst > i32::MAX as i64 {
+                                    instructions.extend(vec![
+                                        AsmInstruction::Mov {
+                                            asm_type: *asm_type,
+                                            src: AsmOperand::Imm(*konst as i32 as i64),
+                                            dst: AsmOperand::Register(AsmRegister::R10),
+                                        },
+                                        AsmInstruction::Mov {
+                                            asm_type: *asm_type,
+                                            src: AsmOperand::Register(AsmRegister::R10),
+                                            dst: AsmOperand::Stack(*dst_n),
+                                        },
+                                    ]);
+                                } else {
+                                    instructions.extend(vec![
+                                        AsmInstruction::Mov {
+                                            asm_type: asm_type.clone(),
+                                            src: AsmOperand::Imm(*konst),
+                                            dst: AsmOperand::Stack(*dst_n),
+                                        },
+                                    ]);
+                                }
+                            }
+                            AsmType::Quadword => {
+                                if *konst < i32::MIN as i64 || *konst > i32::MAX as i64 {
+                                    instructions.extend(vec![
+                                        AsmInstruction::Mov {
+                                            asm_type: *asm_type,
+                                            src: AsmOperand::Imm(*konst),
+                                            dst: AsmOperand::Register(AsmRegister::R10),
+                                        },
+                                        AsmInstruction::Mov {
+                                            asm_type: *asm_type,
+                                            src: AsmOperand::Register(AsmRegister::R10),
+                                            dst: AsmOperand::Stack(*dst_n),
+                                        },
+                                    ]);
+                                } else {
+                                    instructions.extend(vec![
+                                        AsmInstruction::Mov {
+                                            asm_type: asm_type.clone(),
+                                            src: AsmOperand::Imm(*konst),
+                                            dst: AsmOperand::Stack(*dst_n),
+                                        },
+                                    ]);
+                                }        
+                            }
                         }
                     }
                     (AsmOperand::Imm(konst), AsmOperand::Data(dst)) => {
