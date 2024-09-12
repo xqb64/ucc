@@ -783,162 +783,103 @@ impl Fixup for AsmFunction {
 
         for instr in &mut self.instructions {
             match instr {
-                AsmInstruction::Mov { src, dst, asm_type } => match asm_type {
-                    AsmType::Longword => match (src, dst) {
-                        (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Stack(*src_n),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: AsmOperand::Stack(*dst_n),
-                                },
-                            ]);
-                        }
-                        (AsmOperand::Data(src), AsmOperand::Stack(dst_n)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Data(src.clone()),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: AsmOperand::Stack(*dst_n),
-                                },
-                            ]);
-                        }
-                        (AsmOperand::Stack(src_n), AsmOperand::Data(dst)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Stack(*src_n),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: AsmOperand::Data(dst.clone()),
-                                },
-                            ]);
-                        }
-                        (AsmOperand::Data(src), AsmOperand::Data(dst)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Data(src.clone()),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: AsmOperand::Data(dst.clone()),
-                                },
-                            ]);
-                        }
-                        _ => instructions.push(instr.clone()),
+                AsmInstruction::Mov { src, dst, asm_type } => match (src, dst) {
+                    (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                asm_type: *asm_type,
+                                src: AsmOperand::Stack(*src_n),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Mov {
+                                asm_type: *asm_type,
+                                src: AsmOperand::Register(AsmRegister::R10),
+                                dst: AsmOperand::Stack(*dst_n),
+                            },
+                        ]);
                     }
-                    AsmType::Quadword => match (src, dst) {
-                        (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Stack(*src_n),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: AsmOperand::Stack(*dst_n),
-                                },
-                            ]);
-                        }
-                        (AsmOperand::Data(src), AsmOperand::Stack(dst_n)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Data(src.clone()),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: AsmOperand::Stack(*dst_n),
-                                },
-                            ]);
-                        }
-                        (AsmOperand::Stack(src_n), AsmOperand::Data(dst)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Stack(*src_n),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: AsmOperand::Data(dst.clone()),
-                                },
-                            ]);
-                        }
-                        (AsmOperand::Data(src), AsmOperand::Data(dst)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Data(src.clone()),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: AsmOperand::Data(dst.clone()),
-                                },
-                            ]);
-                        }
-                        (AsmOperand::Imm(konst), AsmOperand::Stack(dst_n)) => {
-                            if *konst < i32::MIN as i64 || *konst > i32::MAX as i64 {
-                                instructions.extend(vec![
-                                    AsmInstruction::Mov {
-                                        asm_type: *asm_type,
-                                        src: AsmOperand::Imm(*konst),
-                                        dst: AsmOperand::Register(AsmRegister::R10),
-                                    },
-                                    AsmInstruction::Mov {
-                                        asm_type: *asm_type,
-                                        src: AsmOperand::Register(AsmRegister::R10),
-                                        dst: AsmOperand::Stack(*dst_n),
-                                    },
-                                ]);
-                            } else {
-                                instructions.push(instr.clone());
-                            }
-                        }
-                        (AsmOperand::Imm(konst), AsmOperand::Data(dst)) => {
-                            if *konst < i32::MIN as i64 || *konst > i32::MAX as i64 {
-                                instructions.extend(vec![
-                                    AsmInstruction::Mov {
-                                        asm_type: *asm_type,
-                                        src: AsmOperand::Imm(*konst),
-                                        dst: AsmOperand::Register(AsmRegister::R10),
-                                    },
-                                    AsmInstruction::Mov {
-                                        asm_type: *asm_type,
-                                        src: AsmOperand::Register(AsmRegister::R10),
-                                        dst: AsmOperand::Data(dst.to_owned()),
-                                    },
-                                ]);
-                            } else {
-                                instructions.push(instr.clone());
-                            }
-                        }
-                        _ => instructions.push(instr.clone()),
+                    (AsmOperand::Data(src), AsmOperand::Stack(dst_n)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                asm_type: *asm_type,
+                                src: AsmOperand::Data(src.clone()),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Mov {
+                                asm_type: *asm_type,
+                                src: AsmOperand::Register(AsmRegister::R10),
+                                dst: AsmOperand::Stack(*dst_n),
+                            },
+                        ]);
                     }
-                },
+                    (AsmOperand::Stack(src_n), AsmOperand::Data(dst)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                asm_type: *asm_type,
+                                src: AsmOperand::Stack(*src_n),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Mov {
+                                asm_type: *asm_type,
+                                src: AsmOperand::Register(AsmRegister::R10),
+                                dst: AsmOperand::Data(dst.clone()),
+                            },
+                        ]);
+                    }
+                    (AsmOperand::Data(src), AsmOperand::Data(dst)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                asm_type: *asm_type,
+                                src: AsmOperand::Data(src.clone()),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Mov {
+                                asm_type: *asm_type,
+                                src: AsmOperand::Register(AsmRegister::R10),
+                                dst: AsmOperand::Data(dst.clone()),
+                            },
+                        ]);
+                    }
+                    (AsmOperand::Imm(konst), AsmOperand::Stack(dst_n)) => {
+                        if *konst < i32::MIN as i64 || *konst > i32::MAX as i64 {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: *asm_type,
+                                    src: AsmOperand::Imm(*konst),
+                                    dst: AsmOperand::Register(AsmRegister::R10),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: *asm_type,
+                                    src: AsmOperand::Register(AsmRegister::R10),
+                                    dst: AsmOperand::Stack(*dst_n),
+                                },
+                            ]);
+                        } else {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: AsmOperand::Imm(*konst),
+                                    dst: AsmOperand::Stack(*dst_n),
+                                },
+                            ]);
+                        }
+                    }
+                    (AsmOperand::Imm(konst), AsmOperand::Data(dst)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                asm_type: *asm_type,
+                                src: AsmOperand::Imm(*konst),
+                                dst: AsmOperand::Register(AsmRegister::R10),
+                            },
+                            AsmInstruction::Mov {
+                                asm_type: *asm_type,
+                                src: AsmOperand::Register(AsmRegister::R10),
+                                dst: AsmOperand::Data(dst.to_owned()),
+                            },
+                        ]);
+                    }
+                    _ => instructions.push(instr.clone()),
+                }
                 AsmInstruction::Binary { op, lhs, rhs, asm_type } => match op {
                     AsmBinaryOp::Add | AsmBinaryOp::Sub => match (lhs, rhs) {
                         (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
