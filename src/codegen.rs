@@ -206,8 +206,13 @@ impl Codegen for IRFunction {
         ];
 
         for (reg_idx, arg) in self.params.iter().take(6).enumerate() {
+            let asm_type = ASM_SYMBOL_TABLE.lock().unwrap().get(arg).cloned().unwrap();
+            let t = match asm_type {
+                AsmSymtabEntry::Object { _type, is_static: _ } => _type,
+                _ => unreachable!(),
+            };
             instructions.push(AsmInstruction::Mov {
-                asm_type: AsmType::Longword,
+                asm_type: t,
                 src: AsmOperand::Register(registers[reg_idx]),
                 dst: AsmOperand::Pseudo(arg.to_owned()),
             });
