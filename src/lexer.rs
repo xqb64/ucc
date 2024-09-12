@@ -1,3 +1,5 @@
+use anyhow::{bail, Result};
+
 pub struct Lexer {
     src: String,
     pos: usize,
@@ -31,10 +33,10 @@ impl Iterator for Lexer {
         let punctuation_re = regex::Regex::new(r"^[-+*/%~(){};!<>=?:,]").unwrap();
         let punctuation_double_re = regex::Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\|").unwrap();
         let keyword_re = regex::Regex::new(
-            r"^int\b|^long\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b|^static\b|^extern\b",
+            r"^int\b|^long\b|^signed\b|^unsigned\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b|^static\b|^extern\b",
         )
         .unwrap();
-        let constant_re = regex::Regex::new(r"^[0-9]+[lL]?\b").unwrap();
+        let constant_re = regex::Regex::new(r"^[0-9]+(?P<suffix>[lL]?[uU]?|[uU]?[lL]?)\b").unwrap();
         let identifier_re = regex::Regex::new(r"^[a-zA-Z_]\w*\b").unwrap();
 
         let token = if let Some(m) = punctuation_double_re.find(src) {
@@ -77,6 +79,8 @@ impl Iterator for Lexer {
             match m.as_str() {
                 "int" => Token::Int,
                 "long" => Token::Long,
+                "signed" => Token::Signed,
+                "unsigned" => Token::Unsigned,
                 "void" => Token::Void,
                 "return" => Token::Return,
                 "if" => Token::If,
@@ -93,21 +97,16 @@ impl Iterator for Lexer {
         } else if let Some(m) = constant_re.find(src) {
             self.pos += m.as_str().len();
 
-            if m.as_str().ends_with('l') || m.as_str().ends_with('L') {
-                Token::Constant(Const::Long(
-                    m.as_str()
-                        .trim_end_matches(|c| c == 'l' || c == 'L')
-                        .parse()
-                        .unwrap(),
-                ))
-            } else {
-                let as_i64 = m.as_str().parse::<i64>().unwrap();
-                let konst = i32::try_from(as_i64)
-                    .map(Const::Int)
-                    .unwrap_or_else(|_| Const::Long(as_i64));
+            let suffix = constant_re.captures(src).unwrap().name("suffix").unwrap().as_str();
+            let just_number = m.as_str().trim_end_matches(suffix);
 
-                Token::Constant(konst)
+            let normalized_suffix = suffix.chars().map(|ch| ch.to_ascii_lowercase()).collect::<String>();
+
+            match parse_integer(&normalized_suffix, just_number) {
+                Ok(konst) => Token::Constant(konst),
+                Err(_) => Token::Error,
             }
+
         } else if let Some(m) = identifier_re.find(src) {
             self.pos += m.as_str().len();
             Token::Identifier(m.as_str().to_string())
@@ -126,6 +125,8 @@ impl Iterator for Lexer {
 pub enum Token {
     Int,
     Long,
+    Signed,
+    Unsigned,
     Void,
     Return,
     If,
@@ -187,4 +188,28 @@ impl Token {
 pub enum Const {
     Int(i32),
     Long(i64),
+    UInt(u32),
+    ULong(u64),
+}
+
+fn parse_integer(suffix: &str,  just_number: &str) -> Result<Const> {
+    let konst = match suffix {
+        "ul" | "lu" => just_number.parse::<u64>().map(Const::ULong)?,
+        "l" => just_number.parse::<i64>().map(Const::Long)?,
+        "u" => {
+            let i_wide = just_number.parse::<u64>()?;
+            u32::try_from(i_wide)
+                .map(Const::UInt)
+                .unwrap_or_else(|_| Const::ULong(i_wide))
+        }
+        "" => {
+            let i_wide = just_number.parse::<i64>()?;
+            i32::try_from(i_wide)
+                .map(Const::Int)
+                .unwrap_or_else(|_| Const::Long(i_wide))
+        }
+        actual => bail!("Unknown suffix: {}", actual),
+    };
+
+    Ok(konst)
 }

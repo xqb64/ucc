@@ -54,6 +54,7 @@ impl Typecheck for VariableDeclaration {
                     initial_value = match konst.value {
                         Const::Int(i) => InitialValue::Initial(StaticInit::Int(i)),
                         Const::Long(l) => InitialValue::Initial(StaticInit::Long(l)),
+                        _ => todo!(),
                     }
                 } else if self.init.is_none() {
                     if self
@@ -216,6 +217,7 @@ impl Typecheck for VariableDeclaration {
                             Const::Long(l) => {
                                 initial_value = InitialValue::Initial(StaticInit::Long(l));
                             }
+                            _ => todo!(),
                         }
                     } else if self.init.is_none() {
                         initial_value = InitialValue::Initial(StaticInit::Int(0));
@@ -705,6 +707,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 value: Const::Long(*l),
                 _type: Type::Long,
             })),
+            _ => todo!()
         },
         Expression::Cast(CastExpression {
             target_type,

@@ -274,6 +274,7 @@ impl Codegen for IRValue {
             IRValue::Constant(n) => match n {
                 Const::Int(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
                 Const::Long(n) => AsmNode::Operand(AsmOperand::Imm(*n)),
+                _ => todo!(),
             }
             IRValue::Var(name) => AsmNode::Operand(AsmOperand::Pseudo(name.to_owned())),
         }
@@ -1342,6 +1343,7 @@ fn get_asm_type(value: &IRValue) -> AsmType {
         IRValue::Constant(konst) => match konst {
             Const::Int(_) => AsmType::Longword,
             Const::Long(_) => AsmType::Quadword,
+            _ => todo!(),
         }
         IRValue::Var(var_name) => {
             match SYMBOL_TABLE.lock().unwrap().get(var_name).unwrap()._type {
