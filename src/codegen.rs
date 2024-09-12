@@ -321,7 +321,7 @@ impl Codegen for IRInstruction {
             }
             IRInstruction::Ret(value) => AsmNode::Instructions(vec![
                 AsmInstruction::Mov {
-                    asm_type: AsmType::Longword,
+                    asm_type: get_asm_type(value),
                     src: value.codegen().into(),
                     dst: AsmOperand::Register(AsmRegister::AX),
                 },
@@ -340,7 +340,7 @@ impl Codegen for IRInstruction {
                             dst: dst.codegen().into(),
                         },
                         AsmInstruction::Binary {
-                            asm_type: dbg!(get_asm_type(&dst)),
+                            asm_type: get_asm_type(&dst),
                             op: (*op).into(),
                             lhs: rhs.codegen().into(),
                             rhs: dst.codegen().into(),
@@ -394,7 +394,7 @@ impl Codegen for IRInstruction {
                             rhs: lhs.codegen().into(),
                         },
                         AsmInstruction::Mov {
-                            asm_type,
+                            asm_type: get_asm_type(dst),
                             src: AsmOperand::Imm(0),
                             dst: dst.codegen().into(),
                         },
@@ -801,12 +801,12 @@ impl Fixup for AsmFunction {
                     (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
-                                asm_type: dbg!(*asm_type),
+                                asm_type: *asm_type,
                                 src: AsmOperand::Stack(*src_n),
                                 dst: AsmOperand::Register(AsmRegister::R10),
                             },
                             AsmInstruction::Mov {
-                                asm_type: dbg!(*asm_type),
+                                asm_type: *asm_type,
                                 src: AsmOperand::Register(AsmRegister::R10),
                                 dst: AsmOperand::Stack(*dst_n),
                             },
@@ -899,12 +899,12 @@ impl Fixup for AsmFunction {
                         (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
-                                    asm_type: dbg!(asm_type.clone()),
+                                    asm_type: *asm_type,
                                     src: AsmOperand::Stack(*src_n),
                                     dst: AsmOperand::Register(AsmRegister::R10),
                                 },
                                 AsmInstruction::Binary {
-                                    asm_type: dbg!(asm_type.clone()),
+                                    asm_type: *asm_type,
                                     op: *op,
                                     lhs: AsmOperand::Register(AsmRegister::R10),
                                     rhs: AsmOperand::Stack(*dst_n),
@@ -1181,7 +1181,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (_, AsmOperand::Stack(dst_n)) => {
+                    (_, AsmOperand::Stack(_dst_n)) => {
                         instructions.extend(vec![
                             AsmInstruction::Movsx {
                                 src: src.clone(),
@@ -1334,7 +1334,7 @@ pub fn build_asm_symbol_table() {
     for (identifier, symbol) in frontend_symtab.iter() {
         let entry = match symbol.attrs {
             IdentifierAttrs::FuncAttr { defined, .. } => AsmSymtabEntry::Function { defined },
-            IdentifierAttrs::StaticAttr { initial_value, .. } => {
+            IdentifierAttrs::StaticAttr { initial_value: _, .. } => {
                 let asm_type = match symbol._type {
                     Type::Int => AsmType::Longword,
                     Type::Long => AsmType::Quadword,
@@ -1349,7 +1349,10 @@ pub fn build_asm_symbol_table() {
                 let asm_type = match symbol._type {
                     Type::Int => AsmType::Longword,
                     Type::Long => AsmType::Quadword,
-                    _ => panic!("Unsupported type for static backend_symtab: {}", identifier),
+                    _ => {
+                        println!("{:?}", symbol._type);
+                        panic!("Unsupported type for static backend_symtab: {}", identifier);
+                    }
                 };
                 AsmSymtabEntry::Object {
                     _type: asm_type,

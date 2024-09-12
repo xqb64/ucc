@@ -509,11 +509,14 @@ impl Typecheck for Statement {
                     label: label.clone(),
                 })))
             }
-            Statement::Return(ReturnStatement { expr }) => {
+            Statement::Return(ReturnStatement { expr, target_type }) => {
                 let typechecked_expr = typecheck_expr(expr)?;
 
+                println!("target_type is: {:?}", target_type);
+
                 Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
-                    expr: typechecked_expr,
+                    expr: Expression::Cast(CastExpression { target_type: target_type.clone().unwrap_or(Type::Int), expr: typechecked_expr.into(), _type: get_type(expr) }),
+                    target_type: target_type.clone(),
                 })))
             }
             Statement::Break(_) | Statement::Continue(_) | Statement::Null => {

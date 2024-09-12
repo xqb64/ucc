@@ -7,6 +7,7 @@ pub struct Parser {
     pub current: Option<Token>,
     pub previous: Option<Token>,
     pub depth: usize,
+    pub current_target_type: Option<Type>,
 }
 
 impl Parser {
@@ -16,6 +17,7 @@ impl Parser {
             current: None,
             previous: None,
             depth: 0,
+            current_target_type: None,
         }
     }
 
@@ -128,6 +130,8 @@ impl Parser {
         _type: Type,
         storage_class: Option<StorageClass>,
     ) -> Result<BlockItem> {
+        self.current_target_type = Some(_type.clone());
+
         let params = self.parse_parameters()?;
 
         let body = if self.check(&Token::Semicolon) {
@@ -142,6 +146,7 @@ impl Parser {
                 self.current
             );
         };
+        self.current_target_type = None;
         Ok(BlockItem::Declaration(Declaration::Function(
             FunctionDeclaration {
                 name: name.to_owned(),
@@ -399,6 +404,7 @@ impl Parser {
         self.consume(&Token::Semicolon)?;
         Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
             expr,
+            target_type: self.current_target_type.clone(),
         })))
     }
 
@@ -752,6 +758,7 @@ pub enum StorageClass {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnStatement {
     pub expr: Expression,
+    pub target_type: Option<Type>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

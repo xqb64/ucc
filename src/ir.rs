@@ -310,15 +310,17 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
             expr,
             _type,
         }) => {
+            println!("HERE");
+
             let result = emit_tacky(*expr.clone(), instructions);
 
-            if _type == get_type(&expr) {
+            if target_type == get_type(&expr) {
                 return result;
             }
 
-            let dst = make_tacky_variable(_type.clone());
+            let dst = make_tacky_variable(target_type.clone());
 
-            if _type == Type::Long {
+            if target_type == Type::Long {
                 instructions.push(IRInstruction::SignExtend {
                     src: result.clone(),
                     dst: dst.clone(),

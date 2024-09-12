@@ -237,6 +237,7 @@ impl Resolve for ReturnStatement {
         let resolved_exp = resolve_exp(&self.expr, variable_map)?;
         Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
             expr: resolved_exp,
+            target_type: self.target_type.clone(),
         })))
     }
 }

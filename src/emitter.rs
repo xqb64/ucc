@@ -12,7 +12,6 @@ use crate::codegen::AsmUnaryOp;
 use crate::codegen::ConditionCode;
 use crate::codegen::ASM_SYMBOL_TABLE;
 use crate::typechecker::StaticInit;
-use crate::typechecker::SYMBOL_TABLE;
 use anyhow::Result;
 use std::fs::File;
 use std::io::Write;
@@ -62,7 +61,7 @@ impl Emit for Vec<AsmInstruction> {
 }
 
 impl Emit for AsmStaticVariable {
-    fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
+    fn emit(&mut self, f: &mut File, _asm_type: &mut AsmType) -> Result<()> {
         match self.init {
             StaticInit::Int(n) => match n {
                 0 => writeln!(f, ".section .bss")?,

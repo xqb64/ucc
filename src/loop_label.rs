@@ -131,6 +131,7 @@ impl Label for ReturnStatement {
     fn label(&self, _current_label: String) -> Result<BlockItem> {
         Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
             expr: self.expr.clone(),
+            target_type: self.target_type.clone(),
         })))
     }
 }
