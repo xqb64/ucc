@@ -44,6 +44,48 @@ impl Typecheck for Declaration {
     }
 }
 
+fn const2type(konst: &Const, t: &Type) -> StaticInit {
+    // convert konst to t
+    match konst {
+        Const::Int(i) => {
+            match t {
+                Type::Int => StaticInit::Int(*i),
+                Type::Uint => StaticInit::Uint(*i as u32),
+                Type::Long => StaticInit::Long(*i as i64),
+                Type::Ulong => StaticInit::Ulong(*i as u64),
+                _ => unreachable!()
+            }
+        }
+        Const::Long(l) => {
+            match t {
+                Type::Int => StaticInit::Int(*l as i32),
+                Type::Uint => StaticInit::Uint(*l as u32),
+                Type::Long => StaticInit::Long(*l),
+                Type::Ulong => StaticInit::Ulong(*l as u64),
+                _ => unreachable!()
+            }
+        }
+        Const::UInt(u) => {
+            match t {
+                Type::Int => StaticInit::Int(*u as i32),
+                Type::Uint => StaticInit::Uint(*u),
+                Type::Long => StaticInit::Long(*u as i64),
+                Type::Ulong => StaticInit::Ulong(*u as u64),
+                _ => unreachable!()
+            }
+        }
+        Const::ULong(ul) => {
+            match t {
+                Type::Int => StaticInit::Int(*ul as i32),
+                Type::Uint => StaticInit::Uint(*ul as u32),
+                Type::Long => StaticInit::Long(*ul as i64),
+                Type::Ulong => StaticInit::Ulong(*ul),
+                _ => unreachable!()
+            }
+        }
+    }
+}
+
 impl Typecheck for VariableDeclaration {
     fn typecheck(&self) -> Result<BlockItem> {
         match self.is_global {
@@ -52,10 +94,10 @@ impl Typecheck for VariableDeclaration {
 
                 if let Some(Expression::Constant(konst)) = &self.init {
                     initial_value = match konst.value {
-                        Const::Int(i) => InitialValue::Initial(StaticInit::Int(i)),
-                        Const::Long(l) => InitialValue::Initial(StaticInit::Long(l)),
-                        Const::UInt(u) => InitialValue::Initial(StaticInit::Uint(u)),
-                        Const::ULong(ul) => InitialValue::Initial(StaticInit::Ulong(ul)),
+                        Const::Int(i) => InitialValue::Initial(const2type(&konst.value, &self._type)),
+                        Const::Long(l) => InitialValue::Initial(const2type(&konst.value, &self._type)),
+                        Const::UInt(u) => InitialValue::Initial(const2type(&konst.value, &self._type)),
+                        Const::ULong(ul) => InitialValue::Initial(const2type(&konst.value, &self._type)),
                     }
                 } else if self.init.is_none() {
                     if self
@@ -529,8 +571,6 @@ impl Typecheck for Statement {
             Statement::Return(ReturnStatement { expr, target_type }) => {
                 let typechecked_expr = typecheck_expr(expr)?;
 
-                println!("target_type is: {:?}", target_type);
-
                 Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
                     expr: Expression::Cast(CastExpression {
                         target_type: target_type.clone().unwrap_or(Type::Int),
@@ -623,7 +663,12 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     let t1 = get_type(&typed_lhs);
                     let t2 = get_type(&typed_rhs);
 
+                    println!("t1: {:?}", t1);
+                    println!("t2: {:?}", t2);
+
                     let common_type = get_common_type(&t1, &t2);
+
+                    println!("common type: {:?}", common_type);
 
                     let converted_lhs = convert_to(&typed_lhs, &common_type);
                     let converted_rhs = convert_to(&typed_rhs, &common_type);
@@ -741,13 +786,13 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
     }
 }
 
-fn get_common_type(type1: &Type, type2: &Type) -> Type {
+pub fn get_common_type(type1: &Type, type2: &Type) -> Type {
     if type1 == type2 {
         return type1.clone();
     }
     
     if get_size_of_type(type1) == get_size_of_type(type2) {
-        if get_signedness(type1) == get_signedness(type2) {
+        if get_signedness(type1) {
             return type2.clone();
         } else {
             return type1.clone();

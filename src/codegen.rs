@@ -6,7 +6,7 @@ use crate::{
     },
     lexer::Const,
     parser::Type,
-    typechecker::{get_signedness, IdentifierAttrs, StaticInit, SYMBOL_TABLE},
+    typechecker::{get_common_type, get_signedness, IdentifierAttrs, StaticInit, SYMBOL_TABLE},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -491,16 +491,33 @@ impl Codegen for IRInstruction {
                     | BinaryOp::Equal
                     | BinaryOp::NotEqual => {
 
-                        let signedness = match lhs {
-                            IRValue::Var(name) => get_signedness(&SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap()._type),
+                        let lhs_type = match lhs {
+                            IRValue::Var(name) => SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap()._type,
                             IRValue::Constant(konst) => match konst {
-                                Const::Int(_) => true,
-                                Const::Long(_) => true,
-                                Const::UInt(_) => false,
-                                Const::ULong(_) => false,
+                                Const::Int(_) => Type::Int,
+                                Const::Long(_) => Type::Long,
+                                Const::UInt(_) => Type::Uint,
+                                Const::ULong(_) => Type::Ulong,
                             }
                         };
 
+                        println!("lhs: {:?} type is: {:?}", lhs, lhs_type);
+                       
+                        let rhs_type = match rhs {
+                            IRValue::Var(name) => SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap()._type,
+                            IRValue::Constant(konst) => match konst {
+                                Const::Int(_) => Type::Int,
+                                Const::Long(_) => Type::Long,
+                                Const::UInt(_) => Type::Uint,
+                                Const::ULong(_) => Type::Ulong,
+                            }
+                        };
+                        
+                        println!("rhs: {:?}, type is: {:?}", rhs, rhs_type);
+
+                        let signedness = get_signedness(&get_common_type(&lhs_type, &rhs_type));
+
+                        println!("signedness is: {}", signedness);
 
                         if signedness {
                             AsmNode::Instructions(vec![
@@ -787,7 +804,6 @@ impl ReplacePseudo for AsmInstruction {
             AsmInstruction::AllocateStack(n) => AsmInstruction::AllocateStack(*n),
             AsmInstruction::Ret => AsmInstruction::Ret,
             AsmInstruction::Cmp { lhs, rhs, asm_type } => {
-                println!("asm type: {:?}", asm_type);
                 AsmInstruction::Cmp {
                     asm_type: *asm_type,
                     lhs: lhs.replace_pseudo(),
@@ -987,7 +1003,6 @@ impl Fixup for AsmFunction {
         let mut instructions = vec![];
 
         for instr in &mut self.instructions {
-            println!("instruction: {:?}", instr);
             match instr {
                 AsmInstruction::Mov { src, dst, asm_type } => match (src, dst) {
                     (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
@@ -1664,7 +1679,6 @@ pub fn build_asm_symbol_table() {
                     Type::Uint => AsmType::Longword,
                     Type::Ulong => AsmType::Quadword,
                     _ => {
-                        println!("{:?}", symbol._type);
                         panic!("Unsupported type for static backend_symtab: {}", identifier);
                     }
                 };

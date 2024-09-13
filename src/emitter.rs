@@ -64,25 +64,25 @@ impl Emit for AsmStaticVariable {
     fn emit(&mut self, f: &mut File, _asm_type: &mut AsmType) -> Result<()> {
         match self.init {
             StaticInit::Int(n) => match n {
-                0 => writeln!(f, ".section .bss")?,
-                _ => writeln!(f, ".section .data")?,
+                0 => writeln!(f, "\t.section .bss")?,
+                _ => writeln!(f, "\t.section .data")?,
             },
             StaticInit::Long(n) => match n {
-                0 => writeln!(f, ".section .bss")?,
-                _ => writeln!(f, ".section .data")?,
+                0 => writeln!(f, "\t.section .bss")?,
+                _ => writeln!(f, "\t.section .data")?,
             },
             StaticInit::Uint(n) => match n {
-                0 => writeln!(f, ".section .bss")?,
-                _ => writeln!(f, ".section .data")?,
+                0 => writeln!(f, "\t.section .bss")?,
+                _ => writeln!(f, "\t.section .data")?,
             },
             StaticInit::Ulong(n) => match n {
-                0 => writeln!(f, ".section .bss")?,
-                _ => writeln!(f, ".section .data")?,
+                0 => writeln!(f, "\t.section .bss")?,
+                _ => writeln!(f, "\t.section .data")?,
             },
         }
 
         if self.global {
-            writeln!(f, ".globl {}", self.name)?;
+            writeln!(f, "\t.globl {}", self.name)?;
         }
 
         writeln!(f, "{}:", self.name)?;
