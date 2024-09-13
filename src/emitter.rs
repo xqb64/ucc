@@ -87,14 +87,6 @@ impl Emit for AsmStaticVariable {
 
         writeln!(f, "{}:", self.name)?;
 
-        match self.alignment {
-            1 => writeln!(f, "\t.align 1")?,
-            2 => writeln!(f, "\t.align 2")?,
-            4 => writeln!(f, "\t.align 4")?,
-            8 => writeln!(f, "\t.align 8")?,
-            _ => writeln!(f, "\t.align 16")?,
-        }
-
         match self.init {
             StaticInit::Int(n) => match n {
                 0 => writeln!(f, "\t.zero 4")?,
@@ -112,6 +104,14 @@ impl Emit for AsmStaticVariable {
                 0 => writeln!(f, "\t.zero 8")?,
                 _ => writeln!(f, "\t.quad {}", n)?,
             },
+        }
+
+        match self.alignment {
+            1 => writeln!(f, "\t.align 1")?,
+            2 => writeln!(f, "\t.align 2")?,
+            4 => writeln!(f, "\t.align 4")?,
+            8 => writeln!(f, "\t.align 8")?,
+            _ => writeln!(f, "\t.align 16")?,
         }
 
         Ok(())
