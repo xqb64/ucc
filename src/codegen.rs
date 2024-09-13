@@ -402,17 +402,12 @@ impl Codegen for IRInstruction {
                         } else {
                             v.extend(vec![
                                 AsmInstruction::Mov {
-                                    asm_type: AsmType::Quadword,
-                                    src: lhs.codegen().into(),
-                                    dst: AsmOperand::Register(AsmRegister::AX),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: AsmType::Quadword,
+                                    asm_type: AsmType::Longword,
                                     src: AsmOperand::Imm(0),
                                     dst: AsmOperand::Register(AsmRegister::DX),
                                 },
                                 AsmInstruction::Div {
-                                    asm_type: AsmType::Quadword,
+                                    asm_type: AsmType::Longword,
                                     operand: rhs.codegen().into(),
                                 },
                                 AsmInstruction::Mov {
@@ -1317,12 +1312,12 @@ impl Fixup for AsmFunction {
                     if let AsmOperand::Imm(konst) = operand {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
-                                asm_type: *asm_type,
+                                asm_type: AsmType::Quadword,
                                 src: AsmOperand::Imm(*konst),
                                 dst: AsmOperand::Register(AsmRegister::R10),
                             },
                             AsmInstruction::Idiv {
-                                asm_type: *asm_type,
+                                asm_type: AsmType::Quadword,
                                 operand: AsmOperand::Register(AsmRegister::R10),
                             },
                         ]);
