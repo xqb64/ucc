@@ -588,6 +588,7 @@ impl Codegen for IRInstruction {
                                 Const::Long(_) => true,
                                 Const::UInt(_) => false,
                                 Const::ULong(_) => false,
+                                Const::Double(_) => true,
                                 _ => todo!(),
                             },
                         };
@@ -648,6 +649,7 @@ impl Codegen for IRInstruction {
                                 Const::Long(_) => true,
                                 Const::UInt(_) => false,
                                 Const::ULong(_) => false,
+                                Const::Double(_) => true,
                                 _ => todo!(),
                             },
                         };
@@ -712,6 +714,7 @@ impl Codegen for IRInstruction {
                                 Const::Long(_) => Type::Long,
                                 Const::UInt(_) => Type::Uint,
                                 Const::ULong(_) => Type::Ulong,
+                                Const::Double(_) => Type::Double,
                                 _ => todo!(),
                             },
                         };
@@ -731,6 +734,7 @@ impl Codegen for IRInstruction {
                                 Const::Long(_) => Type::Long,
                                 Const::UInt(_) => Type::Uint,
                                 Const::ULong(_) => Type::Ulong,
+                                Const::Double(_) => Type::Double,
                                 _ => todo!(),
                             },
                         };
