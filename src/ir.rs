@@ -68,6 +68,22 @@ pub enum IRInstruction {
         src: IRValue,
         dst: IRValue,
     },
+    DoubleToInt {
+        src: IRValue,
+        dst: IRValue,
+    },
+    IntToDouble {
+        src: IRValue,
+        dst: IRValue,
+    },
+    DoubletoUInt {
+        src: IRValue,
+        dst: IRValue,
+    },
+    UIntToDouble {
+        src: IRValue,
+        dst: IRValue,
+    },
     Ret(IRValue),
 }
 
@@ -319,6 +335,42 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
 
             if target_type == inner_type {
                 return result;
+            }
+
+            match (inner_type.clone(), target_type.clone()) {
+                (Type::Int, Type::Double) => {
+                    let dst = make_tacky_variable(target_type.clone());
+                    instructions.push(IRInstruction::IntToDouble {
+                        src: result.clone(),
+                        dst: dst.clone(),
+                    });
+                    return dst;
+                } 
+                (Type::Double, Type::Int) => {
+                    let dst = make_tacky_variable(target_type.clone());
+                    instructions.push(IRInstruction::DoubleToInt {
+                        src: result.clone(),
+                        dst: dst.clone(),
+                    });
+                    return dst;
+                }
+                (Type::Uint, Type::Double) => {
+                    let dst = make_tacky_variable(target_type.clone());
+                    instructions.push(IRInstruction::DoubletoUInt {
+                        src: result.clone(),
+                        dst: dst.clone(),
+                    });
+                    return dst;
+                }
+                (Type::Double, Type::Uint) => {
+                    let dst = make_tacky_variable(target_type.clone());
+                    instructions.push(IRInstruction::UIntToDouble {
+                        src: result.clone(),
+                        dst: dst.clone(),
+                    });
+                    return dst;
+                }
+                _ => {}
             }
 
             let dst = make_tacky_variable(target_type.clone());
@@ -764,6 +816,7 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                             Type::Long => StaticInit::Long(0),
                             Type::Ulong => StaticInit::Ulong(0),
                             Type::Uint => StaticInit::Uint(0),
+                            Type::Double => StaticInit::Double(0.0),
                             _ => unimplemented!()
                         },
                     }))
