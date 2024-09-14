@@ -176,7 +176,10 @@ impl Parser {
         }
 
         if specifier_list.contains(&Token::Double) {
-            bail!("can't combine double with other specifiers: {:?}", specifier_list);
+            bail!(
+                "can't combine double with other specifiers: {:?}",
+                specifier_list
+            );
         }
 
         if self.contains_no_specifiers(&specifier_list)
@@ -204,7 +207,12 @@ impl Parser {
 
     fn contains_no_specifiers(&self, specifier_list: &[Token]) -> bool {
         !specifier_list.iter().all(|specifier| match specifier {
-            Token::Int | Token::Long |Token::Double | Token::Signed | Token::Unsigned | Token::Void => true,
+            Token::Int
+            | Token::Long
+            | Token::Double
+            | Token::Signed
+            | Token::Unsigned
+            | Token::Void => true,
             _ => false,
         })
     }

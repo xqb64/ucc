@@ -37,7 +37,10 @@ impl Iterator for Lexer {
         )
         .unwrap();
         let constant_re = regex::Regex::new(r"^[0-9]+(?P<suffix>[lL]?[uU]?|[uU]?[lL]?)\b").unwrap();
-        let double_constant_re = regex::Regex::new(r"^(([0-9]*\.[0-9]+|[0-9]+\.?)[Ee][+-]?[0-9]+|[0-9]*\.[0-9]+|[0-9]+\.)[^\w.]").unwrap();
+        let double_constant_re = regex::Regex::new(
+            r"^(([0-9]*\.[0-9]+|[0-9]+\.?)[Ee][+-]?[0-9]+|[0-9]*\.[0-9]+|[0-9]+\.)[^\w.]",
+        )
+        .unwrap();
         let identifier_re = regex::Regex::new(r"^[a-zA-Z_]\w*\b").unwrap();
 
         let token = if let Some(m) = punctuation_double_re.find(src) {
@@ -99,7 +102,9 @@ impl Iterator for Lexer {
         } else if let Some(m) = double_constant_re.find(src) {
             self.pos += m.as_str().len() - 1;
             println!("double constant: {}", m.as_str());
-            Token::Constant(Const::Double(m.as_str()[..m.as_str().len() - 1].parse::<f64>().unwrap()))
+            Token::Constant(Const::Double(
+                m.as_str()[..m.as_str().len() - 1].parse::<f64>().unwrap(),
+            ))
         } else if let Some(m) = constant_re.find(src) {
             self.pos += m.as_str().len();
 

@@ -47,56 +47,46 @@ impl Typecheck for Declaration {
 fn const2type(konst: &Const, t: &Type) -> StaticInit {
     // convert konst to t
     match konst {
-        Const::Int(i) => {
-            match t {
-                Type::Int => StaticInit::Int(*i),
-                Type::Uint => StaticInit::Uint(*i as u32),
-                Type::Long => StaticInit::Long(*i as i64),
-                Type::Ulong => StaticInit::Ulong(*i as u64),
-                Type::Double => StaticInit::Double(*i as f64),
-                _ => unreachable!()
-            }
-        }
-        Const::Long(l) => {
-            match t {
-                Type::Int => StaticInit::Int(*l as i32),
-                Type::Uint => StaticInit::Uint(*l as u32),
-                Type::Long => StaticInit::Long(*l),
-                Type::Ulong => StaticInit::Ulong(*l as u64),
-                Type::Double => StaticInit::Double(*l as f64),
-                _ => unreachable!()
-            }
-        }
-        Const::UInt(u) => {
-            match t {
-                Type::Int => StaticInit::Int(*u as i32),
-                Type::Uint => StaticInit::Uint(*u),
-                Type::Long => StaticInit::Long(*u as i64),
-                Type::Ulong => StaticInit::Ulong(*u as u64),
-                Type::Double => StaticInit::Double(*u as f64),
-                _ => unreachable!()
-            }
-        }
-        Const::ULong(ul) => {
-            match t {
-                Type::Int => StaticInit::Int(*ul as i32),
-                Type::Uint => StaticInit::Uint(*ul as u32),
-                Type::Long => StaticInit::Long(*ul as i64),
-                Type::Ulong => StaticInit::Ulong(*ul),
-                Type::Double => StaticInit::Double(*ul as f64),
-                _ => unreachable!()
-            }
-        }
-        Const::Double(d) => {
-            match t {
-                Type::Int => StaticInit::Int(*d as i32),
-                Type::Uint => StaticInit::Uint(*d as u32),
-                Type::Long => StaticInit::Long(*d as i64),
-                Type::Ulong => StaticInit::Ulong(*d as u64),
-                Type::Double => StaticInit::Double(*d),
-                _ => unreachable!()
-            }
-        }
+        Const::Int(i) => match t {
+            Type::Int => StaticInit::Int(*i),
+            Type::Uint => StaticInit::Uint(*i as u32),
+            Type::Long => StaticInit::Long(*i as i64),
+            Type::Ulong => StaticInit::Ulong(*i as u64),
+            Type::Double => StaticInit::Double(*i as f64),
+            _ => unreachable!(),
+        },
+        Const::Long(l) => match t {
+            Type::Int => StaticInit::Int(*l as i32),
+            Type::Uint => StaticInit::Uint(*l as u32),
+            Type::Long => StaticInit::Long(*l),
+            Type::Ulong => StaticInit::Ulong(*l as u64),
+            Type::Double => StaticInit::Double(*l as f64),
+            _ => unreachable!(),
+        },
+        Const::UInt(u) => match t {
+            Type::Int => StaticInit::Int(*u as i32),
+            Type::Uint => StaticInit::Uint(*u),
+            Type::Long => StaticInit::Long(*u as i64),
+            Type::Ulong => StaticInit::Ulong(*u as u64),
+            Type::Double => StaticInit::Double(*u as f64),
+            _ => unreachable!(),
+        },
+        Const::ULong(ul) => match t {
+            Type::Int => StaticInit::Int(*ul as i32),
+            Type::Uint => StaticInit::Uint(*ul as u32),
+            Type::Long => StaticInit::Long(*ul as i64),
+            Type::Ulong => StaticInit::Ulong(*ul),
+            Type::Double => StaticInit::Double(*ul as f64),
+            _ => unreachable!(),
+        },
+        Const::Double(d) => match t {
+            Type::Int => StaticInit::Int(*d as i32),
+            Type::Uint => StaticInit::Uint(*d as u32),
+            Type::Long => StaticInit::Long(*d as i64),
+            Type::Ulong => StaticInit::Ulong(*d as u64),
+            Type::Double => StaticInit::Double(*d),
+            _ => unreachable!(),
+        },
     }
 }
 
@@ -108,11 +98,21 @@ impl Typecheck for VariableDeclaration {
 
                 if let Some(Expression::Constant(konst)) = &self.init {
                     initial_value = match konst.value {
-                        Const::Int(i) => InitialValue::Initial(const2type(&konst.value, &self._type)),
-                        Const::Long(l) => InitialValue::Initial(const2type(&konst.value, &self._type)),
-                        Const::UInt(u) => InitialValue::Initial(const2type(&konst.value, &self._type)),
-                        Const::ULong(ul) => InitialValue::Initial(const2type(&konst.value, &self._type)),
-                        Const::Double(d) => InitialValue::Initial(const2type(&konst.value, &self._type)),
+                        Const::Int(i) => {
+                            InitialValue::Initial(const2type(&konst.value, &self._type))
+                        }
+                        Const::Long(l) => {
+                            InitialValue::Initial(const2type(&konst.value, &self._type))
+                        }
+                        Const::UInt(u) => {
+                            InitialValue::Initial(const2type(&konst.value, &self._type))
+                        }
+                        Const::ULong(ul) => {
+                            InitialValue::Initial(const2type(&konst.value, &self._type))
+                        }
+                        Const::Double(d) => {
+                            InitialValue::Initial(const2type(&konst.value, &self._type))
+                        }
                     }
                 } else if self.init.is_none() {
                     if self
@@ -773,13 +773,13 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     _type: Type::Int,
                 })),
                 _ => {
-                        if let UnaryExpressionKind::Complement = kind {
-                            let t = get_type(&typed_inner);
-                            if t == Type::Double {
-                                bail!("Bitwise complement of non-integer type");
-                            }
+                    if let UnaryExpressionKind::Complement = kind {
+                        let t = get_type(&typed_inner);
+                        if t == Type::Double {
+                            bail!("Bitwise complement of non-integer type");
                         }
-                        Ok(Expression::Unary(UnaryExpression {
+                    }
+                    Ok(Expression::Unary(UnaryExpression {
                         kind: kind.clone(),
                         expr: Box::new(typed_inner.clone()),
                         _type: get_type(&typed_inner),
@@ -833,7 +833,7 @@ pub fn get_common_type(type1: &Type, type2: &Type) -> Type {
     if type1 == &Type::Double || type2 == &Type::Double {
         return Type::Double;
     }
-    
+
     if get_size_of_type(type1) == get_size_of_type(type2) {
         if get_signedness(type1) {
             return type2.clone();

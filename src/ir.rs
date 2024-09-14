@@ -7,7 +7,10 @@ use crate::{
         FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, Type,
         UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement,
     },
-    typechecker::{get_signedness, get_size_of_type, get_type, IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE},
+    typechecker::{
+        get_signedness, get_size_of_type, get_type, IdentifierAttrs, InitialValue, StaticInit,
+        Symbol, SYMBOL_TABLE,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -345,7 +348,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                         dst: dst.clone(),
                     });
                     return dst;
-                } 
+                }
                 (Type::Double, Type::Int) => {
                     let dst = make_tacky_variable(target_type.clone());
                     instructions.push(IRInstruction::DoubleToInt {
@@ -817,7 +820,7 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                             Type::Ulong => StaticInit::Ulong(0),
                             Type::Uint => StaticInit::Uint(0),
                             Type::Double => StaticInit::Double(0.0),
-                            _ => unimplemented!()
+                            _ => unimplemented!(),
                         },
                     }))
                 }
