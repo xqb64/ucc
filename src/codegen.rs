@@ -14,6 +14,7 @@ pub enum AsmNode {
     Program(AsmProgram),
     Function(AsmFunction),
     StaticVariable(AsmStaticVariable),
+    StaticConstant(AsmStaticConstant),
     Operand(AsmOperand),
     Instructions(Vec<AsmInstruction>),
 }
@@ -41,6 +42,13 @@ pub struct AsmStaticVariable {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AsmStaticConstant {
+    pub name: String,
+    pub init: StaticInit,
+    pub alignment: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AsmInstruction {
     Mov {
         asm_type: AsmType,
@@ -52,6 +60,16 @@ pub enum AsmInstruction {
         dst: AsmOperand,
     },
     MovZeroExtend {
+        src: AsmOperand,
+        dst: AsmOperand,
+    },
+    Cvttsd2si {
+        asm_type: AsmType,
+        src: AsmOperand,
+        dst: AsmOperand,
+    },
+    Cvtsi2sd {
+        asm_type: AsmType,
         src: AsmOperand,
         dst: AsmOperand,
     },
@@ -141,12 +159,23 @@ pub enum AsmRegister {
     R10,
     R11,
     SP,
+    XMM0,
+    XMM1,
+    XMM2,
+    XMM3,
+    XMM4,
+    XMM5,
+    XMM6,
+    XMM7,
+    XMM14,
+    XMM15,
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum AsmUnaryOp {
     Neg,
     Not,
+    Shr,
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -154,6 +183,10 @@ pub enum AsmBinaryOp {
     Add,
     Sub,
     Mul,
+    DivDouble,
+    And,
+    Or,
+    Xor,
 }
 
 pub trait Codegen {
@@ -228,6 +261,7 @@ impl Codegen for IRFunction {
                 AsmSymtabEntry::Object {
                     _type,
                     is_static: _,
+                    is_constant: _,
                 } => _type,
                 _ => unreachable!(),
             };
@@ -245,6 +279,7 @@ impl Codegen for IRFunction {
                 AsmSymtabEntry::Object {
                     _type,
                     is_static: _,
+                    is_constant: _,
                 } => _type,
                 _ => unreachable!(),
             };
@@ -750,11 +785,20 @@ impl ReplacePseudo for AsmNode {
             AsmNode::StaticVariable(static_var) => {
                 AsmNode::StaticVariable(static_var.to_owned().replace_pseudo())
             }
+            AsmNode::StaticConstant(static_const) => {
+                AsmNode::StaticConstant(static_const.to_owned().replace_pseudo())
+            }
         }
     }
 }
 
 impl ReplacePseudo for AsmStaticVariable {
+    fn replace_pseudo(&self) -> Self {
+        self.clone()
+    }
+}
+
+impl ReplacePseudo for AsmStaticConstant {
     fn replace_pseudo(&self) -> Self {
         self.clone()
     }
@@ -891,6 +935,7 @@ impl ReplacePseudo for AsmOperand {
                                 AsmSymtabEntry::Object {
                                     _type,
                                     is_static: _,
+                                    is_constant: _,
                                 } => _type,
                                 _ => unreachable!(),
                             };
@@ -911,6 +956,7 @@ impl ReplacePseudo for AsmOperand {
                         AsmSymtabEntry::Object {
                             _type,
                             is_static: _,
+                            is_constant: _,
                         } => _type,
                         _ => unreachable!(),
                     };
@@ -980,6 +1026,7 @@ impl Fixup for AsmNode {
             AsmNode::Instructions(instrs) => AsmNode::Instructions(instrs.fixup()),
             AsmNode::Operand(op) => AsmNode::Operand(op.clone()),
             AsmNode::StaticVariable(static_var) => AsmNode::StaticVariable(static_var.clone()),
+            AsmNode::StaticConstant(static_const) => AsmNode::StaticConstant(static_const.clone()),
         }
     }
 }
@@ -1295,7 +1342,8 @@ impl Fixup for AsmFunction {
                             }
                             _ => instructions.push(instr.clone()),
                         }
-                    },
+                    }
+                    _ => todo!(),
                 }
                 AsmInstruction::Idiv { operand, asm_type } => {
                     if let AsmOperand::Imm(konst) = operand {
@@ -1535,7 +1583,7 @@ impl Fixup for AsmFunction {
                     }
                     _ => instructions.push(instr.clone()),
                 },
-                _ => instructions.push(instr.clone()),
+                _ => todo!(),
             }
         }
 
@@ -1672,6 +1720,7 @@ pub fn build_asm_symbol_table() {
                 AsmSymtabEntry::Object {
                     _type: asm_type,
                     is_static: true,
+                    is_constant: todo!(),
                 }
             }
             IdentifierAttrs::LocalAttr => {
@@ -1687,6 +1736,7 @@ pub fn build_asm_symbol_table() {
                 AsmSymtabEntry::Object {
                     _type: asm_type,
                     is_static: false,
+                    is_constant: todo!(),
                 }
             }
         };
@@ -1698,7 +1748,7 @@ pub fn build_asm_symbol_table() {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AsmSymtabEntry {
     Function { defined: bool },
-    Object { _type: AsmType, is_static: bool },
+    Object { _type: AsmType, is_static: bool, is_constant: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]

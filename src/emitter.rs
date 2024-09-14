@@ -5,6 +5,7 @@ use crate::codegen::AsmNode;
 use crate::codegen::AsmOperand;
 use crate::codegen::AsmProgram;
 use crate::codegen::AsmRegister;
+use crate::codegen::AsmStaticConstant;
 use crate::codegen::AsmStaticVariable;
 use crate::codegen::AsmSymtabEntry;
 use crate::codegen::AsmType;
@@ -28,6 +29,7 @@ impl Emit for AsmNode {
             AsmNode::Operand(operand) => operand.emit(f, asm_type),
             AsmNode::Instructions(instrs) => instrs.emit(f, asm_type),
             AsmNode::StaticVariable(static_var) => static_var.emit(f, asm_type),
+            AsmNode::StaticConstant(static_const) => static_const.emit(f, asm_type),
         }
     }
 }
@@ -120,6 +122,12 @@ impl Emit for AsmStaticVariable {
     }
 }
 
+impl Emit for AsmStaticConstant {
+    fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
+        todo!()
+    }
+}
+
 impl Emit for AsmFunction {
     fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         writeln!(f, ".section .text")?;
@@ -190,6 +198,7 @@ impl Emit for AsmInstruction {
                 match op {
                     AsmUnaryOp::Neg => write!(f, "neg{} ", suffix)?,
                     AsmUnaryOp::Not => write!(f, "not{} ", suffix)?,
+                    _ => todo!(),
                 }
                 operand.emit(f, asm_type)?;
                 writeln!(f)?;
@@ -211,6 +220,7 @@ impl Emit for AsmInstruction {
                     AsmBinaryOp::Add => "add",
                     AsmBinaryOp::Sub => "sub",
                     AsmBinaryOp::Mul => "imul",
+                    _ => todo!(),
                 };
 
                 let suffix = match asm_type {
@@ -335,6 +345,7 @@ impl Emit for AsmInstruction {
                 writeln!(f)?;
             }
             AsmInstruction::MovZeroExtend { .. } => unreachable!(),
+            _ => todo!(),
         }
 
         Ok(())
@@ -368,6 +379,16 @@ impl Emit for AsmRegister {
                 AsmRegister::R10 => write!(f, "%r10d")?,
                 AsmRegister::R11 => write!(f, "%r11d")?,
                 AsmRegister::SP => write!(f, "%esp")?,
+                AsmRegister::XMM0 => write!(f, "%xmm0")?,
+                AsmRegister::XMM1 => write!(f, "%xmm1")?,
+                AsmRegister::XMM2 => write!(f, "%xmm2")?,
+                AsmRegister::XMM3 => write!(f, "%xmm3")?,
+                AsmRegister::XMM4 => write!(f, "%xmm4")?,
+                AsmRegister::XMM5 => write!(f, "%xmm5")?,
+                AsmRegister::XMM6 => write!(f, "%xmm6")?,
+                AsmRegister::XMM7 => write!(f, "%xmm7")?,
+                AsmRegister::XMM14 => write!(f, "%xmm14")?,
+                AsmRegister::XMM15 => write!(f, "%xmm15")?,
             },
             AsmType::Quadword => match self {
                 AsmRegister::AX => write!(f, "%rax")?,
@@ -380,6 +401,16 @@ impl Emit for AsmRegister {
                 AsmRegister::R10 => write!(f, "%r10")?,
                 AsmRegister::R11 => write!(f, "%r11")?,
                 AsmRegister::SP => write!(f, "%rsp")?,
+                AsmRegister::XMM0 => write!(f, "%xmm0")?,
+                AsmRegister::XMM1 => write!(f, "%xmm1")?,
+                AsmRegister::XMM2 => write!(f, "%xmm2")?,
+                AsmRegister::XMM3 => write!(f, "%xmm3")?,
+                AsmRegister::XMM4 => write!(f, "%xmm4")?,
+                AsmRegister::XMM5 => write!(f, "%xmm5")?,
+                AsmRegister::XMM6 => write!(f, "%xmm6")?,
+                AsmRegister::XMM7 => write!(f, "%xmm7")?,
+                AsmRegister::XMM14 => write!(f, "%xmm14")?,
+                AsmRegister::XMM15 => write!(f, "%xmm15")?,
             },
         }
 
