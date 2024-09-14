@@ -53,6 +53,7 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
                 Type::Uint => StaticInit::Uint(*i as u32),
                 Type::Long => StaticInit::Long(*i as i64),
                 Type::Ulong => StaticInit::Ulong(*i as u64),
+                Type::Double => StaticInit::Double(*i as f64),
                 _ => unreachable!()
             }
         }
@@ -62,6 +63,7 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
                 Type::Uint => StaticInit::Uint(*l as u32),
                 Type::Long => StaticInit::Long(*l),
                 Type::Ulong => StaticInit::Ulong(*l as u64),
+                Type::Double => StaticInit::Double(*l as f64),
                 _ => unreachable!()
             }
         }
@@ -71,6 +73,7 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
                 Type::Uint => StaticInit::Uint(*u),
                 Type::Long => StaticInit::Long(*u as i64),
                 Type::Ulong => StaticInit::Ulong(*u as u64),
+                Type::Double => StaticInit::Double(*u as f64),
                 _ => unreachable!()
             }
         }
@@ -80,10 +83,20 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
                 Type::Uint => StaticInit::Uint(*ul as u32),
                 Type::Long => StaticInit::Long(*ul as i64),
                 Type::Ulong => StaticInit::Ulong(*ul),
+                Type::Double => StaticInit::Double(*ul as f64),
                 _ => unreachable!()
             }
         }
-        _ => todo!(),
+        Const::Double(d) => {
+            match t {
+                Type::Int => StaticInit::Int(*d as i32),
+                Type::Uint => StaticInit::Uint(*d as u32),
+                Type::Long => StaticInit::Long(*d as i64),
+                Type::Ulong => StaticInit::Ulong(*d as u64),
+                Type::Double => StaticInit::Double(*d),
+                _ => unreachable!()
+            }
+        }
     }
 }
 
@@ -99,7 +112,7 @@ impl Typecheck for VariableDeclaration {
                         Const::Long(l) => InitialValue::Initial(const2type(&konst.value, &self._type)),
                         Const::UInt(u) => InitialValue::Initial(const2type(&konst.value, &self._type)),
                         Const::ULong(ul) => InitialValue::Initial(const2type(&konst.value, &self._type)),
-                        _ => todo!(),
+                        Const::Double(d) => InitialValue::Initial(const2type(&konst.value, &self._type)),
                     }
                 } else if self.init.is_none() {
                     if self
@@ -268,7 +281,9 @@ impl Typecheck for VariableDeclaration {
                             Const::ULong(ul) => {
                                 initial_value = InitialValue::Initial(StaticInit::Ulong(ul));
                             }
-                            _ => todo!(),
+                            Const::Double(d) => {
+                                initial_value = InitialValue::Initial(StaticInit::Double(d));
+                            }
                         }
                     } else if self.init.is_none() {
                         initial_value = InitialValue::Initial(StaticInit::Int(0));
@@ -666,12 +681,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     let t1 = get_type(&typed_lhs);
                     let t2 = get_type(&typed_rhs);
 
-                    println!("t1: {:?}", t1);
-                    println!("t2: {:?}", t2);
-
                     let common_type = get_common_type(&t1, &t2);
-
-                    println!("common type: {:?}", common_type);
 
                     let converted_lhs = convert_to(&typed_lhs, &common_type);
                     let converted_rhs = convert_to(&typed_rhs, &common_type);
@@ -681,12 +691,26 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                         | BinaryExpressionKind::Sub
                         | BinaryExpressionKind::Mul
                         | BinaryExpressionKind::Div
-                        | BinaryExpressionKind::Rem => Ok(Expression::Binary(BinaryExpression {
-                            kind: kind.clone(),
-                            lhs: Box::new(converted_lhs),
-                            rhs: Box::new(converted_rhs),
-                            _type: common_type,
-                        })),
+                        | BinaryExpressionKind::Rem => {
+                            if let BinaryExpressionKind::Rem = kind {
+                                if t1 == Type::Double {
+                                    bail!("Remainder operator on floating point type");
+                                }
+                                Ok(Expression::Binary(BinaryExpression {
+                                    kind: kind.clone(),
+                                    lhs: Box::new(converted_lhs),
+                                    rhs: Box::new(converted_rhs),
+                                    _type: common_type,
+                                }))
+                            } else {
+                                Ok(Expression::Binary(BinaryExpression {
+                                    kind: kind.clone(),
+                                    lhs: Box::new(converted_lhs),
+                                    rhs: Box::new(converted_rhs),
+                                    _type: common_type,
+                                }))
+                            }
+                        }
                         _ => Ok(Expression::Binary(BinaryExpression {
                             kind: kind.clone(),
                             lhs: Box::new(converted_lhs),
@@ -748,11 +772,19 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     expr: Box::new(typed_inner),
                     _type: Type::Int,
                 })),
-                _ => Ok(Expression::Unary(UnaryExpression {
-                    kind: kind.clone(),
-                    expr: Box::new(typed_inner.clone()),
-                    _type: get_type(&typed_inner),
-                })),
+                _ => {
+                        if let UnaryExpressionKind::Complement = kind {
+                            let t = get_type(&typed_inner);
+                            if t == Type::Double {
+                                bail!("Bitwise complement of non-integer type");
+                            }
+                        }
+                        Ok(Expression::Unary(UnaryExpression {
+                        kind: kind.clone(),
+                        expr: Box::new(typed_inner.clone()),
+                        _type: get_type(&typed_inner),
+                    }))
+                }
             }
         }
         Expression::Constant(ConstantExpression { value, _type }) => match value {
@@ -772,7 +804,10 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 value: Const::ULong(*ul),
                 _type: Type::Ulong,
             })),
-            _ => todo!(),
+            Const::Double(d) => Ok(Expression::Constant(ConstantExpression {
+                value: Const::Double(*d),
+                _type: Type::Double,
+            })),
         },
         Expression::Cast(CastExpression {
             target_type,
@@ -793,6 +828,10 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 pub fn get_common_type(type1: &Type, type2: &Type) -> Type {
     if type1 == type2 {
         return type1.clone();
+    }
+
+    if type1 == &Type::Double || type2 == &Type::Double {
+        return Type::Double;
     }
     
     if get_size_of_type(type1) == get_size_of_type(type2) {
@@ -817,7 +856,8 @@ pub fn get_size_of_type(t: &Type) -> usize {
         Type::Uint => 4,
         Type::Long => 8,
         Type::Ulong => 8,
-        _ => todo!(),
+        Type::Double => 8,
+        _ => unreachable!(),
     }
 }
 
@@ -827,7 +867,8 @@ pub fn get_signedness(t: &Type) -> bool {
         Type::Uint => false,
         Type::Long => true,
         Type::Ulong => false,
-        _ => todo!(),
+        Type::Double => true,
+        _ => unreachable!(),
     }
 }
 
@@ -909,4 +950,5 @@ pub enum StaticInit {
     Long(i64),
     Uint(u32),
     Ulong(u64),
+    Double(f64),
 }

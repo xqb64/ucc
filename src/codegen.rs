@@ -1313,7 +1313,7 @@ impl Fixup for AsmFunction {
                         instructions.push(instr.clone());
                     }
                 }
-                AsmInstruction::Div { operand, asm_type } => {
+                AsmInstruction::Div { operand, asm_type: _ } => {
                     if let AsmOperand::Imm(konst) = operand {
                         instructions.extend(vec![
                             AsmInstruction::Mov {

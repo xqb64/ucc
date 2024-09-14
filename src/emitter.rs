@@ -79,6 +79,7 @@ impl Emit for AsmStaticVariable {
                 0 => writeln!(f, "\t.section .bss")?,
                 _ => writeln!(f, "\t.section .data")?,
             },
+            _ => todo!(),
         }
 
         if self.global {
@@ -104,6 +105,7 @@ impl Emit for AsmStaticVariable {
                 0 => writeln!(f, "\t.zero 8")?,
                 _ => writeln!(f, "\t.quad {}", n)?,
             },
+            _ => todo!(),
         }
 
         match self.alignment {
