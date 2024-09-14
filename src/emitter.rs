@@ -44,6 +44,10 @@ impl Emit for AsmProgram {
             static_var.emit(f, asm_type)?;
         }
 
+        for static_const in self.static_constants.iter_mut() {
+            static_const.emit(f, asm_type)?;
+        }
+
         writeln!(f, ".section	.note.GNU-stack,\"\",@progbits")?;
 
         writeln!(f)?;
@@ -64,6 +68,8 @@ impl Emit for Vec<AsmInstruction> {
 
 impl Emit for AsmStaticVariable {
     fn emit(&mut self, f: &mut File, _asm_type: &mut AsmType) -> Result<()> {
+        writeln!(f)?;
+        
         match self.init {
             StaticInit::Int(n) => match n {
                 0 => writeln!(f, "\t.section .bss")?,
@@ -124,7 +130,21 @@ impl Emit for AsmStaticVariable {
 
 impl Emit for AsmStaticConstant {
     fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
-        todo!()
+        writeln!(f)?;
+        
+        writeln!(f, "\t.section .rodata")?;
+        writeln!(f, "\t.balign {}", self.alignment)?;
+        writeln!(f, "{}:", self.name)?;
+
+        match self.init {
+            StaticInit::Int(n) => writeln!(f, "\t.long {}", n)?,
+            StaticInit::Long(n) => writeln!(f, "\t.quad {}", n)?,
+            StaticInit::Uint(n) => writeln!(f, "\t.long {}", n)?,
+            StaticInit::Ulong(n) => writeln!(f, "\t.quad {}", n)?,
+            StaticInit::Double(n) => writeln!(f, "\t.double {}", n)?,
+        }
+
+        Ok(())
     }
 }
 
@@ -223,13 +243,18 @@ impl Emit for AsmInstruction {
                 let instr = match op {
                     AsmBinaryOp::Add => "add",
                     AsmBinaryOp::Sub => "sub",
-                    AsmBinaryOp::Mul => "imul",
+                    AsmBinaryOp::Mul => match asm_type {
+                        AsmType::Longword => "imul",
+                        AsmType::Quadword => "imul",
+                        AsmType::Double => "mul",
+                    },
                     _ => todo!(),
                 };
 
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
+                    AsmType::Double => "sd",
                     _ => todo!(),
                 };
 
@@ -262,13 +287,20 @@ impl Emit for AsmInstruction {
                 writeln!(f)?;
             }
             AsmInstruction::Imul { src, dst, asm_type } => {
+                let instr = match asm_type {
+                    AsmType::Longword => "imul",
+                    AsmType::Quadword => "imul",
+                    AsmType::Double => "mul",
+                };
+                
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
+                    AsmType::Double => "sd",
                     _ => todo!(),
                 };
 
-                write!(f, "imul{} ", suffix)?;
+                write!(f, "{}{} ", instr, suffix)?;
                 src.emit(f, asm_type)?;
                 write!(f, ", ")?;
                 dst.emit(f, asm_type)?;
@@ -380,7 +412,6 @@ impl Emit for AsmInstruction {
                 dst.emit(f, asm_type)?;
                 writeln!(f)?;
             }
-            _ => todo!(),
         }
 
         Ok(())
@@ -458,9 +489,17 @@ impl Emit for AsmRegister {
                 AsmRegister::XMM7 => write!(f, "%xmm7")?,
                 AsmRegister::XMM14 => write!(f, "%xmm14")?,
                 AsmRegister::XMM15 => write!(f, "%xmm15")?,
-                _ => todo!(),
-            },
-            _ => todo!(),
+                AsmRegister::AX => write!(f, "%rax")?,
+                AsmRegister::DX => write!(f, "%rdx")?,
+                AsmRegister::CX => write!(f, "%rcx")?,
+                AsmRegister::DI => write!(f, "%rdi")?,
+                AsmRegister::SI => write!(f, "%rsi")?,
+                AsmRegister::R8 => write!(f, "%r8")?,
+                AsmRegister::R9 => write!(f, "%r9")?,
+                AsmRegister::R10 => write!(f, "%r10")?,
+                AsmRegister::R11 => write!(f, "%r11")?,
+                AsmRegister::SP => write!(f, "%rsp")?,
+            }
         }
 
         Ok(())
