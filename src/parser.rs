@@ -66,6 +66,7 @@ impl Parser {
         if self.is_next(&[
             Token::Int,
             Token::Long,
+            Token::Double,
             Token::Signed,
             Token::Unsigned,
             Token::Static,
@@ -170,6 +171,14 @@ impl Parser {
     }
 
     fn parse_type(&mut self, specifier_list: &[Token]) -> Result<Type> {
+        if specifier_list == &[Token::Double] {
+            return Ok(Type::Double);
+        }
+
+        if specifier_list.contains(&Token::Double) {
+            bail!("can't combine double with other specifiers: {:?}", specifier_list);
+        }
+
         if self.contains_no_specifiers(&specifier_list)
             || specifier_list.is_empty()
             || self.contains_same_specifier_twice(specifier_list)
@@ -195,7 +204,7 @@ impl Parser {
 
     fn contains_no_specifiers(&self, specifier_list: &[Token]) -> bool {
         !specifier_list.iter().all(|specifier| match specifier {
-            Token::Int | Token::Long | Token::Signed | Token::Unsigned | Token::Void => true,
+            Token::Int | Token::Long |Token::Double | Token::Signed | Token::Unsigned | Token::Void => true,
             _ => false,
         })
     }
@@ -225,6 +234,7 @@ impl Parser {
         for specifier in specifier_list {
             if specifier == &Token::Int
                 || specifier == &Token::Long
+                || specifier == &Token::Double
                 || specifier == &Token::Unsigned
                 || specifier == &Token::Signed
                 || specifier == &Token::Void
@@ -387,6 +397,7 @@ impl Parser {
         } else if self.is_next(&[
             Token::Int,
             Token::Long,
+            Token::Double,
             Token::Signed,
             Token::Unsigned,
             Token::Static,
@@ -772,6 +783,7 @@ pub enum Type {
     Long,
     Uint,
     Ulong,
+    Double,
     Func { params: Vec<Type>, ret: Box<Type> },
     Dummy,
 }
