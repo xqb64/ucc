@@ -299,6 +299,7 @@ impl Codegen for IRValue {
                 Const::Long(n) => AsmNode::Operand(AsmOperand::Imm(*n)),
                 Const::UInt(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
                 Const::ULong(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
+                _ => todo!(),
             },
             IRValue::Var(name) => AsmNode::Operand(AsmOperand::Pseudo(name.to_owned())),
         }
@@ -383,6 +384,7 @@ impl Codegen for IRInstruction {
                                 Const::Long(_) => true,
                                 Const::UInt(_) => false,
                                 Const::ULong(_) => false,
+                                _ => todo!(),
                             }
                         };
 
@@ -437,6 +439,7 @@ impl Codegen for IRInstruction {
                                 Const::Long(_) => true,
                                 Const::UInt(_) => false,
                                 Const::ULong(_) => false,
+                                _ => todo!(),
                             }
                         };
 
@@ -493,6 +496,7 @@ impl Codegen for IRInstruction {
                                 Const::Long(_) => Type::Long,
                                 Const::UInt(_) => Type::Uint,
                                 Const::ULong(_) => Type::Ulong,
+                                _ => todo!(),
                             }
                         };
 
@@ -505,6 +509,7 @@ impl Codegen for IRInstruction {
                                 Const::Long(_) => Type::Long,
                                 Const::UInt(_) => Type::Uint,
                                 Const::ULong(_) => Type::Ulong,
+                                _ => todo!(),
                             }
                         };
                         
@@ -1634,6 +1639,7 @@ fn get_asm_type(value: &IRValue) -> AsmType {
             Const::Long(_) => AsmType::Quadword,
             Const::UInt(_) => AsmType::Longword,
             Const::ULong(_) => AsmType::Quadword,
+            _ => todo!(),
         },
         IRValue::Var(var_name) => match SYMBOL_TABLE.lock().unwrap().get(var_name).cloned().unwrap()._type {
             Type::Int => AsmType::Longword,

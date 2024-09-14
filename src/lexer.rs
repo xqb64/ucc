@@ -33,10 +33,11 @@ impl Iterator for Lexer {
         let punctuation_re = regex::Regex::new(r"^[-+*/%~(){};!<>=?:,]").unwrap();
         let punctuation_double_re = regex::Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\|").unwrap();
         let keyword_re = regex::Regex::new(
-            r"^int\b|^long\b|^signed\b|^unsigned\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b|^static\b|^extern\b",
+            r"^int\b|^long\b|^signed\b|^unsigned\b|^double\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b|^static\b|^extern\b",
         )
         .unwrap();
         let constant_re = regex::Regex::new(r"^[0-9]+(?P<suffix>[lL]?[uU]?|[uU]?[lL]?)\b").unwrap();
+        let double_constant_re = regex::Regex::new(r"^(([0-9]*\.[0-9]+|[0-9]+\.?)[Ee][+-]?[0-9]+|[0-9]*\.[0-9]+|[0-9]+\.)[^\w.]").unwrap();
         let identifier_re = regex::Regex::new(r"^[a-zA-Z_]\w*\b").unwrap();
 
         let token = if let Some(m) = punctuation_double_re.find(src) {
@@ -81,6 +82,7 @@ impl Iterator for Lexer {
                 "long" => Token::Long,
                 "signed" => Token::Signed,
                 "unsigned" => Token::Unsigned,
+                "double" => Token::Double,
                 "void" => Token::Void,
                 "return" => Token::Return,
                 "if" => Token::If,
@@ -94,6 +96,10 @@ impl Iterator for Lexer {
                 "extern" => Token::Extern,
                 _ => unreachable!(),
             }
+        } else if let Some(m) = double_constant_re.find(src) {
+            self.pos += m.as_str().len();
+            println!("double constant: {}", m.as_str());
+            Token::Constant(Const::Double(m.as_str()[..m.as_str().len() - 1].parse::<f64>().unwrap()))
         } else if let Some(m) = constant_re.find(src) {
             self.pos += m.as_str().len();
 
@@ -134,6 +140,7 @@ pub enum Token {
     Long,
     Signed,
     Unsigned,
+    Double,
     Void,
     Return,
     If,
@@ -197,6 +204,7 @@ pub enum Const {
     Long(i64),
     UInt(u32),
     ULong(u64),
+    Double(f64),
 }
 
 fn parse_integer(suffix: &str, just_number: &str) -> Result<Const> {

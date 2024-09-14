@@ -83,6 +83,7 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
                 _ => unreachable!()
             }
         }
+        _ => todo!(),
     }
 }
 
@@ -98,6 +99,7 @@ impl Typecheck for VariableDeclaration {
                         Const::Long(l) => InitialValue::Initial(const2type(&konst.value, &self._type)),
                         Const::UInt(u) => InitialValue::Initial(const2type(&konst.value, &self._type)),
                         Const::ULong(ul) => InitialValue::Initial(const2type(&konst.value, &self._type)),
+                        _ => todo!(),
                     }
                 } else if self.init.is_none() {
                     if self
@@ -266,6 +268,7 @@ impl Typecheck for VariableDeclaration {
                             Const::ULong(ul) => {
                                 initial_value = InitialValue::Initial(StaticInit::Ulong(ul));
                             }
+                            _ => todo!(),
                         }
                     } else if self.init.is_none() {
                         initial_value = InitialValue::Initial(StaticInit::Int(0));
@@ -769,6 +772,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 value: Const::ULong(*ul),
                 _type: Type::Ulong,
             })),
+            _ => todo!(),
         },
         Expression::Cast(CastExpression {
             target_type,
