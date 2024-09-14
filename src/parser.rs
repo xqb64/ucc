@@ -471,7 +471,6 @@ impl Parser {
     }
 
     fn parse_return_statement(&mut self) -> Result<BlockItem> {
-        println!("in return: {:?}, {:?}", self.current, self.previous);
         let expr = self.parse_expression()?;
         self.consume(&Token::Semicolon)?;
         Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
@@ -651,17 +650,11 @@ impl Parser {
         }
 
         if self.is_next(&[Token::LParen]) {
-            println!("here in unary");
             let specifier_list = self.lookahead_until(&Token::RParen);
-
-            println!("here in specifier_list: {:?}", specifier_list);
 
             let t = self.parse_type(&specifier_list);
 
-            println!("t: {:?}", t);
-
             if t.is_err() {
-                println!("parsing grouping");
                 return self.parse_grouping();
             }
 

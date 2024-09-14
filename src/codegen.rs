@@ -24,7 +24,7 @@ pub enum AsmNode {
 pub struct AsmProgram {
     pub functions: Vec<AsmNode>,
     pub static_vars: Vec<AsmNode>,
-    pub static_constants: Vec<AsmNode>,
+    pub static_constants: Vec<AsmStaticConstant>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -250,7 +250,9 @@ impl Codegen for IRFunction {
 
         instructions.push(AsmInstruction::AllocateStack(0));
 
-        let registers = [
+        let (int_reg_params, double_reg_params, stack_params) = classify_parameters(self.params.clone());
+
+        let int_regs = [
             AsmRegister::DI,
             AsmRegister::SI,
             AsmRegister::DX,
@@ -258,43 +260,49 @@ impl Codegen for IRFunction {
             AsmRegister::R8,
             AsmRegister::R9,
         ];
-
-        for (reg_idx, arg) in self.params.iter().take(6).enumerate() {
-            let asm_type = ASM_SYMBOL_TABLE.lock().unwrap().get(arg).cloned().unwrap();
-            let t = match asm_type {
-                AsmSymtabEntry::Object {
-                    _type,
-                    is_static: _,
-                    is_constant: _,
-                } => _type,
-                _ => unreachable!(),
+    
+        for (idx, (param_type, param)) in int_reg_params.iter().enumerate() {
+            let reg = int_regs[idx];
+            let instr = AsmInstruction::Mov {
+                asm_type: param_type.clone(),
+                src: AsmOperand::Register(reg),
+                dst: AsmOperand::Pseudo(param.clone()),
             };
-            instructions.push(AsmInstruction::Mov {
-                asm_type: t,
-                src: AsmOperand::Register(registers[reg_idx]),
-                dst: AsmOperand::Pseudo(arg.to_owned()),
-            });
+            instructions.push(instr);
         }
-
-        let mut stack_offset = 16;
-        for arg in self.params.iter().skip(6) {
-            let asm_type = ASM_SYMBOL_TABLE.lock().unwrap().get(arg).cloned().unwrap();
-            let t = match asm_type {
-                AsmSymtabEntry::Object {
-                    _type,
-                    is_static: _,
-                    is_constant: _,
-                } => _type,
-                _ => unreachable!(),
+    
+        let double_regs = [
+            AsmRegister::XMM0,
+            AsmRegister::XMM1,
+            AsmRegister::XMM2,
+            AsmRegister::XMM3,
+            AsmRegister::XMM4,
+            AsmRegister::XMM5,
+            AsmRegister::XMM6,
+            AsmRegister::XMM7,
+        ];
+            
+        for (idx, (_param_type, param)) in double_reg_params.iter().enumerate() {
+            let reg = double_regs[idx];
+            let instr = AsmInstruction::Mov {
+                asm_type: AsmType::Double,
+                src: AsmOperand::Register(reg),
+                dst: AsmOperand::Pseudo(param.clone()),
             };
-            instructions.push(AsmInstruction::Mov {
-                asm_type: t,
-                src: AsmOperand::Stack(stack_offset),
-                dst: AsmOperand::Pseudo(arg.to_owned()),
-            });
-            stack_offset += 8;
+            instructions.push(instr);
         }
-
+    
+        let mut offset = 16;
+        for (param_type, param) in stack_params {
+            let instr = AsmInstruction::Mov {
+                asm_type: param_type,
+                src: AsmOperand::Stack(offset),
+                dst: AsmOperand::Pseudo(param.clone()),
+            };
+            instructions.push(instr);
+            offset += 8;
+        }
+    
         for instr in &self.body {
             instructions.extend::<Vec<AsmInstruction>>(instr.codegen().into());
         }
@@ -339,13 +347,13 @@ impl Codegen for IRValue {
                 Const::UInt(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
                 Const::ULong(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
                 Const::Double(n) => {
-                    let static_const = AsmNode::StaticConstant(AsmStaticConstant {
+                    let static_const = AsmStaticConstant {
                         name: format!("static_const.{}", make_temporary()),
                         init: StaticInit::Double(*n),
                         alignment: 8,
-                    });
+                    };
                     STATIC_CONSTANTS.lock().unwrap().push(static_const.clone());
-                    static_const
+                    AsmNode::Operand(AsmOperand::Data(static_const.name))
                 },
             },
             IRValue::Var(name) => AsmNode::Operand(AsmOperand::Pseudo(name.to_owned())),
@@ -365,7 +373,7 @@ impl Codegen for IRInstruction {
                         init: StaticInit::Double(-1.0),
                         alignment: 16,
                     };
-                    STATIC_CONSTANTS.lock().unwrap().push(AsmNode::StaticConstant(static_const.clone()));
+                    STATIC_CONSTANTS.lock().unwrap().push(static_const.clone(   ));
 
                     return AsmNode::Instructions(vec![
                         AsmInstruction::Mov {
@@ -452,19 +460,22 @@ impl Codegen for IRInstruction {
                 let asm_type = get_asm_type(&lhs);
 
                 match op {
-                    BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => AsmNode::Instructions(vec![
-                        AsmInstruction::Mov {
-                            asm_type: get_asm_type(&dst),
-                            src: lhs.codegen().into(),
-                            dst: dst.codegen().into(),
-                        },
-                        AsmInstruction::Binary {
-                            asm_type: get_asm_type(&dst),
-                            op: (*op).into(),
-                            lhs: rhs.codegen().into(),
-                            rhs: dst.codegen().into(),
-                        },
-                    ]),
+                    BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
+                        println!("lhs, rhs, dst: {:?}, {:?}, {:?}", lhs, rhs, dst);
+                        AsmNode::Instructions(vec![
+                            AsmInstruction::Mov {
+                                asm_type: get_asm_type(&dst),
+                                src: lhs.codegen().into(),
+                                dst: dst.codegen().into(),
+                            },
+                            AsmInstruction::Binary {
+                                asm_type: get_asm_type(&dst),
+                                op: (*op).into(),
+                                lhs: rhs.codegen().into(),
+                                rhs: dst.codegen().into(),
+                            },
+                        ])
+                    }
                     BinaryOp::Div => {
                         match (lhs.clone(), rhs.clone()) {
                             (IRValue::Constant(Const::Double(_)), IRValue::Constant(Const::Double(_))) => {
@@ -892,7 +903,7 @@ impl Codegen for IRInstruction {
 
                 let mut instructions = vec![];
 
-                let (int_args, double_args, stack_args) = classify_parameters(args.clone());
+                let (int_args, double_args, stack_args) = classify_parameters_from_irvalue(args.clone());
 
                 let stack_padding = if stack_args.len() % 2 != 0 { 8 } else { 0 };
 
@@ -902,7 +913,6 @@ impl Codegen for IRInstruction {
 
                 for (reg_index, (reg_type, reg_arg)) in int_args.into_iter().enumerate() {
                     let reg = int_registers[reg_index];
-
                     instructions.push(AsmInstruction::Mov {
                         asm_type: reg_type,
                         src: reg_arg.into(),
@@ -910,8 +920,8 @@ impl Codegen for IRInstruction {
                     });
                 }
 
-                for (reg_index, reg_arg) in double_args.into_iter().enumerate() {
-                    let reg = int_registers[reg_index];
+                for (reg_index, (_reg_type, reg_arg)) in double_args.into_iter().enumerate() {
+                    let reg = double_registers[reg_index];
 
                     instructions.push(AsmInstruction::Mov {
                         asm_type: AsmType::Double,
@@ -921,7 +931,6 @@ impl Codegen for IRInstruction {
                 }
 
                 for (arg_type, stack_arg) in stack_args.iter().rev() {
-                    // if stack_arg is a Reg or Imm operand or arg_type == Quadword or Double
                     match stack_arg {
                         AsmNode::Operand(AsmOperand::Imm(_)) | AsmNode::Operand(AsmOperand::Register(_)) => {
                             if arg_type == &AsmType::Quadword || arg_type == &AsmType::Double {
@@ -953,7 +962,6 @@ impl Codegen for IRInstruction {
                     instructions.push(AsmInstruction::DeallocateStack(bytes_to_remove));
                 }
 
-                // retrieve return value
                 let assembly_dst = dst.codegen().into();
                 let return_type = get_asm_type(&dst);
 
@@ -998,7 +1006,20 @@ impl Codegen for IRInstruction {
                     AsmInstruction::Cvtsi2sd { asm_type: AsmType::Quadword, src: AsmOperand::Register(AsmRegister::AX), dst: dst.codegen().into() }
                 ])
             }
-            _ => todo!(),
+            IRInstruction::DoubleToInt { src, dst } => {
+                AsmNode::Instructions(vec![
+                    AsmInstruction::Cvttsd2si { asm_type: get_asm_type(dst), src: src.codegen().into(), dst: dst.codegen().into() },
+                ])
+            }
+            IRInstruction::IntToDouble { src, dst } => {
+                AsmNode::Instructions(vec![
+                    AsmInstruction::Cvtsi2sd { asm_type: get_asm_type(src), src: src.codegen().into(), dst: dst.codegen().into() }
+                ])
+            }
+            _ => {
+                println!("self: {:?}", self);
+                todo!()
+            },
         }
     }
 }
@@ -1110,40 +1131,7 @@ impl ReplacePseudo for AsmInstruction {
 }
 
 lazy_static::lazy_static! {
-    static ref OFFSET_MANAGER: Mutex<OffsetManager> = Mutex::new(OffsetManager::new());
-    static ref STATIC_CONSTANTS: Mutex<Vec<AsmNode>> = Mutex::new(Vec::new());
-}
-
-pub struct OffsetManager {
-    pub offsets: HashMap<String, i32>,
-    pub offset: i32,
-}
-
-impl OffsetManager {
-    pub fn new() -> Self {
-        OffsetManager {
-            offsets: HashMap::new(),
-            offset: 0,
-        }
-    }
-
-    pub fn get_offset(&mut self, name: &str) -> i32 {
-        // look up the name in symbol table, determine the type of the symbol
-        // and return appropriate offset, while making sure the stack is aligned
-
-        let symbol = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
-        let offset = match symbol._type {
-            Type::Int => 4,
-            Type::Long => 8,
-            _ => unreachable!(),
-        };
-
-        self.offsets.insert(name.to_owned(), offset * -1);
-
-        self.offset -= offset;
-
-        self.offset
-    }
+    static ref STATIC_CONSTANTS: Mutex<Vec<AsmStaticConstant>> = Mutex::new(Vec::new());
 }
 
 impl ReplacePseudo for AsmOperand {
@@ -1818,7 +1806,7 @@ impl Fixup for AsmFunction {
                     }
                     _ => instructions.push(instr.clone()),
                 },
-                _ => todo!(),
+                _ => instructions.push(instr.clone()),
             }
         }
 
@@ -1889,6 +1877,15 @@ impl From<AsmNode> for AsmOperand {
     }
 }
 
+impl From<AsmNode> for AsmStaticConstant {
+    fn from(value: AsmNode) -> Self {
+        match value {
+            AsmNode::StaticConstant(static_const) => static_const,
+            _ => unreachable!(),
+        }
+    }
+}
+
 impl From<UnaryOp> for AsmUnaryOp {
     fn from(op: UnaryOp) -> AsmUnaryOp {
         match op {
@@ -1917,20 +1914,20 @@ pub enum AsmType {
     Double,
 }
 
-fn classify_parameters(values: Vec<IRValue>) -> (Vec<(AsmType, AsmNode)>, Vec<AsmNode>, Vec<(AsmType, AsmNode)>) {
+fn classify_parameters_from_irvalue(parameters: Vec<IRValue>) -> (Vec<(AsmType, AsmNode)>, Vec<(AsmType, AsmNode)>, Vec<(AsmType, AsmNode)>) {
     let mut int_reg_args = vec![];
     let mut double_reg_args = vec![];
     let mut stack_args = vec![];
 
-    for v in values {
-        let t = get_asm_type(&v);
-        let operand: AsmNode = v.codegen().into();
+    for parameter in parameters {
+        let type_of_param = get_asm_type(&parameter);
+        let operand: AsmNode = parameter.codegen().into();
 
-        let typed_operand = (t, operand.clone());
+        let typed_operand = (type_of_param, operand);
 
-        if t == AsmType::Double {
+        if type_of_param == AsmType::Double {
             if double_reg_args.len() < 8 {
-                double_reg_args.push(operand);
+                double_reg_args.push(typed_operand);
             } else {
                 stack_args.push(typed_operand);
             }
@@ -1946,6 +1943,39 @@ fn classify_parameters(values: Vec<IRValue>) -> (Vec<(AsmType, AsmNode)>, Vec<As
     (int_reg_args, double_reg_args, stack_args)
 }
 
+fn classify_parameters(parameters: Vec<String>) -> (Vec<(AsmType, String)>, Vec<(AsmType, String)>, Vec<(AsmType, String)>) {
+    let mut int_reg_args = vec![];
+    let mut double_reg_args = vec![];
+    let mut stack_args = vec![];
+
+    for parameter in parameters {
+        let param_entry = ASM_SYMBOL_TABLE.lock().unwrap().get(&parameter).unwrap().clone();
+        let type_of_param = match param_entry {
+            AsmSymtabEntry::Object { _type, .. } => _type,
+            _ => unreachable!(),
+        };
+
+        match type_of_param {
+            AsmType::Double => {
+                if double_reg_args.len() < 8 {
+                    double_reg_args.push((type_of_param, parameter));
+                } else {
+                    stack_args.push((type_of_param, parameter));
+                }
+            }
+            _ => {
+                if int_reg_args.len() < 6 {
+                    int_reg_args.push((type_of_param, parameter));
+                } else {
+                    stack_args.push((type_of_param, parameter));
+                }
+            }
+        }
+    }
+
+    (int_reg_args, double_reg_args, stack_args)
+}
+
 
 fn get_asm_type(value: &IRValue) -> AsmType {
     match value {
@@ -1954,6 +1984,7 @@ fn get_asm_type(value: &IRValue) -> AsmType {
             Const::Long(_) => AsmType::Quadword,
             Const::UInt(_) => AsmType::Longword,
             Const::ULong(_) => AsmType::Quadword,
+            Const::Double(_) => AsmType::Double,
             _ => todo!(),
         },
         IRValue::Var(var_name) => match SYMBOL_TABLE
@@ -1968,69 +1999,10 @@ fn get_asm_type(value: &IRValue) -> AsmType {
             Type::Long => AsmType::Quadword,
             Type::Uint => AsmType::Longword,
             Type::Ulong => AsmType::Quadword,
+            Type::Double => AsmType::Double,
             _ => unreachable!(),
         },
     }
-}
-
-fn setup_parameters(parameters: Vec<IRValue>) -> Vec<AsmInstruction> {
-    let mut instructions = vec![];
-
-    let (int_reg_params, double_reg_params, stack_params) = classify_parameters(parameters);
-
-    let int_regs = [
-        AsmRegister::DI,
-        AsmRegister::SI,
-        AsmRegister::DX,
-        AsmRegister::CX,
-        AsmRegister::R8,
-        AsmRegister::R9,
-    ];
-
-    for (idx, (param_type, param)) in int_reg_params.iter().enumerate() {
-        let reg = int_regs[idx];
-        let instr = AsmInstruction::Mov {
-            asm_type: param_type.clone(),
-            src: AsmOperand::Register(reg),
-            dst: param.clone().into(),
-        };
-        instructions.push(instr);
-    }
-
-    // do the same for double regs
-    let double_regs = [
-        AsmRegister::XMM0,
-        AsmRegister::XMM1,
-        AsmRegister::XMM2,
-        AsmRegister::XMM3,
-        AsmRegister::XMM4,
-        AsmRegister::XMM5,
-        AsmRegister::XMM6,
-        AsmRegister::XMM7,
-    ];
-    
-    for (idx, param) in double_reg_params.iter().enumerate() {
-        let reg = double_regs[idx];
-        let instr = AsmInstruction::Mov {
-            asm_type: AsmType::Double,
-            src: AsmOperand::Register(reg),
-            dst: param.clone().into(),
-        };
-        instructions.push(instr);
-    }
-
-    let mut offset = 16;
-    for (param_type, param) in stack_params {
-        let instr = AsmInstruction::Mov {
-            asm_type: param_type,
-            src: AsmOperand::Stack(offset),
-            dst: param.into(),
-        };
-        instructions.push(instr);
-        offset += 8;
-    }
-
-    instructions
 }
 
 pub fn build_asm_symbol_table() {
@@ -2048,12 +2020,13 @@ pub fn build_asm_symbol_table() {
                     Type::Long => AsmType::Quadword,
                     Type::Uint => AsmType::Longword,
                     Type::Ulong => AsmType::Quadword,
+                    Type::Double => AsmType::Double,
                     _ => panic!("Unsupported type for static variable"),
                 };
                 AsmSymtabEntry::Object {
                     _type: asm_type,
                     is_static: true,
-                    is_constant: todo!(),
+                    is_constant: false,
                 }
             }
             IdentifierAttrs::LocalAttr => {
@@ -2062,6 +2035,7 @@ pub fn build_asm_symbol_table() {
                     Type::Long => AsmType::Quadword,
                     Type::Uint => AsmType::Longword,
                     Type::Ulong => AsmType::Quadword,
+                    Type::Double => AsmType::Double,
                     _ => {
                         panic!("Unsupported type for static backend_symtab: {}", identifier);
                     }
@@ -2069,7 +2043,7 @@ pub fn build_asm_symbol_table() {
                 AsmSymtabEntry::Object {
                     _type: asm_type,
                     is_static: false,
-                    is_constant: todo!(),
+                    is_constant: false,
                 }
             }
         };
@@ -2146,7 +2120,7 @@ impl<T: Into<AsmType>> From<T> for OperandByteLen {
         match asm_type {
             AsmType::Longword => Self::B4,
             AsmType::Quadword => Self::B8,
-            AsmType::Double => todo!(),
+            AsmType::Double => Self::B8,
         }
     }
 }

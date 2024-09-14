@@ -225,7 +225,6 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 let rhs = emit_tacky(*rhs, instructions);
 
                 let dst = make_tacky_variable(t.clone());
-                println!("dst is: {:?}", dst);
 
                 let op = match kind {
                     BinaryExpressionKind::Add => BinaryOp::Add,
@@ -411,7 +410,6 @@ pub fn make_tacky_variable(_type: Type) -> IRValue {
         attrs: IdentifierAttrs::LocalAttr,
         _type,
     };
-    println!("inserting symbol: {:?}", symbol);
     SYMBOL_TABLE
         .lock()
         .unwrap()
@@ -484,7 +482,6 @@ impl Irfy for ProgramStatement {
                             continue;
                         }
                         if !var_decl.is_global && var_decl.storage_class.is_some() {
-                            println!("we're heereee");
                             continue;
                         }
                     }
@@ -775,7 +772,6 @@ impl From<IRNode> for IRFunction {
         match node {
             IRNode::Function(func) => func,
             _ => {
-                println!("{:?}", node);
                 unreachable!()
             }
         }

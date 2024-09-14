@@ -165,6 +165,7 @@ impl Emit for AsmInstruction {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
+                    AsmType::Double => "sd",
                     _ => todo!(),
                 };
                 write!(f, "mov{} ", suffix)?;
@@ -353,6 +354,32 @@ impl Emit for AsmInstruction {
                 writeln!(f)?;
             }
             AsmInstruction::MovZeroExtend { .. } => unreachable!(),
+            AsmInstruction::Cvtsi2sd { asm_type, src, dst } => {
+                let suffix = match asm_type {
+                    AsmType::Longword => "l",
+                    AsmType::Quadword => "q",
+                    _ => todo!(),
+                };
+
+                write!(f, "cvtsi2sd{} ", suffix)?;
+                src.emit(f, asm_type)?;
+                write!(f, ", ")?;
+                dst.emit(f, &mut AsmType::Double)?;
+                writeln!(f)?;
+            }
+            AsmInstruction::Cvttsd2si { asm_type, src, dst } => {
+                let suffix = match asm_type {
+                    AsmType::Longword => "l",
+                    AsmType::Quadword => "q",
+                    _ => todo!(),
+                };
+
+                write!(f, "cvttsd2si{} ", suffix)?;
+                src.emit(f, &mut AsmType::Double)?;
+                write!(f, ", ")?;
+                dst.emit(f, asm_type)?;
+                writeln!(f)?;
+            }
             _ => todo!(),
         }
 
@@ -419,6 +446,19 @@ impl Emit for AsmRegister {
                 AsmRegister::XMM7 => write!(f, "%xmm7")?,
                 AsmRegister::XMM14 => write!(f, "%xmm14")?,
                 AsmRegister::XMM15 => write!(f, "%xmm15")?,
+            },
+            AsmType::Double => match self {
+                AsmRegister::XMM0 => write!(f, "%xmm0")?,
+                AsmRegister::XMM1 => write!(f, "%xmm1")?,
+                AsmRegister::XMM2 => write!(f, "%xmm2")?,
+                AsmRegister::XMM3 => write!(f, "%xmm3")?,
+                AsmRegister::XMM4 => write!(f, "%xmm4")?,
+                AsmRegister::XMM5 => write!(f, "%xmm5")?,
+                AsmRegister::XMM6 => write!(f, "%xmm6")?,
+                AsmRegister::XMM7 => write!(f, "%xmm7")?,
+                AsmRegister::XMM14 => write!(f, "%xmm14")?,
+                AsmRegister::XMM15 => write!(f, "%xmm15")?,
+                _ => todo!(),
             },
             _ => todo!(),
         }

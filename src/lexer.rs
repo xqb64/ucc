@@ -101,7 +101,6 @@ impl Iterator for Lexer {
             }
         } else if let Some(m) = double_constant_re.find(src) {
             self.pos += m.as_str().len() - 1;
-            println!("double constant: {}", m.as_str());
             Token::Constant(Const::Double(
                 m.as_str()[..m.as_str().len() - 1].parse::<f64>().unwrap(),
             ))
