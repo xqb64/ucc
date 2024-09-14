@@ -1154,6 +1154,7 @@ impl Fixup for AsmFunction {
                                 }]);
                             }
                         }
+                        _ => todo!(),
                     },
                     (AsmOperand::Imm(konst), AsmOperand::Data(dst)) => {
                         instructions.extend(vec![
@@ -1679,6 +1680,7 @@ impl From<BinaryOp> for AsmBinaryOp {
 pub enum AsmType {
     Longword,
     Quadword,
+    Double,
 }
 
 fn get_asm_type(value: &IRValue) -> AsmType {
@@ -1807,6 +1809,7 @@ impl<T: Into<AsmType>> From<T> for OperandByteLen {
         match asm_type {
             AsmType::Longword => Self::B4,
             AsmType::Quadword => Self::B8,
+            AsmType::Double => todo!(),
         }
     }
 }
@@ -1828,6 +1831,7 @@ impl Alignment {
         match asm_type {
             AsmType::Longword => Self::B4,
             AsmType::Quadword => Self::B8,
+            AsmType::Double => Self::B8,
         }
     }
 }

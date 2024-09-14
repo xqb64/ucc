@@ -165,6 +165,7 @@ impl Emit for AsmInstruction {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
+                    _ => todo!(),
                 };
                 write!(f, "mov{} ", suffix)?;
                 src.emit(f, asm_type)?;
@@ -193,6 +194,7 @@ impl Emit for AsmInstruction {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
+                    _ => todo!(),
                 };
 
                 match op {
@@ -209,6 +211,7 @@ impl Emit for AsmInstruction {
             AsmInstruction::Cdq { asm_type } => match asm_type {
                 AsmType::Longword => writeln!(f, "cdq")?,
                 AsmType::Quadword => writeln!(f, "cqo")?,
+                _ => todo!(),
             },
             AsmInstruction::Binary {
                 op,
@@ -226,6 +229,7 @@ impl Emit for AsmInstruction {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
+                    _ => todo!(),
                 };
 
                 write!(f, "{}{} ", instr, suffix)?;
@@ -240,6 +244,7 @@ impl Emit for AsmInstruction {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
+                    _ => todo!(),
                 };
                 write!(f, "idiv{} ", suffix)?;
                 operand.emit(f, asm_type)?;
@@ -249,6 +254,7 @@ impl Emit for AsmInstruction {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
+                    _ => todo!(),
                 };
                 write!(f, "div{} ", suffix)?;
                 operand.emit(f, asm_type)?;
@@ -258,6 +264,7 @@ impl Emit for AsmInstruction {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
+                    _ => todo!(),
                 };
 
                 write!(f, "imul{} ", suffix)?;
@@ -270,6 +277,7 @@ impl Emit for AsmInstruction {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
+                    _ => todo!(),
                 };
 
                 write!(f, "cmp{} ", suffix)?;
@@ -412,6 +420,7 @@ impl Emit for AsmRegister {
                 AsmRegister::XMM14 => write!(f, "%xmm14")?,
                 AsmRegister::XMM15 => write!(f, "%xmm15")?,
             },
+            _ => todo!(),
         }
 
         Ok(())
