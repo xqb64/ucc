@@ -248,7 +248,10 @@ impl Emit for AsmInstruction {
                         AsmType::Quadword => "imul",
                         AsmType::Double => "mul",
                     },
-                    _ => todo!(),
+                    AsmBinaryOp::Xor => "xor",
+                    AsmBinaryOp::And => "and",
+                    AsmBinaryOp::Or => "or",
+                    AsmBinaryOp::DivDouble => "div",
                 };
 
                 let suffix = match asm_type {
@@ -310,6 +313,7 @@ impl Emit for AsmInstruction {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
+                    AsmType::Double => "sd",
                     _ => todo!(),
                 };
 

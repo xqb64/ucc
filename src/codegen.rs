@@ -367,29 +367,6 @@ impl Codegen for IRInstruction {
             IRInstruction::Unary { op, src, dst } => {
                 let asm_type = get_asm_type(&dst);
 
-                if asm_type == AsmType::Double && *op == UnaryOp::Negate {
-                    let static_const = AsmStaticConstant {
-                        name: format!("static_const.{}", make_temporary()),
-                        init: StaticInit::Double(-1.0),
-                        alignment: 16,
-                    };
-                    STATIC_CONSTANTS.lock().unwrap().push(static_const.clone(   ));
-
-                    return AsmNode::Instructions(vec![
-                        AsmInstruction::Mov {
-                            asm_type,
-                            src: src.codegen().into(),
-                            dst: dst.codegen().into(),
-                        },
-                        AsmInstruction::Binary {
-                            asm_type,
-                            op: AsmBinaryOp::Xor,
-                            lhs: AsmOperand::Data(static_const.name),
-                            rhs: dst.codegen().into(),
-                        },
-                    ]);
-                }
-
                 match op {
                     UnaryOp::Negate | UnaryOp::Complement => AsmNode::Instructions(vec![
                         AsmInstruction::Mov {
