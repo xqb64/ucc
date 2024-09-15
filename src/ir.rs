@@ -391,6 +391,14 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                     });
                     return dst;
                 }
+                (Type::Ulong, Type::Double) => {
+                    let dst = make_tacky_variable(target_type.clone());
+                    instructions.push(IRInstruction::UIntToDouble {
+                        src: result.clone(),
+                        dst: dst.clone(),
+                    });
+                    return dst;
+                }
                 _ => {}
             }
 

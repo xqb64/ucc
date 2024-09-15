@@ -193,7 +193,6 @@ impl Emit for AsmInstruction {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     AsmType::Double => "sd",
-                    _ => todo!(),
                 };
                 write!(f, "mov{} ", suffix)?;
                 src.emit(f, asm_type)?;
@@ -228,6 +227,7 @@ impl Emit for AsmInstruction {
                 match op {
                     AsmUnaryOp::Neg => write!(f, "neg{} ", suffix)?,
                     AsmUnaryOp::Not => write!(f, "not{} ", suffix)?,
+                    AsmUnaryOp::Shr => write!(f, "shr{} ", suffix)?,
                     _ => todo!(),
                 }
                 operand.emit(f, asm_type)?;
@@ -424,7 +424,7 @@ impl Emit for AsmInstruction {
 impl Emit for AsmOperand {
     fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         match self {
-            AsmOperand::Imm(n) => write!(f, "${}", n)?,
+            AsmOperand::Imm(n) => write!(f, "${}", *n as u64)?,
             AsmOperand::Register(reg) => reg.emit(f, asm_type)?,
             AsmOperand::Stack(n) => write!(f, "{}(%rbp)", n)?,
             AsmOperand::Pseudo(_) => unreachable!(),

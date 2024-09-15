@@ -1009,10 +1009,79 @@ impl Codegen for IRInstruction {
                 }])
             }
             IRInstruction::UIntToDouble { src, dst } => {
-                AsmNode::Instructions(vec![
-                    AsmInstruction::MovZeroExtend { src: src.codegen().into(), dst: AsmOperand::Register(AsmRegister::AX) },
-                    AsmInstruction::Cvtsi2sd { asm_type: AsmType::Quadword, src: AsmOperand::Register(AsmRegister::AX), dst: dst.codegen().into() }
-                ])
+                let src_type = get_asm_type(src);
+                match src_type {
+                    AsmType::Longword => {
+                        AsmNode::Instructions(vec![
+                            AsmInstruction::MovZeroExtend { src: src.codegen().into(), dst: AsmOperand::Register(AsmRegister::AX) },
+                            AsmInstruction::Cvtsi2sd { asm_type: AsmType::Quadword, src: AsmOperand::Register(AsmRegister::AX), dst: dst.codegen().into() }
+                        ])        
+                    }
+                    AsmType::Quadword => {
+                        let label1 = format!("label_1.{}", make_temporary());
+                        let label2 = format!("label_2.{}", make_temporary());
+                        
+                        AsmNode::Instructions(
+                            vec![
+                                AsmInstruction::Cmp {
+                                    asm_type: AsmType::Quadword,
+                                    lhs: AsmOperand::Imm(0),
+                                    rhs: src.codegen().into(),
+                                },
+                                AsmInstruction::JmpCC { condition: ConditionCode::L, target: label1.clone() },
+                                /* Below: src f64 < (1<<63) */
+                                AsmInstruction::Cvtsi2sd {
+                                    asm_type: AsmType::Quadword,
+                                    src: src.codegen().into(),
+                                    dst: dst.codegen().into(),
+                                },
+                                AsmInstruction::Jmp { target: label2.clone() },
+                                /* Below: src f64 >= (1<<63) */
+                                AsmInstruction::Label(label1.clone()),
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Quadword,
+                                    src: src.codegen().into(),
+                                    dst: AsmOperand::Register(AsmRegister::AX),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Quadword,
+                                    src: AsmOperand::Register(AsmRegister::AX),
+                                    dst: AsmOperand::Register(AsmRegister::DX),
+                                },
+                                AsmInstruction::Unary {
+                                    asm_type: AsmType::Quadword,
+                                    op: AsmUnaryOp::Shr,
+                                    operand: AsmOperand::Register(AsmRegister::DX),
+                                },
+                                AsmInstruction::Binary {
+                                    op: AsmBinaryOp::And,
+                                    asm_type: AsmType::Quadword,
+                                    lhs: AsmOperand::Imm(1),
+                                    rhs: AsmOperand::Register(AsmRegister::AX)
+                                }, // src f64 - (1<<63)f64
+                                AsmInstruction::Binary {
+                                    op: AsmBinaryOp::Or,
+                                    asm_type: AsmType::Quadword,
+                                    lhs: AsmOperand::Register(AsmRegister::AX),
+                                    rhs: AsmOperand::Register(AsmRegister::DX),
+                                }, // src f64 - (1<<63)f64
+                                AsmInstruction::Cvtsi2sd {
+                                    asm_type: AsmType::Quadword,
+                                    src: AsmOperand::Register(AsmRegister::DX),
+                                    dst: dst.codegen().into(),
+                                },
+                                AsmInstruction::Binary {
+                                    op: AsmBinaryOp::Add,
+                                    asm_type: AsmType::Double,
+                                    lhs: dst.codegen().into(),
+                                    rhs: dst.codegen().into(),
+                                }, // (i64 as u64) + (1<<63)
+                                AsmInstruction::Label(label2.clone()),
+                            ]                
+                        )
+                    }
+                    _ => unreachable!(),
+                }
             }
             IRInstruction::DoubleToInt { src, dst } => {
                 AsmNode::Instructions(vec![
@@ -2236,6 +2305,16 @@ impl Fixup for AsmFunction {
                 AsmInstruction::Cvtsi2sd { asm_type, src, dst } => {
                     match (src.clone(), dst.clone(), asm_type.clone()) {
                         (AsmOperand::Stack(_), AsmOperand::Stack(_), AsmType::Double) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Cvtsi2sd { asm_type: asm_type.clone(), src: src.clone(), dst: AsmOperand::Register(AsmRegister::XMM15) },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Double,
+                                    src: AsmOperand::Register(AsmRegister::XMM15),
+                                    dst: dst.clone(),
+                                },
+                            ]);
+                        }
+                        (_, AsmOperand::Stack(_), _) => {
                             instructions.extend(vec![
                                 AsmInstruction::Cvtsi2sd { asm_type: asm_type.clone(), src: src.clone(), dst: AsmOperand::Register(AsmRegister::XMM15) },
                                 AsmInstruction::Mov {
