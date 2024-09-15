@@ -882,7 +882,7 @@ impl Codegen for IRInstruction {
                     AsmNode::Instructions(vec![
                         AsmInstruction::Binary { asm_type: AsmType::Double, op: AsmBinaryOp::Xor, lhs: AsmOperand::Register(AsmRegister::XMM0), rhs: AsmOperand::Register(AsmRegister::XMM0) },
                         AsmInstruction::Cmp { asm_type: AsmType::Double, lhs: condition.codegen().into(), rhs: AsmOperand::Register(AsmRegister::XMM0) },
-                        AsmInstruction::JmpCC { condition: ConditionCode::E, target: target.clone() },                                    
+                        AsmInstruction::JmpCC { condition: ConditionCode::NE, target: target.clone() },                                    
                     ])
                 } else {
                     AsmNode::Instructions(vec![
