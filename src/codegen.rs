@@ -406,18 +406,14 @@ impl Codegen for IRInstruction {
                             ])
                         } else {
                             AsmNode::Instructions(vec![
-                                AsmInstruction::Cmp {
-                                    asm_type: get_asm_type(src),
-                                    lhs: AsmOperand::Imm(0),
-                                    rhs: src.codegen().into(),
-                                },
                                 AsmInstruction::Mov {
-                                    asm_type: get_asm_type(src),
-                                    src: AsmOperand::Imm(0),
+                                    asm_type,
+                                    src: src.codegen().into(),
                                     dst: dst.codegen().into(),
                                 },
-                                AsmInstruction::SetCC {
-                                    condition: ConditionCode::E,
+                                AsmInstruction::Unary {
+                                    asm_type,
+                                    op: (*op).into(),
                                     operand: dst.codegen().into(),
                                 },
                             ])
@@ -2158,8 +2154,8 @@ impl Fixup for AsmFunction {
                     _ => instructions.push(instr.clone()),
                 },
                 AsmInstruction::Cvttsd2si { asm_type, src, dst } => {
-                    match (src.clone(), dst.clone()) {
-                        (AsmOperand::Stack(_), AsmOperand::Stack(_)) => {
+                    match (src.clone(), dst.clone(), asm_type.clone()) {
+                        (AsmOperand::Stack(_), AsmOperand::Stack(_), AsmType::Double) => {
                             instructions.extend(vec![
                                 AsmInstruction::Cvttsd2si { asm_type: asm_type.clone(), src: src.clone(), dst: AsmOperand::Register(AsmRegister::XMM15) },
                                 AsmInstruction::Mov {
@@ -2169,7 +2165,27 @@ impl Fixup for AsmFunction {
                                 },
                             ]);
                         }
-                        (AsmOperand::Data(_), AsmOperand::Stack(_)) => {
+                        (AsmOperand::Stack(_), AsmOperand::Stack(_), AsmType::Quadword) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Cvttsd2si { asm_type: asm_type.clone(), src: src.clone(), dst: AsmOperand::Register(AsmRegister::R11) },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: AsmOperand::Register(AsmRegister::R11),
+                                    dst: dst.clone(),
+                                },
+                            ]);
+                        }
+                        (AsmOperand::Stack(_), AsmOperand::Stack(_), AsmType::Longword) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Cvttsd2si { asm_type: asm_type.clone(), src: src.clone(), dst: AsmOperand::Register(AsmRegister::R11) },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: AsmOperand::Register(AsmRegister::R11),
+                                    dst: dst.clone(),
+                                },
+                            ]);
+                        }
+                        (AsmOperand::Data(_), AsmOperand::Stack(_), _) => {
                             instructions.extend(vec![
                                 AsmInstruction::Cvttsd2si { asm_type: asm_type.clone(), src: src.clone(), dst: AsmOperand::Register(AsmRegister::R11) },
                                 AsmInstruction::Mov {
