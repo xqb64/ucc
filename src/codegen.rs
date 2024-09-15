@@ -419,22 +419,49 @@ impl Codegen for IRInstruction {
                             ])
                         }
                     }
-                    UnaryOp::Not => AsmNode::Instructions(vec![
-                        AsmInstruction::Cmp {
-                            asm_type: get_asm_type(src),
-                            lhs: AsmOperand::Imm(0),
-                            rhs: src.codegen().into(),
-                        },
-                        AsmInstruction::Mov {
-                            asm_type: get_asm_type(src),
-                            src: AsmOperand::Imm(0),
-                            dst: dst.codegen().into(),
-                        },
-                        AsmInstruction::SetCC {
-                            condition: ConditionCode::E,
-                            operand: dst.codegen().into(),
-                        },
-                    ]),
+                    UnaryOp::Not => {
+                        if asm_type == AsmType::Double {
+                            AsmNode::Instructions(vec![
+                                AsmInstruction::Binary {
+                                    asm_type: AsmType::Double,
+                                    op: AsmBinaryOp::Xor,
+                                    lhs: AsmOperand::Register(AsmRegister::XMM0),
+                                    rhs: AsmOperand::Register(AsmRegister::XMM0),
+                                },
+                                AsmInstruction::Cmp {
+                                    asm_type: AsmType::Double,
+                                    lhs: src.codegen().into(),
+                                    rhs: AsmOperand::Register(AsmRegister::XMM0),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: get_asm_type(dst),
+                                    src: AsmOperand::Imm(0),
+                                    dst: dst.codegen().into(),
+                                },
+                                AsmInstruction::SetCC {
+                                    condition: ConditionCode::E,
+                                    operand: dst.codegen().into(),
+                                },
+                            ])
+                        } else {
+                            AsmNode::Instructions(vec![
+                                AsmInstruction::Cmp {
+                                    asm_type: get_asm_type(src),
+                                    lhs: AsmOperand::Imm(0),
+                                    rhs: src.codegen().into(),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: get_asm_type(src),
+                                    src: AsmOperand::Imm(0),
+                                    dst: dst.codegen().into(),
+                                },
+                                AsmInstruction::SetCC {
+                                    condition: ConditionCode::E,
+                                    operand: dst.codegen().into(),
+                                },
+                            ])
+                        }
+                    }
                 }
             }
             IRInstruction::Ret(value) => {
