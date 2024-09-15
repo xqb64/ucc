@@ -361,7 +361,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 }
                 (Type::Uint, Type::Double) => {
                     let dst = make_tacky_variable(target_type.clone());
-                    instructions.push(IRInstruction::DoubletoUInt {
+                    instructions.push(IRInstruction::UIntToDouble {
                         src: result.clone(),
                         dst: dst.clone(),
                     });
@@ -369,7 +369,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 }
                 (Type::Double, Type::Uint) => {
                     let dst = make_tacky_variable(target_type.clone());
-                    instructions.push(IRInstruction::UIntToDouble {
+                    instructions.push(IRInstruction::DoubletoUInt {
                         src: result.clone(),
                         dst: dst.clone(),
                     });
@@ -378,6 +378,14 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
                 (Type::Double, Type::Long) => {
                     let dst = make_tacky_variable(target_type.clone());
                     instructions.push(IRInstruction::DoubleToInt {
+                        src: result.clone(),
+                        dst: dst.clone(),
+                    });
+                    return dst;
+                }
+                (Type::Double, Type::Ulong) => {
+                    let dst = make_tacky_variable(target_type.clone());
+                    instructions.push(IRInstruction::DoubletoUInt {
                         src: result.clone(),
                         dst: dst.clone(),
                     });
