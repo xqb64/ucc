@@ -1563,19 +1563,43 @@ impl Fixup for AsmFunction {
                 } => match op {
                     AsmBinaryOp::Add | AsmBinaryOp::Sub => match (lhs.clone(), rhs.clone()) {
                         (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Stack(src_n),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Binary {
-                                    asm_type: *asm_type,
-                                    op: *op,
-                                    lhs: AsmOperand::Register(AsmRegister::R10),
-                                    rhs: AsmOperand::Stack(dst_n),
-                                },
-                            ]);
+                            match asm_type {
+                                AsmType::Longword | AsmType::Quadword => {
+                                    instructions.extend(vec![
+                                        AsmInstruction::Mov {
+                                            asm_type: *asm_type,
+                                            src: AsmOperand::Stack(src_n),
+                                            dst: AsmOperand::Register(AsmRegister::R10),
+                                        },
+                                        AsmInstruction::Binary {
+                                            asm_type: *asm_type,
+                                            op: *op,
+                                            lhs: AsmOperand::Register(AsmRegister::R10),
+                                            rhs: AsmOperand::Stack(dst_n),
+                                        },
+                                    ]);        
+                                }
+                                AsmType::Double => {
+                                    instructions.extend(vec![
+                                        AsmInstruction::Mov {
+                                            asm_type: *asm_type,
+                                            src: rhs.clone(),
+                                            dst: AsmOperand::Register(AsmRegister::XMM15),
+                                        },
+                                        AsmInstruction::Binary {
+                                            asm_type: *asm_type,
+                                            op: *op,
+                                            lhs: lhs.clone(),
+                                            rhs: AsmOperand::Register(AsmRegister::XMM15),
+                                        },
+                                        AsmInstruction::Mov {
+                                            asm_type: *asm_type,
+                                            src: AsmOperand::Register(AsmRegister::XMM15),
+                                            dst: rhs.clone(),
+                                        },
+                                    ]);        
+                                }
+                            }
                         }
                         (AsmOperand::Data(src), AsmOperand::Stack(dst_n)) => {
                             if asm_type == &AsmType::Double {
