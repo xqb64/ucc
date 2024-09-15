@@ -757,12 +757,12 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
             let common_type = get_common_type(&t1, &t2);
 
-            Ok(Expression::Conditional(ConditionalExpression {
+            Ok(Expression::Cast(CastExpression { target_type: common_type.clone(), expr: Expression::Conditional(ConditionalExpression {
                 condition: typed_condition.into(),
                 then_expr: typed_then_expr.into(),
                 else_expr: typed_else_expr.into(),
-                _type: common_type,
-            }))
+                _type: common_type.clone(),
+            }).into(), _type: common_type }))
         }
         Expression::Unary(UnaryExpression { kind, expr, _type }) => {
             let typed_inner = typecheck_expr(&expr)?;
@@ -856,7 +856,10 @@ pub fn get_size_of_type(t: &Type) -> usize {
         Type::Long => 8,
         Type::Ulong => 8,
         Type::Double => 8,
-        _ => unreachable!(),
+        _ => {
+            println!("got type {:?}", t);
+            unreachable!()
+        }
     }
 }
 
