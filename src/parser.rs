@@ -134,7 +134,9 @@ impl Parser {
                 println!("self.current: {:?}", self.current);
 
                 let init = if self.is_next(&[Token::Equal]) {
-                    Some(self.parse_expression()?)
+                    let expr = Some(self.parse_expression()?);
+                    self.consume(&Token::Semicolon)?;
+                    expr
                 } else if self.is_next(&[Token::Semicolon]) {
                     None
                 } else {
@@ -480,7 +482,6 @@ impl Parser {
             let (_type, _storage_class) =
                 self.parse_type_and_storage_specifiers(&specifier_list)?;
             let decl = self.parse_declaration(&specifier_list)?;
-            self.consume(&Token::Semicolon)?;
             ForInit::Declaration(match decl {
                 BlockItem::Declaration(Declaration::Variable(var)) => var,
                 _ => unreachable!(),
