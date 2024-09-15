@@ -97,6 +97,15 @@ impl Emit for AsmStaticVariable {
             writeln!(f, "\t.globl {}", self.name)?;
         }
 
+        match self.alignment {
+            1 => writeln!(f, "\t.balign 1")?,
+            2 => writeln!(f, "\t.balign 2")?,
+            4 => writeln!(f, "\t.balign 4")?,
+            8 => writeln!(f, "\t.balign 8")?,
+            16 => writeln!(f, "\t.balign 16")?,
+            _ => unreachable!(),
+        }
+
         writeln!(f, "{}:", self.name)?;
 
         match self.init {
@@ -122,15 +131,6 @@ impl Emit for AsmStaticVariable {
             },
         }
 
-        match self.alignment {
-            1 => writeln!(f, "\t.balign 1")?,
-            2 => writeln!(f, "\t.balign 2")?,
-            4 => writeln!(f, "\t.balign 4")?,
-            8 => writeln!(f, "\t.balign 8")?,
-            16 => writeln!(f, "\t.balign 16")?,
-            _ => unreachable!(),
-        }
-
         Ok(())
     }
 }
@@ -140,6 +140,7 @@ impl Emit for AsmStaticConstant {
         writeln!(f)?;
         
         writeln!(f, "\t.section .rodata")?;
+        writeln!(f, "\t.balign {}", self.alignment)?;
         writeln!(f, "{}:", self.name)?;
 
         match self.init {
@@ -149,8 +150,6 @@ impl Emit for AsmStaticConstant {
             StaticInit::Ulong(n) => writeln!(f, "\t.quad {}", n)?,
             StaticInit::Double(n) => writeln!(f, "\t.quad {}", n.to_bits())?,
         }
-
-        writeln!(f, "\t.balign {}", self.alignment)?;
 
         Ok(())
     }

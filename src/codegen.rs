@@ -1569,6 +1569,11 @@ impl Fixup for AsmFunction {
                                         lhs: lhs.clone(),
                                         rhs: AsmOperand::Register(AsmRegister::XMM15),
                                     },
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Register(AsmRegister::XMM15),
+                                        dst: rhs.clone(),
+                                    },
                                 ]);                                     
                             } else {
                                 instructions.extend(vec![
