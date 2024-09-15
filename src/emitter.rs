@@ -135,7 +135,7 @@ impl Emit for AsmStaticVariable {
 }
 
 impl Emit for AsmStaticConstant {
-    fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
+    fn emit(&mut self, f: &mut File, _asm_type: &mut AsmType) -> Result<()> {
         writeln!(f)?;
         
         writeln!(f, "\t.section .rodata")?;
@@ -227,7 +227,6 @@ impl Emit for AsmInstruction {
                     AsmUnaryOp::Neg => write!(f, "neg{} ", suffix)?,
                     AsmUnaryOp::Not => write!(f, "not{} ", suffix)?,
                     AsmUnaryOp::Shr => write!(f, "shr{} ", suffix)?,
-                    _ => todo!(),
                 }
                 operand.emit(f, asm_type)?;
                 writeln!(f)?;
@@ -309,7 +308,6 @@ impl Emit for AsmInstruction {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     AsmType::Double => "sd",
-                    _ => todo!(),
                 };
 
                 write!(f, "{}{} ", instr, suffix)?;
@@ -423,7 +421,6 @@ impl Emit for AsmInstruction {
                 dst.emit(f, asm_type)?;
                 writeln!(f)?;
             }
-            _ => unreachable!(),
         }
 
         Ok(())

@@ -98,19 +98,19 @@ impl Typecheck for VariableDeclaration {
 
                 if let Some(Expression::Constant(konst)) = &self.init {
                     initial_value = match konst.value {
-                        Const::Int(i) => {
+                        Const::Int(_) => {
                             InitialValue::Initial(const2type(&konst.value, &self._type))
                         }
-                        Const::Long(l) => {
+                        Const::Long(_) => {
                             InitialValue::Initial(const2type(&konst.value, &self._type))
                         }
-                        Const::UInt(u) => {
+                        Const::UInt(_) => {
                             InitialValue::Initial(const2type(&konst.value, &self._type))
                         }
-                        Const::ULong(ul) => {
+                        Const::ULong(_l) => {
                             InitialValue::Initial(const2type(&konst.value, &self._type))
                         }
-                        Const::Double(d) => {
+                        Const::Double(_) => {
                             InitialValue::Initial(const2type(&konst.value, &self._type))
                         }
                     }

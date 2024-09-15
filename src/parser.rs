@@ -1,6 +1,6 @@
 use crate::lexer::{Const, Token};
 use anyhow::{bail, Result};
-use std::{collections::VecDeque, vec::Splice};
+use std::collections::VecDeque;
 
 pub struct Parser {
     pub tokens: VecDeque<Token>,
@@ -99,14 +99,6 @@ impl Parser {
         }
     }
 
-    fn consume_while(&mut self, token: &Token) -> Result<Vec<Token>> {
-        let mut tokens = vec![];
-        while !self.check(token) {
-            tokens.push(self.advance().unwrap());
-        }
-        Ok(tokens)
-    }
-
     fn is_type_specifier(&self, token: &Token) -> bool {
         matches!(token, Token::Int | Token::Long | Token::Unsigned | Token::Signed | Token::Double)
     }
@@ -148,8 +140,6 @@ impl Parser {
                 } else {
                     bail!("some error")
                 };
-
-                println!("init: {:?}", init);
 
                 Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, _type: decl_type, init, storage_class, is_global: self.depth == 0 })))
             }
@@ -219,7 +209,7 @@ impl Parser {
     
     fn parse_param(&mut self) -> Result<ParamInfo> {
         let specifier_list = self.consume_while_specifier();
-        let param_t = self.parse_type(&specifier_list)?;
+        let param_t = self.parse_type(&specifier_list   )?;
         let param_decl = self.parse_declarator()?;
         Ok((param_t, param_decl.into()))
     }
@@ -404,26 +394,6 @@ impl Parser {
         Ok((_type, storage_class))
     }
 
-    fn parse_variable_declaration(
-        &mut self,
-        name: &str,
-        _type: Type,
-        storage_class: Option<StorageClass>,
-    ) -> Result<BlockItem> {
-        println!("first 10 tokens before parsing variable declaration: {:?}", self.tokens.iter().take(10).collect::<Vec<&Token>>());
-        let init = Some(self.parse_expression()?);
-        self.consume(&Token::Semicolon)?;
-        Ok(BlockItem::Declaration(Declaration::Variable(
-            VariableDeclaration {
-                name: name.to_owned(),
-                init,
-                storage_class,
-                is_global: self.depth == 0,
-                _type,
-            },
-        )))
-    }
-
     fn parse_expression_statement(&mut self) -> Result<BlockItem> {
         let expr = self.parse_expression()?;
         self.consume(&Token::Semicolon)?;
@@ -504,21 +474,13 @@ impl Parser {
 
         let init = if self.is_next(&[Token::Semicolon]) {
             ForInit::Expression(None)
-        } else if self.is_next(&[
-            Token::Int,
-            Token::Long,
-            Token::Double,
-            Token::Signed,
-            Token::Unsigned,
-            Token::Static,
-            Token::Extern,
-        ]) {
-            let mut specifier_list = vec![];
-            specifier_list.push(self.previous.clone().unwrap());
-            specifier_list.extend(self.consume_while(&Token::Identifier("".to_owned()))?);
+        } else if self.is_specifier(self.current.as_ref().unwrap()) {
+            let specifier_list = self.consume_while_specifier();
+            println!("specifier_list: {:?}", specifier_list);
             let (_type, _storage_class) =
                 self.parse_type_and_storage_specifiers(&specifier_list)?;
             let decl = self.parse_declaration(&specifier_list)?;
+            self.consume(&Token::Semicolon)?;
             ForInit::Declaration(match decl {
                 BlockItem::Declaration(Declaration::Variable(var)) => var,
                 _ => unreachable!(),

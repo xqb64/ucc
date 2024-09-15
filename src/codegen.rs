@@ -618,7 +618,6 @@ impl Codegen for IRInstruction {
                                 Const::UInt(_) => false,
                                 Const::ULong(_) => false,
                                 Const::Double(_) => true,
-                                _ => todo!(),
                             },
                         };
 
@@ -679,7 +678,6 @@ impl Codegen for IRInstruction {
                                 Const::UInt(_) => false,
                                 Const::ULong(_) => false,
                                 Const::Double(_) => true,
-                                _ => todo!(),
                             },
                         };
 
@@ -744,7 +742,6 @@ impl Codegen for IRInstruction {
                                 Const::UInt(_) => Type::Uint,
                                 Const::ULong(_) => Type::Ulong,
                                 Const::Double(_) => Type::Double,
-                                _ => todo!(),
                             },
                         };
 
@@ -764,7 +761,6 @@ impl Codegen for IRInstruction {
                                 Const::UInt(_) => Type::Uint,
                                 Const::ULong(_) => Type::Ulong,
                                 Const::Double(_) => Type::Double,
-                                _ => todo!(),
                             },
                         };
 
@@ -1456,7 +1452,6 @@ impl Fixup for AsmFunction {
         let mut instructions = vec![];
 
         for instr in &mut self.instructions {
-            let spam_instr = instr.clone();
             match instr {
                 AsmInstruction::Mov { src, dst, asm_type } => match (src, dst) {
                     (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
@@ -2585,7 +2580,6 @@ fn get_asm_type(value: &IRValue) -> AsmType {
             Const::UInt(_) => AsmType::Longword,
             Const::ULong(_) => AsmType::Quadword,
             Const::Double(_) => AsmType::Double,
-            _ => todo!(),
         },
         IRValue::Var(var_name) => match SYMBOL_TABLE
             .lock()
