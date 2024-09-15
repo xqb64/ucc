@@ -288,6 +288,16 @@ impl Emit for AsmInstruction {
                 operand.emit(f, asm_type)?;
                 writeln!(f)?;
             }
+            AsmInstruction::Div { operand, asm_type } => {
+                let suffix = match asm_type {
+                    AsmType::Longword => "l",
+                    AsmType::Quadword => "q",
+                    _ => todo!(),
+                };
+                write!(f, "div{} ", suffix)?;
+                operand.emit(f, asm_type)?;
+                writeln!(f)?;
+            }
             AsmInstruction::Imul { src, dst, asm_type } => {
                 let instr = match asm_type {
                     AsmType::Longword => "imul",

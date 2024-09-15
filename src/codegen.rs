@@ -642,7 +642,7 @@ impl Codegen for IRInstruction {
                                     src: AsmOperand::Imm(0),
                                     dst: AsmOperand::Register(AsmRegister::DX),
                                 },
-                                AsmInstruction::Idiv {
+                                AsmInstruction::Div {
                                     asm_type: AsmType::Longword,
                                     operand: rhs.codegen().into(),
                                 },
