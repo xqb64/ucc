@@ -2169,6 +2169,16 @@ impl Fixup for AsmFunction {
                                 },
                             ]);
                         }
+                        (AsmOperand::Data(_), AsmOperand::Stack(_)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Cvttsd2si { asm_type: asm_type.clone(), src: src.clone(), dst: AsmOperand::Register(AsmRegister::R11) },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: AsmOperand::Register(AsmRegister::R11),
+                                    dst: dst.clone(),
+                                },
+                            ]);
+                        }
                         _ => instructions.push(instr.clone()),
                     }
                 }
