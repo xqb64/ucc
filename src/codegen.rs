@@ -1027,14 +1027,18 @@ impl Codegen for IRInstruction {
                 match dst_type {
                     AsmType::Longword => {
                         AsmNode::Instructions(vec![
-                            AsmInstruction::Cvttsd2si {
-                                asm_type: AsmType::Quadword,
+                            AsmInstruction::MovZeroExtend {
                                 src: src.codegen().into(),
                                 dst: AsmOperand::Register(AsmRegister::AX),
                             },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
+                            AsmInstruction::Cvtsi2sd {
+                                asm_type: AsmType::Quadword,
                                 src: AsmOperand::Register(AsmRegister::AX),
+                                dst: AsmOperand::Register(AsmRegister::XMM15),
+                            },
+                            AsmInstruction::Mov {
+                                asm_type: AsmType::Double,
+                                src: AsmOperand::Register(AsmRegister::XMM15),
                                 dst: dst.codegen().into(),
                             }
                         ])
@@ -1869,7 +1873,10 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    _ => instructions.push(instr.clone()),
+                    _ => {
+                        println!("nonononnononononononono");
+                        instructions.push(instr.clone());
+                    }
                 },
                 AsmInstruction::Cmp { lhs, rhs, asm_type } => {
                     println!("HERE IN CMP, lhs: {:?}, rhs: {:?}", lhs, rhs);
