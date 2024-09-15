@@ -87,7 +87,10 @@ impl Emit for AsmStaticVariable {
                 0 => writeln!(f, "\t.section .bss")?,
                 _ => writeln!(f, "\t.section .data")?,
             },
-            _ => todo!(),
+            StaticInit::Double(n) => match n {
+                0.0 => writeln!(f, "\t.section .bss")?,
+                _ => writeln!(f, "\t.section .data")?,
+            },
         }
 
         if self.global {
@@ -113,15 +116,19 @@ impl Emit for AsmStaticVariable {
                 0 => writeln!(f, "\t.zero 8")?,
                 _ => writeln!(f, "\t.quad {}", n)?,
             },
-            _ => todo!(),
+            StaticInit::Double(n) => match n {
+                0.0 => writeln!(f, "\t.zero 8")?,
+                _ => writeln!(f, "\t.quad {}", n.to_bits())?,
+            },
         }
 
         match self.alignment {
-            1 => writeln!(f, "\t.align 1")?,
-            2 => writeln!(f, "\t.align 2")?,
-            4 => writeln!(f, "\t.align 4")?,
-            8 => writeln!(f, "\t.align 8")?,
-            _ => writeln!(f, "\t.align 16")?,
+            1 => writeln!(f, "\t.balign 1")?,
+            2 => writeln!(f, "\t.balign 2")?,
+            4 => writeln!(f, "\t.balign 4")?,
+            8 => writeln!(f, "\t.balign 8")?,
+            16 => writeln!(f, "\t.balign 16")?,
+            _ => unreachable!(),
         }
 
         Ok(())
@@ -133,7 +140,6 @@ impl Emit for AsmStaticConstant {
         writeln!(f)?;
         
         writeln!(f, "\t.section .rodata")?;
-        writeln!(f, "\t.balign {}", self.alignment)?;
         writeln!(f, "{}:", self.name)?;
 
         match self.init {
@@ -141,8 +147,10 @@ impl Emit for AsmStaticConstant {
             StaticInit::Long(n) => writeln!(f, "\t.quad {}", n)?,
             StaticInit::Uint(n) => writeln!(f, "\t.long {}", n)?,
             StaticInit::Ulong(n) => writeln!(f, "\t.quad {}", n)?,
-            StaticInit::Double(n) => writeln!(f, "\t.double {}", n)?,
+            StaticInit::Double(n) => writeln!(f, "\t.quad {}", n.to_bits())?,
         }
+
+        writeln!(f, "\t.balign {}", self.alignment)?;
 
         Ok(())
     }
@@ -257,8 +265,10 @@ impl Emit for AsmInstruction {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
-                    AsmType::Double => "sd",
-                    _ => todo!(),
+                    AsmType::Double => match op {
+                        AsmBinaryOp::Xor => "pd",
+                        _ => "sd",
+                    }
                 };
 
                 write!(f, "{}{} ", instr, suffix)?;
@@ -310,14 +320,12 @@ impl Emit for AsmInstruction {
                 writeln!(f)?;
             }
             AsmInstruction::Cmp { lhs, rhs, asm_type } => {
-                let suffix = match asm_type {
-                    AsmType::Longword => "l",
-                    AsmType::Quadword => "q",
-                    AsmType::Double => "sd",
-                    _ => todo!(),
+                let instr = match asm_type {
+                    AsmType::Longword => "cmpl",
+                    AsmType::Quadword => "cmpq",
+                    AsmType::Double => "comisd",
                 };
-
-                write!(f, "cmp{} ", suffix)?;
+                write!(f, "{} ", instr)?;
                 lhs.emit(f, asm_type)?;
                 write!(f, ", ")?;
                 rhs.emit(f, asm_type)?;
