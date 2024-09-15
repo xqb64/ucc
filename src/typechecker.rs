@@ -825,6 +825,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _type: target_type.clone(),
             }))
         }
+        _ => todo!(),
     }
 }
 
@@ -926,6 +927,7 @@ pub fn get_type(e: &Expression) -> Type {
             _type,
         }) => _type.clone(),
         Expression::Variable(VariableExpression { value: _, _type }) => _type.clone(),
+        _ => todo!(),
     }
 }
 

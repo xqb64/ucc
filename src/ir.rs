@@ -433,6 +433,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
 
             dst
         }
+        _ => todo!(),
     }
 }
 

@@ -72,10 +72,10 @@ impl Parser {
             Token::Static,
             Token::Extern,
         ]) {
-            let mut specifier_list = vec![];
-            specifier_list.push(self.previous.clone().unwrap());
-            specifier_list.extend(self.consume_while(&Token::Identifier("".to_owned()))?);
-            self.parse_declaration(&specifier_list)
+            let mut spec_list = vec![];
+            spec_list.push(self.previous.clone().unwrap());
+            self.parse_specifier_list(&mut spec_list)?;
+            self.parse_declaration(&spec_list)
         } else if self.is_next(&[Token::Return]) {
             self.parse_return_statement()
         } else if self.is_next(&[Token::If]) {
@@ -107,40 +107,161 @@ impl Parser {
         Ok(tokens)
     }
 
+    fn is_type_specifier(&self, token: &Token) -> bool {
+        matches!(token, Token::Int | Token::Long | Token::Unsigned | Token::Signed | Token::Double)
+    }
+
+    fn is_storage_class_specifier(&self, token: &Token) -> bool {
+        matches!(token, Token::Static | Token::Extern)
+    }
+
+    fn is_specifier(&self, token: &Token) -> bool {
+        self.is_type_specifier(token) || self.is_storage_class_specifier(token)
+    }
+
+    fn parse_specifier_list(&mut self, spec_list: &mut Vec<Token>) -> Result<Vec<Token>> {
+        while self.is_specifier(self.current.as_ref().unwrap()) {
+            spec_list.push(self.current.clone().unwrap());
+            self.advance();
+        }
+        println!("first 10 tokens after parsing specifier list: {:?}", self.tokens.iter().take(10).collect::<Vec<&Token>>());
+        Ok(spec_list.to_vec())
+    }
+
     fn parse_declaration(&mut self, specifier_list: &[Token]) -> Result<BlockItem> {
-        let (_type, storage_class) = self.parse_type_and_storage_specifiers(specifier_list)?;
-        let name = self
-            .consume(&Token::Identifier("".to_owned()))?
-            .unwrap()
-            .as_string();
-        if self.is_next(&[Token::LParen]) {
-            self.parse_function_declaration(&name, _type, storage_class)
-        } else if self.is_next(&[Token::Equal]) {
-            self.parse_variable_declaration(&name, _type, storage_class)
-        } else if self.is_next(&[Token::Semicolon]) {
-            Ok(BlockItem::Declaration(Declaration::Variable(
-                VariableDeclaration {
-                    name,
-                    init: None,
-                    storage_class,
-                    is_global: self.depth == 0,
-                    _type,
-                },
-            )))
+        let (base_type, storage_class) = self.parse_type_and_storage_specifiers(specifier_list)?;
+
+        let declarator = self.parse_declarator()?;
+
+        let (name, decl_type, params) = self.process_declarator(&declarator, &base_type)?;
+
+        let some_fn_type = Type::Func { params: vec![], ret: Box::new(Type::Int) };
+
+        match decl_type {
+            Type::Func { params: _, ret: _ } => {
+                self.parse_function_declaration(&name, &params, decl_type, storage_class)
+            }
+            _ => {
+                let init = if self.is_next(&[Token::Equal]) {
+                    Some(self.parse_expression()?)
+                } else {
+                    None
+                };
+
+                Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, _type: decl_type, init, storage_class, is_global: self.depth == 0 })))
+            }
+        }
+    }
+
+    fn parse_declarator(&mut self) -> Result<Declarator> {
+        if self.is_next(&[Token::Star]) {
+            let inner = self.parse_declarator()?;
+            return Ok(Declarator::Pointer(Box::new(inner)));
         } else {
-            bail!("expected function or variable declaration");
+            self.parse_direct_declarator()
+        }
+    }
+
+    fn parse_direct_declarator(&mut self) -> Result<Declarator> {
+        let simple_declarator = self.parse_simple_declarator()?;
+        if self.is_next(&[Token::LParen]) {
+            let params = self.parse_param_list()?;
+            Ok(Declarator::Func(params, Box::new(simple_declarator)))
+        } else {
+            Ok(simple_declarator)
+        }
+    }
+
+    fn parse_simple_declarator(&mut self) -> Result<Declarator> {
+        let token = self.advance().unwrap();
+        match token {
+            Token::LParen => {
+                let decl = self.parse_declarator()?;
+                self.consume(&Token::RParen)?;
+                Ok(decl)
+            }
+            Token::Identifier(id) => Ok(Declarator::Ident(id)),
+            _ => {
+                println!("got token: {:?}", token);
+                bail!("a simple declarator");
+            }
+        }
+    }
+
+    fn parse_param_list(&mut self) -> Result<Vec<ParamInfo>> {
+        // if we see '(', 'void', ')', then we have no params
+        // use lookahed_until to check for this
+        let in_front_of_us = self.lookahead_until(&Token::RParen);
+        println!("in_front_of_us: {:?}", in_front_of_us);
+
+        if in_front_of_us == vec![Token::Void] {
+            // No params - consume these three tokens and return empty list
+            self.consume(&Token::Void)?;
+            self.consume(&Token::RParen)?;
+            
+            println!("no params");
+            Ok(vec![])
+        } else {
+            let _ = self.consume(&Token::LParen);
+            let mut params = vec![];
+            loop {
+                params.push(self.parse_param()?);
+                if !self.is_next(&[Token::Comma]) {
+                    break;
+                }
+            }
+            self.consume(&Token::RParen)?;
+            Ok(params)
+        }
+    }
+    
+    fn parse_param(&mut self) -> Result<ParamInfo> {
+        let specifier_list = self.consume_while(&Token::Identifier("".to_owned()))?;
+        let param_t = self.parse_type(&specifier_list)?;
+        let param_decl = self.parse_declarator()?;
+        Ok((param_t, param_decl.into()))
+    }
+    
+    fn process_declarator(&mut self, declarator: &Declarator, base_type: &Type) -> Result<(String, Type, Vec<String>)> {
+        let some_fn_type = Type::Func { params: vec![], ret: Box::new(Type::Int) };
+        match declarator {
+            Declarator::Ident(name) => Ok((name.clone(), base_type.clone(), vec![])),
+            Declarator::Pointer(decl) => {
+                let derived_type = Type::Pointer(base_type.clone().into());
+                return self.process_declarator(decl, &derived_type);
+            }
+            Declarator::Func(params, decl) => {
+                match *decl.clone() {
+                    Declarator::Ident(name) => {
+                        let mut param_names = vec![];
+                        let mut param_types = vec![];
+
+                        for (param_base_type, param_declarator) in params {
+                            let (param_name, param_type, _) = self.process_declarator(&param_declarator, &param_base_type)?;
+                            if std::mem::discriminant(&param_type) == std::mem::discriminant(&some_fn_type) {
+                                bail!("Function pointers in parameters are not supported.")
+                            }
+                            param_names.push(param_name);
+                            param_types.push(param_type);
+                        }
+
+                        let derived_type = Type::Func { params: param_types, ret: base_type.clone().into() };
+                        return Ok((name.clone(), derived_type, param_names));
+                    }
+                    _ => bail!("Can't apply additional type derivations to a function type."),
+                }
+            }
         }
     }
 
     fn parse_function_declaration(
         &mut self,
         name: &str,
+        params: &[String],
         _type: Type,
         storage_class: Option<StorageClass>,
     ) -> Result<BlockItem> {
         self.current_target_type = Some(_type.clone());
-
-        let params = self.parse_parameters()?;
 
         let body = if self.check(&Token::Semicolon) {
             self.consume(&Token::Semicolon)?;
@@ -158,14 +279,11 @@ impl Parser {
         Ok(BlockItem::Declaration(Declaration::Function(
             FunctionDeclaration {
                 name: name.to_owned(),
-                params: params.iter().map(|(_, name)| name.to_owned()).collect(),
+                params: params.to_owned(),
                 body: body.into(),
                 is_global: self.depth == 0,
                 storage_class,
-                _type: Type::Func {
-                    params: params.iter().map(|(t, _)| t.clone()).collect(),
-                    ret: Box::new(_type),
-                },
+                _type: _type.clone(),
             },
         )))
     }
@@ -275,40 +393,13 @@ impl Parser {
         Ok((_type, storage_class))
     }
 
-    fn parse_parameters(&mut self) -> Result<Vec<(Type, String)>> {
-        if self.is_next(&[Token::Void]) {
-            self.consume(&Token::RParen)?;
-            return Ok(vec![]);
-        } else if self.is_next(&[Token::RParen]) {
-            return Ok(vec![]);
-        }
-
-        let mut params = vec![];
-
-        loop {
-            let specifier_list = self.consume_while(&Token::Identifier("".to_owned()))?;
-
-            let _type = self.parse_type(&specifier_list)?;
-            let param = self
-                .consume(&Token::Identifier("".to_owned()))?
-                .unwrap()
-                .as_string();
-            params.push((_type, param));
-            if self.is_next(&[Token::RParen]) {
-                break;
-            }
-            self.consume(&Token::Comma)?;
-        }
-
-        Ok(params)
-    }
-
     fn parse_variable_declaration(
         &mut self,
         name: &str,
         _type: Type,
         storage_class: Option<StorageClass>,
     ) -> Result<BlockItem> {
+        println!("first 10 tokens before parsing variable declaration: {:?}", self.tokens.iter().take(10).collect::<Vec<&Token>>());
         let init = Some(self.parse_expression()?);
         self.consume(&Token::Semicolon)?;
         Ok(BlockItem::Declaration(Declaration::Variable(
@@ -647,9 +738,7 @@ impl Parser {
                 },
                 _type: Type::Dummy,
             }));
-        }
-
-        if self.is_next(&[Token::LParen]) {
+        } else if self.is_next(&[Token::LParen]) {
             let specifier_list = self.lookahead_until(&Token::RParen);
 
             let t = self.parse_type(&specifier_list);
@@ -668,6 +757,18 @@ impl Parser {
 
             return Ok(Expression::Cast(CastExpression {
                 target_type: t?,
+                expr: expr.into(),
+                _type: Type::Dummy,
+            }));
+        } else if self.is_next(&[Token::Star]) {
+            let expr = self.unary()?;
+            return Ok(Expression::Deref(DerefExpression {
+                expr: expr.into(),
+                _type: Type::Dummy,
+            }));
+        } else if self.is_next(&[Token::Ampersand]) {
+            let expr = self.unary()?;
+            return Ok(Expression::AddrOf(AddrOfExpression {
                 expr: expr.into(),
                 _type: Type::Dummy,
             }));
@@ -732,6 +833,7 @@ impl Parser {
                 _ => unreachable!(),
             }
         } else {
+            println!("got token: {:?}, {:?}", self.current, self.previous);
             bail!("expected primary");
         }
     }
@@ -786,6 +888,7 @@ pub enum Type {
     Ulong,
     Double,
     Func { params: Vec<Type>, ret: Box<Type> },
+    Pointer(Box<Type>),
     Dummy,
 }
 
@@ -897,6 +1000,20 @@ pub enum Expression {
     Conditional(ConditionalExpression),
     Call(CallExpression),
     Cast(CastExpression),
+    Deref(DerefExpression),
+    AddrOf(AddrOfExpression),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddrOfExpression {
+    pub expr: Box<Expression>,
+    pub _type: Type,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DerefExpression {
+    pub expr: Box<Expression>,
+    pub _type: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -979,3 +1096,12 @@ pub struct CastExpression {
     pub expr: Box<Expression>,
     pub _type: Type,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+enum Declarator {
+    Ident(String),
+    Pointer(Box<Declarator>),
+    Func(Vec<ParamInfo>, Box<Declarator>),
+}
+
+type ParamInfo = (Type, Box<Declarator>);
