@@ -757,10 +757,13 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
             let common_type = get_common_type(&t1, &t2);
 
+            let converted_then_expr = convert_to(&typed_then_expr, &common_type);
+            let converted_else_expr = convert_to(&typed_else_expr, &common_type);
+
             Ok(Expression::Cast(CastExpression { target_type: common_type.clone(), expr: Expression::Conditional(ConditionalExpression {
                 condition: typed_condition.into(),
-                then_expr: typed_then_expr.into(),
-                else_expr: typed_else_expr.into(),
+                then_expr: converted_then_expr.into(),
+                else_expr: converted_else_expr.into(),
                 _type: common_type.clone(),
             }).into(), _type: common_type }))
         }
