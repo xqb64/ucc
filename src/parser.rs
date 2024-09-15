@@ -1,6 +1,6 @@
 use crate::lexer::{Const, Token};
 use anyhow::{bail, Result};
-use std::collections::VecDeque;
+use std::{collections::VecDeque, vec::Splice};
 
 pub struct Parser {
     pub tokens: VecDeque<Token>,
@@ -72,10 +72,10 @@ impl Parser {
             Token::Static,
             Token::Extern,
         ]) {
-            let mut spec_list = vec![];
-            spec_list.push(self.previous.clone().unwrap());
-            self.parse_specifier_list(&mut spec_list)?;
-            self.parse_declaration(&spec_list)
+            let mut specifier_list = vec![];
+            specifier_list.push(self.previous.clone().unwrap());
+            self.parse_specifier_list(&mut specifier_list)?;
+            self.parse_declaration(&specifier_list)
         } else if self.is_next(&[Token::Return]) {
             self.parse_return_statement()
         } else if self.is_next(&[Token::If]) {
@@ -119,12 +119,12 @@ impl Parser {
         self.is_type_specifier(token) || self.is_storage_class_specifier(token)
     }
 
-    fn parse_specifier_list(&mut self, spec_list: &mut Vec<Token>) -> Result<Vec<Token>> {
+    fn parse_specifier_list(&mut self, specifier_list: &mut Vec<Token>) -> Result<Vec<Token>> {
         while self.is_specifier(self.current.as_ref().unwrap()) {
-            spec_list.push(self.current.clone().unwrap());
+            specifier_list.push(self.current.clone().unwrap());
             self.advance();
         }
-        Ok(spec_list.to_vec())
+        Ok(specifier_list.to_vec())
     }
 
     fn parse_declaration(&mut self, specifier_list: &[Token]) -> Result<BlockItem> {
@@ -157,21 +157,26 @@ impl Parser {
     }
 
     fn parse_declarator(&mut self) -> Result<Declarator> {
-        if self.is_next(&[Token::Star]) {
-            let inner = self.parse_declarator()?;
-            return Ok(Declarator::Pointer(Box::new(inner)));
-        } else {
-            self.parse_direct_declarator()
+        println!("self.current: {:?}", self.current);
+        match self.current.as_ref().unwrap() {
+            Token::Star => {
+                self.consume(&Token::Star)?;
+                let inner = self.parse_declarator()?;
+                return Ok(Declarator::Pointer(Box::new(inner)));
+            }
+            _ => self.parse_direct_declarator()
         }
     }
 
     fn parse_direct_declarator(&mut self) -> Result<Declarator> {
         let simple_declarator = self.parse_simple_declarator()?;
-        if self.is_next(&[Token::LParen]) {
-            let params = self.parse_param_list()?;
-            Ok(Declarator::Func(params, Box::new(simple_declarator)))
-        } else {
-            Ok(simple_declarator)
+        match self.current.as_ref().unwrap() {
+            Token::LParen => {
+                self.consume(&Token::LParen)?;
+                let params = self.parse_param_list()?;
+                Ok(Declarator::Func(params, Box::new(simple_declarator)))    
+            }
+            _ => Ok(simple_declarator),
         }
     }
 
@@ -192,20 +197,14 @@ impl Parser {
     }
 
     fn parse_param_list(&mut self) -> Result<Vec<ParamInfo>> {
-        // if we see '(', 'void', ')', then we have no params
-        // use lookahed_until to check for this
         let in_front_of_us = self.lookahead_until(&Token::RParen);
-        println!("in_front_of_us: {:?}", in_front_of_us);
 
         if in_front_of_us == vec![Token::Void] {
-            // No params - consume these three tokens and return empty list
             self.consume(&Token::Void)?;
             self.consume(&Token::RParen)?;
             
-            println!("no params");
             Ok(vec![])
         } else {
-            let _ = self.consume(&Token::LParen);
             let mut params = vec![];
             loop {
                 params.push(self.parse_param()?);
@@ -219,10 +218,19 @@ impl Parser {
     }
     
     fn parse_param(&mut self) -> Result<ParamInfo> {
-        let specifier_list = self.consume_while(&Token::Identifier("".to_owned()))?;
+        let specifier_list = self.consume_while_specifier();
         let param_t = self.parse_type(&specifier_list)?;
         let param_decl = self.parse_declarator()?;
         Ok((param_t, param_decl.into()))
+    }
+
+    fn consume_while_specifier(&mut self) -> Vec<Token> {
+        let mut specifier_list = vec![];
+        while self.is_specifier(self.current.as_ref().unwrap()) {
+            specifier_list.push(self.current.clone().unwrap());
+            self.advance();
+        }
+        specifier_list
     }
     
     fn process_declarator(&mut self, declarator: &Declarator, base_type: &Type) -> Result<(String, Type, Vec<String>)> {
@@ -743,9 +751,10 @@ impl Parser {
             }));
         } else if self.is_next(&[Token::LParen]) {
             if self.is_type_specifier(self.current.as_ref().unwrap()) {
-                let mut spec_list = vec![];
-                self.parse_specifier_list(&mut spec_list)?;
-                let base_type = self.parse_type(&spec_list)?;
+                let mut specifier_list = vec![];
+                self.parse_specifier_list(&mut specifier_list)?;
+                println!("specifier_list: {:?}", specifier_list);
+                let base_type = self.parse_type(&specifier_list)?;
                 let target_type = match self.current.as_ref().unwrap() {
                     Token::RParen => base_type.clone(),
                     _ => {
@@ -866,7 +875,7 @@ impl Parser {
     fn parse_abstract_declarator(&mut self) -> Result<AbstractDeclarator> {
         match self.current.as_ref().unwrap() {
             Token::Star => {
-                self.advance();
+                self.consume(&Token::Star)?;
                 let inner = match self.current.as_ref().unwrap() {
                     Token::Star | Token::LParen => self.parse_abstract_declarator()?,
                     _ => AbstractDeclarator::AbstractBase,
