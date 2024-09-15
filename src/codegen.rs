@@ -1524,18 +1524,36 @@ impl Fixup for AsmFunction {
                         }
                     }
                     (AsmOperand::Stack(src_n), AsmOperand::Data(dst)) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: *asm_type,
-                                src: AsmOperand::Stack(*src_n),
-                                dst: AsmOperand::Register(AsmRegister::R10),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: *asm_type,
-                                src: AsmOperand::Register(AsmRegister::R10),
-                                dst: AsmOperand::Data(dst.clone()),
-                            },
-                        ]);
+                        match asm_type {
+                            AsmType::Longword | AsmType::Quadword => {
+                                instructions.extend(vec![
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Stack(*src_n),
+                                        dst: AsmOperand::Register(AsmRegister::R10),
+                                    },
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Register(AsmRegister::R10),
+                                        dst: AsmOperand::Data(dst.clone()),
+                                    },
+                                ]);        
+                            }
+                            AsmType::Double => {
+                                instructions.extend(vec![
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Stack(*src_n),
+                                        dst: AsmOperand::Register(AsmRegister::XMM14),
+                                    },
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Register(AsmRegister::XMM14),
+                                        dst: AsmOperand::Data(dst.clone()),
+                                    },
+                                ]);        
+                            }
+                        }
                     }
                     (AsmOperand::Data(src), AsmOperand::Data(dst)) => {
                         match asm_type {
