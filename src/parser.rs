@@ -124,7 +124,6 @@ impl Parser {
             spec_list.push(self.current.clone().unwrap());
             self.advance();
         }
-        println!("first 10 tokens after parsing specifier list: {:?}", self.tokens.iter().take(10).collect::<Vec<&Token>>());
         Ok(spec_list.to_vec())
     }
 
@@ -140,11 +139,17 @@ impl Parser {
                 self.parse_function_declaration(&name, &params, decl_type, storage_class)
             }
             _ => {
+                println!("self.current: {:?}", self.current);
+
                 let init = if self.is_next(&[Token::Equal]) {
                     Some(self.parse_expression()?)
-                } else {
+                } else if self.is_next(&[Token::Semicolon]) {
                     None
+                } else {
+                    bail!("some error")
                 };
+
+                println!("init: {:?}", init);
 
                 Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, _type: decl_type, init, storage_class, is_global: self.depth == 0 })))
             }
