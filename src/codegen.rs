@@ -1518,11 +1518,11 @@ impl Fixup for AsmFunction {
                                     AsmInstruction::Mov {
                                         asm_type: *asm_type,
                                         src: AsmOperand::Imm(*konst),
-                                        dst: AsmOperand::Register(AsmRegister::XMM15),
+                                        dst: AsmOperand::Register(AsmRegister::R10),
                                     },
                                     AsmInstruction::Mov {
                                         asm_type: *asm_type,
-                                        src: AsmOperand::Register(AsmRegister::XMM15),
+                                        src: AsmOperand::Register(AsmRegister::R10),
                                         dst: AsmOperand::Stack(*dst_n),
                                     },
                                 ]);
