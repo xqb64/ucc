@@ -135,8 +135,6 @@ impl Parser {
 
         let (name, decl_type, params) = self.process_declarator(&declarator, &base_type)?;
 
-        let some_fn_type = Type::Func { params: vec![], ret: Box::new(Type::Int) };
-
         match decl_type {
             Type::Func { params: _, ret: _ } => {
                 self.parse_function_declaration(&name, &params, decl_type, storage_class)
@@ -739,27 +737,29 @@ impl Parser {
                 _type: Type::Dummy,
             }));
         } else if self.is_next(&[Token::LParen]) {
-            let specifier_list = self.lookahead_until(&Token::RParen);
+            if self.is_type_specifier(self.current.as_ref().unwrap()) {
+                let mut spec_list = vec![];
+                self.parse_specifier_list(&mut spec_list)?;
+                let base_type = self.parse_type(&spec_list)?;
+                let target_type = match self.current.as_ref().unwrap() {
+                    Token::RParen => base_type.clone(),
+                    _ => {
+                        let decl = self.parse_abstract_declarator()?;
+                        self.process_abstract_declarator(&decl, &base_type)
+                    }
+                };
+                self.consume(&Token::RParen)?;
+                let inner_expr = self.parse_expression()?;
 
-            let t = self.parse_type(&specifier_list);
-
-            if t.is_err() {
-                return self.parse_grouping();
+                return Ok(Expression::Cast(CastExpression {
+                    target_type,
+                    expr: inner_expr.into(),
+                    _type: Type::Dummy,
+                }));
+            } else {
+                let expr = self.parse_grouping()?;
+                return Ok(expr);
             }
-
-            let spam = self.consume_while(&Token::RParen)?;
-
-            assert_eq!(specifier_list, spam);
-
-            self.consume(&Token::RParen)?;
-
-            let expr = self.unary()?;
-
-            return Ok(Expression::Cast(CastExpression {
-                target_type: t?,
-                expr: expr.into(),
-                _type: Type::Dummy,
-            }));
         } else if self.is_next(&[Token::Star]) {
             let expr = self.unary()?;
             return Ok(Expression::Deref(DerefExpression {
@@ -856,6 +856,37 @@ impl Parser {
         let expr = self.parse_expression();
         self.consume(&Token::RParen)?;
         expr
+    }
+
+    fn parse_abstract_declarator(&mut self) -> Result<AbstractDeclarator> {
+        match self.current.as_ref().unwrap() {
+            Token::Star => {
+                self.advance();
+                let inner = match self.current.as_ref().unwrap() {
+                    Token::Star | Token::LParen => self.parse_abstract_declarator()?,
+                    _ => AbstractDeclarator::AbstractBase,
+                };
+                Ok(AbstractDeclarator::AbstractPointer(Box::new(inner)))
+            }
+            _ => self.parse_direct_abstract_declarator(),
+        }
+    }
+
+    fn parse_direct_abstract_declarator(&mut self) -> Result<AbstractDeclarator> {
+        self.consume(&Token::LParen)?;
+        let decl = self.parse_abstract_declarator()?;
+        self.consume(&Token::RParen)?;
+        Ok(decl)
+    }
+
+    fn process_abstract_declarator(&mut self, decl: &AbstractDeclarator, base_type: &Type) -> Type {
+        match decl {
+            AbstractDeclarator::AbstractBase => base_type.clone(),
+            AbstractDeclarator::AbstractPointer(inner) => {
+                let derived_type = Type::Pointer(base_type.clone().into());
+                return self.process_abstract_declarator(inner, &derived_type);
+            }
+        }
     }
 }
 
@@ -1105,3 +1136,9 @@ enum Declarator {
 }
 
 type ParamInfo = (Type, Box<Declarator>);
+
+#[derive(Debug, Clone, PartialEq)]
+enum AbstractDeclarator {
+    AbstractPointer(Box<AbstractDeclarator>),
+    AbstractBase,
+}
