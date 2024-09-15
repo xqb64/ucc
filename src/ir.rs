@@ -332,9 +332,6 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
             expr,
             _type,
         }) => {
-
-            println!("Casting from {:?} to {:?}", get_type(&expr), target_type);
-
             let result = emit_tacky(*expr.clone(), instructions);
             let inner_type = get_type(&expr);
 
