@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, Statement, StorageClass, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression, ProgramStatement, ReturnStatement, Statement, StorageClass, SubscriptExpression, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
     },
 };
 
@@ -99,11 +99,9 @@ impl Resolve for VariableDeclaration {
                     );
 
                     if self.init.is_some() {
-                        self.init = Some(Initializer::Single(resolve_exp(match &self.init {
-                            Some(Initializer::Single(expr)) => &expr,
-                            _ => unreachable!(),
-                        }, variable_map)?));
+                        resolve_init(&self.init.as_ref().unwrap(), variable_map)?;
                     }
+
 
                     Ok(BlockItem::Declaration(Declaration::Variable(
                         VariableDeclaration {
@@ -116,6 +114,21 @@ impl Resolve for VariableDeclaration {
                     )))
                 }
             }
+        }
+    }
+}
+
+fn resolve_init(init: &Initializer, variable_map: &mut HashMap<String, Variable>) -> Result<()> {
+    match init {
+        Initializer::Single(single_init) => {
+            resolve_exp(single_init, variable_map)?;
+            Ok(())
+        }
+        Initializer::Compound(compound_init) => {
+            for init in compound_init {
+                resolve_init(init, variable_map)?;
+            }
+            Ok(())
         }
     }
 }
@@ -470,7 +483,19 @@ fn resolve_exp(
                 _type,
             }))
         }
-        _ => todo!(),
+        Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
+            let resolved_expr = resolve_exp(&expr, variable_map)?;
+            let resolved_index = resolve_exp(&index, variable_map)?;
+
+            Ok(Expression::Subscript(SubscriptExpression {
+                expr: resolved_expr.into(),
+                index: resolved_index.into(),
+                _type,
+            }))
+        }
+        Expression::Literal(LiteralExpression { value, _type }) => {
+            Ok(Expression::Literal(LiteralExpression { value, _type }))
+        }
     }
 }
 

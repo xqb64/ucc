@@ -131,25 +131,28 @@ impl Parser {
                 self.parse_function_declaration(&name, &params, decl_type, storage_class)
             }
             _ => {
-                println!("self.current: {:?}", self.current);
-
                 let init = if self.is_next(&[Token::Equal]) {
-                    let expr = Some(Initializer::Single(self.parse_expression()?));
+                    let expr = self.parse_expression()?;
                     self.consume(&Token::Semicolon)?;
-                    expr
+                    Some(expr)
                 } else if self.is_next(&[Token::Semicolon]) {
                     None
                 } else {
                     bail!("some error")
                 };
 
-                Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, _type: decl_type, init, storage_class, is_global: self.depth == 0 })))
+                let unwrapped_init = if let Some(Expression::Literal(lit_expr)) = init {
+                    Some(*lit_expr.value)
+                } else {
+                    None
+                };
+
+                Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, _type: decl_type, init: unwrapped_init, storage_class, is_global: self.depth == 0 })))
             }
         }
     }
 
     fn parse_declarator(&mut self) -> Result<Declarator> {
-        println!("self.current: {:?}", self.current);
         match self.current.as_ref().unwrap() {
             Token::Star => {
                 self.consume(&Token::Star)?;
@@ -186,7 +189,6 @@ impl Parser {
             }
             Token::Identifier(id) => Ok(Declarator::Ident(id)),
             _ => {
-                println!("got token: {:?}", token);
                 bail!("a simple declarator");
             }
         }
@@ -215,7 +217,6 @@ impl Parser {
             Token::Constant(Const::UInt(n)) => n as usize,
             Token::Constant(Const::ULong(n)) => n as usize,
             _ => {
-                println!("got token: {:?}", dim);
                 unreachable!()
             }
         })
@@ -517,7 +518,6 @@ impl Parser {
             ForInit::Expression(None)
         } else if self.is_specifier(self.current.as_ref().unwrap()) {
             let specifier_list = self.consume_while_specifier();
-            println!("specifier_list: {:?}", specifier_list);
             let (_type, _storage_class) =
                 self.parse_type_and_storage_specifiers(&specifier_list)?;
             let decl = self.parse_declaration(&specifier_list)?;
@@ -761,7 +761,6 @@ impl Parser {
             if self.is_type_specifier(self.current.as_ref().unwrap()) {
                 let mut specifier_list = vec![];
                 self.parse_specifier_list(&mut specifier_list)?;
-                println!("specifier_list: {:?}", specifier_list);
                 let base_type = self.parse_type(&specifier_list)?;
                 let target_type = match self.current.as_ref().unwrap() {
                     Token::RParen => base_type.clone(),
@@ -863,7 +862,6 @@ impl Parser {
                 _ => unreachable!(),
             }
         } else if self.is_next(&[Token::LBrace]) {
-            println!("HERE IN LITERAL:");
             let mut inits = vec![];
             loop {
                 if self.is_next(&[Token::RBrace]) {

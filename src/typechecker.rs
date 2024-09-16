@@ -1,11 +1,11 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, Statement, StorageClass, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression, ProgramStatement, ReturnStatement, Statement, StorageClass, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement
     },
 };
 use anyhow::{bail, Ok, Result};
-use std::{collections::HashMap, sync::Mutex};
+use std::{collections::HashMap, convert, sync::Mutex};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Symbol {
@@ -94,6 +94,10 @@ impl Typecheck for VariableDeclaration {
         match self.is_global {
             true => {
                 let mut initial_value;
+
+                if let Some(Initializer::Compound(_)) = &self.init {
+                    typecheck_init(&self._type, &self.init.clone().unwrap())?;
+                }   
 
                 if let Some(Initializer::Single(Expression::Constant(konst))) = &self.init {
                     if is_pointer_type(&self._type) && !is_null_ptr_constant(match &self.init {
@@ -330,18 +334,7 @@ impl Typecheck for VariableDeclaration {
                         .insert(self.name.clone(), symbol);
 
                     let typechecked_init = if self.init.is_some() {
-                        Some(typecheck_and_convert(match &self.init {
-                            Some(Initializer::Single(expr)) => expr,
-                            _ => unreachable!(),
-                        })?)
-                    } else {
-                        None
-                    };
-
-                    let left_type = self._type.clone();
-
-                    let converted_right = if typechecked_init.is_some() {
-                        Some(Initializer::Single(convert_by_assignment(&typechecked_init.as_ref().unwrap(), &left_type)?))
+                        Some(typecheck_init(&self._type, self.init.as_ref().unwrap())?)
                     } else {
                         None
                     };
@@ -350,7 +343,7 @@ impl Typecheck for VariableDeclaration {
                         VariableDeclaration {
                             _type: self._type.clone(),
                             name: self.name.clone(),
-                            init: converted_right.into(),
+                            init: typechecked_init.into(),
                             storage_class: self.storage_class,
                             is_global: self.is_global,
                         },
@@ -452,7 +445,6 @@ impl Typecheck for FunctionDeclaration {
             .insert(self.name.clone(), symbol);
 
         let typechecked_body = if has_body {
-            println!("function type {:?}", fun_type);
             let fn_params = match fun_type {
                 Type::Func { params, ret: _ } => params.clone(),
                 _ => unreachable!(),
@@ -621,13 +613,10 @@ impl Typecheck for Statement {
                 })))
             }
             Statement::Return(ReturnStatement { expr, target_type }) => {
-                println!("target type {:?}", target_type);
-                
                 let typechecked_expr = typecheck_and_convert(expr)?;
-                let converted_expr = convert_by_assignment(&typechecked_expr, &target_type.clone().unwrap_or(Type::Int))?;
 
                 Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
-                    expr: converted_expr,
+                    expr: typechecked_expr,
                     target_type: target_type.clone(),
                 })))
             }
@@ -698,6 +687,220 @@ fn zero_initializer(t: &Type) -> Initializer {
     }
 }
 
+fn typecheck_logical(kind: &BinaryExpressionKind, lhs: &Expression, rhs: &Expression) -> Result<Expression> {
+    let typed_lhs = typecheck_and_convert(lhs)?;
+    let typed_rhs = typecheck_and_convert(rhs)?;
+
+    Ok(Expression::Binary(BinaryExpression {
+        kind: kind.clone(),
+        lhs: Box::new(typed_lhs),
+        rhs: Box::new(typed_rhs),
+        _type: Type::Int,
+    }))
+}
+
+fn typecheck_addition(lhs: &Expression, rhs: &Expression) -> Result<Expression> {
+    let typed_lhs = typecheck_and_convert(lhs)?;
+    let typed_rhs = typecheck_and_convert(rhs)?;
+
+    if is_arithmetic(&get_type(&typed_lhs)) && is_arithmetic(&get_type(&typed_rhs)) {
+        let common_type = get_common_type(&get_type(&typed_lhs), &get_type(&typed_rhs));
+
+        let converted_lhs = convert_to(&typed_lhs, &common_type);
+        let converted_rhs = convert_to(&typed_rhs, &common_type);
+
+        Ok(Expression::Binary(BinaryExpression {
+            kind: BinaryExpressionKind::Add,
+            lhs: Box::new(converted_lhs),
+            rhs: Box::new(converted_rhs),
+            _type: common_type,
+        }))
+    } else if is_pointer_type(&get_type(&typed_lhs)) && is_integer_type(&get_type(&typed_rhs)) {
+        let converted_rhs = convert_to(&typed_rhs, &Type::Long);
+
+        Ok(Expression::Binary(BinaryExpression {
+            kind: BinaryExpressionKind::Add,
+            lhs: Box::new(typed_lhs.clone()),
+            rhs: Box::new(converted_rhs),
+            _type: get_type(&typed_lhs),
+        }))
+    } else if is_pointer_type(&get_type(&typed_rhs)) && is_integer_type(&get_type(&typed_lhs)) {
+        let converted_lhs = convert_to(&typed_lhs, &Type::Long);
+
+        Ok(Expression::Binary(BinaryExpression {
+            kind: BinaryExpressionKind::Add,
+            lhs: Box::new(converted_lhs),
+            rhs: Box::new(typed_rhs.clone()),
+            _type: get_type(&typed_rhs),
+        }))
+    } else {
+        bail!("Invalid operands for addition");
+    }
+}
+
+fn typecheck_subtraction(lhs: &Expression, rhs: &Expression) -> Result<Expression> {
+    let typed_lhs = typecheck_and_convert(lhs)?;
+    let typed_rhs = typecheck_and_convert(rhs)?;
+
+    let t1 = get_type(&typed_lhs);
+    let t2 = get_type(&typed_rhs);
+
+    if is_arithmetic(&t1) && is_arithmetic(&t2) {
+        let common_type = get_common_type(&t1, &t2);
+        let converted_lhs = convert_to(&typed_lhs, &common_type);
+        let converted_rhs = convert_to(&typed_rhs, &common_type);
+
+        Ok(Expression::Binary(BinaryExpression {
+            kind: BinaryExpressionKind::Sub,
+            lhs: Box::new(converted_lhs),
+            rhs: Box::new(converted_rhs),
+            _type: common_type,
+        }))
+    } else if is_pointer_type(&t1) && is_integer_type(&t2) {
+        let converted_rhs = convert_to(&typed_rhs, &Type::Long);
+        
+        Ok(Expression::Binary(BinaryExpression {
+            kind: BinaryExpressionKind::Sub,
+            lhs: Box::new(typed_lhs.clone()),
+            rhs: Box::new(converted_rhs),
+            _type: t1,
+        }))
+    } else if is_pointer_type(&t1) && get_type(&typed_lhs) == get_type(&typed_rhs) {
+        Ok(Expression::Binary(BinaryExpression {
+            kind: BinaryExpressionKind::Sub,
+            lhs: Box::new(typed_lhs.clone()),
+            rhs: Box::new(typed_rhs.clone()),
+            _type: Type::Long,
+        }))
+    } else {
+        bail!("Invalid operands for subtraction");
+    }
+}
+
+fn typecheck_multiplicative(kind: &BinaryExpressionKind, lhs: &Expression, rhs: &Expression) -> Result<Expression> {
+    let typed_lhs = typecheck_and_convert(lhs)?;
+    let typed_rhs = typecheck_and_convert(rhs)?;
+
+    let t1 = get_type(&typed_lhs);
+    let t2 = get_type(&typed_rhs);
+
+    if is_pointer_type(&t1) || is_pointer_type(&t2) {
+        bail!("multiplication, division, and remainder operators cannot be applied to pointer types");
+    } else {
+        let common_type = get_common_type(&t1, &t2);
+        let converted_lhs = convert_to(&typed_lhs, &common_type);
+        let converted_rhs = convert_to(&typed_rhs, &common_type);
+        
+        match kind {
+            BinaryExpressionKind::Rem if common_type == Type::Double => {
+                bail!("remainder operator cannot be applied to floating-point types");
+            }
+            BinaryExpressionKind::Mul | BinaryExpressionKind::Div | BinaryExpressionKind::Rem => {
+                Ok(Expression::Binary(BinaryExpression {
+                    kind: kind.clone(),
+                    lhs: Box::new(converted_lhs),
+                    rhs: Box::new(converted_rhs),
+                    _type: common_type,
+                }))
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+fn typecheck_equality(kind: &BinaryExpressionKind, lhs: &Expression, rhs: &Expression) -> Result<Expression> {
+    let typed_lhs = typecheck_and_convert(lhs)?;
+    let typed_rhs = typecheck_and_convert(rhs)?;
+
+    let t1 = get_type(&typed_lhs);
+    let t2 = get_type(&typed_rhs);
+
+    let common_type = if is_pointer_type(&t1) || is_pointer_type(&t2) {
+        get_common_ptr_type(&typed_lhs, &typed_rhs)?
+    } else {
+        get_common_type(&t1, &t2)
+    };
+
+    let converted_lhs = convert_to(&typed_lhs, &common_type);
+    let converted_rhs = convert_to(&typed_rhs, &common_type);
+
+    Ok(Expression::Binary(BinaryExpression {
+        kind: kind.clone(),
+        lhs: Box::new(converted_lhs),
+        rhs: Box::new(converted_rhs),
+        _type: Type::Int,
+    }))
+}
+
+fn typecheck_relational(kind: &BinaryExpressionKind, lhs: &Expression, rhs: &Expression) -> Result<Expression> {
+    let typed_lhs = typecheck_and_convert(lhs)?;
+    let typed_rhs = typecheck_and_convert(rhs)?;
+
+    let t1 = get_type(&typed_lhs);
+    let t2 = get_type(&typed_rhs);
+
+    let common_type = if is_arithmetic(&t1) && is_arithmetic(&t2) {
+        get_common_type(&t1, &t2)
+    } else if is_pointer_type(&t1) && t1 == t2 {
+        t2
+    } else {
+        bail!("Invalid operands for relational operator");
+    };
+
+    let converted_lhs = convert_to(&typed_lhs, &common_type);
+    let converted_rhs = convert_to(&typed_rhs, &common_type);
+
+    Ok(Expression::Binary(BinaryExpression {
+        kind: kind.clone(),
+        lhs: Box::new(converted_lhs),
+        rhs: Box::new(converted_rhs),
+        _type: Type::Int,
+    }))
+}
+
+fn typecheck_not(expr: &Expression) -> Result<Expression> {
+    let typed_expr = typecheck_and_convert(expr)?;
+
+    Ok(Expression::Unary(UnaryExpression {
+        kind: UnaryExpressionKind::Not,
+        expr: Box::new(typed_expr),
+        _type: Type::Int,
+    }))
+}
+
+fn typecheck_complement(expr: &Expression) -> Result<Expression> {
+    let typed_expr = typecheck_and_convert(expr)?;
+    
+    let t = get_type(&typed_expr);
+
+    if t == Type::Double || is_pointer_type(&t) {
+        bail!("Invalid operand for bitwise complement");
+    }
+
+    Ok(Expression::Unary(UnaryExpression {
+        kind: UnaryExpressionKind::Complement,
+        expr: Box::new(typed_expr),
+        _type: t,
+    }))
+}
+
+fn typecheck_negate(expr: &Expression) -> Result<Expression> {
+    let typed_expr = typecheck_and_convert(expr)?;
+
+    let t = get_type(&typed_expr);
+
+    match t {
+        Type::Pointer(_) => bail!("can't negate a ptr"),
+        _ => {
+            return Ok(Expression::Unary(UnaryExpression {
+                kind: UnaryExpressionKind::Negate,
+                expr: Box::new(typed_expr),
+                _type: t,
+            }));
+        }
+    }
+}
+
 fn typecheck_expr(expr: &Expression) -> Result<Expression> {
     match expr {
         Expression::Call(CallExpression { name, args, _type }) => {
@@ -758,128 +961,13 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             rhs,
             _type,
         }) => {
-            let typed_lhs = typecheck_and_convert(lhs)?;
-            let typed_rhs = typecheck_and_convert(rhs)?;
-
             match kind {
-                BinaryExpressionKind::And | BinaryExpressionKind::Or => {
-                    return Ok(Expression::Binary(BinaryExpression {
-                        kind: kind.clone(),
-                        lhs: Box::new(typed_lhs),
-                        rhs: Box::new(typed_rhs),
-                        _type: Type::Int,
-                    }));
-                }
-                BinaryExpressionKind::Equal | BinaryExpressionKind::NotEqual => {
-                    let t1 = get_type(&typed_lhs);
-                    let t2 = get_type(&typed_rhs);
-                    
-                    let common_type = match (t1.clone(), t2.clone()) {
-                        (Type::Pointer(ptr1), Type::Pointer(ptr2)) => {
-                            get_common_ptr_type(&typed_lhs, &typed_rhs)?
-                        }
-                        (Type::Pointer(ptr1), _) => {
-                            get_common_ptr_type(&typed_lhs, &typed_rhs)?
-                        }
-                        (_, Type::Pointer(ptr2)) => {
-                            get_common_ptr_type(&typed_lhs, &typed_rhs)?
-                        }
-                        _ => {
-                            get_common_type(&t1, &t2)
-                        }
-                    };
-
-                    let converted_lhs = convert_to(&typed_lhs, &common_type);
-                    let converted_rhs = convert_to(&typed_rhs, &common_type);
-
-                    let equality_expr = Expression::Binary(BinaryExpression {
-                        kind: kind.clone(),
-                        lhs: Box::new(converted_lhs),
-                        rhs: Box::new(converted_rhs),
-                        _type: Type::Int,
-                    });
-
-                    Ok(equality_expr)
-                }
-                _ => {
-                    let typed_lhs = typecheck_and_convert(lhs)?;
-                    let typed_rhs = typecheck_and_convert(rhs)?;
-
-                    let t1 = get_type(&typed_lhs);
-                    let t2 = get_type(&typed_rhs);
-
-                    if is_arithmetic(&t1) && is_arithmetic(&t2) {
-                        let common_type = get_common_type(&t1, &t2);
-
-                        let converted_lhs = convert_to(&typed_lhs, &common_type);
-                        let converted_rhs = convert_to(&typed_rhs, &common_type);
-
-                        match kind {
-                            BinaryExpressionKind::Add
-                            | BinaryExpressionKind::Sub
-                            | BinaryExpressionKind::Mul
-                            | BinaryExpressionKind::Div
-                            | BinaryExpressionKind::Rem => {
-                                match kind {
-                                    BinaryExpressionKind::Mul | BinaryExpressionKind::Div | BinaryExpressionKind::Rem => {
-                                        match (t1.clone(), t2.clone()) {
-                                            (Type::Pointer(_), _) => {
-                                                bail!("Pointer arithmetic");
-                                            }
-                                            (_, Type::Pointer(_)) => {
-                                                bail!("Pointer arithmetic");
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                                if let BinaryExpressionKind::Rem = kind {
-                                    if t1 == Type::Double {
-                                        bail!("Remainder operator on floating point type");
-                                    }
-                                    Ok(Expression::Binary(BinaryExpression {
-                                        kind: kind.clone(),
-                                        lhs: Box::new(converted_lhs),
-                                        rhs: Box::new(converted_rhs),
-                                        _type: common_type,
-                                    }))
-                                } else {
-                                    Ok(Expression::Binary(BinaryExpression {
-                                        kind: kind.clone(),
-                                        lhs: Box::new(converted_lhs),
-                                        rhs: Box::new(converted_rhs),
-                                        _type: common_type,
-                                    }))
-                                }
-                            }
-                            _ => Ok(Expression::Binary(BinaryExpression {
-                                kind: kind.clone(),
-                                lhs: Box::new(converted_lhs),
-                                rhs: Box::new(converted_rhs),
-                                _type: Type::Int,
-                            })),
-                        }
-                    } else if is_pointer_type(&t1) && is_integer_type(&t2) {
-                        let converted_e2 = convert_to(&typed_rhs, &Type::Long);
-                        return Ok(Expression::Binary(BinaryExpression {
-                            kind: kind.clone(),
-                            lhs: Box::new(typed_lhs),
-                            rhs: Box::new(converted_e2),
-                            _type: t1,
-                        }));
-                    } else if is_pointer_type(&t2) && is_integer_type(&t1) {
-                        let converted_e1 = convert_to(&typed_lhs, &Type::Long);
-                        return Ok(Expression::Binary(BinaryExpression {
-                            kind: kind.clone(),
-                            lhs: Box::new(converted_e1),
-                            rhs: Box::new(typed_rhs),
-                            _type: t2,
-                        }));
-                    } else {
-                        bail!("Invalid operands to binary expression");
-                    }
-                }
+                BinaryExpressionKind::And | BinaryExpressionKind::Or => typecheck_logical(kind, lhs, rhs),
+                BinaryExpressionKind::Add => typecheck_addition(lhs, rhs),
+                BinaryExpressionKind::Sub => typecheck_subtraction(lhs, rhs),
+                BinaryExpressionKind::Mul | BinaryExpressionKind::Div | BinaryExpressionKind::Rem => typecheck_multiplicative(kind, lhs, rhs),
+                BinaryExpressionKind::Equal | BinaryExpressionKind::NotEqual => typecheck_equality(kind, lhs, rhs),
+                BinaryExpressionKind::Less | BinaryExpressionKind::LessEqual | BinaryExpressionKind::Greater | BinaryExpressionKind::GreaterEqual => typecheck_relational(kind, lhs, rhs),
             }
         }
         Expression::Assign(AssignExpression {
@@ -957,41 +1045,10 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }).into(), _type: common_type }))
         }
         Expression::Unary(UnaryExpression { kind, expr, _type }) => {
-            let typed_inner = typecheck_and_convert(&expr)?;
             match kind {
-                UnaryExpressionKind::Not => Ok(Expression::Unary(UnaryExpression {
-                    kind: UnaryExpressionKind::Not,
-                    expr: Box::new(typed_inner),
-                    _type: Type::Int,
-                })),
-                _ => {
-                    if let UnaryExpressionKind::Complement = kind {
-                        let t = get_type(&typed_inner);
-                        match t.clone() {
-                            Type::Double => {
-                                bail!("Bitwise complement of floating point type");
-                            }
-                            Type::Pointer(_) => {
-                                bail!("Bitwise complement of pointer type");
-                            }
-                            _ => {}
-                        }
-                    }
-                    if let UnaryExpressionKind::Negate = kind {
-                        let t = get_type(&typed_inner);
-                        match t.clone() {
-                            Type::Pointer(_) => {
-                                bail!("Negation of pointer type");
-                            }
-                            _ => {}
-                        }
-                    }
-                    Ok(Expression::Unary(UnaryExpression {
-                        kind: kind.clone(),
-                        expr: Box::new(typed_inner.clone()),
-                        _type: get_type(&typed_inner),
-                    }))
-                }
+                UnaryExpressionKind::Complement => typecheck_complement(expr),
+                UnaryExpressionKind::Negate => typecheck_negate(expr),
+                UnaryExpressionKind::Not => typecheck_not(expr),
             }
         }
         Expression::Constant(ConstantExpression { value, _type }) => match value {
@@ -1022,8 +1079,6 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             _type,
         }) => {
             let typed_inner = typecheck_and_convert(expr)?;
-
-            println!("typed inner {:?}", typed_inner);
 
             let t1 = get_type(&typed_inner);
             let t2 = target_type;
@@ -1109,6 +1164,12 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _type: ptr_type.clone(),
             }))
         }
+        Expression::Literal(LiteralExpression { value, _type }) => {
+            Ok(Expression::Literal(LiteralExpression {
+                value: value.clone(),
+                _type: _type.clone(),
+            }))
+        },
         _ => todo!(),
     }
 }
@@ -1137,6 +1198,7 @@ fn convert_by_assignment(e: &Expression, target_type: &Type) -> Result<Expressio
     if is_null_ptr_constant(e) && is_pointer_type(target_type) {
         return Ok(convert_to(e, target_type));
     } else {
+        println!("got expression {:?}", e);
         bail!("cannot convert");
    }
 }
@@ -1177,12 +1239,10 @@ fn is_null_ptr_constant(e: &Expression) -> bool {
             Const::UInt(0) => true,
             Const::ULong(0) => true,
             _ => {
-                println!("got value {:?}", value);
                 false
             }
         },
         _ => {
-            println!("got expression {:?}", e);
             false
         }
     }
@@ -1236,7 +1296,6 @@ pub fn get_size_of_type(t: &Type) -> usize {
         Type::Double => 8,
         Type::Pointer(_) => 8,
         _ => {
-            println!("got type {:?}", t);
             unreachable!()
         }
     }
@@ -1332,7 +1391,8 @@ pub fn get_type(e: &Expression) -> Type {
         Expression::Variable(VariableExpression { value: _, _type }) => _type.clone(),
         Expression::Deref(DerefExpression { expr: _, _type }) => _type.clone(),
         Expression::AddrOf(AddrOfExpression { expr: _, _type }) => _type.clone(),
-        _ => todo!(),
+        Expression::Literal(LiteralExpression { value: _, _type }) => _type.clone(),
+        Expression::Subscript(SubscriptExpression { expr: _, index: _, _type }) => _type.clone(),
     }
 }
 
