@@ -188,10 +188,10 @@ impl Emit for AsmInstruction {
 
         match self {
             AsmInstruction::Lea { src, dst } => {
-                write!(f, "lea ")?;
-                src.emit(f, asm_type)?;
+                write!(f, "leaq ")?;
+                src.emit(f, &mut AsmType::Quadword)?;
                 write!(f, ", ")?;
-                dst.emit(f, asm_type)?;
+                dst.emit(f, &mut AsmType::Quadword)?;
                 writeln!(f)?;
             }
             AsmInstruction::Mov { src, dst, asm_type } => {
