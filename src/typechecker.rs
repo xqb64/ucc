@@ -1004,7 +1004,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             _type,
         }) => {
             match *lhs.clone() {
-                Expression::Variable(_) | Expression::Deref(_) => {
+                Expression::Variable(_) | Expression::Deref(_) | Expression::Subscript(_) => {
                     let typed_lhs = typecheck_and_convert(lhs)?;
        
                     // if typed_lhs is not an lvalue
