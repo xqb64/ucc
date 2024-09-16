@@ -4,12 +4,7 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement,
-        CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration,
-        DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement,
-        FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement,
-        StorageClass, Type, UnaryExpression, VariableDeclaration, VariableExpression,
-        WhileStatement,
+        AddrOfExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, StorageClass, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
     },
 };
 
@@ -356,19 +351,15 @@ fn resolve_exp(
             rhs,
             _type,
         }) => {
-            if let Expression::Variable(_) = &**lhs {
-                let resolved_lhs = resolve_exp(lhs, variable_map)?;
-                let resolved_rhs = resolve_exp(&rhs, variable_map)?;
+            let resolved_lhs = resolve_exp(lhs, variable_map)?;
+            let resolved_rhs = resolve_exp(&rhs, variable_map)?;
 
-                Ok(Expression::Assign(AssignExpression {
-                    op,
-                    lhs: resolved_lhs.into(),
-                    rhs: resolved_rhs.into(),
-                    _type,
-                }))
-            } else {
-                bail!("left-hand side of assignment must be a variable");
-            }
+            Ok(Expression::Assign(AssignExpression {
+                op,
+                lhs: resolved_lhs.into(),
+                rhs: resolved_rhs.into(),
+                _type,
+            }))
         }
         Expression::Variable(var) => {
             let variable = variable_map
@@ -460,7 +451,22 @@ fn resolve_exp(
                 _type,
             }))
         }
-        _ => todo!(),
+        Expression::AddrOf(AddrOfExpression { expr, _type }) => {
+            let resolved_expr = resolve_exp(&expr, variable_map)?;
+
+            Ok(Expression::AddrOf(AddrOfExpression {
+                expr: resolved_expr.into(),
+                _type,
+            }))
+        }
+        Expression::Deref(DerefExpression { expr, _type }) => {
+            let resolved_expr = resolve_exp(&expr, variable_map)?;
+
+            Ok(Expression::Deref(DerefExpression {
+                expr: resolved_expr.into(),
+                _type,
+            }))
+        }
     }
 }
 

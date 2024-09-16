@@ -264,7 +264,10 @@ impl Parser {
         _type: Type,
         storage_class: Option<StorageClass>,
     ) -> Result<BlockItem> {
-        self.current_target_type = Some(_type.clone());
+        self.current_target_type = Some(match _type.clone() {
+            Type::Func { params: _, ret } => *ret,
+            _ => unreachable!(),
+        });
 
         let body = if self.check(&Token::Semicolon) {
             self.consume(&Token::Semicolon)?;
@@ -726,7 +729,7 @@ impl Parser {
                     }
                 };
                 self.consume(&Token::RParen)?;
-                let inner_expr = self.parse_expression()?;
+                let inner_expr = self.unary()?;
 
                 return Ok(Expression::Cast(CastExpression {
                     target_type,
