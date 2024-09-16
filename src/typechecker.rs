@@ -901,6 +901,33 @@ fn typecheck_negate(expr: &Expression) -> Result<Expression> {
     }
 }
 
+fn typecheck_subscript(expr: &Expression, index: &Expression) -> Result<Expression> {
+    let typed_e1 = typecheck_and_convert(expr)?;
+    let typed_e2 = typecheck_and_convert(index)?;
+
+    let t1 = get_type(&typed_e1);
+    let t2 = get_type(&typed_e2);
+
+    let (ptr_type, converted_lhs, converted_rhs) = if is_pointer_type(&t1) && is_integer_type(&t2) {
+        (t1, typed_e1.clone(), convert_to(&typed_e2, &Type::Long))
+    } else if is_pointer_type(&t2) && is_integer_type(&t1) {
+        (t2, convert_to(&typed_e1, &Type::Long), typed_e2.clone())
+    } else {
+        bail!("Invalid operands for subscript");
+    };
+
+    let result_type = match ptr_type {
+        Type::Pointer(ptr_type) => *ptr_type,
+        _ => unreachable!(),
+    };
+
+    Ok(Expression::Subscript(SubscriptExpression {
+        expr: Box::new(converted_lhs),
+        index: Box::new(converted_rhs),
+        _type: result_type,
+    }))
+}
+
 fn typecheck_expr(expr: &Expression) -> Result<Expression> {
     match expr {
         Expression::Call(CallExpression { name, args, _type }) => {
@@ -1140,30 +1167,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 }
             }
         }
-        Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
-            let mut typed_e1 = typecheck_and_convert(expr)?;
-            let mut typed_e2 = typecheck_and_convert(index)?;
-
-            let t1 = get_type(&typed_e1);
-            let t2 = get_type(&typed_e2);
-
-            let ptr_type: Type;
-            if is_pointer_type(&t1) && is_integer_type(&t2) {
-                ptr_type = t1.clone();
-                typed_e2 = convert_to(&typed_e1, &Type::Long);
-            } else if is_integer_type(&t1) && is_pointer_type(&t2) {
-                ptr_type = t2.clone();
-                typed_e1 = convert_to(&typed_e2, &Type::Long);
-            } else {
-                bail!("subscript must have integer and pointer operands");
-            }
-
-            Ok(Expression::Subscript(SubscriptExpression {
-                expr: Box::new(typed_e1),
-                index: Box::new(typed_e2),
-                _type: ptr_type.clone(),
-            }))
-        }
+        Expression::Subscript(SubscriptExpression { expr, index, _type }) => typecheck_subscript(expr, index),
         Expression::Literal(LiteralExpression { value, _type }) => {
             Ok(Expression::Literal(LiteralExpression {
                 value: value.clone(),
