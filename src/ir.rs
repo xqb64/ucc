@@ -884,14 +884,14 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
         if let IdentifierAttrs::StaticAttr {
             initial_value,
             global,
-        } = entry.attrs
+        } = entry.attrs.clone()
         {
             match initial_value {
                 InitialValue::Initial(init) => {
                     tacky_defs.push(IRNode::StaticVariable(IRStaticVariable {
                         name: name.clone(),
                         global,
-                        init,
+                        init: init[0],
                         _type: entry._type.clone(),
                     }))
                 }

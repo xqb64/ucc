@@ -91,6 +91,7 @@ impl Emit for AsmStaticVariable {
                 0.0 => writeln!(f, "\t.section .bss")?,
                 _ => writeln!(f, "\t.section .data")?,
             },
+            _ => todo!(),
         }
 
         if self.global {
@@ -128,6 +129,7 @@ impl Emit for AsmStaticVariable {
             StaticInit::Double(n) => match n {
                 _ => writeln!(f, "\t.quad {}", n.to_bits())?,
             },
+            _ => todo!(),
         }
 
         Ok(())
@@ -148,6 +150,7 @@ impl Emit for AsmStaticConstant {
             StaticInit::Uint(n) => writeln!(f, "\t.long {}", n)?,
             StaticInit::Ulong(n) => writeln!(f, "\t.quad {}", n)?,
             StaticInit::Double(n) => writeln!(f, "\t.quad {}", n.to_bits())?,
+            _ => todo!(),
         }
 
         Ok(())
