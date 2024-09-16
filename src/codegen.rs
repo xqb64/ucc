@@ -1188,6 +1188,7 @@ impl Codegen for IRInstruction {
                     AsmInstruction::Cvtsi2sd { asm_type: get_asm_type(src), src: src.codegen().into(), dst: dst.codegen().into() }
                 ])
             }
+            _ => todo!(),
         }
     }
 }

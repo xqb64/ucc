@@ -1057,6 +1057,7 @@ pub fn get_size_of_type(t: &Type) -> usize {
         Type::Long => 8,
         Type::Ulong => 8,
         Type::Double => 8,
+        Type::Pointer(_) => 8,
         _ => {
             println!("got type {:?}", t);
             unreachable!()
@@ -1071,6 +1072,7 @@ pub fn get_signedness(t: &Type) -> bool {
         Type::Long => true,
         Type::Ulong => false,
         Type::Double => true,
+        Type::Pointer(_) => false,
         _ => unreachable!(),
     }
 }
