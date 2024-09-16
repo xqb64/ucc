@@ -96,6 +96,9 @@ impl Typecheck for VariableDeclaration {
                 let mut initial_value;
 
                 if let Some(Expression::Constant(konst)) = &self.init {
+                    if is_pointer_type(&self._type) && !is_null_ptr_constant(&self.init.as_ref().unwrap()) {
+                        bail!("cannot initialize pointer with constant");
+                    }
                     initial_value = match konst.value {
                         Const::Int(_) => {
                             InitialValue::Initial(const2type(&konst.value, &self._type))
