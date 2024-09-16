@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, StorageClass, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, Statement, StorageClass, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
     },
 };
 
@@ -99,7 +99,10 @@ impl Resolve for VariableDeclaration {
                     );
 
                     if self.init.is_some() {
-                        self.init = Some(resolve_exp(&self.init.clone().unwrap(), variable_map)?);
+                        self.init = Some(Initializer::Single(resolve_exp(match &self.init {
+                            Some(Initializer::Single(expr)) => &expr,
+                            _ => unreachable!(),
+                        }, variable_map)?));
                     }
 
                     Ok(BlockItem::Declaration(Declaration::Variable(
@@ -467,6 +470,7 @@ fn resolve_exp(
                 _type,
             }))
         }
+        _ => todo!(),
     }
 }
 

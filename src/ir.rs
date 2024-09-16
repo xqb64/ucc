@@ -1,7 +1,7 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, Statement, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
     },
     typechecker::{
         get_signedness, get_size_of_type, get_type, IdentifierAttrs, InitialValue, StaticInit,
@@ -490,6 +490,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                 ExpResult::DereferencedPointer(ptr) => ExpResult::PlainOperand(ptr),
             }
         }
+        _ => todo!(),
     }
 }
 
@@ -835,7 +836,7 @@ impl Irfy for VariableDeclaration {
     fn irfy(&self) -> Option<IRNode> {
         let mut instructions = vec![];
 
-        if let Some(init) = &self.init {
+        if let Some(Initializer::Single(init)) = &self.init {
             let result = emit_tacky_and_convert(init.clone(), &mut instructions);
             instructions.push(IRInstruction::Copy {
                 src: result,

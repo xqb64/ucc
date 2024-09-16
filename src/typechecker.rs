@@ -1,7 +1,7 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, ProgramStatement, ReturnStatement, Statement, StorageClass, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, Statement, StorageClass, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement
     },
 };
 use anyhow::{bail, Ok, Result};
@@ -95,8 +95,11 @@ impl Typecheck for VariableDeclaration {
             true => {
                 let mut initial_value;
 
-                if let Some(Expression::Constant(konst)) = &self.init {
-                    if is_pointer_type(&self._type) && !is_null_ptr_constant(&self.init.as_ref().unwrap()) {
+                if let Some(Initializer::Single(Expression::Constant(konst))) = &self.init {
+                    if is_pointer_type(&self._type) && !is_null_ptr_constant(match &self.init {
+                        Some(Initializer::Single(expr)) => expr,
+                        _ => unreachable!(),
+                    }) {
                         bail!("cannot initialize pointer with constant");
                     }
                     initial_value = match konst.value {
@@ -269,7 +272,7 @@ impl Typecheck for VariableDeclaration {
                     .storage_class
                     .is_some_and(|sc| sc == StorageClass::Static)
                 {
-                    if let Some(Expression::Constant(konst)) = &self.init {
+                    if let Some(Initializer::Single(Expression::Constant(konst))) = &self.init {
                         match konst.value {
                             Const::Int(i) => {
                                 initial_value = InitialValue::Initial(StaticInit::Int(i));
@@ -327,7 +330,10 @@ impl Typecheck for VariableDeclaration {
                         .insert(self.name.clone(), symbol);
 
                     let typechecked_init = if self.init.is_some() {
-                        Some(typecheck_expr(self.init.as_ref().unwrap())?)
+                        Some(typecheck_expr(match &self.init {
+                            Some(Initializer::Single(expr)) => expr,
+                            _ => unreachable!(),
+                        })?)
                     } else {
                         None
                     };
@@ -335,7 +341,7 @@ impl Typecheck for VariableDeclaration {
                     let left_type = self._type.clone();
 
                     let converted_right = if typechecked_init.is_some() {
-                        Some(convert_by_assignment(&typechecked_init.as_ref().unwrap(), &left_type)?)
+                        Some(Initializer::Single(convert_by_assignment(&typechecked_init.as_ref().unwrap(), &left_type)?))
                     } else {
                         None
                     };
@@ -955,6 +961,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 }
             }
         }
+        _ => todo!(),
     }
 }
 
@@ -1128,6 +1135,7 @@ pub fn get_type(e: &Expression) -> Type {
         Expression::Variable(VariableExpression { value: _, _type }) => _type.clone(),
         Expression::Deref(DerefExpression { expr: _, _type }) => _type.clone(),
         Expression::AddrOf(AddrOfExpression { expr: _, _type }) => _type.clone(),
+        _ => todo!(),
     }
 }
 

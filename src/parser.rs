@@ -134,7 +134,7 @@ impl Parser {
                 println!("self.current: {:?}", self.current);
 
                 let init = if self.is_next(&[Token::Equal]) {
-                    let expr = Some(self.parse_expression()?);
+                    let expr = Some(Initializer::Single(self.parse_expression()?));
                     self.consume(&Token::Semicolon)?;
                     expr
                 } else if self.is_next(&[Token::Semicolon]) {
@@ -168,6 +168,10 @@ impl Parser {
                 let params = self.parse_param_list()?;
                 Ok(Declarator::Func(params, Box::new(simple_declarator)))    
             }
+            Token::LBracket => {
+                let decl = self.parse_array_decl_suffix(&simple_declarator)?;
+                Ok(decl)
+            }
             _ => Ok(simple_declarator),
         }
     }
@@ -188,6 +192,34 @@ impl Parser {
         }
     }
 
+    fn parse_array_decl_suffix(&mut self, base_decl: &Declarator) -> Result<Declarator> {
+        // Get the next array dimension
+        let dim = self.parse_dim()?;
+        let mut new_decl = Declarator::Array(Box::new(base_decl.clone()), dim);
+    
+        if let Some(Token::LBracket) = self.current.as_ref() {
+            // There's another dimension
+            new_decl = self.parse_array_decl_suffix(&new_decl)?;
+        }
+    
+        Ok(new_decl)
+    }
+
+    fn parse_dim(&mut self) -> Result<usize> {
+        self.consume(&Token::LBracket).unwrap();
+        let dim = self.consume(&Token::Constant(Const::Int(0)))?.unwrap();
+        self.consume(&Token::RBracket).unwrap();
+        Ok(match dim {
+            Token::Constant(Const::Int(n)) => n as usize,
+            Token::Constant(Const::Long(n)) => n as usize,
+            Token::Constant(Const::UInt(n)) => n as usize,
+            Token::Constant(Const::ULong(n)) => n as usize,
+            _ => {
+                println!("got token: {:?}", dim);
+                unreachable!()
+            }
+        })
+    }
     fn parse_param_list(&mut self) -> Result<Vec<ParamInfo>> {
         let in_front_of_us = self.lookahead_until(&Token::RParen);
 
@@ -253,6 +285,10 @@ impl Parser {
                     }
                     _ => bail!("Can't apply additional type derivations to a function type."),
                 }
+            }
+            Declarator::Array(inner, size) => {
+                let derived_type = Type::Array { element: Box::new(base_type.clone()), size: *size };
+                return self.process_declarator(inner, &derived_type);
             }
         }
     }
@@ -568,6 +604,12 @@ impl Parser {
         let result = self.or()?;
         if self.is_next(&[Token::QuestionMark]) {
             let then_expr = self.parse_expression()?;
+
+            // hacK:
+            if let Expression::Literal(_) = then_expr {
+                bail!("expected expression, got literal");
+            }
+
             self.consume(&Token::Colon)?;
             let else_expr = self.parse_expression()?;
             Ok(Expression::Conditional(ConditionalExpression {
@@ -789,6 +831,14 @@ impl Parser {
                     args,
                     _type: Type::Dummy,
                 });
+            } else if self.is_next(&[Token::LBracket]) {
+                let index = self.parse_expression()?;
+                self.consume(&Token::RBracket)?;
+                expr = Expression::Subscript(SubscriptExpression {
+                    expr: expr.into(),
+                    index: index.into(),
+                    _type: Type::Dummy,
+                });
             } else {
                 break;
             }
@@ -812,6 +862,23 @@ impl Parser {
                 Token::Identifier(var) => self.parse_variable(var),
                 _ => unreachable!(),
             }
+        } else if self.is_next(&[Token::LBrace]) {
+            println!("HERE IN LITERAL:");
+            let mut inits = vec![];
+            loop {
+                if self.is_next(&[Token::RBrace]) {
+                    break;
+                }
+                inits.push(Initializer::Single(self.parse_expression()?));
+                // fix up the trailing comma case
+                if self.is_next(&[Token::Comma]) {
+                    continue;
+                } 
+            }
+            if inits.is_empty() {
+                bail!("empty compound literal");
+            }
+            Ok(Expression::Literal(LiteralExpression { value: Initializer::Compound(inits).into(), _type: Type::Dummy })) 
         } else {
             println!("got token: {:?}, {:?}", self.current, self.previous);
             bail!("expected primary");
@@ -843,7 +910,7 @@ impl Parser {
             Token::Star => {
                 self.consume(&Token::Star)?;
                 let inner = match self.current.as_ref().unwrap() {
-                    Token::Star | Token::LParen => self.parse_abstract_declarator()?,
+                    Token::Star | Token::LParen | Token::LBracket => self.parse_abstract_declarator()?,
                     _ => AbstractDeclarator::AbstractBase,
                 };
                 Ok(AbstractDeclarator::AbstractPointer(Box::new(inner)))
@@ -853,10 +920,20 @@ impl Parser {
     }
 
     fn parse_direct_abstract_declarator(&mut self) -> Result<AbstractDeclarator> {
-        self.consume(&Token::LParen)?;
-        let decl = self.parse_abstract_declarator()?;
-        self.consume(&Token::RParen)?;
-        Ok(decl)
+        match self.current.as_ref().unwrap() {
+            Token::LParen => {
+                self.consume(&Token::LParen)?;
+                let inner = self.parse_abstract_declarator()?;
+                self.consume(&Token::RParen)?;
+                
+                if let Token::LBracket = self.current.as_ref().unwrap() {
+                    return self.parse_abstract_array_decl_suffix(&inner);
+                } else {
+                    return Ok(inner);
+                }
+            }
+            _ => self.parse_abstract_array_decl_suffix(&AbstractDeclarator::AbstractBase),
+        }
     }
 
     fn process_abstract_declarator(&mut self, decl: &AbstractDeclarator, base_type: &Type) -> Type {
@@ -866,8 +943,27 @@ impl Parser {
                 let derived_type = Type::Pointer(base_type.clone().into());
                 return self.process_abstract_declarator(inner, &derived_type);
             }
+            AbstractDeclarator::AbstractArray(inner, size) => {
+                let derived_type = Type::Array {
+                    element: Box::new(base_type.clone()),
+                    size: *size,
+                };
+                return self.process_abstract_declarator(inner, &derived_type);
+            }
         }
     }
+
+    fn parse_abstract_array_decl_suffix(&mut self, base_decl: &AbstractDeclarator) -> Result<AbstractDeclarator> {
+        let dim = self.parse_dim()?;
+        let new_decl = AbstractDeclarator::AbstractArray(Box::new(base_decl.clone()), dim);
+        
+        if let Some(Token::LBracket) = self.current {
+            self.parse_abstract_array_decl_suffix(&new_decl)
+        } else {
+            Ok(new_decl)
+        }
+    }
+    
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -886,7 +982,7 @@ pub enum Declaration {
 pub struct VariableDeclaration {
     pub name: String,
     pub _type: Type,
-    pub init: Option<Expression>,
+    pub init: Option<Initializer>,
     pub storage_class: Option<StorageClass>,
     pub is_global: bool,
 }
@@ -900,6 +996,7 @@ pub enum Type {
     Double,
     Func { params: Vec<Type>, ret: Box<Type> },
     Pointer(Box<Type>),
+    Array { element: Box<Type>, size: usize },
     Dummy,
 }
 
@@ -1004,6 +1101,7 @@ pub struct ContinueStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Constant(ConstantExpression),
+    Literal(LiteralExpression),
     Variable(VariableExpression),
     Unary(UnaryExpression),
     Binary(BinaryExpression),
@@ -1013,6 +1111,26 @@ pub enum Expression {
     Cast(CastExpression),
     Deref(DerefExpression),
     AddrOf(AddrOfExpression),
+    Subscript(SubscriptExpression),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LiteralExpression {
+    pub value: Box<Initializer>,
+    pub _type: Type,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Initializer {
+    Single(Expression),
+    Compound(Vec<Initializer>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubscriptExpression {
+    pub expr: Box<Expression>,
+    pub index: Box<Expression>,
+    pub _type: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1113,6 +1231,7 @@ enum Declarator {
     Ident(String),
     Pointer(Box<Declarator>),
     Func(Vec<ParamInfo>, Box<Declarator>),
+    Array(Box<Declarator>, usize),
 }
 
 type ParamInfo = (Type, Box<Declarator>);
@@ -1120,5 +1239,6 @@ type ParamInfo = (Type, Box<Declarator>);
 #[derive(Debug, Clone, PartialEq)]
 enum AbstractDeclarator {
     AbstractPointer(Box<AbstractDeclarator>),
+    AbstractArray(Box<AbstractDeclarator>, usize),
     AbstractBase,
 }

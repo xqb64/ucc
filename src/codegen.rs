@@ -1501,7 +1501,7 @@ impl Fixup for AsmFunction {
                     }
                 }
                 AsmInstruction::Mov { src, dst, asm_type } => match (src.clone(), dst.clone()) {
-                    (AsmOperand::Stack(src_n), AsmOperand::Memory(reg, dst_n)) => {
+                    (AsmOperand::Stack(src_n), AsmOperand::Memory(_reg, _dst_n)) => {
                         match asm_type {
                             AsmType::Longword | AsmType::Quadword => {
                                 instructions.extend(vec![
@@ -1533,7 +1533,7 @@ impl Fixup for AsmFunction {
                             }
                         }
                     }
-                    (AsmOperand::Memory(reg, src_n), AsmOperand::Stack(dst_n)) => {
+                    (AsmOperand::Memory(_reg, _src_n), AsmOperand::Stack(_dst_n)) => {
                         match asm_type {
                             AsmType::Longword | AsmType::Quadword => {
                                 instructions.extend(vec![
@@ -1629,7 +1629,7 @@ impl Fixup for AsmFunction {
                             }
                         }
                     }
-                    (AsmOperand::Data(src), AsmOperand::Memory(reg, dst_n)) => {
+                    (AsmOperand::Data(src), AsmOperand::Memory(_reg, _dst_n)) => {
                         match asm_type {
                             AsmType::Longword | AsmType::Quadword => {
                                 instructions.extend(vec![
