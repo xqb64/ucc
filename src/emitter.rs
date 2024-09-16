@@ -187,6 +187,13 @@ impl Emit for AsmInstruction {
         }
 
         match self {
+            AsmInstruction::Lea { src, dst } => {
+                write!(f, "lea ")?;
+                src.emit(f, asm_type)?;
+                write!(f, ", ")?;
+                dst.emit(f, asm_type)?;
+                writeln!(f)?;
+            }
             AsmInstruction::Mov { src, dst, asm_type } => {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
@@ -435,8 +442,37 @@ impl Emit for AsmOperand {
             AsmOperand::Stack(n) => write!(f, "{}(%rbp)", n)?,
             AsmOperand::Pseudo(_) => unreachable!(),
             AsmOperand::Data(identifier) => write!(f, "{}(%rip)", identifier)?,
+            AsmOperand::Memory(reg, n) => write!(f, "{}({})", n, reg)?,
         }
         Ok(())
+    }
+}
+
+impl std::fmt::Display for AsmRegister {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AsmRegister::AX => write!(f, "%rax"),
+            AsmRegister::DX => write!(f, "%rdx"),
+            AsmRegister::CX => write!(f, "%rcx"),
+            AsmRegister::DI => write!(f, "%rdi"),
+            AsmRegister::SI => write!(f, "%rsi"),
+            AsmRegister::R8 => write!(f, "%r8"),
+            AsmRegister::R9 => write!(f, "%r9"),
+            AsmRegister::R10 => write!(f, "%r10"),
+            AsmRegister::R11 => write!(f, "%r11"),
+            AsmRegister::BP => write!(f, "%rbp"),
+            AsmRegister::SP => write!(f, "%rsp"),
+            AsmRegister::XMM0 => write!(f, "%xmm0"),
+            AsmRegister::XMM1 => write!(f, "%xmm1"),
+            AsmRegister::XMM2 => write!(f, "%xmm2"),
+            AsmRegister::XMM3 => write!(f, "%xmm3"),
+            AsmRegister::XMM4 => write!(f, "%xmm4"),
+            AsmRegister::XMM5 => write!(f, "%xmm5"),
+            AsmRegister::XMM6 => write!(f, "%xmm6"),
+            AsmRegister::XMM7 => write!(f, "%xmm7"),
+            AsmRegister::XMM14 => write!(f, "%xmm14"),
+            AsmRegister::XMM15 => write!(f, "%xmm15"),
+        }
     }
 }
 
@@ -454,6 +490,7 @@ impl Emit for AsmRegister {
                 AsmRegister::R10 => write!(f, "%r10d")?,
                 AsmRegister::R11 => write!(f, "%r11d")?,
                 AsmRegister::SP => write!(f, "%esp")?,
+                AsmRegister::BP => write!(f, "%ebp")?,
                 AsmRegister::XMM0 => write!(f, "%xmm0")?,
                 AsmRegister::XMM1 => write!(f, "%xmm1")?,
                 AsmRegister::XMM2 => write!(f, "%xmm2")?,
@@ -475,6 +512,7 @@ impl Emit for AsmRegister {
                 AsmRegister::R9 => write!(f, "%r9")?,
                 AsmRegister::R10 => write!(f, "%r10")?,
                 AsmRegister::R11 => write!(f, "%r11")?,
+                AsmRegister::BP => write!(f, "%rbp")?,
                 AsmRegister::SP => write!(f, "%rsp")?,
                 AsmRegister::XMM0 => write!(f, "%xmm0")?,
                 AsmRegister::XMM1 => write!(f, "%xmm1")?,
@@ -507,6 +545,7 @@ impl Emit for AsmRegister {
                 AsmRegister::R9 => write!(f, "%r9")?,
                 AsmRegister::R10 => write!(f, "%r10")?,
                 AsmRegister::R11 => write!(f, "%r11")?,
+                AsmRegister::BP => write!(f, "%rbp")?,
                 AsmRegister::SP => write!(f, "%rsp")?,
             }
         }

@@ -118,6 +118,10 @@ pub enum AsmInstruction {
         condition: ConditionCode,
         operand: AsmOperand,
     },
+    Lea {
+        src: AsmOperand,
+        dst: AsmOperand,
+    },
     Label(String),
     AllocateStack(usize),
     DeallocateStack(usize),
@@ -144,6 +148,7 @@ pub enum ConditionCode {
 pub enum AsmOperand {
     Imm(i64),
     Pseudo(String),
+    Memory(AsmRegister, i32),
     Stack(i32),
     Register(AsmRegister),
     Data(String),
@@ -160,6 +165,7 @@ pub enum AsmRegister {
     R9,
     R10,
     R11,
+    BP,
     SP,
     XMM0,
     XMM1,
@@ -239,6 +245,7 @@ impl Codegen for IRStaticVariable {
                 Type::Uint => 4,
                 Type::Ulong => 8,
                 Type::Double => 8,
+                Type::Pointer(_) => 8,
                 _ => unreachable!(),
             },
         })
@@ -1188,7 +1195,23 @@ impl Codegen for IRInstruction {
                     AsmInstruction::Cvtsi2sd { asm_type: get_asm_type(src), src: src.codegen().into(), dst: dst.codegen().into() }
                 ])
             }
-            _ => todo!(),
+            IRInstruction::Load { src_ptr, dst } => {
+                AsmNode::Instructions(vec![
+                    AsmInstruction::Mov { asm_type: AsmType::Quadword, src: src_ptr.codegen().into(), dst: AsmOperand::Register(AsmRegister::AX) },
+                    AsmInstruction::Mov { asm_type: get_asm_type(dst), src: AsmOperand::Memory(AsmRegister::AX, 0), dst: dst.codegen().into() },
+                ])
+            }
+            IRInstruction::Store { src, dst_ptr } => {
+                AsmNode::Instructions(vec![
+                    AsmInstruction::Mov { asm_type: AsmType::Quadword, src: dst_ptr.codegen().into(), dst: AsmOperand::Register(AsmRegister::AX) },
+                    AsmInstruction::Mov { asm_type: get_asm_type(src), src: src.codegen().into(), dst: AsmOperand::Memory(AsmRegister::AX, 0) },
+                ])
+            }
+            IRInstruction::GetAddress { src, dst } => {
+                AsmNode::Instructions(vec![
+                    AsmInstruction::Lea { src: src.codegen().into(), dst: dst.codegen().into() }
+                ])
+            }
         }
     }
 }
@@ -1304,6 +1327,10 @@ impl ReplacePseudo for AsmInstruction {
                 src: src.replace_pseudo(),
                 dst: dst.replace_pseudo(),
             },
+            AsmInstruction::Lea { src, dst } => AsmInstruction::Lea {
+                src: src.replace_pseudo(),
+                dst: dst.replace_pseudo(),
+            },
             _ => self.clone(),
         }
     }
@@ -1375,6 +1402,7 @@ impl ReplacePseudo for AsmOperand {
             AsmOperand::Stack(_) => self.clone(),
             AsmOperand::Register(_) => self.clone(),
             AsmOperand::Data(_) => self.clone(),
+            _ => self.clone(),
         }
     }
 }
@@ -1454,6 +1482,24 @@ impl Fixup for AsmFunction {
 
         for instr in &mut self.instructions {
             match instr {
+                AsmInstruction::Lea { src, dst } => {
+                    // destination of Lea must be a register
+                    match dst {
+                        AsmOperand::Stack(_) | AsmOperand::Memory(_, _) | AsmOperand::Data(_) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Lea {
+                                    src: src.clone(),
+                                    dst: AsmOperand::Register(AsmRegister::R11),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Quadword,
+                                    src: AsmOperand::Register(AsmRegister::R11),
+                                    dst: dst.clone(),
+                                }]);
+                        }
+                        _ => instructions.push(instr.clone()),
+                    }
+                }
                 AsmInstruction::Mov { src, dst, asm_type } => match (src, dst) {
                     (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
                         match asm_type {
@@ -2595,6 +2641,7 @@ fn get_asm_type(value: &IRValue) -> AsmType {
             Type::Uint => AsmType::Longword,
             Type::Ulong => AsmType::Quadword,
             Type::Double => AsmType::Double,
+            Type::Pointer(_) => AsmType::Quadword,
             _ => unreachable!(),
         },
     }
@@ -2616,6 +2663,7 @@ pub fn build_asm_symbol_table() {
                     Type::Uint => AsmType::Longword,
                     Type::Ulong => AsmType::Quadword,
                     Type::Double => AsmType::Double,
+                    Type::Pointer(_) => AsmType::Quadword,
                     _ => panic!("Unsupported type for static variable"),
                 };
                 AsmSymtabEntry::Object {
@@ -2631,6 +2679,7 @@ pub fn build_asm_symbol_table() {
                     Type::Uint => AsmType::Longword,
                     Type::Ulong => AsmType::Quadword,
                     Type::Double => AsmType::Double,
+                    Type::Pointer(_) => AsmType::Quadword,
                     _ => {
                         panic!("Unsupported type for static backend_symtab: {}", identifier);
                     }
