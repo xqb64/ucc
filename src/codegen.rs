@@ -1629,6 +1629,38 @@ impl Fixup for AsmFunction {
                             }
                         }
                     }
+                    (AsmOperand::Data(src), AsmOperand::Memory(reg, dst_n)) => {
+                        match asm_type {
+                            AsmType::Longword | AsmType::Quadword => {
+                                instructions.extend(vec![
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Data(src.clone()),
+                                        dst: AsmOperand::Register(AsmRegister::R9),
+                                    },
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Register(AsmRegister::R9),
+                                        dst: dst.clone(),
+                                    },
+                                ]);
+                            }
+                            AsmType::Double => {
+                                instructions.extend(vec![
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Data(src.clone()),
+                                        dst: AsmOperand::Register(AsmRegister::XMM14),
+                                    },
+                                    AsmInstruction::Mov {
+                                        asm_type: *asm_type,
+                                        src: AsmOperand::Register(AsmRegister::XMM14),
+                                        dst: dst.clone(),
+                                    },
+                                ]);        
+                            }
+                        }
+                    }
                     (AsmOperand::Stack(src_n), AsmOperand::Data(dst)) => {
                         match asm_type {
                             AsmType::Longword | AsmType::Quadword => {
