@@ -169,27 +169,29 @@ impl Typecheck for VariableDeclaration {
                 )))
             }
             false => {
-                let initial_value;
-                if self
-                    .storage_class
-                    .is_some_and(|sc| sc == StorageClass::Extern)
-                {
-                    if self.init.is_some() {
-                        bail!(
-                            "Extern local variable {} cannot have an initializer",
-                            self.name
-                        );
-                    }
+                match self.storage_class {
+                    Some(StorageClass::Extern) => {
+                        if self.init.is_some() {
+                            bail!("Extern variable with initializer");
+                        }
 
-                    if SYMBOL_TABLE.lock().unwrap().contains_key(&self.name) {
-                        let old_decl = SYMBOL_TABLE
-                            .lock()
-                            .unwrap()
-                            .get(&self.name)
-                            .cloned()
-                            .unwrap();
-                        if old_decl._type != self._type {
-                            bail!("Function {} redeclared as variable", self.name);
+                        // if an extern local var is already in the symbol table, don't need to add it again
+                        let symbol = SYMBOL_TABLE.lock().unwrap().get(&self.name).cloned();
+
+                        match symbol {
+                            Some(sym) => {
+                                if sym._type != self._type {
+                                    bail!("Variable redeclaration with different type");
+                                }
+                            }
+                            None => {
+                                let symbol = Symbol {
+                                    _type: self._type.clone(),
+                                    attrs: IdentifierAttrs::LocalAttr,
+                                };
+
+                                SYMBOL_TABLE.lock().unwrap().insert(self.name.clone(), symbol);
+                            }
                         }
 
                         Ok(BlockItem::Declaration(Declaration::Variable(
@@ -201,20 +203,23 @@ impl Typecheck for VariableDeclaration {
                                 is_global: self.is_global,
                             },
                         )))
-                    } else {
+                    }
+                    Some(StorageClass::Static) => {
+                        let zero_init = InitialValue::NoInitializer; // Placeholder, adjust if needed
+                        let static_init = match &self.init {
+                            Some(init) => to_static_init(init.clone(), &self._type)?,
+                            None => zero_init,
+                        };
+        
                         let symbol = Symbol {
                             _type: self._type.clone(),
                             attrs: IdentifierAttrs::StaticAttr {
-                                initial_value: InitialValue::NoInitializer,
-                                global: true,
+                                initial_value: static_init,
+                                global: false,
                             },
                         };
-
-                        SYMBOL_TABLE
-                            .lock()
-                            .unwrap()
-                            .insert(self.name.clone(), symbol);
-
+                        SYMBOL_TABLE.lock().unwrap().insert(self.name.clone(), symbol);
+        
                         Ok(BlockItem::Declaration(Declaration::Variable(
                             VariableDeclaration {
                                 _type: self._type.clone(),
@@ -225,82 +230,24 @@ impl Typecheck for VariableDeclaration {
                             },
                         )))
                     }
-                } else if self
-                    .storage_class
-                    .is_some_and(|sc| sc == StorageClass::Static)
-                {
-                    if let Some(Initializer::Single(Expression::Constant(konst))) = &self.init {
-                        match konst.value {
-                            Const::Int(i) => {
-                                initial_value = InitialValue::Initial(vec![StaticInit::Int(i)]);
-                            }
-                            Const::Long(l) => {
-                                initial_value = InitialValue::Initial(vec![StaticInit::Long(l)]);
-                            }
-                            Const::UInt(u) => {
-                                initial_value = InitialValue::Initial(vec![StaticInit::Uint(u)]);
-                            }
-                            Const::ULong(ul) => {
-                                initial_value = InitialValue::Initial(vec![StaticInit::Ulong(ul)]);
-                            }
-                            Const::Double(d) => {
-                                initial_value = InitialValue::Initial(vec![StaticInit::Double(d)]);
-                            }
-                        }
-                    } else if self.init.is_none() {
-                        initial_value = InitialValue::Initial(vec![StaticInit::Int(0)]);
-                    } else {
-                        bail!("no constant initializer");
+                    None => {
+                        // Add automatic variable to symbol table
+                        let symbol = Symbol {
+                            _type: self._type.clone(),
+                            attrs: IdentifierAttrs::LocalAttr,
+                        };
+                        SYMBOL_TABLE.lock().unwrap().insert(self.name.clone(), symbol);
+        
+                        Ok(BlockItem::Declaration(Declaration::Variable(
+                            VariableDeclaration {
+                                _type: self._type.clone(),
+                                name: self.name.clone(),
+                                init: None,
+                                storage_class: self.storage_class,
+                                is_global: self.is_global,
+                            },
+                        )))
                     }
-
-                    let symbol = Symbol {
-                        _type: self._type.clone(),
-                        attrs: IdentifierAttrs::StaticAttr {
-                            initial_value,
-                            global: false,
-                        },
-                    };
-
-                    SYMBOL_TABLE
-                        .lock()
-                        .unwrap()
-                        .insert(self.name.clone(), symbol);
-
-                    Ok(BlockItem::Declaration(Declaration::Variable(
-                        VariableDeclaration {
-                            _type: self._type.clone(),
-                            name: self.name.clone(),
-                            init: self.init.clone(),
-                            storage_class: self.storage_class,
-                            is_global: self.is_global,
-                        },
-                    )))
-                } else {
-                    let symbol = Symbol {
-                        _type: self._type.clone(),
-                        attrs: IdentifierAttrs::LocalAttr,
-                    };
-
-                    SYMBOL_TABLE
-                        .lock()
-                        .unwrap()
-                        .insert(self.name.clone(), symbol);
-
-                    let typechecked_init = if self.init.is_some() {
-                        Some(typecheck_init(&self._type, self.init.as_ref().unwrap())?)
-                    } else {
-                        None
-                    };
-
-                    Ok(BlockItem::Declaration(Declaration::Variable(
-                        VariableDeclaration {
-                            _type: self._type.clone(),
-                            name: self.name.clone(),
-                            init: typechecked_init.into(),
-                            storage_class: self.storage_class,
-                            is_global: self.is_global,
-                        },
-                    )))
                 }
             }
         }
@@ -1310,6 +1257,7 @@ pub fn get_size_of_type(t: &Type) -> usize {
         Type::Ulong => 8,
         Type::Double => 8,
         Type::Pointer(_) => 8,
+        Type::Array { element, size } => get_size_of_type(element) * size,
         _ => {
             unreachable!()
         }
