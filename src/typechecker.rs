@@ -545,9 +545,11 @@ impl Typecheck for Statement {
             }
             Statement::Return(ReturnStatement { expr, target_type }) => {
                 let typechecked_expr = typecheck_and_convert(expr)?;
-                
+                println!("here");
+                let converted_expr = convert_by_assignment(&typechecked_expr, &target_type.as_ref().unwrap_or(&Type::Int))?;
+                println!("not here");
                 Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
-                    expr: typechecked_expr,
+                    expr: converted_expr,
                     target_type: target_type.clone(),
                 })))
             }
@@ -894,7 +896,9 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
                     let process_arg = |arg: &Expression, param_type: &Type| -> Result<Expression> {
                         let typed_arg = typecheck_and_convert(arg)?;
+                        println!("here");
                         let converted_arg = convert_by_assignment(&typed_arg, param_type)?;
+                        println!("not here");
 
                         Ok(converted_arg)
                     };
@@ -913,7 +917,6 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }
         }
         Expression::Variable(VariableExpression { value, _type }) => {
-            println!("getting type for variable: {:?}", value);
             let v_type = SYMBOL_TABLE
                 .lock()
                 .unwrap()
@@ -1145,7 +1148,7 @@ fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
 }
 
 fn convert_by_assignment(e: &Expression, target_type: &Type) -> Result<Expression> {
-    println!("got expression {:?}", e);
+    println!("got expression {:?}, target_type: {:?}", e, target_type);
     if get_type(e) == *target_type {
         return Ok(e.clone());
     } else if is_arithmetic(&get_type(e)) && is_arithmetic(target_type) {
