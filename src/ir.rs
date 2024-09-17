@@ -1067,13 +1067,14 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                         name: name.clone(),
                         _type: entry._type.clone(),
                         global,
-                        init: vec![match entry._type {
+                        init: vec![match &entry._type {
                             Type::Int => StaticInit::Int(0),
                             Type::Long => StaticInit::Long(0),
                             Type::Ulong => StaticInit::Ulong(0),
                             Type::Uint => StaticInit::Uint(0),
                             Type::Double => StaticInit::Double(0.0),
                             Type::Pointer(_) => StaticInit::Ulong(0),
+                            Type::Array { element, size } => StaticInit::Zero(get_size_of_type(&element) * size),
                             _ => unimplemented!(),
                         }],
                     }))
