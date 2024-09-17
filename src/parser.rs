@@ -141,10 +141,22 @@ impl Parser {
                     bail!("some error")
                 };
 
-                let unwrapped_init = if let Some(Expression::Literal(lit_expr)) = init {
-                    Some(*lit_expr.value)
-                } else {
-                    None
+                let unwrapped_init = match init {
+                    Some(expr) => {
+                        match &expr {
+                            Expression::Constant(c) => match c {
+                                ConstantExpression { value, .. } => Some(Initializer::Single(expr)),
+                            }
+                            Expression::Literal(l) => match l {
+                                LiteralExpression { value, .. } => match *value.clone() {
+                                    Initializer::Compound(compound_expr) => Some(Initializer::Compound(compound_expr.to_owned())),
+                                    Initializer::Single(single_expr) => Some(Initializer::Single(single_expr.to_owned())),
+                                },
+                            },
+                            _ => None,
+                        }
+                    }
+                    None => None,
                 };
 
                 Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, _type: decl_type, init: unwrapped_init, storage_class, is_global: self.depth == 0 })))
