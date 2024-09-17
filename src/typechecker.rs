@@ -277,7 +277,6 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         (Type::Array { .. }, Initializer::Single(_)) => {
             bail!("Can't initialize array from scalar value");
         }
-        (Type::Pointer { .. }, _) => bail!("InvalidPointerInitializer"),
         (_, Initializer::Single(Expression::Constant(ConstantExpression { value, _type }))) => {
             if matches!(value, Const::Int(0) | Const::Long(0) | Const::UInt(0) | Const::ULong(0) | Const::Double(0.0)) {
                 Ok(vec![StaticInit::Zero(get_size_of_type(t))])
@@ -285,6 +284,7 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 Ok(vec![const2type(&value, t)])
             }
         }
+        (Type::Pointer { .. }, _) => bail!("InvalidPointerInitializer"),
         (_, Initializer::Single(_)) => bail!("StaticInitError::NonConstantInitializer"),
         (Type::Array { element, size }, Initializer::Compound(inits)) => {
             let mut static_inits = Vec::with_capacity(inits.len());
