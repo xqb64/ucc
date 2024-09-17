@@ -162,7 +162,7 @@ impl Typecheck for VariableDeclaration {
                     VariableDeclaration {
                         _type: self._type.clone(),
                         name: self.name.clone(),
-                        init: None,
+                        init: self.init.clone(),
                         storage_class: self.storage_class,
                         is_global: self.is_global,
                     },
@@ -198,7 +198,7 @@ impl Typecheck for VariableDeclaration {
                             VariableDeclaration {
                                 _type: self._type.clone(),
                                 name: self.name.clone(),
-                                init: None,
+                                init: self.init.clone(),
                                 storage_class: self.storage_class,
                                 is_global: self.is_global,
                             },
@@ -224,7 +224,7 @@ impl Typecheck for VariableDeclaration {
                             VariableDeclaration {
                                 _type: self._type.clone(),
                                 name: self.name.clone(),
-                                init: None,
+                                init: self.init.clone(),
                                 storage_class: self.storage_class,
                                 is_global: self.is_global,
                             },
@@ -311,123 +311,91 @@ fn to_static_init(init: Initializer, t: &Type) -> Result<InitialValue> {
 
 impl Typecheck for FunctionDeclaration {
     fn typecheck(&self) -> Result<BlockItem> {
-        match self._type.clone() {
-            Type::Func { ref mut params, ret } => match *ret {
-                Type::Array { element, size } => {
-                    bail!("Function returning array");
-                }
-                _ => {
-                    let mut adjusted_params = vec![];
-                    for t in params.iter() {
-                        match t {
-                            Type::Array { element, size } => {
-                                let adjusted_type = Type::Pointer(element.clone());
-                                adjusted_params.push(adjusted_type);
-                            }
-                            _ => {
-                                adjusted_params.push(t.clone());
-                            }
-                        }
-                    }
-                    *params = adjusted_params;    
-                }
-            }
-            _ => {}
-        }
-
-
-        let fun_type = self._type.clone();
-        let has_body = self.body.is_some();
-
-        let mut already_defined = false;
-
-        let mut is_global = self.storage_class != Some(StorageClass::Static);
-
-        if SYMBOL_TABLE.lock().unwrap().contains_key(&self.name) {
-            let old_decl = SYMBOL_TABLE
-                .lock()
-                .unwrap()
-                .get(&self.name)
-                .cloned()
-                .unwrap();
-
-            if old_decl._type != fun_type {
-                bail!(
-                    "Incompatible function declarations for function {}",
-                    self.name
-                );
-            }
-
-            already_defined = match old_decl.attrs {
-                IdentifierAttrs::FuncAttr { defined, global: _ } => defined,
-                _ => unreachable!(),
-            };
-
-            if already_defined && has_body {
-                bail!("Function {} already defined", self.name);
-            }
-
-            match old_decl.attrs {
-                IdentifierAttrs::FuncAttr { defined: _, global } => {
-                    if global
-                        && self
-                            .storage_class
-                            .is_some_and(|sc| sc == StorageClass::Static)
-                    {
-                        bail!(
-                            "Static function declaration follows non-static {}",
-                            self.name
-                        );
-                    }
-
-                    is_global = global;
-                }
-                _ => unreachable!(),
-            }
-        }
-
-        let symbol = Symbol {
-            _type: fun_type.clone(),
-            attrs: IdentifierAttrs::FuncAttr {
-                defined: already_defined || has_body,
-                global: is_global,
-            },
+        let adjust_param_type = |t: Type| match t {
+            Type::Array { element, .. } => Type::Pointer(element),
+            t => t,
         };
-
-        SYMBOL_TABLE
-            .lock()
-            .unwrap()
-            .insert(self.name.clone(), symbol);
-
-        let typechecked_body = if has_body {
-            let fn_params = match fun_type {
-                Type::Func { params, ret: _ } => params.clone(),
-                _ => unreachable!(),
-            };
-            for (param, _type) in self.params.iter().zip(fn_params.iter()) {
-                let symbol = Symbol {
-                    _type: _type.clone(),
-                    attrs: IdentifierAttrs::LocalAttr,
-                };
-
+    
+        let (param_ts, return_t, fun_type) = match self._type.clone() {
+            Type::Func { params, ret } => {
+                if let Type::Array { element, size } = *ret {
+                    bail!("Function return type is an array");
+                }
+                let param_types: Vec<Type> = params.into_iter().map(adjust_param_type).collect();
+                (
+                    param_types.clone(),
+                    ret.clone(),
+                    Type::Func {
+                        params: param_types.clone(),
+                        ret: ret.clone(),
+                    },
+                )
+            }
+            _ => bail!("Function has non-function type"),
+        };
+    
+        let has_body = self.body.is_some();
+        let global = self.storage_class != Some(StorageClass::Static);
+    
+        // Helper function to reconcile current and previous declarations
+        let check_against_previous = |prev: &Symbol| -> Result<(bool, bool)> {
+            if prev._type != fun_type {
+                bail!("RedeclaredFunction");
+            }
+    
+            match &prev.attrs {
+                IdentifierAttrs::FuncAttr { global: prev_global, defined: prev_defined } => {
+                    if *prev_defined && has_body {
+                        bail!("FunctionDefinedTwice");
+                    } else if *prev_global && self.storage_class == Some(StorageClass::Static) {
+                        bail!("StaticFunctionDeclarationAfterNonStatic");
+                    }
+    
+                    let defined = has_body || *prev_defined;
+                    Ok((defined, *prev_global))
+                }
+                _ => bail!("Symbol has function type but not function attributes"),
+            }
+        };
+    
+        let old_decl = SYMBOL_TABLE.lock().unwrap().get(&self.name).cloned();
+        let (defined, global) = match old_decl {
+            Some(old_d) => check_against_previous(&old_d)?,
+            None => (has_body, global),
+        };
+    
+        SYMBOL_TABLE.lock().unwrap().insert(
+            self.name.clone(),
+            Symbol {
+                _type: fun_type,
+                attrs: IdentifierAttrs::FuncAttr {
+                    global,
+                    defined,
+                },
+            },
+        );
+    
+        if has_body {
+            for (param, param_t) in self.params.iter().zip(param_ts) {
+                let symbol = Symbol { _type: param_t, attrs: IdentifierAttrs::LocalAttr };
                 SYMBOL_TABLE.lock().unwrap().insert(param.clone(), symbol);
             }
-
-            Some(self.body.as_ref().clone().unwrap().typecheck()?)
+        }
+    
+        let body = if self.body.is_some() {
+            Some(self.body.clone().map(|b| b.typecheck()).unwrap()?)
         } else {
             None
         };
-
-        Ok(BlockItem::Declaration(Declaration::Function(
-            FunctionDeclaration {
-                _type: self._type.clone(),
-                name: self.name.clone(),
-                params: self.params.clone(),
-                body: typechecked_body.into(),
-                storage_class: self.storage_class,
-                is_global: self.is_global,
-            },
-        )))
+    
+        Ok(BlockItem::Declaration(Declaration::Function(FunctionDeclaration {
+            _type: self._type.clone(),
+            name: self.name.clone(),
+            params: self.params.clone(),
+            body: body.into(),
+            storage_class: self.storage_class,
+            is_global: self.is_global,
+        })))
     }
 }
 
@@ -900,12 +868,15 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
                     let mut converted_args = vec![];
 
-                    for (arg, param_type) in args.iter().zip(params.iter()) {
+                    let process_arg = |arg: &Expression, param_type: &Type| -> Result<Expression> {
                         let typed_arg = typecheck_and_convert(arg)?;
-
                         let converted_arg = convert_by_assignment(&typed_arg, param_type)?;
 
-                        converted_args.push(converted_arg);
+                        Ok(converted_arg)
+                    };
+
+                    for (arg, param_type) in args.iter().zip(params.iter()) {
+                        converted_args.push(process_arg(arg, param_type)?);
                     }
 
                     Ok(Expression::Call(CallExpression {
@@ -1149,18 +1120,14 @@ fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
 }
 
 fn convert_by_assignment(e: &Expression, target_type: &Type) -> Result<Expression> {
+    println!("got expression {:?}", e);
     if get_type(e) == *target_type {
         return Ok(e.clone());
-    }
-
-    if is_arithmetic(&get_type(e)) && is_arithmetic(target_type) {
+    } else if is_arithmetic(&get_type(e)) && is_arithmetic(target_type) {
         return Ok(convert_to(e, target_type));
-    }
-
-    if is_null_ptr_constant(e) && is_pointer_type(target_type) {
+    } else if is_null_ptr_constant(e) && is_pointer_type(target_type) {
         return Ok(convert_to(e, target_type));
     } else {
-        println!("got expression {:?}", e);
         bail!("cannot convert");
    }
 }
@@ -1273,33 +1240,6 @@ pub fn get_signedness(t: &Type) -> bool {
         Type::Double => true,
         Type::Pointer(_) => false,
         _ => unreachable!(),
-    }
-}
-
-pub fn compound_initializer_2_static_init(init: &Initializer) -> Vec<StaticInit> {
-    match init {
-        Initializer::Single(expr) => {
-            match expr {
-                Expression::Constant(ConstantExpression { value, _type }) => {
-                    match value {
-                        Const::Int(i) => vec![StaticInit::Int(*i)],
-                        Const::Long(l) => vec![StaticInit::Long(*l)],
-                        Const::UInt(u) => vec![StaticInit::Uint(*u)],
-                        Const::ULong(ul) => vec![StaticInit::Ulong(*ul)],
-                        Const::Double(d) => vec![StaticInit::Double(*d)],
-                    }
-                }
-                _ => unreachable!(),
-            }
-        }
-        Initializer::Compound(inits) => {
-            let mut static_inits = vec![];
-            for init in inits.iter() {
-                let static_init = compound_initializer_2_static_init(init);
-                static_inits.extend(static_init);
-            }
-            static_inits
-        }
     }
 }
 
