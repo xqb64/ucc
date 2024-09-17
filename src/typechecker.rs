@@ -266,18 +266,18 @@ fn optionally_typecheck_init(init: &Option<Initializer>, t: &Type) -> Result<Opt
 fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
     println!("checking init: {:?}, type; {:?}", init, t);
     let unwrapped_init = match init {
-        Initializer::Single(ref expr) => match expr {
-            Expression::Literal(LiteralExpression { value, _type }) => *value.clone(),
+        Initializer::Single(ref name, ref expr) => match expr {
+            Expression::Literal(LiteralExpression { name, value, _type }) => *value.clone(),
             _ => init.clone(),
         },
-        Initializer::Compound(inits) => Initializer::Compound(inits),
+        Initializer::Compound(name, inits) => Initializer::Compound(name, inits),
     };
     println!("unwrapped_init: {:?}", unwrapped_init);
     match (t, &unwrapped_init) {
-        (Type::Array { .. }, Initializer::Single(_)) => {
+        (Type::Array { .. }, Initializer::Single(_, _)) => {
             bail!("Can't initialize array from scalar value");
         }
-        (_, Initializer::Single(Expression::Constant(ConstantExpression { value, _type }))) => {
+        (_, Initializer::Single(name, Expression::Constant(ConstantExpression { value, _type }))) => {
             if matches!(value, Const::Int(0) | Const::Long(0) | Const::UInt(0) | Const::ULong(0) | Const::Double(0.0)) {
                 Ok(vec![StaticInit::Zero(get_size_of_type(t))])
             } else {
@@ -285,8 +285,8 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             }
         }
         (Type::Pointer { .. }, _) => bail!("InvalidPointerInitializer"),
-        (_, Initializer::Single(_)) => bail!("StaticInitError::NonConstantInitializer"),
-        (Type::Array { element, size }, Initializer::Compound(inits)) => {
+        (_, Initializer::Single(_, _)) => bail!("StaticInitError::NonConstantInitializer"),
+        (Type::Array { element, size }, Initializer::Compound(name, inits)) => {
             let mut static_inits = Vec::with_capacity(inits.len());
             for init in inits.iter() {
                 let static_init = static_init_helper(init.clone(), &element)?;
@@ -305,7 +305,7 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             static_inits.extend(padding);
             Ok(static_inits)
         }
-        (_, Initializer::Compound(_)) => {
+        (_, Initializer::Compound(_, _)) => {
             bail!("Compound initializer for scalar type");
         }
     }
@@ -563,7 +563,7 @@ impl Typecheck for Statement {
 fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer> {
     println!("TYPECKEKING --- target_type: {:?}, init: {:?}", target_type, init);
     match (target_type, init) {
-        (Type::Array { element, size }, Initializer::Compound(inits)) => {
+        (Type::Array { element, size }, Initializer::Compound(name, inits)) => {
             if inits.len() > *size {
                 bail!("Too many initializers");
             }
@@ -579,18 +579,18 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
                 typechecked_inits.push(zero_initializer(&*element));
             }
 
-            Ok(Initializer::Compound(typechecked_inits))
+            Ok(Initializer::Compound(name.clone(), typechecked_inits))
         }
-        (_, Initializer::Single(expr)) => {
+        (_, Initializer::Single(name, expr)) => {
             match expr {
                 Expression::Literal(_) => {
-                    Ok(Initializer::Single(expr.clone()))
+                    Ok(Initializer::Single(name.clone(), expr.clone()))
                 }
                 _ => {
                     let typechecked_expr = typecheck_and_convert(expr)?;
                     println!("target_type: {:?}, typechecked_expr: {:?}", target_type, typechecked_expr);
                     let converted_expr = convert_by_assignment(&typechecked_expr, target_type)?;
-                    Ok(Initializer::Single(converted_expr))        
+                    Ok(Initializer::Single(name.clone(), converted_expr))        
                 }
             }
         }
@@ -602,27 +602,27 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
 
 fn zero_initializer(t: &Type) -> Initializer {
     match t {
-        Type::Int => Initializer::Single(Expression::Constant(ConstantExpression {
+        Type::Int => Initializer::Single(String::new(), Expression::Constant(ConstantExpression {
             value: Const::Int(0),
             _type: Type::Int,
         })),
-        Type::Uint => Initializer::Single(Expression::Constant(ConstantExpression {
+        Type::Uint => Initializer::Single(String::new(), Expression::Constant(ConstantExpression {
             value: Const::UInt(0),
             _type: Type::Uint,
         })),
-        Type::Long => Initializer::Single(Expression::Constant(ConstantExpression {
+        Type::Long => Initializer::Single(String::new(), Expression::Constant(ConstantExpression {
             value: Const::Long(0),
             _type: Type::Long,
         })),
-        Type::Ulong => Initializer::Single(Expression::Constant(ConstantExpression {
+        Type::Ulong => Initializer::Single(String::new(), Expression::Constant(ConstantExpression {
             value: Const::ULong(0),
             _type: Type::Ulong,
         })),
-        Type::Double => Initializer::Single(Expression::Constant(ConstantExpression {
+        Type::Double => Initializer::Single(String::new(), Expression::Constant(ConstantExpression {
             value: Const::Double(0.0),
             _type: Type::Double,
         })),
-        Type::Pointer(_) => Initializer::Single(Expression::Constant(ConstantExpression {
+        Type::Pointer(_) => Initializer::Single(String::new(), Expression::Constant(ConstantExpression {
             value: Const::Int(0),
             _type: Type::Int,
         })),
@@ -633,7 +633,7 @@ fn zero_initializer(t: &Type) -> Initializer {
                 inits.push(zero_initializer(element));
             }
 
-            Initializer::Compound(inits)
+            Initializer::Compound(String::new(), inits)
         }
         _ => unreachable!(),
     }
@@ -1125,8 +1125,9 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }
         }
         Expression::Subscript(SubscriptExpression { expr, index, _type }) => typecheck_subscript(expr, index),
-        Expression::Literal(LiteralExpression { value, _type }) => {
+        Expression::Literal(LiteralExpression { name, value, _type }) => {
             Ok(Expression::Literal(LiteralExpression {
+                name: name.clone(),
                 value: value.clone(),
                 _type: _type.clone(),
             }))
@@ -1171,7 +1172,7 @@ fn is_arithmetic(t: &Type) -> bool {
     }
 }
 
-fn is_integer_type(t: &Type) -> bool {
+pub fn is_integer_type(t: &Type) -> bool {
     match t {
         Type::Int => true,
         Type::Uint => true,
@@ -1181,7 +1182,7 @@ fn is_integer_type(t: &Type) -> bool {
     }
 }
 
-fn is_pointer_type(t: &Type) -> bool {
+pub fn is_pointer_type(t: &Type) -> bool {
     match t {
         Type::Pointer(_) => true,
         _ => false,
@@ -1322,7 +1323,7 @@ pub fn get_type(e: &Expression) -> Type {
         Expression::Variable(VariableExpression { value: _, _type }) => _type.clone(),
         Expression::Deref(DerefExpression { expr: _, _type }) => _type.clone(),
         Expression::AddrOf(AddrOfExpression { expr: _, _type }) => _type.clone(),
-        Expression::Literal(LiteralExpression { value: _, _type }) => _type.clone(),
+        Expression::Literal(LiteralExpression { name: _, value: _, _type }) => _type.clone(),
         Expression::Subscript(SubscriptExpression { expr: _, index: _, _type }) => _type.clone(),
     }
 }

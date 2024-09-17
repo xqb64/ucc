@@ -237,7 +237,7 @@ impl Codegen for IRStaticVariable {
     fn codegen(&self) -> AsmNode {
         AsmNode::StaticVariable(AsmStaticVariable {
             name: self.name.clone(),
-            init: self.init.clone(),
+            init: self.init[0],
             global: self.global,
             alignment: match self._type {
                 Type::Int => 4,
@@ -1212,6 +1212,10 @@ impl Codegen for IRInstruction {
                     AsmInstruction::Lea { src: src.codegen().into(), dst: dst.codegen().into() }
                 ])
             }
+            IRInstruction::AddPtr { ptr, index, scale, dst } => {
+                todo!()
+            }
+            IRInstruction::CopyToOffset { src, dst, offset } => todo!(),
         }
     }
 }

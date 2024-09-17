@@ -127,16 +127,16 @@ impl Resolve for VariableDeclaration {
 
 fn resolve_init(init: &Initializer, variable_map: &mut HashMap<String, Variable>) -> Result<Initializer> {
     match init {
-        Initializer::Single(single_init) => {
+        Initializer::Single(name, single_init) => {
             let resolved_expr = resolve_exp(single_init, variable_map)?;
-            Ok(Initializer::Single(resolved_expr))
+            Ok(Initializer::Single(name.clone(), resolved_expr))
         }
-        Initializer::Compound(compound_init) => {
+        Initializer::Compound(name, compound_init) => {
             let mut resolved_inits = vec![];
             for init in compound_init {
                 resolved_inits.push(resolve_init(init, variable_map)?);
             }
-            Ok(Initializer::Compound(resolved_inits))
+            Ok(Initializer::Compound(name.clone(), resolved_inits))
         }
     }
 }
@@ -501,9 +501,9 @@ fn resolve_exp(
                 _type,
             }))
         }
-        Expression::Literal(LiteralExpression { value, _type }) => {
+        Expression::Literal(LiteralExpression { name, value, _type }) => {
             let resolved_init = resolve_init(&value, variable_map)?;
-            Ok(Expression::Literal(LiteralExpression { value: resolved_init.into(), _type }))
+            Ok(Expression::Literal(LiteralExpression { name, value: resolved_init.into(), _type }))
         }
     }
 }

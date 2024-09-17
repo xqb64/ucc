@@ -1,11 +1,10 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, Statement, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression, ProgramStatement, ReturnStatement, Statement, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
     },
     typechecker::{
-        get_signedness, get_size_of_type, get_type, IdentifierAttrs, InitialValue, StaticInit,
-        Symbol, SYMBOL_TABLE,
+        get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type, IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE
     },
 };
 
@@ -94,6 +93,17 @@ pub enum IRInstruction {
     UIntToDouble {
         src: IRValue,
         dst: IRValue,
+    },
+    AddPtr {
+        ptr: IRValue,
+        index: IRValue,
+        scale: usize,
+        dst: IRValue,
+    },
+    CopyToOffset {
+        src: IRValue,
+        dst: String,
+        offset: usize,
     },
     Ret(IRValue),
 }
@@ -250,6 +260,70 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
 
                 ExpResult::PlainOperand(result)
             }
+            BinaryExpressionKind::Add => emit_ptr_addition(lhs, rhs, t, instructions),
+            BinaryExpressionKind::Sub => {
+                let lhs_type = get_type(&lhs);
+                let rhs_type = get_type(&rhs);
+
+                if is_pointer_type(&lhs_type) && is_integer_type(&rhs_type) {
+                    let ptr = emit_tacky_and_convert(*lhs, instructions);
+                    let index = emit_tacky_and_convert(*rhs, instructions);
+                    let scale = get_size_of_type(&lhs_type);
+                    let dst = make_tacky_variable(lhs_type.clone());
+
+                    let negated_index = make_tacky_variable(rhs_type.clone());
+
+                    instructions.push(IRInstruction::Unary {
+                        op: UnaryOp::Negate,
+                        src: index.clone(),
+                        dst: negated_index.clone(),
+                    });
+
+                    instructions.push(IRInstruction::AddPtr {
+                        ptr,
+                        index: negated_index,
+                        scale,
+                        dst: dst.clone(),
+                    });
+
+                    ExpResult::PlainOperand(dst)
+                } else if is_pointer_type(&lhs_type) && is_pointer_type(&rhs_type) {
+                    let ptr1 = emit_tacky_and_convert(*lhs, instructions);
+                    let ptr2 = emit_tacky_and_convert(*rhs, instructions);
+
+                    let ptr_diff: IRValue = make_tacky_variable(lhs_type.clone());
+
+                    let scale = get_ptr_scale(lhs_type.clone());
+                    let scale_var = IRValue::Constant(Const::Long(scale as i64));
+
+                    let dst = make_tacky_variable(t.clone());
+
+                    instructions.push(IRInstruction::Binary {
+                        op: BinaryOp::Sub,
+                        lhs: ptr1,
+                        rhs: ptr2,
+                        dst: ptr_diff.clone(),
+                    });
+
+                    instructions.push(IRInstruction::Binary { op: BinaryOp::Div, lhs: ptr_diff, rhs: scale_var, dst: dst.clone() });
+                    
+                    ExpResult::PlainOperand(dst)
+                } else {
+                    let lhs = emit_tacky_and_convert(*lhs, instructions);
+                    let rhs = emit_tacky_and_convert(*rhs, instructions);
+
+                    let dst = make_tacky_variable(t.clone());
+
+                    instructions.push(IRInstruction::Binary {
+                        op: BinaryOp::Sub,
+                        lhs,
+                        rhs,
+                        dst: dst.clone(),
+                    });
+
+                    ExpResult::PlainOperand(dst)
+                }
+            }
             _ => {
                 let lhs = emit_tacky_and_convert(*lhs, instructions);
                 let rhs = emit_tacky_and_convert(*rhs, instructions);
@@ -257,8 +331,6 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                 let dst = make_tacky_variable(t.clone());
 
                 let op = match kind {
-                    BinaryExpressionKind::Add => BinaryOp::Add,
-                    BinaryExpressionKind::Sub => BinaryOp::Sub,
                     BinaryExpressionKind::Mul => BinaryOp::Mul,
                     BinaryExpressionKind::Div => BinaryOp::Div,
                     BinaryExpressionKind::Rem => BinaryOp::Rem,
@@ -490,8 +562,78 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                 ExpResult::DereferencedPointer(ptr) => ExpResult::PlainOperand(ptr),
             }
         }
+        Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
+            let result = emit_ptr_addition(expr, index, _type, instructions);
+            match result {
+                ExpResult::PlainOperand(val) => ExpResult::DereferencedPointer(val),
+                _ => unreachable!(),
+            }
+        }
+        Expression::Literal(_) => todo!(),
         _ => todo!(),
     }
+}
+
+fn emit_compound_init(value: Box<Initializer>, t: Type, instructions: &mut Vec<IRInstruction>) {
+    match *value {
+        Initializer::Single(name, single_init) => {
+            let v = emit_tacky_and_convert(single_init, instructions);
+            instructions.push(IRInstruction::CopyToOffset { src: v, dst: name.clone(), offset: 0 });
+
+        }
+        Initializer::Compound(name, compound_init) => {
+            for (idx, elem_init) in compound_init.into_iter().enumerate() {
+                let new_offset = 0;
+                emit_compound_init(elem_init.clone().into(), t.clone(), instructions);
+            }
+        }
+    }
+}
+
+fn emit_ptr_addition(lhs: Box<Expression>, rhs: Box<Expression>, t: Type, instructions: &mut Vec<IRInstruction>) -> ExpResult {
+    let lhs_type = get_type(&lhs);
+    let rhs_type = get_type(&rhs);
+
+    if is_pointer_type(&lhs_type) && is_integer_type(&rhs_type) {
+        let ptr = emit_tacky_and_convert(*lhs, instructions);
+        let index = emit_tacky_and_convert(*rhs, instructions);                    
+        let scale = get_ptr_scale(lhs_type.clone());
+        let dst = make_tacky_variable(lhs_type.clone());
+        instructions.push(IRInstruction::AddPtr {
+            ptr,
+            index,
+            scale,
+            dst: dst.clone(),
+        });
+        ExpResult::PlainOperand(dst)
+    } else if is_integer_type(&lhs_type) && is_pointer_type(&rhs_type) {
+        let ptr = emit_tacky_and_convert(*rhs, instructions);
+        let index = emit_tacky_and_convert(*lhs, instructions);
+        let scale = get_ptr_scale(rhs_type.clone());
+        let dst = make_tacky_variable(rhs_type.clone());
+        instructions.push(IRInstruction::AddPtr {
+            ptr,
+            index,
+            scale,
+            dst: dst.clone(),
+        });
+        ExpResult::PlainOperand(dst)
+    } else {
+        let lhs = emit_tacky_and_convert(*lhs, instructions);
+        let rhs = emit_tacky_and_convert(*rhs, instructions);
+
+        let dst = make_tacky_variable(t.clone());
+
+        instructions.push(IRInstruction::Binary {
+            op: BinaryOp::Add,
+            lhs,
+            rhs,
+            dst: dst.clone(),
+        });
+
+        ExpResult::PlainOperand(dst)
+    }
+    
 }
 
 pub fn make_tacky_variable(_type: Type) -> IRValue {
@@ -516,6 +658,13 @@ pub fn make_temporary() -> usize {
     }
 }
 
+fn get_ptr_scale(t: Type) -> usize {
+    match t {
+        Type::Pointer(referenced) => get_size_of_type(&referenced),
+        _ => unimplemented!(),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum IRNode {
     Program(IRProgram),
@@ -529,7 +678,7 @@ pub enum IRNode {
 pub struct IRStaticVariable {
     pub name: String,
     pub _type: Type,
-    pub init: StaticInit,
+    pub init: Vec<StaticInit>,
     pub global: bool,
 }
 
@@ -836,12 +985,19 @@ impl Irfy for VariableDeclaration {
     fn irfy(&self) -> Option<IRNode> {
         let mut instructions = vec![];
 
-        if let Some(Initializer::Single(init)) = &self.init {
+        if let Some(Initializer::Single(name, init)) = &self.init {
             let result = emit_tacky_and_convert(init.clone(), &mut instructions);
             instructions.push(IRInstruction::Copy {
                 src: result,
                 dst: IRValue::Var(self.name.clone()),
             });
+        }
+
+        if let Some(Initializer::Compound(name, compound_init)) = &self.init {
+            for (idx, elem_init) in compound_init.iter().enumerate() {
+                let new_offset = 0;
+                emit_compound_init(elem_init.clone().into(), self._type.clone(), &mut instructions);
+            }
         }
 
         Some(IRNode::Instructions(instructions))
@@ -891,7 +1047,7 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                     tacky_defs.push(IRNode::StaticVariable(IRStaticVariable {
                         name: name.clone(),
                         global,
-                        init: init[0],
+                        init: init.clone(),
                         _type: entry._type.clone(),
                     }))
                 }
@@ -900,7 +1056,7 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                         name: name.clone(),
                         _type: entry._type.clone(),
                         global,
-                        init: match entry._type {
+                        init: vec![match entry._type {
                             Type::Int => StaticInit::Int(0),
                             Type::Long => StaticInit::Long(0),
                             Type::Ulong => StaticInit::Ulong(0),
@@ -908,7 +1064,7 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                             Type::Double => StaticInit::Double(0.0),
                             Type::Pointer(_) => StaticInit::Ulong(0),
                             _ => unimplemented!(),
-                        },
+                        }],
                     }))
                 }
                 _ => {}

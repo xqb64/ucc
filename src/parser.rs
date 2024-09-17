@@ -142,19 +142,21 @@ impl Parser {
                 };
 
                 let unwrapped_init = match init {
-                    Some(ref expr) => {
-                        match &expr {
-                            Expression::Constant(c) => match c {
-                                ConstantExpression { value, .. } => Some(Initializer::Single(expr.to_owned())),
+                    Some(mut expr) => {
+                        match expr {
+                            Expression::Constant(ref c) => match c {
+                                ConstantExpression { .. } => Some(Initializer::Single(name.clone(), expr.to_owned())),
                             }
-                            Expression::Literal(l) => match l {
-                                LiteralExpression { value, .. } => match *value.clone() {
-                                    Initializer::Compound(compound_expr) => Some(Initializer::Compound(compound_expr.to_owned())),
-                                    Initializer::Single(single_expr) => Some(Initializer::Single(single_expr.to_owned())),
-                                },
+                            Expression::Literal(ref mut l) => match l {
+                                LiteralExpression { name: _, value, .. } => {
+                                    match *value.clone() {
+                                        Initializer::Compound(_, compound_expr) => Some(Initializer::Compound(name.clone(), compound_expr.to_owned())),
+                                        Initializer::Single(_, single_expr) => Some(Initializer::Single(name.clone(), single_expr.to_owned())),
+                                    }
+                                }
                             },
                             _ => {
-                                Some(Initializer::Single(expr.clone()))
+                                Some(Initializer::Single(name.clone(), expr.clone()))
                             }
                         }
                     }
@@ -881,7 +883,7 @@ impl Parser {
                 if self.is_next(&[Token::RBrace]) {
                     break;
                 }
-                inits.push(Initializer::Single(self.parse_expression()?));
+                inits.push(Initializer::Single(String::new(), self.parse_expression()?));
                 // fix up the trailing comma case
                 if self.is_next(&[Token::Comma]) {
                     continue;
@@ -890,7 +892,7 @@ impl Parser {
             if inits.is_empty() {
                 bail!("empty compound literal");
             }
-            Ok(Expression::Literal(LiteralExpression { value: Initializer::Compound(inits).into(), _type: Type::Dummy })) 
+            Ok(Expression::Literal(LiteralExpression { name: String::new(), value: Initializer::Compound(String::new(), inits).into(), _type: Type::Dummy })) 
         } else {
             println!("got token: {:?}, {:?}", self.current, self.previous);
             bail!("expected primary");
@@ -1128,14 +1130,15 @@ pub enum Expression {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LiteralExpression {
+    pub name: String,
     pub value: Box<Initializer>,
     pub _type: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Initializer {
-    Single(Expression),
-    Compound(Vec<Initializer>),
+    Single(String, Expression),
+    Compound(String, Vec<Initializer>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
