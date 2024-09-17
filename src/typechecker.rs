@@ -108,35 +108,35 @@ impl Typecheck for VariableDeclaration {
     
                 let old_decl = SYMBOL_TABLE.lock().unwrap().get(&self.name).cloned();
     
-                // Define the closure for checking against previous declarations
                 let check_against_previous = |old_d: &Symbol| -> Result<(bool, InitialValue)> {
                     if old_d._type != self._type {
                         bail!("Variable redeclaration with different type");
                     }
     
                     match &old_d.attrs {
-                        IdentifierAttrs::StaticAttr { initial_value, global } => {
+                        IdentifierAttrs::StaticAttr { initial_value: prev_init, global: prev_global } => {
                             let global = if self.storage_class == Some(StorageClass::Extern) {
-                                *global
-                            } else if is_global == *global {
+                                *prev_global
+                            } else if is_global == *prev_global {
                                 is_global
                             } else {
                                 bail!("Conflicting variable linkage");
                             };
     
-                            let init = match (initial_value.clone(), static_init.clone()) {
+                            let init = match (prev_init.clone(), static_init.clone()) {
                                 (InitialValue::Initial(_), InitialValue::Initial(_)) => bail!("conflicting file-scope variable initializers"),
-                                (InitialValue::Initial(_), _) => initial_value.clone(),
-                                (InitialValue::Tentative, InitialValue::Tentative) => InitialValue::Tentative,
-                                (InitialValue::Tentative, InitialValue::NoInitializer) => InitialValue::Tentative,
+                                (InitialValue::Initial(_), _) => prev_init.clone(),
+                                (InitialValue::Tentative, InitialValue::Tentative | InitialValue::NoInitializer) => InitialValue::Tentative,
                                 (_, InitialValue::Initial(_)) => static_init.clone(),
-                                (_, InitialValue::NoInitializer) => static_init.clone(),
-                                _ => unreachable!(),
+                                (InitialValue::NoInitializer, _) => static_init.clone(),
                             };
     
                             Ok((global, init))
                         }
-                        _ => unreachable!(),
+                        _ => {
+                            println!("old_d: {:?}", old_d);
+                            unreachable!()
+                        }
                     }
                 };
     
@@ -187,7 +187,7 @@ impl Typecheck for VariableDeclaration {
                             None => {
                                 let symbol = Symbol {
                                     _type: self._type.clone(),
-                                    attrs: IdentifierAttrs::LocalAttr,
+                                    attrs: IdentifierAttrs::StaticAttr { initial_value: InitialValue::NoInitializer, global: true },
                                 };
 
                                 SYMBOL_TABLE.lock().unwrap().insert(self.name.clone(), symbol);
@@ -264,6 +264,7 @@ fn optionally_typecheck_init(init: &Option<Initializer>, t: &Type) -> Result<Opt
 }
 
 fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
+    println!("checking init: {:?}, type; {:?}", init, t);
     let unwrapped_init = match init {
         Initializer::Single(ref expr) => match expr {
             Expression::Literal(LiteralExpression { value, _type }) => *value.clone(),
@@ -271,10 +272,12 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         },
         Initializer::Compound(inits) => Initializer::Compound(inits),
     };
+    println!("unwrapped_init: {:?}", unwrapped_init);
     match (t, &unwrapped_init) {
         (Type::Array { .. }, Initializer::Single(_)) => {
             bail!("Can't initialize array from scalar value");
         }
+        (Type::Pointer { .. }, _) => bail!("InvalidPointerInitializer"),
         (_, Initializer::Single(Expression::Constant(ConstantExpression { value, _type }))) => {
             if matches!(value, Const::Int(0) | Const::Long(0) | Const::UInt(0) | Const::ULong(0) | Const::Double(0.0)) {
                 Ok(vec![StaticInit::Zero(get_size_of_type(t))])
@@ -282,11 +285,8 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 Ok(vec![const2type(&value, t)])
             }
         }
-        (Type::Pointer { .. }, _) => bail!("InvalidPointerInitializer"),
         (_, Initializer::Single(_)) => bail!("StaticInitError::NonConstantInitializer"),
         (Type::Array { element, size }, Initializer::Compound(inits)) => {
-            println!("WOO, WE'RE IN THE ARRAY CASE");
-            
             let mut static_inits = Vec::with_capacity(inits.len());
             for init in inits.iter() {
                 let static_init = static_init_helper(init.clone(), &element)?;
