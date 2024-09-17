@@ -141,43 +141,51 @@ impl Parser {
                     bail!("some error")
                 };
 
-                let unwrapped_init = match init {
-                    Some(mut expr) => {
-                        match expr {
-                            Expression::Constant(ref c) => match c {
-                                ConstantExpression { .. } => Some(Initializer::Single(name.clone(), expr.to_owned())),
-                            }
-                            Expression::Literal(ref mut l) => match l {
-                                LiteralExpression { name: _, value, .. } => {
-                                    match *value.clone() {
-                                        Initializer::Compound(_, mut compound_expr) => {
-                                            for init in compound_expr.iter_mut() {
-                                                match init {
-                                                    Initializer::Single(_, expr) => *init = Initializer::Single(name.clone(), expr.clone()),
-                                                    Initializer::Compound(_, _) => {
-                                                        bail!("nested compound initializers are not supported")
-                                                    }
-                                                }
-                                            }
-                                            Some(Initializer::Compound(name.clone(), compound_expr.to_owned()))
-                                        }
-                                        Initializer::Single(_, single_expr) => Some(Initializer::Single(name.clone(), single_expr.to_owned())),
-                                    }
-                                }
-                            },
-                            _ => {
-                                Some(Initializer::Single(name.clone(), expr.clone()))
-                            }
-                        }
-                    }
-                    None => None,
-                };
+                let unwrapped = self.unwrap_expression_to_initializer(init);
+                println!("unwrapped: {:?}", unwrapped);
 
-                Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, _type: decl_type, init: unwrapped_init, storage_class, is_global: self.depth == 0 })))
+                Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, _type: decl_type, init: unwrapped, storage_class, is_global: self.depth == 0 })))
             }
         }
     }
 
+    fn transform_initializer(&self, init: &Initializer) -> Initializer {
+        match init {
+            Initializer::Single(name, expr) => {
+                if let Expression::Literal(lit) = expr {
+                    self.transform_initializer(&lit.value)
+                } else {
+                    Initializer::Single(name.clone(), expr.clone())
+                }
+            },
+            Initializer::Compound(name, elems) => {
+                let new_elems = elems.iter()
+                    .map(|elem| self.transform_initializer(elem))
+                    .collect();
+                Initializer::Compound(name.clone(), new_elems)
+            },
+        }
+
+    }
+
+    // Function to convert `Expression` to `Initializer`
+    fn convert_expression_to_initializer(&self, expr: Expression) -> Initializer {
+        match expr {
+            Expression::Literal(literal) => {
+                self.transform_initializer(&literal.value)
+            },
+            _ => {
+                // Handle other expressions by wrapping them in a Single Initializer
+                Initializer::Single("".to_string(), expr)
+            }
+        }
+    }
+
+    fn unwrap_expression_to_initializer(&self, expr_opt: Option<Expression>) -> Option<Initializer> {
+        expr_opt.map(|expr| self.convert_expression_to_initializer(expr))
+    }
+    
+    
     fn parse_declarator(&mut self) -> Result<Declarator> {
         match self.current.as_ref().unwrap() {
             Token::Star => {

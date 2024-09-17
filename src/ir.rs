@@ -574,19 +574,28 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
     }
 }
 
-fn emit_compound_init(value: Box<Initializer>, t: Type, instructions: &mut Vec<IRInstruction>) {
+fn emit_compound_init(value: Box<Initializer>, instructions: &mut Vec<IRInstruction>, offset: usize) {
     match *value {
         Initializer::Single(name, single_init) => {
             let v = emit_tacky_and_convert(single_init, instructions);
-            instructions.push(IRInstruction::CopyToOffset { src: v, dst: name.clone(), offset: 0 });
+            instructions.push(IRInstruction::CopyToOffset { src: v, dst: name.clone(), offset });
 
         }
-        Initializer::Compound(name, compound_init) => {
+        Initializer::Compound(_, compound_init) => {
             for (idx, elem_init) in compound_init.into_iter().enumerate() {
-                let new_offset = 0;
-                emit_compound_init(elem_init.clone().into(), t.clone(), instructions);
+                let elem_type = get_type_of_init(&elem_init);
+                let size_of_type = get_size_of_type(&elem_type);
+                let new_offset = offset + (idx * size_of_type);
+                emit_compound_init(elem_init.clone().into(), instructions, new_offset);
             }
         }
+    }
+}
+
+fn get_type_of_init(init: &Initializer) -> Type {
+    match init {
+        Initializer::Single(_, single_init) => get_type(single_init),
+        _ => unreachable!(),
     }
 }
 
@@ -994,9 +1003,10 @@ impl Irfy for VariableDeclaration {
         }
 
         if let Some(Initializer::Compound(name, compound_init)) = &self.init {
+            let offset = 0;
             for (idx, elem_init) in compound_init.iter().enumerate() {
-                let new_offset = 0;
-                emit_compound_init(elem_init.clone().into(), self._type.clone(), &mut instructions);
+                let new_offset = offset + idx * get_size_of_type(&get_type_of_init(elem_init));
+                emit_compound_init(elem_init.clone().into(),  &mut instructions, new_offset);
             }
         }
 

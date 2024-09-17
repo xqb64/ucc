@@ -134,7 +134,7 @@ impl Typecheck for VariableDeclaration {
                             Ok((global, init))
                         }
                         _ => {
-                            println!("old_d: {:?}", old_d);
+                            ("old_d: {:?}", old_d);
                             unreachable!()
                         }
                     }
@@ -264,7 +264,6 @@ fn optionally_typecheck_init(init: &Option<Initializer>, t: &Type) -> Result<Opt
 }
 
 fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
-    println!("checking init: {:?}, type; {:?}", init, t);
     let unwrapped_init = match init {
         Initializer::Single(ref name, ref expr) => match expr {
             Expression::Literal(LiteralExpression { name, value, _type }) => *value.clone(),
@@ -272,7 +271,6 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         },
         Initializer::Compound(name, inits) => Initializer::Compound(name, inits),
     };
-    println!("unwrapped_init: {:?}", unwrapped_init);
     match (t, &unwrapped_init) {
         (Type::Array { .. }, Initializer::Single(_, _)) => {
             bail!("Can't initialize array from scalar value");
@@ -545,9 +543,7 @@ impl Typecheck for Statement {
             }
             Statement::Return(ReturnStatement { expr, target_type }) => {
                 let typechecked_expr = typecheck_and_convert(expr)?;
-                println!("here");
                 let converted_expr = convert_by_assignment(&typechecked_expr, &target_type.as_ref().unwrap_or(&Type::Int))?;
-                println!("not here");
                 Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
                     expr: converted_expr,
                     target_type: target_type.clone(),
@@ -561,7 +557,6 @@ impl Typecheck for Statement {
 }
 
 fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer> {
-    println!("TYPECKEKING --- target_type: {:?}, init: {:?}", target_type, init);
     match (target_type, init) {
         (Type::Array { element, size }, Initializer::Compound(name, inits)) => {
             if inits.len() > *size {
@@ -579,16 +574,17 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
                 typechecked_inits.push(zero_initializer(&*element));
             }
 
+
             Ok(Initializer::Compound(name.clone(), typechecked_inits))
         }
         (_, Initializer::Single(name, expr)) => {
             match expr {
                 Expression::Literal(_) => {
-                    Ok(Initializer::Single(name.clone(), expr.clone()))
+                    let typechecked_expr = typecheck_and_convert(expr)?;
+                    Ok(Initializer::Single(name.clone(), typechecked_expr.clone()))
                 }
                 _ => {
                     let typechecked_expr = typecheck_and_convert(expr)?;
-                    println!("target_type: {:?}, typechecked_expr: {:?}", target_type, typechecked_expr);
                     let converted_expr = convert_by_assignment(&typechecked_expr, target_type)?;
                     Ok(Initializer::Single(name.clone(), converted_expr))        
                 }
@@ -896,9 +892,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
                     let process_arg = |arg: &Expression, param_type: &Type| -> Result<Expression> {
                         let typed_arg = typecheck_and_convert(arg)?;
-                        println!("here");
                         let converted_arg = convert_by_assignment(&typed_arg, param_type)?;
-                        println!("not here");
 
                         Ok(converted_arg)
                     };
@@ -1125,16 +1119,34 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }
         }
         Expression::Subscript(SubscriptExpression { expr, index, _type }) => typecheck_subscript(expr, index),
-        Expression::Literal(LiteralExpression { name, value, _type }) => {
+        Expression::Literal(LiteralExpression { name, value, _type }) => typecheck_literal_expression(name, value, _type),
+    }
+}
+
+fn typecheck_literal_expression(name: &str, value: &Initializer, _type: &Type) -> Result<Expression> {
+    match value {
+        Initializer::Single(name, expr) => {
+            let typed_expr = typecheck_and_convert(expr)?;
+            println!("HER");
+            Ok(typed_expr)
+        }
+        Initializer::Compound(name, inits) => {
+            let mut typechecked_inits = vec![];
+
+            for init in inits.iter() {
+                let typechecked_init = typecheck_init(_type, init)?;
+                typechecked_inits.push(typechecked_init);
+            }
+
             Ok(Expression::Literal(LiteralExpression {
-                name: name.clone(),
-                value: value.clone(),
+                name: name.to_string(),
+                value: Initializer::Compound(name.clone(), typechecked_inits).into(),
                 _type: _type.clone(),
             }))
         }
-        _ => todo!(),
     }
 }
+
 
 fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
     let typed_expr = typecheck_expr(e)?;
@@ -1149,7 +1161,6 @@ fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
 }
 
 fn convert_by_assignment(e: &Expression, target_type: &Type) -> Result<Expression> {
-    println!("got expression {:?}, target_type: {:?}", e, target_type);
     if get_type(e) == *target_type {
         return Ok(e.clone());
     } else if is_arithmetic(&get_type(e)) && is_arithmetic(target_type) {
@@ -1222,6 +1233,7 @@ fn get_common_ptr_type(e1: &Expression, e2: &Expression) -> Result<Type> {
 }
 
 pub fn get_common_type(type1: &Type, type2: &Type) -> Type {
+    println!("getting common type of {:?} and {:?}", type1, type2);
     if type1 == type2 {
         return type1.clone();
     }
@@ -1246,6 +1258,7 @@ pub fn get_common_type(type1: &Type, type2: &Type) -> Type {
 }
 
 pub fn get_size_of_type(t: &Type) -> usize {
+    println!("getting size of type: {:?}", t);
     match t {
         Type::Int => 4,
         Type::Uint => 4,
@@ -1255,6 +1268,7 @@ pub fn get_size_of_type(t: &Type) -> usize {
         Type::Pointer(_) => 8,
         Type::Array { element, size } => get_size_of_type(element) * size,
         _ => {
+            println!("got type: {:?}", t);
             unreachable!()
         }
     }
