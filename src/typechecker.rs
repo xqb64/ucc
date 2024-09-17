@@ -273,7 +273,6 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
     };
     match (t, &unwrapped_init) {
         (Type::Array { element, size }, Initializer::Single(_)) => {
-            println!("type: {:?}, init: {:?}", t, unwrapped_init);
             bail!("StaticInitError::ArrayInitializationError");
         }
         (_, Initializer::Single(Expression::Constant(ConstantExpression { value, _type }))) => {
@@ -286,7 +285,6 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         (Type::Pointer(_), _) => bail!("InvalidPointerInitializer"),
         (_, Initializer::Single(_)) => bail!("StaticInitError::NonConstantInitializer"),
         (Type::Array { element, size }, Initializer::Compound(inits)) => {
-            println!("WE ARE SUPPOSED TO BE HERE");
             let mut static_inits = Vec::with_capacity(inits.len());
             let element_type = element.clone();
             
