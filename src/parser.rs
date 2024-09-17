@@ -142,10 +142,10 @@ impl Parser {
                 };
 
                 let unwrapped_init = match init {
-                    Some(expr) => {
+                    Some(ref expr) => {
                         match &expr {
                             Expression::Constant(c) => match c {
-                                ConstantExpression { value, .. } => Some(Initializer::Single(expr)),
+                                ConstantExpression { value, .. } => Some(Initializer::Single(expr.to_owned())),
                             }
                             Expression::Literal(l) => match l {
                                 LiteralExpression { value, .. } => match *value.clone() {
@@ -153,7 +153,9 @@ impl Parser {
                                     Initializer::Single(single_expr) => Some(Initializer::Single(single_expr.to_owned())),
                                 },
                             },
-                            _ => None,
+                            _ => {
+                                Some(Initializer::Single(expr.clone()))
+                            }
                         }
                     }
                     None => None,

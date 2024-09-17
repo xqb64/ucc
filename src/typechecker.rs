@@ -272,39 +272,40 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         Initializer::Compound(inits) => Initializer::Compound(inits),
     };
     match (t, &unwrapped_init) {
-        (Type::Array { element, size }, Initializer::Single(_)) => {
-            bail!("StaticInitError::ArrayInitializationError");
+        (Type::Array { .. }, Initializer::Single(_)) => {
+            bail!("Can't initialize array from scalar value");
         }
         (_, Initializer::Single(Expression::Constant(ConstantExpression { value, _type }))) => {
-            if let Const::Int(0) | Const::Long(0) | Const::UInt(0) | Const::ULong(0) | Const::Double(0.0) = value {
+            if matches!(value, Const::Int(0) | Const::Long(0) | Const::UInt(0) | Const::ULong(0) | Const::Double(0.0)) {
                 Ok(vec![StaticInit::Zero(get_size_of_type(t))])
             } else {
                 Ok(vec![const2type(&value, t)])
             }
         }
-        (Type::Pointer(_), _) => bail!("InvalidPointerInitializer"),
+        (Type::Pointer { .. }, _) => bail!("InvalidPointerInitializer"),
         (_, Initializer::Single(_)) => bail!("StaticInitError::NonConstantInitializer"),
         (Type::Array { element, size }, Initializer::Compound(inits)) => {
-            let mut static_inits = Vec::with_capacity(inits.len());
-            let element_type = element.clone();
+            println!("WOO, WE'RE IN THE ARRAY CASE");
             
+            let mut static_inits = Vec::with_capacity(inits.len());
             for init in inits.iter() {
-                let static_init = static_init_helper(init.clone(), &element_type)?;
+                let static_init = static_init_helper(init.clone(), &element)?;
                 static_inits.extend(static_init);
             }
 
-            let padding = match size - inits.len() {
-                0 => vec![],
-                n if n > 0 => vec![StaticInit::Zero(get_size_of_type(&element_type))],
-                _ => bail!("Too many initializers"),
+            let padding_size = size.saturating_sub(inits.len());
+            let padding = if padding_size > 0 {
+                vec![StaticInit::Zero(get_size_of_type(&element) * padding_size)]
+            } else if padding_size == 0 {
+                vec![]
+            } else {
+                bail!("Too many initializers")
             };
 
             static_inits.extend(padding);
-
             Ok(static_inits)
         }
         (_, Initializer::Compound(_)) => {
-            println!("unwrapped_init: {:?}", unwrapped_init);
             bail!("Compound initializer for scalar type");
         }
     }
