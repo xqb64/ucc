@@ -162,7 +162,7 @@ impl Typecheck for VariableDeclaration {
                     VariableDeclaration {
                         _type: self._type.clone(),
                         name: self.name.clone(),
-                        init: self.init.clone(),
+                        init: optionally_typecheck_init(&self.init, &self._type)?,
                         storage_class: self.storage_class,
                         is_global: self.is_global,
                     },
@@ -198,7 +198,7 @@ impl Typecheck for VariableDeclaration {
                             VariableDeclaration {
                                 _type: self._type.clone(),
                                 name: self.name.clone(),
-                                init: self.init.clone(),
+                                init: optionally_typecheck_init(&self.init, &self._type)?,
                                 storage_class: self.storage_class,
                                 is_global: self.is_global,
                             },
@@ -224,7 +224,7 @@ impl Typecheck for VariableDeclaration {
                             VariableDeclaration {
                                 _type: self._type.clone(),
                                 name: self.name.clone(),
-                                init: self.init.clone(),
+                                init: optionally_typecheck_init(&self.init, &self._type)?,
                                 storage_class: self.storage_class,
                                 is_global: self.is_global,
                             },
@@ -545,7 +545,7 @@ impl Typecheck for Statement {
             }
             Statement::Return(ReturnStatement { expr, target_type }) => {
                 let typechecked_expr = typecheck_and_convert(expr)?;
-
+                
                 Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
                     expr: typechecked_expr,
                     target_type: target_type.clone(),
@@ -559,6 +559,7 @@ impl Typecheck for Statement {
 }
 
 fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer> {
+    println!("TYPECKEKING --- target_type: {:?}, init: {:?}", target_type, init);
     match (target_type, init) {
         (Type::Array { element, size }, Initializer::Compound(inits)) => {
             if inits.len() > *size {
