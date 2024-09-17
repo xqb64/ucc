@@ -269,7 +269,7 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             Expression::Literal(LiteralExpression { name, value, _type }) => *value.clone(),
             _ => init.clone(),
         },
-        Initializer::Compound(name, inits) => Initializer::Compound(name, inits),
+        Initializer::Compound(name, _type, inits) => Initializer::Compound(name, _type, inits),
     };
     match (t, &unwrapped_init) {
         (Type::Array { .. }, Initializer::Single(_, _)) => {
@@ -284,7 +284,7 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         }
         (Type::Pointer { .. }, _) => bail!("InvalidPointerInitializer"),
         (_, Initializer::Single(_, _)) => bail!("StaticInitError::NonConstantInitializer"),
-        (Type::Array { element, size }, Initializer::Compound(name, inits)) => {
+        (Type::Array { element, size }, Initializer::Compound(name, _type, inits)) => {
             let mut static_inits = Vec::with_capacity(inits.len());
             for init in inits.iter() {
                 let static_init = static_init_helper(init.clone(), &element)?;
@@ -303,7 +303,7 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             static_inits.extend(padding);
             Ok(static_inits)
         }
-        (_, Initializer::Compound(_, _)) => {
+        (_, Initializer::Compound(_, _, _)) => {
             bail!("Compound initializer for scalar type");
         }
     }
@@ -558,7 +558,7 @@ impl Typecheck for Statement {
 
 fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer> {
     match (target_type, init) {
-        (Type::Array { element, size }, Initializer::Compound(name, inits)) => {
+        (Type::Array { element, size }, Initializer::Compound(name, _type, inits)) => {
             if inits.len() > *size {
                 bail!("Too many initializers");
             }
@@ -575,7 +575,7 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             }
 
 
-            Ok(Initializer::Compound(name.clone(), typechecked_inits))
+            Ok(Initializer::Compound(name.clone(), *element.clone(), typechecked_inits))
         }
         (_, Initializer::Single(name, expr)) => {
             match expr {
@@ -629,7 +629,7 @@ fn zero_initializer(t: &Type) -> Initializer {
                 inits.push(zero_initializer(element));
             }
 
-            Initializer::Compound(String::new(), inits)
+            Initializer::Compound(String::new(), *element.clone(), inits)
         }
         _ => unreachable!(),
     }
@@ -1119,40 +1119,15 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }
         }
         Expression::Subscript(SubscriptExpression { expr, index, _type }) => typecheck_subscript(expr, index),
-        Expression::Literal(LiteralExpression { name, value, _type }) => typecheck_literal_expression(name, value, _type),
+        _ => todo!(),
     }
 }
-
-fn typecheck_literal_expression(name: &str, value: &Initializer, _type: &Type) -> Result<Expression> {
-    match value {
-        Initializer::Single(name, expr) => {
-            let typed_expr = typecheck_and_convert(expr)?;
-            println!("HER");
-            Ok(typed_expr)
-        }
-        Initializer::Compound(name, inits) => {
-            let mut typechecked_inits = vec![];
-
-            for init in inits.iter() {
-                let typechecked_init = typecheck_init(_type, init)?;
-                typechecked_inits.push(typechecked_init);
-            }
-
-            Ok(Expression::Literal(LiteralExpression {
-                name: name.to_string(),
-                value: Initializer::Compound(name.clone(), typechecked_inits).into(),
-                _type: _type.clone(),
-            }))
-        }
-    }
-}
-
 
 fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
     let typed_expr = typecheck_expr(e)?;
     let type_of_expr = get_type(&typed_expr);
     match type_of_expr {
-        Type::Array { element, size } => {
+        Type::Array { element, .. } => {
             let addr_of_expr = Expression::AddrOf(AddrOfExpression { expr: typed_expr.into(), _type: Type::Pointer(element) });
             return Ok(addr_of_expr);
         }
@@ -1233,7 +1208,6 @@ fn get_common_ptr_type(e1: &Expression, e2: &Expression) -> Result<Type> {
 }
 
 pub fn get_common_type(type1: &Type, type2: &Type) -> Type {
-    println!("getting common type of {:?} and {:?}", type1, type2);
     if type1 == type2 {
         return type1.clone();
     }
@@ -1258,7 +1232,6 @@ pub fn get_common_type(type1: &Type, type2: &Type) -> Type {
 }
 
 pub fn get_size_of_type(t: &Type) -> usize {
-    println!("getting size of type: {:?}", t);
     match t {
         Type::Int => 4,
         Type::Uint => 4,
@@ -1268,7 +1241,6 @@ pub fn get_size_of_type(t: &Type) -> usize {
         Type::Pointer(_) => 8,
         Type::Array { element, size } => get_size_of_type(element) * size,
         _ => {
-            println!("got type: {:?}", t);
             unreachable!()
         }
     }

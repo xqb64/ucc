@@ -1,7 +1,7 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression, ProgramStatement, ReturnStatement, Statement, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, Statement, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
     },
     typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type, IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE
@@ -570,7 +570,6 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
             }
         }
         Expression::Literal(_) => todo!(),
-        _ => todo!(),
     }
 }
 
@@ -581,12 +580,12 @@ fn emit_compound_init(value: Box<Initializer>, instructions: &mut Vec<IRInstruct
             instructions.push(IRInstruction::CopyToOffset { src: v, dst: name.clone(), offset });
 
         }
-        Initializer::Compound(_, compound_init) => {
-            for (idx, elem_init) in compound_init.into_iter().enumerate() {
-                let elem_type = get_type_of_init(&elem_init);
-                let size_of_type = get_size_of_type(&elem_type);
-                let new_offset = offset + (idx * size_of_type);
-                emit_compound_init(elem_init.clone().into(), instructions, new_offset);
+        Initializer::Compound(_, _type, compound_init) => {
+            if let Type::Array { element, size } = _type {
+                for (idx, elem_init) in compound_init.into_iter().enumerate() {
+                    let new_offset = offset + (idx * get_size_of_type(&element));
+                    emit_compound_init(elem_init.clone().into(), instructions, new_offset);
+                }    
             }
         }
     }
@@ -994,7 +993,7 @@ impl Irfy for VariableDeclaration {
     fn irfy(&self) -> Option<IRNode> {
         let mut instructions = vec![];
 
-        if let Some(Initializer::Single(name, init)) = &self.init {
+        if let Some(Initializer::Single(_, init)) = &self.init {
             let result = emit_tacky_and_convert(init.clone(), &mut instructions);
             instructions.push(IRInstruction::Copy {
                 src: result,
@@ -1002,11 +1001,13 @@ impl Irfy for VariableDeclaration {
             });
         }
 
-        if let Some(Initializer::Compound(name, compound_init)) = &self.init {
+        if let Some(Initializer::Compound(_,_type, compound_init)) = &self.init {
             let offset = 0;
-            for (idx, elem_init) in compound_init.iter().enumerate() {
-                let new_offset = offset + idx * get_size_of_type(&get_type_of_init(elem_init));
-                emit_compound_init(elem_init.clone().into(),  &mut instructions, new_offset);
+            if let Type::Array { element, size } = _type {
+                for (idx, elem_init) in compound_init.iter().enumerate() {
+                    let new_offset = offset + idx * get_size_of_type(&element);
+                    emit_compound_init(elem_init.clone().into(), &mut instructions, new_offset);
+                }
             }
         }
 

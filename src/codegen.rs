@@ -1212,10 +1212,10 @@ impl Codegen for IRInstruction {
                     AsmInstruction::Lea { src: src.codegen().into(), dst: dst.codegen().into() }
                 ])
             }
-            IRInstruction::AddPtr { ptr, index, scale, dst } => {
+            IRInstruction::AddPtr { .. } => {
                 todo!()
             }
-            IRInstruction::CopyToOffset { src, dst, offset } => todo!(),
+            IRInstruction::CopyToOffset { .. } => todo!(),
         }
     }
 }

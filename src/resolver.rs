@@ -131,12 +131,12 @@ fn resolve_init(init: &Initializer, variable_map: &mut HashMap<String, Variable>
             let resolved_expr = resolve_exp(single_init, variable_map)?;
             Ok(Initializer::Single(name.clone(), resolved_expr))
         }
-        Initializer::Compound(name, compound_init) => {
+        Initializer::Compound(name, _type, compound_init) => {
             let mut resolved_inits = vec![];
             for init in compound_init {
                 resolved_inits.push(resolve_init(init, variable_map)?);
             }
-            Ok(Initializer::Compound(name.clone(), resolved_inits))
+            Ok(Initializer::Compound(name.clone(), _type.clone(), resolved_inits))
         }
     }
 }

@@ -142,7 +142,6 @@ impl Parser {
                 };
 
                 let unwrapped = self.unwrap_expression_to_initializer(init);
-                println!("unwrapped: {:?}", unwrapped);
 
                 Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, _type: decl_type, init: unwrapped, storage_class, is_global: self.depth == 0 })))
             }
@@ -158,11 +157,11 @@ impl Parser {
                     Initializer::Single(name.clone(), expr.clone())
                 }
             },
-            Initializer::Compound(name, elems) => {
+            Initializer::Compound(name, _type, elems) => {
                 let new_elems = elems.iter()
                     .map(|elem| self.transform_initializer(elem))
                     .collect();
-                Initializer::Compound(name.clone(), new_elems)
+                Initializer::Compound(name.clone(), _type.clone(), new_elems)
             },
         }
 
@@ -910,7 +909,7 @@ impl Parser {
             if inits.is_empty() {
                 bail!("empty compound literal");
             }
-            Ok(Expression::Literal(LiteralExpression { name: String::new(), value: Initializer::Compound(String::new(), inits).into(), _type: Type::Dummy })) 
+            Ok(Expression::Literal(LiteralExpression { name: String::new(), value: Initializer::Compound(String::new(), Type::Dummy, inits).into(), _type: Type::Dummy })) 
         } else {
             println!("got token: {:?}, {:?}", self.current, self.previous);
             bail!("expected primary");
@@ -1156,7 +1155,7 @@ pub struct LiteralExpression {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Initializer {
     Single(String, Expression),
-    Compound(String, Vec<Initializer>),
+    Compound(String, Type, Vec<Initializer>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
