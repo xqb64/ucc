@@ -150,7 +150,17 @@ impl Parser {
                             Expression::Literal(ref mut l) => match l {
                                 LiteralExpression { name: _, value, .. } => {
                                     match *value.clone() {
-                                        Initializer::Compound(_, compound_expr) => Some(Initializer::Compound(name.clone(), compound_expr.to_owned())),
+                                        Initializer::Compound(_, mut compound_expr) => {
+                                            for init in compound_expr.iter_mut() {
+                                                match init {
+                                                    Initializer::Single(_, expr) => *init = Initializer::Single(name.clone(), expr.clone()),
+                                                    Initializer::Compound(_, _) => {
+                                                        bail!("nested compound initializers are not supported")
+                                                    }
+                                                }
+                                            }
+                                            Some(Initializer::Compound(name.clone(), compound_expr.to_owned()))
+                                        }
                                         Initializer::Single(_, single_expr) => Some(Initializer::Single(name.clone(), single_expr.to_owned())),
                                     }
                                 }
