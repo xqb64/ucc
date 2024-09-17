@@ -231,7 +231,6 @@ impl Typecheck for VariableDeclaration {
                         )))
                     }
                     None => {
-                        // Add automatic variable to symbol table
                         let symbol = Symbol {
                             _type: self._type.clone(),
                             attrs: IdentifierAttrs::LocalAttr,
@@ -242,7 +241,7 @@ impl Typecheck for VariableDeclaration {
                             VariableDeclaration {
                                 _type: self._type.clone(),
                                 name: self.name.clone(),
-                                init: None,
+                                init: optionally_typecheck_init(&self.init, &self._type)?,
                                 storage_class: self.storage_class,
                                 is_global: self.is_global,
                             },
@@ -251,6 +250,16 @@ impl Typecheck for VariableDeclaration {
                 }
             }
         }
+    }
+}
+
+fn optionally_typecheck_init(init: &Option<Initializer>, t: &Type) -> Result<Option<Initializer>> {
+    match init {
+        Some(init) => {
+            let typechecked_init = typecheck_init(t, init)?;
+            Ok(Some(typechecked_init))
+        }
+        None => Ok(None),
     }
 }
 
@@ -552,12 +561,6 @@ impl Typecheck for Statement {
 
 fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer> {
     match (target_type, init) {
-        (_, Initializer::Single(expr)) => {
-            let typechecked_expr = typecheck_and_convert(expr)?;
-            let converted_expr = convert_by_assignment(&typechecked_expr, target_type)?;
-
-            Ok(Initializer::Single(converted_expr))
-        }
         (Type::Array { element, size }, Initializer::Compound(inits)) => {
             if inits.len() > *size {
                 bail!("Too many initializers");
@@ -576,8 +579,20 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
 
             Ok(Initializer::Compound(typechecked_inits))
         }
+        (_, Initializer::Single(expr)) => {
+            match expr {
+                Expression::Literal(_) => {
+                    Ok(Initializer::Single(expr.clone()))
+                }
+                _ => {
+                    let typechecked_expr = typecheck_and_convert(expr)?;
+                    println!("target_type: {:?}, typechecked_expr: {:?}", target_type, typechecked_expr);
+                    let converted_expr = convert_by_assignment(&typechecked_expr, target_type)?;
+                    Ok(Initializer::Single(converted_expr))        
+                }
+            }
+        }
         _ => {
-            println!("typechecking... target_type: {:?}, init: {:?}", target_type, init);
             bail!("can't init a scalar object iwth a compound initializer");
         }
     }
@@ -609,6 +624,15 @@ fn zero_initializer(t: &Type) -> Initializer {
             value: Const::Int(0),
             _type: Type::Int,
         })),
+        Type::Array { element, size } => {
+            let mut inits = vec![];
+
+            for _ in 0..*size {
+                inits.push(zero_initializer(element));
+            }
+
+            Initializer::Compound(inits)
+        }
         _ => unreachable!(),
     }
 }
@@ -889,6 +913,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }
         }
         Expression::Variable(VariableExpression { value, _type }) => {
+            println!("getting type for variable: {:?}", value);
             let v_type = SYMBOL_TABLE
                 .lock()
                 .unwrap()

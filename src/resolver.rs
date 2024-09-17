@@ -28,6 +28,18 @@ impl Resolve for Declaration {
     }
 }
 
+fn optionally_resolve_init(
+    init: &Option<Initializer>,
+    variable_map: &mut HashMap<String, Variable>,
+) -> Result<Option<Initializer>> {
+    if init.is_some() {
+        let resolved_init = resolve_init(init.as_ref().unwrap(), variable_map)?;
+        Ok(Some(resolved_init))
+    } else {
+        Ok(None)
+    }
+}
+
 impl Resolve for VariableDeclaration {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>) -> Result<BlockItem> {
         match self.is_global {
@@ -44,7 +56,7 @@ impl Resolve for VariableDeclaration {
                 Ok(BlockItem::Declaration(Declaration::Variable(
                     VariableDeclaration {
                         name: self.name.clone(),
-                        init: self.init.clone(),
+                        init: optionally_resolve_init(&self.init, variable_map)?,
                         storage_class: self.storage_class,
                         is_global: self.is_global,
                         _type: self._type.clone(),
@@ -80,7 +92,7 @@ impl Resolve for VariableDeclaration {
                     Ok(BlockItem::Declaration(Declaration::Variable(
                         VariableDeclaration {
                             name: self.name.clone(),
-                            init: self.init.clone(),
+                            init: optionally_resolve_init(&self.init, variable_map)?,
                             storage_class: self.storage_class,
                             is_global: self.is_global,
                             _type: self._type.clone(),
@@ -98,15 +110,10 @@ impl Resolve for VariableDeclaration {
                         },
                     );
 
-                    if self.init.is_some() {
-                        resolve_init(&self.init.as_ref().unwrap(), variable_map)?;
-                    }
-
-
                     Ok(BlockItem::Declaration(Declaration::Variable(
                         VariableDeclaration {
                             name: unique_name,
-                            init: self.init.clone(),
+                            init: optionally_resolve_init(&self.init, variable_map)?,
                             storage_class: self.storage_class,
                             is_global: self.is_global,
                             _type: self._type.clone(),
@@ -118,17 +125,18 @@ impl Resolve for VariableDeclaration {
     }
 }
 
-fn resolve_init(init: &Initializer, variable_map: &mut HashMap<String, Variable>) -> Result<()> {
+fn resolve_init(init: &Initializer, variable_map: &mut HashMap<String, Variable>) -> Result<Initializer> {
     match init {
         Initializer::Single(single_init) => {
-            resolve_exp(single_init, variable_map)?;
-            Ok(())
+            let resolved_expr = resolve_exp(single_init, variable_map)?;
+            Ok(Initializer::Single(resolved_expr))
         }
         Initializer::Compound(compound_init) => {
+            let mut resolved_inits = vec![];
             for init in compound_init {
-                resolve_init(init, variable_map)?;
+                resolved_inits.push(resolve_init(init, variable_map)?);
             }
-            Ok(())
+            Ok(Initializer::Compound(resolved_inits))
         }
     }
 }
@@ -494,7 +502,8 @@ fn resolve_exp(
             }))
         }
         Expression::Literal(LiteralExpression { value, _type }) => {
-            Ok(Expression::Literal(LiteralExpression { value, _type }))
+            let resolved_init = resolve_init(&value, variable_map)?;
+            Ok(Expression::Literal(LiteralExpression { value: resolved_init.into(), _type }))
         }
     }
 }
