@@ -38,7 +38,7 @@ pub struct AsmFunction {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AsmStaticVariable {
     pub name: String,
-    pub init: StaticInit,
+    pub init: Vec<StaticInit>,
     pub global: bool,
     pub alignment: usize,
 }
@@ -237,7 +237,7 @@ impl Codegen for IRStaticVariable {
     fn codegen(&self) -> AsmNode {
         AsmNode::StaticVariable(AsmStaticVariable {
             name: self.name.clone(),
-            init: self.init[0],
+            init: self.init.clone(),
             global: self.global,
             alignment: match self._type {
                 Type::Int => 4,
@@ -1535,6 +1535,7 @@ impl Fixup for AsmFunction {
                                     },
                                 ]);        
                             }
+                            _ => todo!(),
                         }
                     }
                     (AsmOperand::Memory(_reg, _src_n), AsmOperand::Stack(_dst_n)) => {
@@ -1567,6 +1568,7 @@ impl Fixup for AsmFunction {
                                     },
                                 ]);        
                             }
+                            _ => todo!(),
                         }
                     }
                     (AsmOperand::Stack(src_n), AsmOperand::Stack(dst_n)) => {
@@ -1599,6 +1601,7 @@ impl Fixup for AsmFunction {
                                     },
                                 ]);        
                             }
+                            _ => todo!(),
                         }
                     }
                     (AsmOperand::Data(src), AsmOperand::Stack(dst_n)) => {
@@ -1631,6 +1634,7 @@ impl Fixup for AsmFunction {
                                     },
                                 ]);        
                             }
+                            _ => todo!(),
                         }
                     }
                     (AsmOperand::Data(src), AsmOperand::Memory(_reg, _dst_n)) => {
@@ -1663,6 +1667,7 @@ impl Fixup for AsmFunction {
                                     },
                                 ]);        
                             }
+                            _ => todo!(),
                         }
                     }
                     (AsmOperand::Stack(src_n), AsmOperand::Data(dst)) => {
@@ -1695,6 +1700,7 @@ impl Fixup for AsmFunction {
                                     },
                                 ]);        
                             }
+                            _ => todo!(),
                         }
                     }
                     (AsmOperand::Data(src), AsmOperand::Data(dst)) => {
@@ -1727,6 +1733,7 @@ impl Fixup for AsmFunction {
                                     },
                                 ]);        
                             }
+                            _ => todo!(),
                         }
                     }
                     (AsmOperand::Imm(konst), AsmOperand::Stack(dst_n)) => match asm_type {
@@ -1838,6 +1845,7 @@ impl Fixup for AsmFunction {
                                         },
                                     ]);        
                                 }
+                                _ => todo!(),
                             }
                         }
                         (AsmOperand::Data(src), AsmOperand::Stack(dst_n)) => {
@@ -1978,6 +1986,7 @@ impl Fixup for AsmFunction {
                                             },
                                         ]);
                                     }
+                                    _ => todo!(),
                                 }
                             }
                             (AsmOperand::Data(_), AsmOperand::Stack(_)) => {
@@ -2335,6 +2344,7 @@ impl Fixup for AsmFunction {
                                         },
                                     ]);
                                 }
+                                _ => todo!(),
                             }
                         }
                         (AsmOperand::Imm(konst1), AsmOperand::Imm(konst2)) => {
@@ -2654,6 +2664,7 @@ pub enum AsmType {
     Longword,
     Quadword,
     Double,
+    Bytearray { size: usize, alignment: usize },
 }
 
 fn classify_parameters_from_irvalue(parameters: Vec<IRValue>) -> (Vec<(AsmType, AsmNode)>, Vec<(AsmType, AsmNode)>, Vec<(AsmType, AsmNode)>) {
@@ -2865,6 +2876,7 @@ impl<T: Into<AsmType>> From<T> for OperandByteLen {
             AsmType::Longword => Self::B4,
             AsmType::Quadword => Self::B8,
             AsmType::Double => Self::B8,
+            _ => todo!(),
         }
     }
 }
@@ -2887,6 +2899,7 @@ impl Alignment {
             AsmType::Longword => Self::B4,
             AsmType::Quadword => Self::B8,
             AsmType::Double => Self::B8,
+            _ => todo!(),
         }
     }
 }

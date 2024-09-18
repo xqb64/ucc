@@ -167,7 +167,6 @@ impl Parser {
                 Initializer::Compound(name.to_string(), _type.clone(), new_elems)
             },
         }
-
     }
 
     // Function to convert `Expression` to `Initializer`

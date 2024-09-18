@@ -70,28 +70,30 @@ impl Emit for AsmStaticVariable {
     fn emit(&mut self, f: &mut File, _asm_type: &mut AsmType) -> Result<()> {
         writeln!(f)?;
         
-        match self.init {
-            StaticInit::Int(n) => match n {
-                0 => writeln!(f, "\t.section .bss")?,
-                _ => writeln!(f, "\t.section .data")?,
-            },
-            StaticInit::Long(n) => match n {
-                0 => writeln!(f, "\t.section .bss")?,
-                _ => writeln!(f, "\t.section .data")?,
-            },
-            StaticInit::Uint(n) => match n {
-                0 => writeln!(f, "\t.section .bss")?,
-                _ => writeln!(f, "\t.section .data")?,
-            },
-            StaticInit::Ulong(n) => match n {
-                0 => writeln!(f, "\t.section .bss")?,
-                _ => writeln!(f, "\t.section .data")?,
-            },
-            StaticInit::Double(n) => match n {
-                0.0 => writeln!(f, "\t.section .bss")?,
-                _ => writeln!(f, "\t.section .data")?,
-            },
-            _ => todo!(),
+        for init in &self.init {
+            match init {
+                StaticInit::Int(n) => match n {
+                    0 => writeln!(f, "\t.section .bss")?,
+                    _ => writeln!(f, "\t.section .data")?,
+                },
+                StaticInit::Long(n) => match n {
+                    0 => writeln!(f, "\t.section .bss")?,
+                    _ => writeln!(f, "\t.section .data")?,
+                },
+                StaticInit::Uint(n) => match n {
+                    0 => writeln!(f, "\t.section .bss")?,
+                    _ => writeln!(f, "\t.section .data")?,
+                },
+                StaticInit::Ulong(n) => match n {
+                    0 => writeln!(f, "\t.section .bss")?,
+                    _ => writeln!(f, "\t.section .data")?,
+                },
+                StaticInit::Double(n) => match n {
+                    0.0 => writeln!(f, "\t.section .bss")?,
+                    _ => writeln!(f, "\t.section .data")?,
+                },
+                _ => todo!(),
+            }    
         }
 
         if self.global {
@@ -109,27 +111,29 @@ impl Emit for AsmStaticVariable {
 
         writeln!(f, "{}:", self.name)?;
 
-        match self.init {
-            StaticInit::Int(n) => match n {
-                0 => writeln!(f, "\t.zero 4")?,
-                _ => writeln!(f, "\t.long {}", n)?,
-            },
-            StaticInit::Long(n) => match n {
-                0 => writeln!(f, "\t.zero 8")?,
-                _ => writeln!(f, "\t.quad {}", n)?,
-            },
-            StaticInit::Uint(n) => match n {
-                0 => writeln!(f, "\t.zero 4")?,
-                _ => writeln!(f, "\t.long {}", n)?,
-            },
-            StaticInit::Ulong(n) => match n {
-                0 => writeln!(f, "\t.zero 8")?,
-                _ => writeln!(f, "\t.quad {}", n)?,
-            },
-            StaticInit::Double(n) => match n {
-                _ => writeln!(f, "\t.quad {}", n.to_bits())?,
-            },
-            _ => todo!(),
+        for init in &self.init {
+            match init {
+                StaticInit::Int(n) => match n {
+                    0 => writeln!(f, "\t.zero 4")?,
+                    _ => writeln!(f, "\t.long {}", n)?,
+                },
+                StaticInit::Long(n) => match n {
+                    0 => writeln!(f, "\t.zero 8")?,
+                    _ => writeln!(f, "\t.quad {}", n)?,
+                },
+                StaticInit::Uint(n) => match n {
+                    0 => writeln!(f, "\t.zero 4")?,
+                    _ => writeln!(f, "\t.long {}", n)?,
+                },
+                StaticInit::Ulong(n) => match n {
+                    0 => writeln!(f, "\t.zero 8")?,
+                    _ => writeln!(f, "\t.quad {}", n)?,
+                },
+                StaticInit::Double(n) => match n {
+                    _ => writeln!(f, "\t.quad {}", n.to_bits())?,
+                },
+                _ => todo!(),
+            }    
         }
 
         Ok(())
@@ -202,6 +206,7 @@ impl Emit for AsmInstruction {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     AsmType::Double => "sd",
+                    _ => todo!(),
                 };
                 write!(f, "mov{} ", suffix)?;
                 src.emit(f, asm_type)?;
@@ -262,6 +267,7 @@ impl Emit for AsmInstruction {
                         AsmType::Longword => "imul",
                         AsmType::Quadword => "imul",
                         AsmType::Double => "mul",
+                        _ => todo!(),
                     },
                     AsmBinaryOp::Xor => "xor",
                     AsmBinaryOp::And => "and",
@@ -277,6 +283,7 @@ impl Emit for AsmInstruction {
                         AsmBinaryOp::DivDouble => "sd",
                         _ => "sd",
                     }
+                    _ => todo!(),
                 };
 
                 write!(f, "{}{} ", instr, suffix)?;
@@ -312,12 +319,14 @@ impl Emit for AsmInstruction {
                     AsmType::Longword => "imul",
                     AsmType::Quadword => "imul",
                     AsmType::Double => "mul",
+                    _ => todo!(),
                 };
                 
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     AsmType::Double => "sd",
+                    _ => todo!(),
                 };
 
                 write!(f, "{}{} ", instr, suffix)?;
@@ -331,6 +340,7 @@ impl Emit for AsmInstruction {
                     AsmType::Longword => "cmpl",
                     AsmType::Quadword => "cmpq",
                     AsmType::Double => "comisd",
+                    _ => todo!(),
                 };
                 write!(f, "{} ", instr)?;
                 lhs.emit(f, asm_type)?;
@@ -551,6 +561,7 @@ impl Emit for AsmRegister {
                 AsmRegister::BP => write!(f, "%rbp")?,
                 AsmRegister::SP => write!(f, "%rsp")?,
             }
+            _ => todo!(),
         }
 
         Ok(())
