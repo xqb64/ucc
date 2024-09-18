@@ -672,7 +672,7 @@ impl Codegen for IRInstruction {
                                 AsmInstruction::Mov {
                                     asm_type: AsmType::Longword,
                                     src: AsmOperand::Imm(0),
-                                    dst: AsmOperand::Register(AsmRegister::R11),
+                                    dst: AsmOperand::Register(AsmRegister::DX),
                                 },
                                 AsmInstruction::Div {
                                     asm_type: AsmType::Longword,
