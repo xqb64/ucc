@@ -368,6 +368,7 @@ impl Codegen for IRValue {
             IRValue::Var(name) => {
                 let symbol = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
                 let type_of_symbol = symbol._type.clone();
+                
                 match type_of_symbol {
                     Type::Array { .. } => {
                         AsmNode::Operand(AsmOperand::PseudoMem(name.to_owned(), 0))
@@ -2813,6 +2814,7 @@ pub fn build_asm_symbol_table() {
                     Type::Ulong => AsmType::Quadword,
                     Type::Double => AsmType::Double,
                     Type::Pointer(_) => AsmType::Quadword,
+                    Type::Array { ref element, size }  => AsmType::Bytearray { size: get_size_of_type(&element) * size, alignment: calculate_alignment_of_array(&symbol._type) },
                     _ => {
                         panic!("Unsupported type for static backend_symtab: {}", identifier);
                     }
@@ -2872,10 +2874,15 @@ impl VarToStackPos {
                 };
                 self.last_used_stack_pos.0 -= alloc;
 
-                let alignment = Alignment::default_of(asm_type) as i64;
-                let rem = self.last_used_stack_pos.0 % alignment;
+                let alignment = match Alignment::default_of(asm_type) {
+                    Alignment::B4 => 4,
+                    Alignment::B8 => 8,
+                    Alignment::B16 => 16,
+                    Alignment::Other(size) => size,
+                };
+                let rem = self.last_used_stack_pos.0 % alignment as i64;
                 if rem != 0 {
-                    self.last_used_stack_pos.0 -= alignment + rem;
+                    self.last_used_stack_pos.0 -= alignment as i64 + rem;
                 }
 
                 self.last_used_stack_pos
@@ -2911,10 +2918,12 @@ impl<T: Into<AsmType>> From<T> for OperandByteLen {
 }
 
 #[derive(PartialEq, Eq, Hash, Debug)]
+#[repr(usize)]
 pub enum Alignment {
     B4 = 4,
     B8 = 8,
     B16 = 16,
+    Other(usize),
 }
 
 impl Alignment {
@@ -2928,6 +2937,7 @@ impl Alignment {
             AsmType::Longword => Self::B4,
             AsmType::Quadword => Self::B8,
             AsmType::Double => Self::B8,
+            AsmType::Bytearray { size, alignment } => Self::Other(alignment),
             _ => todo!(),
         }
     }

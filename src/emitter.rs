@@ -96,7 +96,6 @@ impl Emit for AsmStaticVariable {
                     0 => writeln!(f, "\t.section .bss")?,
                     _ => writeln!(f, "\t.section .data")?,
                 },
-                _ => todo!(),
             }    
         }
 

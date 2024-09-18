@@ -573,18 +573,18 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
     }
 }
 
-fn emit_compound_init(value: Box<Initializer>, instructions: &mut Vec<IRInstruction>, offset: usize) {
+fn emit_compound_init(name: &str, value: Box<Initializer>, instructions: &mut Vec<IRInstruction>, offset: usize) {
     match *value {
-        Initializer::Single(name, single_init) => {
+        Initializer::Single(_, single_init) => {
             let v = emit_tacky_and_convert(single_init, instructions);
-            instructions.push(IRInstruction::CopyToOffset { src: v, dst: name.clone(), offset });
+            instructions.push(IRInstruction::CopyToOffset { src: v, dst: name.to_string(), offset });
 
         }
         Initializer::Compound(_, _type, compound_init) => {
-            if let Type::Array { element, size } = _type {
+            if let Type::Array { element, size: _ } = _type {
                 for (idx, elem_init) in compound_init.into_iter().enumerate() {
                     let new_offset = offset + (idx * get_size_of_type(&element));
-                    emit_compound_init(elem_init.clone().into(), instructions, new_offset);
+                    emit_compound_init(name, elem_init.clone().into(), instructions, new_offset);
                 }    
             }
         }
@@ -1001,12 +1001,12 @@ impl Irfy for VariableDeclaration {
             });
         }
 
-        if let Some(Initializer::Compound(_,_type, compound_init)) = &self.init {
+        if let Some(Initializer::Compound(_, _type, compound_init)) = &self.init {
             let offset = 0;
-            if let Type::Array { element, size } = _type {
+            if let Type::Array { element, size: _ } = &self._type {
                 for (idx, elem_init) in compound_init.iter().enumerate() {
                     let new_offset = offset + idx * get_size_of_type(&element);
-                    emit_compound_init(elem_init.clone().into(), &mut instructions, new_offset);
+                    emit_compound_init(&self.name, elem_init.clone().into(), &mut instructions, new_offset);
                 }
             }
         }
