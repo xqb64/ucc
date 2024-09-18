@@ -1079,7 +1079,7 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                         }],
                     }))
                 }
-                _ => {}
+                _ => continue,
             }
         }
     }

@@ -68,6 +68,7 @@ fn run(opts: &Opt) -> Result<()> {
 
     if let IRNode::Program(prog) = &mut tac {
         prog.static_vars = tacky_defs;
+        println!("prog.static_vars: {:?}", prog.static_vars);
     }
 
     if opts.tacky {

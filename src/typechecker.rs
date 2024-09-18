@@ -205,7 +205,7 @@ impl Typecheck for VariableDeclaration {
                         )))
                     }
                     Some(StorageClass::Static) => {
-                        let zero_init = InitialValue::NoInitializer; // Placeholder, adjust if needed
+                        let zero_init = InitialValue::Initial(vec![StaticInit::Zero(get_size_of_type(&self._type))]);
                         let static_init = match &self.init {
                             Some(init) => to_static_init(init.clone(), &self._type)?,
                             None => zero_init,

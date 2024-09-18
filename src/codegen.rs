@@ -247,6 +247,7 @@ impl Codegen for IRStaticVariable {
                 Type::Ulong => 8,
                 Type::Double => 8,
                 Type::Pointer(_) => 8,
+                Type::Array { .. } => calculate_alignment_of_array(&self._type),
                 _ => unreachable!(),
             },
         })

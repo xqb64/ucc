@@ -70,6 +70,8 @@ impl Emit for AsmStaticVariable {
     fn emit(&mut self, f: &mut File, _asm_type: &mut AsmType) -> Result<()> {
         writeln!(f)?;
         
+        println!("HEREEEEEEEEE");
+
         for init in &self.init {
             match init {
                 StaticInit::Int(n) => match n {
@@ -135,9 +137,8 @@ impl Emit for AsmStaticVariable {
                 StaticInit::Double(n) => match n {
                     _ => writeln!(f, "\t.quad {}", n.to_bits())?,
                 },
-                StaticInit::Zero(n) => match n {
-                    0 => writeln!(f, "\t.zero 4")?,
-                    _ => unreachable!(),
+                StaticInit::Zero(n) => {
+                    writeln!(f, "\t.zero {}", n)?;
                 },
             }    
         }
