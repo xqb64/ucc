@@ -1252,7 +1252,6 @@ pub fn get_signedness(t: &Type) -> bool {
         Type::Uint => false,
         Type::Long => true,
         Type::Ulong => false,
-        Type::Double => true,
         Type::Pointer(_) => false,
         _ => unreachable!(),
     }

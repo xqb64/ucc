@@ -636,11 +636,23 @@ impl Codegen for IRInstruction {
                                 Const::Long(_) => true,
                                 Const::UInt(_) => false,
                                 Const::ULong(_) => false,
-                                Const::Double(_) => true,
+                                Const::Double(_) => unreachable!(),
                             },
                         };
 
-                        if signedness {
+                        let is_pointer_src = match lhs {
+                            IRValue::Var(name) => {
+                                let symbol = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
+                                match symbol._type {
+                                    Type::Pointer(_) => true,
+                                    _ => false,
+                                }
+                            }
+                            _ => false,
+                        };
+                        
+                        if signedness || (is_pointer_src) {
+                            println!("EEEEEEEEEEEEEEEEEEEEE");
                             v.extend(vec![
                                 AsmInstruction::Cdq { asm_type },
                                 AsmInstruction::Idiv {
@@ -652,13 +664,13 @@ impl Codegen for IRInstruction {
                                     src: AsmOperand::Register(AsmRegister::AX),
                                     dst: dst.codegen().into(),
                                 },
-                            ])
+                            ]);
                         } else {
                             v.extend(vec![
                                 AsmInstruction::Mov {
                                     asm_type: AsmType::Longword,
                                     src: AsmOperand::Imm(0),
-                                    dst: AsmOperand::Register(AsmRegister::DX),
+                                    dst: AsmOperand::Register(AsmRegister::R11),
                                 },
                                 AsmInstruction::Div {
                                     asm_type: AsmType::Longword,

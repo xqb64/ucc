@@ -268,7 +268,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                 if is_pointer_type(&lhs_type) && is_integer_type(&rhs_type) {
                     let ptr = emit_tacky_and_convert(*lhs, instructions);
                     let index = emit_tacky_and_convert(*rhs, instructions);
-                    let scale = get_size_of_type(&lhs_type);
+                    let scale = get_ptr_scale(lhs_type.clone());
                     let dst = make_tacky_variable(lhs_type.clone());
 
                     let negated_index = make_tacky_variable(rhs_type.clone());
@@ -278,6 +278,8 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                         src: index.clone(),
                         dst: negated_index.clone(),
                     });
+
+                    println!("scale, sub: {}", scale);
 
                     instructions.push(IRInstruction::AddPtr {
                         ptr,
@@ -308,7 +310,32 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                     instructions.push(IRInstruction::Binary { op: BinaryOp::Div, lhs: ptr_diff, rhs: scale_var, dst: dst.clone() });
                     
                     ExpResult::PlainOperand(dst)
-                } else {
+                } else if is_pointer_type(&lhs_type) && is_pointer_type(&rhs_type) {
+                    let ptr1 = emit_tacky_and_convert(*lhs, instructions);
+                    let ptr2 = emit_tacky_and_convert(*rhs, instructions);
+
+                    let ptr_diff = make_tacky_variable(Type::Long);
+
+                    let scale = get_ptr_scale(lhs_type.clone());
+
+                    let dst = make_tacky_variable(_type.clone());
+
+                    instructions.push(IRInstruction::Binary {
+                        op: BinaryOp::Sub,
+                        lhs: ptr1,
+                        rhs: ptr2,
+                        dst: ptr_diff.clone(),
+                    });
+
+                    instructions.push(IRInstruction::Binary {
+                        op: BinaryOp::Div,
+                        lhs: ptr_diff,
+                        rhs: IRValue::Constant(Const::Long(scale as i64)),
+                        dst: dst.clone(),
+                    });
+
+                    ExpResult::PlainOperand(dst)
+                }else {
                     let lhs = emit_tacky_and_convert(*lhs, instructions);
                     let rhs = emit_tacky_and_convert(*rhs, instructions);
 
@@ -573,7 +600,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
     }
 }
 
-fn emit_compound_init(name: &str, value: Box<Initializer>, instructions: &mut Vec<IRInstruction>, offset: usize) {
+fn emit_compound_init(name: &str, value: Box<Initializer>, instructions: &mut Vec<IRInstruction>, offset: usize, inited_type: &Type) {
     match *value {
         Initializer::Single(_, single_init) => {
             let v = emit_tacky_and_convert(single_init, instructions);
@@ -581,20 +608,13 @@ fn emit_compound_init(name: &str, value: Box<Initializer>, instructions: &mut Ve
 
         }
         Initializer::Compound(_, _type, compound_init) => {
-            if let Type::Array { element, size: _ } = _type {
+            if let Type::Array { element, size: _ } = inited_type {
                 for (idx, elem_init) in compound_init.into_iter().enumerate() {
                     let new_offset = offset + (idx * get_size_of_type(&element));
-                    emit_compound_init(name, elem_init.clone().into(), instructions, new_offset);
+                    emit_compound_init(name, elem_init.clone().into(), instructions, new_offset, inited_type);
                 }    
             }
         }
-    }
-}
-
-fn get_type_of_init(init: &Initializer) -> Type {
-    match init {
-        Initializer::Single(_, single_init) => get_type(single_init),
-        _ => unreachable!(),
     }
 }
 
@@ -642,6 +662,10 @@ fn emit_ptr_addition(lhs: Box<Expression>, rhs: Box<Expression>, t: Type, instru
         ExpResult::PlainOperand(dst)
     }
     
+}
+
+fn emit_ptr_diff() {
+
 }
 
 pub fn make_tacky_variable(_type: Type) -> IRValue {
@@ -1006,7 +1030,7 @@ impl Irfy for VariableDeclaration {
             if let Type::Array { element, size: _ } = &self._type {
                 for (idx, elem_init) in compound_init.iter().enumerate() {
                     let new_offset = offset + idx * get_size_of_type(&element);
-                    emit_compound_init(&self.name, elem_init.clone().into(), &mut instructions, new_offset);
+                    emit_compound_init(&self.name, elem_init.clone().into(), &mut instructions, new_offset, &self._type);
                 }
             }
         }

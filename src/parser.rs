@@ -141,11 +141,8 @@ impl Parser {
                     bail!("some error")
                 };
 
-                println!("init: {:?}", init);
-
                 let unwrapped = self.unwrap_expression_to_initializer(&name, init);
-                println!("unwrapped: {:?}", unwrapped);
-
+                
                 Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, _type: decl_type, init: unwrapped, storage_class, is_global: self.depth == 0 })))
             }
         }
