@@ -152,6 +152,8 @@ pub enum AsmOperand {
     Stack(i32),
     Register(AsmRegister),
     Data(String),
+    PseudoMem(String, isize),
+    Indexed(AsmRegister, AsmRegister, isize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

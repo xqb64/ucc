@@ -456,6 +456,7 @@ impl Emit for AsmOperand {
             AsmOperand::Pseudo(_) => unreachable!(),
             AsmOperand::Data(identifier) => write!(f, "{}(%rip)", identifier)?,
             AsmOperand::Memory(reg, n) => write!(f, "{}({})", n, reg)?,
+            _=> todo!(),
         }
         Ok(())
     }
