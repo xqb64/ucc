@@ -92,6 +92,10 @@ impl Emit for AsmStaticVariable {
                     0.0 => writeln!(f, "\t.section .bss")?,
                     _ => writeln!(f, "\t.section .data")?,
                 },
+                StaticInit::Zero(n) => match n {
+                    0 => writeln!(f, "\t.section .bss")?,
+                    _ => writeln!(f, "\t.section .data")?,
+                },
                 _ => todo!(),
             }    
         }
@@ -132,7 +136,10 @@ impl Emit for AsmStaticVariable {
                 StaticInit::Double(n) => match n {
                     _ => writeln!(f, "\t.quad {}", n.to_bits())?,
                 },
-                _ => todo!(),
+                StaticInit::Zero(n) => match n {
+                    0 => writeln!(f, "\t.zero 4")?,
+                    _ => unreachable!(),
+                },
             }    
         }
 
@@ -455,7 +462,8 @@ impl Emit for AsmOperand {
             AsmOperand::Pseudo(_) => unreachable!(),
             AsmOperand::Data(identifier) => write!(f, "{}(%rip)", identifier)?,
             AsmOperand::Memory(reg, n) => write!(f, "{}({})", n, reg)?,
-            _=> todo!(),
+            AsmOperand::Indexed(reg1, reg2, n) => write!(f, "({}, {}, {})", reg1, reg2, n)?,
+            AsmOperand::PseudoMem(_, _) => unreachable!(),
         }
         Ok(())
     }

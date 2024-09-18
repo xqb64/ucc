@@ -7,7 +7,7 @@ use crate::{
     },
     lexer::Const,
     parser::Type,
-    typechecker::{get_common_type, get_signedness, IdentifierAttrs, StaticInit, SYMBOL_TABLE},
+    typechecker::{get_common_type, get_signedness, get_size_of_type, IdentifierAttrs, StaticInit, SYMBOL_TABLE},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -148,7 +148,7 @@ pub enum ConditionCode {
 pub enum AsmOperand {
     Imm(i64),
     Pseudo(String),
-    Memory(AsmRegister, i32),
+    Memory(AsmRegister, isize),
     Register(AsmRegister),
     Data(String),
     PseudoMem(String, isize),
@@ -365,7 +365,16 @@ impl Codegen for IRValue {
                     AsmNode::Operand(AsmOperand::Data(static_const.name))
                 },
             },
-            IRValue::Var(name) => AsmNode::Operand(AsmOperand::Pseudo(name.to_owned())),
+            IRValue::Var(name) => {
+                let symbol = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
+                let type_of_symbol = symbol._type.clone();
+                match type_of_symbol {
+                    Type::Array { .. } => {
+                        AsmNode::Operand(AsmOperand::PseudoMem(name.to_owned(), 0))
+                    }
+                    _ => AsmNode::Operand(AsmOperand::Pseudo(name.to_owned()))
+                }  
+            }
         }
     }
 }
@@ -1213,10 +1222,27 @@ impl Codegen for IRInstruction {
                     AsmInstruction::Lea { src: src.codegen().into(), dst: dst.codegen().into() }
                 ])
             }
-            IRInstruction::AddPtr { .. } => {
-                todo!()
+            IRInstruction::AddPtr { ptr, index, scale, dst } => {
+                match scale {
+                    1 | 2 | 4 | 8 => AsmNode::Instructions(vec![
+                            AsmInstruction::Mov { asm_type: AsmType::Quadword, src: ptr.codegen().into(), dst: AsmOperand::Register(AsmRegister::AX) },
+                            AsmInstruction::Mov { asm_type: AsmType::Quadword, src: index.codegen().into(), dst: AsmOperand::Register(AsmRegister::DX) },
+                            AsmInstruction::Lea { src: AsmOperand::Indexed(AsmRegister::AX, AsmRegister::DX, *scale as isize), dst: dst.codegen().into() }
+                        ]),
+                    _ => AsmNode::Instructions(vec![
+                            AsmInstruction::Mov { asm_type: AsmType::Quadword, src: ptr.codegen().into(), dst: AsmOperand::Register(AsmRegister::AX) },
+                            AsmInstruction::Mov { asm_type: AsmType::Quadword, src: index.codegen().into(), dst: AsmOperand::Register(AsmRegister::DX) },
+                            AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Mul, lhs: AsmOperand::Imm(*scale as i64), rhs: AsmOperand::Register(AsmRegister::DX) },
+                            AsmInstruction::Lea { src: AsmOperand::Indexed(AsmRegister::AX, AsmRegister::DX, 1), dst: dst.codegen().into() }
+                        ]),
+                }
             }
-            IRInstruction::CopyToOffset { .. } => todo!(),
+            IRInstruction::CopyToOffset { src, dst, offset } => {
+                let type_of_src = get_asm_type(&src);
+                AsmNode::Instructions(vec![
+                    AsmInstruction::Mov { asm_type: type_of_src, src: src.codegen().into(), dst: AsmOperand::PseudoMem(dst.to_owned(), *offset as isize) }
+                ])
+            }
         }
     }
 }
@@ -1407,6 +1433,19 @@ impl ReplacePseudo for AsmOperand {
             AsmOperand::Memory(AsmRegister::BP, _) => self.clone(),
             AsmOperand::Register(_) => self.clone(),
             AsmOperand::Data(_) => self.clone(),
+            AsmOperand::PseudoMem(name, offset) => {
+                let _type = match ASM_SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap() {
+                    AsmSymtabEntry::Object {
+                        _type,
+                        is_static: _,
+                        is_constant: _,
+                    } => _type,
+                    _ => unreachable!(),
+                };
+
+                let previously_assigned: isize = VAR_TO_STACK_POS.lock().unwrap().var_to_stack_pos(name, _type).0.try_into().unwrap();
+                AsmOperand::Memory(AsmRegister::BP, previously_assigned + *offset)
+            }
             _ => self.clone(),
         }
     }
@@ -2707,22 +2746,36 @@ fn get_asm_type(value: &IRValue) -> AsmType {
             Const::ULong(_) => AsmType::Quadword,
             Const::Double(_) => AsmType::Double,
         },
-        IRValue::Var(var_name) => match SYMBOL_TABLE
-            .lock()
-            .unwrap()
-            .get(var_name)
-            .cloned()
-            .unwrap()
-            ._type
-        {
-            Type::Int => AsmType::Longword,
-            Type::Long => AsmType::Quadword,
-            Type::Uint => AsmType::Longword,
-            Type::Ulong => AsmType::Quadword,
-            Type::Double => AsmType::Double,
-            Type::Pointer(_) => AsmType::Quadword,
-            _ => unreachable!(),
-        },
+        IRValue::Var(var_name) => {
+            let _type = SYMBOL_TABLE.lock().unwrap().get(var_name).cloned().unwrap()._type;
+            match _type {
+                Type::Int => AsmType::Longword,
+                Type::Long => AsmType::Quadword,
+                Type::Uint => AsmType::Longword,
+                Type::Ulong => AsmType::Quadword,
+                Type::Double => AsmType::Double,
+                Type::Pointer(_) => AsmType::Quadword,
+                Type::Array { ref element, size }  => AsmType::Bytearray { size: get_size_of_type(&element) * size, alignment: calculate_alignment_of_array(&_type) },
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
+fn calculate_alignment_of_array(array: &Type) -> usize {
+    // if the array is smaller than 16 bytes, it has the alignment
+    // as its scalar elements. however, if it is larger than 16 bytes,
+    // it has an alignment of 16 bytes.
+    match array {
+        Type::Array { element, size } => {
+            let element_size = get_size_of_type(element);
+            if element_size * size <= 16 {
+                element_size
+            } else {
+                16
+            }
+        }
+        _ => unimplemented!()
     }
 }
 
@@ -2743,6 +2796,7 @@ pub fn build_asm_symbol_table() {
                     Type::Ulong => AsmType::Quadword,
                     Type::Double => AsmType::Double,
                     Type::Pointer(_) => AsmType::Quadword,
+                    Type::Array { ref element, size }  => AsmType::Bytearray { size: get_size_of_type(&element) * size, alignment: calculate_alignment_of_array(&symbol._type) },
                     _ => panic!("Unsupported type for static variable"),
                 };
                 AsmSymtabEntry::Object {
@@ -2810,7 +2864,12 @@ impl VarToStackPos {
             .var_to_stack_pos
             .entry(ident.to_owned())
             .or_insert_with(|| {
-                let alloc = OperandByteLen::from(asm_type) as i64;
+                let alloc = match OperandByteLen::from(asm_type) {
+                    OperandByteLen::B1 => 1,
+                    OperandByteLen::B4 => 4,
+                    OperandByteLen::B8 => 8,
+                    OperandByteLen::Other(size) => size as i64,
+                };
                 self.last_used_stack_pos.0 -= alloc;
 
                 let alignment = Alignment::default_of(asm_type) as i64;
@@ -2830,11 +2889,13 @@ impl VarToStackPos {
     }
 }
 
+#[repr(i64)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OperandByteLen {
     B1 = 1,
     B4 = 4,
     B8 = 8,
+    Other(usize),
 }
 
 impl<T: Into<AsmType>> From<T> for OperandByteLen {
@@ -2844,7 +2905,7 @@ impl<T: Into<AsmType>> From<T> for OperandByteLen {
             AsmType::Longword => Self::B4,
             AsmType::Quadword => Self::B8,
             AsmType::Double => Self::B8,
-            _ => todo!(),
+            AsmType::Bytearray { size, alignment: _ } => Self::Other(size),
         }
     }
 }
