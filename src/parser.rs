@@ -141,47 +141,50 @@ impl Parser {
                     bail!("some error")
                 };
 
-                let unwrapped = self.unwrap_expression_to_initializer(init);
+                println!("init: {:?}", init);
+
+                let unwrapped = self.unwrap_expression_to_initializer(&name, init);
+                println!("unwrapped: {:?}", unwrapped);
 
                 Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, _type: decl_type, init: unwrapped, storage_class, is_global: self.depth == 0 })))
             }
         }
     }
 
-    fn transform_initializer(&self, init: &Initializer) -> Initializer {
+    fn transform_initializer(&self, name: &str, init: &Initializer) -> Initializer {
         match init {
-            Initializer::Single(name, expr) => {
+            Initializer::Single(_, expr) => {
                 if let Expression::Literal(lit) = expr {
-                    self.transform_initializer(&lit.value)
+                    self.transform_initializer(name, &lit.value)
                 } else {
-                    Initializer::Single(name.clone(), expr.clone())
+                    Initializer::Single(name.to_string(), expr.clone())
                 }
             },
-            Initializer::Compound(name, _type, elems) => {
+            Initializer::Compound(_, _type, elems) => {
                 let new_elems = elems.iter()
-                    .map(|elem| self.transform_initializer(elem))
+                    .map(|elem| self.transform_initializer(name, elem))
                     .collect();
-                Initializer::Compound(name.clone(), _type.clone(), new_elems)
+                Initializer::Compound(name.to_string(), _type.clone(), new_elems)
             },
         }
 
     }
 
     // Function to convert `Expression` to `Initializer`
-    fn convert_expression_to_initializer(&self, expr: Expression) -> Initializer {
+    fn convert_expression_to_initializer(&self, name: &str, expr: Expression) -> Initializer {
         match expr {
             Expression::Literal(literal) => {
-                self.transform_initializer(&literal.value)
+                self.transform_initializer(name, &literal.value)
             },
             _ => {
                 // Handle other expressions by wrapping them in a Single Initializer
-                Initializer::Single("".to_string(), expr)
+                Initializer::Single(name.to_owned(), expr)
             }
         }
     }
 
-    fn unwrap_expression_to_initializer(&self, expr_opt: Option<Expression>) -> Option<Initializer> {
-        expr_opt.map(|expr| self.convert_expression_to_initializer(expr))
+    fn unwrap_expression_to_initializer(&self, name: &str, expr_opt: Option<Expression>) -> Option<Initializer> {
+        expr_opt.map(|expr| self.convert_expression_to_initializer(name, expr))
     }
     
     
