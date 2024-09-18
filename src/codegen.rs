@@ -1436,17 +1436,21 @@ impl ReplacePseudo for AsmOperand {
             AsmOperand::Register(_) => self.clone(),
             AsmOperand::Data(_) => self.clone(),
             AsmOperand::PseudoMem(name, offset) => {
-                let _type = match ASM_SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap() {
+                let (is_static, _type) = match ASM_SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap() {
                     AsmSymtabEntry::Object {
                         _type,
-                        is_static: _,
+                        is_static,
                         is_constant: _,
-                    } => _type,
+                    } => (is_static, _type),
                     _ => unreachable!(),
                 };
 
-                let previously_assigned: isize = VAR_TO_STACK_POS.lock().unwrap().var_to_stack_pos(name, _type).0.try_into().unwrap();
-                AsmOperand::Memory(AsmRegister::BP, previously_assigned + *offset)
+                if !is_static {
+                    let previously_assigned: isize = VAR_TO_STACK_POS.lock().unwrap().var_to_stack_pos(name, _type).0.try_into().unwrap();
+                    AsmOperand::Memory(AsmRegister::BP, previously_assigned + *offset)
+                } else {
+                    AsmOperand::Data(name.clone())
+                }
             }
             _ => self.clone(),
         }
