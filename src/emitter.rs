@@ -452,7 +452,6 @@ impl Emit for AsmOperand {
         match self {
             AsmOperand::Imm(n) => write!(f, "${}", *n as u64)?,
             AsmOperand::Register(reg) => reg.emit(f, asm_type)?,
-            AsmOperand::Stack(n) => write!(f, "{}(%rbp)", n)?,
             AsmOperand::Pseudo(_) => unreachable!(),
             AsmOperand::Data(identifier) => write!(f, "{}(%rip)", identifier)?,
             AsmOperand::Memory(reg, n) => write!(f, "{}({})", n, reg)?,
