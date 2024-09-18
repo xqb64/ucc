@@ -256,6 +256,8 @@ impl Codegen for IRStaticVariable {
 
 impl Codegen for IRFunction {
     fn codegen(&self) -> AsmNode {
+        println!("self.body: {:?}", self.body);
+
         let mut instructions = vec![];
 
         instructions.push(AsmInstruction::AllocateStack(0));

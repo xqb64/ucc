@@ -601,17 +601,17 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
 }
 
 fn emit_compound_init(name: &str, value: Box<Initializer>, instructions: &mut Vec<IRInstruction>, offset: usize, inited_type: &Type) {
+    println!("called with offset {}", offset);
     match *value {
         Initializer::Single(_, single_init) => {
             let v = emit_tacky_and_convert(single_init, instructions);
             instructions.push(IRInstruction::CopyToOffset { src: v, dst: name.to_string(), offset });
-
         }
         Initializer::Compound(_, _type, compound_init) => {
             if let Type::Array { element, size: _ } = inited_type {
                 for (idx, elem_init) in compound_init.into_iter().enumerate() {
-                    let new_offset = offset + (idx * get_size_of_type(&element));
-                    emit_compound_init(name, elem_init.clone().into(), instructions, new_offset, inited_type);
+                    let new_offset = offset + idx * get_size_of_type(&_type);
+                    emit_compound_init(name, elem_init.clone().into(), instructions, new_offset, &element);
                 }    
             }
         }
