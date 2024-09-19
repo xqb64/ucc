@@ -148,12 +148,12 @@ enum ExpResult {
     DereferencedPointer(IRValue),
 }
 
-fn emit_tacky_and_convert(e: Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
-    let result = emit_tacky(e.clone(), instructions);
+fn emit_tacky_and_convert(e: &Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
+    let result = emit_tacky(e, instructions);
     match result {
         ExpResult::PlainOperand(val) => val,
         ExpResult::DereferencedPointer(ptr) => {
-            let dst = make_tacky_variable(get_type(&e.clone()));
+            let dst = make_tacky_variable(get_type(&e));
             instructions.push(IRInstruction::Load {
                 src_ptr: ptr,
                 dst: dst.clone(),
@@ -164,15 +164,15 @@ fn emit_tacky_and_convert(e: Expression, instructions: &mut Vec<IRInstruction>) 
     }
 }
 
-fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult {
-    let t = get_type(&e.clone());
+fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult {
+    let t = get_type(&e);
     match e {
         Expression::Constant(const_expr) => {
             ExpResult::PlainOperand(IRValue::Constant(const_expr.value))
         }
         Expression::Unary(UnaryExpression { kind, expr, _type }) => {
-            let src = emit_tacky_and_convert(*expr, instructions);
-            let dst = make_tacky_variable(_type.clone());
+            let src = emit_tacky_and_convert(expr, instructions);
+            let dst = make_tacky_variable(_type);
             let op = match kind {
                 UnaryExpressionKind::Negate => UnaryOp::Negate,
                 UnaryExpressionKind::Complement => UnaryOp::Complement,
@@ -198,15 +198,15 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                 let false_label = format!("And.{}.shortcircuit", tmp);
                 let end_label = format!("And.{}.end", tmp);
 
-                let result = make_tacky_variable(_type.clone());
+                let result = make_tacky_variable(_type);
 
-                let lhs = emit_tacky_and_convert(*lhs, instructions);
+                let lhs = emit_tacky_and_convert(lhs, instructions);
                 instructions.push(IRInstruction::JumpIfZero {
                     condition: lhs.clone(),
                     target: false_label.clone(),
                 });
 
-                let rhs = emit_tacky_and_convert(*rhs, instructions);
+                let rhs = emit_tacky_and_convert(rhs, instructions);
                 instructions.push(IRInstruction::JumpIfZero {
                     condition: rhs.clone(),
                     target: false_label.clone(),
@@ -236,15 +236,15 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                 let true_label = format!("Or.{}.shortcircuit", tmp);
                 let end_label = format!("Or.{}.end", tmp);
 
-                let result = make_tacky_variable(_type.clone());
+                let result = make_tacky_variable(_type);
 
-                let lhs = emit_tacky_and_convert(*lhs, instructions);
+                let lhs = emit_tacky_and_convert(lhs, instructions);
                 instructions.push(IRInstruction::JumpIfNotZero {
                     condition: lhs.clone(),
                     target: true_label.clone(),
                 });
 
-                let rhs = emit_tacky_and_convert(*rhs, instructions);
+                let rhs = emit_tacky_and_convert(rhs, instructions);
                 instructions.push(IRInstruction::JumpIfNotZero {
                     condition: rhs.clone(),
                     target: true_label.clone(),
@@ -274,12 +274,12 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                 let rhs_type = get_type(&rhs);
 
                 if is_pointer_type(&lhs_type) && is_integer_type(&rhs_type) {
-                    let ptr = emit_tacky_and_convert(*lhs, instructions);
-                    let index = emit_tacky_and_convert(*rhs, instructions);
-                    let scale = get_ptr_scale(lhs_type.clone());
-                    let dst = make_tacky_variable(lhs_type.clone());
+                    let ptr = emit_tacky_and_convert(lhs, instructions);
+                    let index = emit_tacky_and_convert(rhs, instructions);
+                    let scale = get_ptr_scale(lhs_type);
+                    let dst = make_tacky_variable(lhs_type);
 
-                    let negated_index = make_tacky_variable(rhs_type.clone());
+                    let negated_index = make_tacky_variable(rhs_type);
 
                     instructions.push(IRInstruction::Unary {
                         op: UnaryOp::Negate,
@@ -296,15 +296,15 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
 
                     ExpResult::PlainOperand(dst)
                 } else if is_pointer_type(&lhs_type) && is_pointer_type(&rhs_type) {
-                    let ptr1 = emit_tacky_and_convert(*lhs, instructions);
-                    let ptr2 = emit_tacky_and_convert(*rhs, instructions);
+                    let ptr1 = emit_tacky_and_convert(lhs, instructions);
+                    let ptr2 = emit_tacky_and_convert(rhs, instructions);
 
-                    let ptr_diff: IRValue = make_tacky_variable(lhs_type.clone());
+                    let ptr_diff: IRValue = make_tacky_variable(lhs_type);
 
-                    let scale = get_ptr_scale(lhs_type.clone());
+                    let scale = get_ptr_scale(lhs_type);
                     let scale_var = IRValue::Constant(Const::Long(scale as i64));
 
-                    let dst = make_tacky_variable(t.clone());
+                    let dst = make_tacky_variable(t);
 
                     instructions.push(IRInstruction::Binary {
                         op: BinaryOp::Sub,
@@ -322,14 +322,14 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
 
                     ExpResult::PlainOperand(dst)
                 } else if is_pointer_type(&lhs_type) && is_pointer_type(&rhs_type) {
-                    let ptr1 = emit_tacky_and_convert(*lhs, instructions);
-                    let ptr2 = emit_tacky_and_convert(*rhs, instructions);
+                    let ptr1 = emit_tacky_and_convert(lhs, instructions);
+                    let ptr2 = emit_tacky_and_convert(rhs, instructions);
 
-                    let ptr_diff = make_tacky_variable(Type::Long);
+                    let ptr_diff = make_tacky_variable(&Type::Long);
 
-                    let scale = get_ptr_scale(lhs_type.clone());
+                    let scale = get_ptr_scale(lhs_type);
 
-                    let dst = make_tacky_variable(_type.clone());
+                    let dst = make_tacky_variable(_type);
 
                     instructions.push(IRInstruction::Binary {
                         op: BinaryOp::Sub,
@@ -347,10 +347,10 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
 
                     ExpResult::PlainOperand(dst)
                 } else {
-                    let lhs = emit_tacky_and_convert(*lhs, instructions);
-                    let rhs = emit_tacky_and_convert(*rhs, instructions);
+                    let lhs = emit_tacky_and_convert(lhs, instructions);
+                    let rhs = emit_tacky_and_convert(rhs, instructions);
 
-                    let dst = make_tacky_variable(t.clone());
+                    let dst = make_tacky_variable(t);
 
                     instructions.push(IRInstruction::Binary {
                         op: BinaryOp::Sub,
@@ -363,10 +363,10 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                 }
             }
             _ => {
-                let lhs = emit_tacky_and_convert(*lhs, instructions);
-                let rhs = emit_tacky_and_convert(*rhs, instructions);
+                let lhs = emit_tacky_and_convert(lhs, instructions);
+                let rhs = emit_tacky_and_convert(rhs, instructions);
 
-                let dst = make_tacky_variable(t.clone());
+                let dst = make_tacky_variable(t);
 
                 let op = match kind {
                     BinaryExpressionKind::Mul => BinaryOp::Mul,
@@ -390,28 +390,28 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                 ExpResult::PlainOperand(dst)
             }
         },
-        Expression::Variable(var) => ExpResult::PlainOperand(IRValue::Var(var.value)),
+        Expression::Variable(var) => ExpResult::PlainOperand(IRValue::Var(var.value.to_owned())),
         Expression::Assign(AssignExpression {
             op: _,
             lhs,
             rhs,
             _type,
         }) => {
-            let lval = emit_tacky(*lhs.clone(), instructions);
-            let rval = emit_tacky_and_convert(*rhs.clone(), instructions);
+            let lval = emit_tacky(lhs, instructions);
+            let rval = emit_tacky_and_convert(rhs, instructions);
 
-            match lval.clone() {
+            match &lval {
                 ExpResult::PlainOperand(val) => {
                     instructions.push(IRInstruction::Copy {
                         src: rval,
-                        dst: val,
+                        dst: val.to_owned(),
                     });
                     lval
                 }
                 ExpResult::DereferencedPointer(ptr) => {
                     instructions.push(IRInstruction::Store {
                         src: rval.clone(),
-                        dst_ptr: ptr,
+                        dst_ptr: ptr.to_owned(),
                     });
                     ExpResult::PlainOperand(rval)
                 }
@@ -425,18 +425,18 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
         }) => {
             let tmp = make_temporary();
 
-            let result = make_tacky_variable(_type.clone());
+            let result = make_tacky_variable(_type);
 
             let e2_label = format!("Cond.{}.else", tmp);
             let end_label = format!("Cond.{}.end", tmp);
-            let condition = emit_tacky_and_convert(*condition, instructions);
+            let condition = emit_tacky_and_convert(condition, instructions);
 
             instructions.push(IRInstruction::JumpIfZero {
                 condition: condition.clone(),
                 target: e2_label.clone(),
             });
 
-            let e1 = emit_tacky_and_convert(*then_expr, instructions);
+            let e1 = emit_tacky_and_convert(then_expr, instructions);
 
             instructions.push(IRInstruction::Copy {
                 src: e1,
@@ -447,7 +447,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
 
             instructions.push(IRInstruction::Label(e2_label));
 
-            let e2 = emit_tacky_and_convert(*else_expr, instructions);
+            let e2 = emit_tacky_and_convert(else_expr, instructions);
 
             instructions.push(IRInstruction::Copy {
                 src: e2,
@@ -465,10 +465,10 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                 arg_values.push(emit_tacky_and_convert(arg, instructions));
             }
 
-            let result = make_tacky_variable(_type.clone());
+            let result = make_tacky_variable(_type);
 
             instructions.push(IRInstruction::Call {
-                target: name,
+                target: name.to_owned(),
                 args: arg_values,
                 dst: result.clone(),
             });
@@ -480,16 +480,16 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
             expr,
             _type,
         }) => {
-            let result = emit_tacky_and_convert(*expr.clone(), instructions);
+            let result = emit_tacky_and_convert(expr, instructions);
             let inner_type = get_type(&expr);
 
             if target_type == inner_type {
                 return ExpResult::PlainOperand(result);
             }
 
-            match (inner_type.clone(), target_type.clone()) {
+            match (inner_type, &target_type) {
                 (Type::Int, Type::Double) => {
-                    let dst = make_tacky_variable(target_type.clone());
+                    let dst = make_tacky_variable(target_type);
                     instructions.push(IRInstruction::IntToDouble {
                         src: result.clone(),
                         dst: dst.clone(),
@@ -497,7 +497,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                     return ExpResult::PlainOperand(dst);
                 }
                 (Type::Double, Type::Int) => {
-                    let dst = make_tacky_variable(target_type.clone());
+                    let dst = make_tacky_variable(target_type);
                     instructions.push(IRInstruction::DoubleToInt {
                         src: result.clone(),
                         dst: dst.clone(),
@@ -505,7 +505,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                     return ExpResult::PlainOperand(dst);
                 }
                 (Type::Uint, Type::Double) => {
-                    let dst = make_tacky_variable(target_type.clone());
+                    let dst = make_tacky_variable(target_type);
                     instructions.push(IRInstruction::UIntToDouble {
                         src: result.clone(),
                         dst: dst.clone(),
@@ -513,7 +513,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                     return ExpResult::PlainOperand(dst);
                 }
                 (Type::Double, Type::Uint) => {
-                    let dst = make_tacky_variable(target_type.clone());
+                    let dst = make_tacky_variable(target_type);
                     instructions.push(IRInstruction::DoubletoUInt {
                         src: result.clone(),
                         dst: dst.clone(),
@@ -521,7 +521,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                     return ExpResult::PlainOperand(dst);
                 }
                 (Type::Long, Type::Double) => {
-                    let dst = make_tacky_variable(target_type.clone());
+                    let dst = make_tacky_variable(target_type);
                     instructions.push(IRInstruction::IntToDouble {
                         src: result.clone(),
                         dst: dst.clone(),
@@ -529,7 +529,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                     return ExpResult::PlainOperand(dst);
                 }
                 (Type::Double, Type::Long) => {
-                    let dst = make_tacky_variable(target_type.clone());
+                    let dst = make_tacky_variable(target_type);
                     instructions.push(IRInstruction::DoubleToInt {
                         src: result.clone(),
                         dst: dst.clone(),
@@ -537,7 +537,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                     return ExpResult::PlainOperand(dst);
                 }
                 (Type::Double, Type::Ulong) => {
-                    let dst = make_tacky_variable(target_type.clone());
+                    let dst = make_tacky_variable(target_type);
                     instructions.push(IRInstruction::DoubletoUInt {
                         src: result.clone(),
                         dst: dst.clone(),
@@ -545,7 +545,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                     return ExpResult::PlainOperand(dst);
                 }
                 (Type::Ulong, Type::Double) => {
-                    let dst = make_tacky_variable(target_type.clone());
+                    let dst = make_tacky_variable(target_type);
                     instructions.push(IRInstruction::UIntToDouble {
                         src: result.clone(),
                         dst: dst.clone(),
@@ -555,7 +555,7 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                 _ => {}
             }
 
-            let dst = make_tacky_variable(target_type.clone());
+            let dst = make_tacky_variable(target_type);
 
             if get_size_of_type(&target_type) == get_size_of_type(&inner_type) {
                 instructions.push(IRInstruction::Copy {
@@ -582,15 +582,15 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
             ExpResult::PlainOperand(dst)
         }
         Expression::Deref(DerefExpression { expr, _type }) => {
-            let ptr = emit_tacky_and_convert(*expr, instructions);
+            let ptr = emit_tacky_and_convert(expr, instructions);
             ExpResult::DereferencedPointer(ptr)
         }
         Expression::AddrOf(AddrOfExpression { expr, _type }) => {
-            let result = emit_tacky(*expr, instructions);
+            let result = emit_tacky(expr, instructions);
 
             match result {
                 ExpResult::PlainOperand(val) => {
-                    let dst = make_tacky_variable(_type.clone());
+                    let dst = make_tacky_variable(_type);
                     instructions.push(IRInstruction::GetAddress {
                         src: val,
                         dst: dst.clone(),
@@ -613,12 +613,12 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
 
 fn emit_compound_init(
     name: &str,
-    value: Box<Initializer>,
+    value: &Initializer,
     instructions: &mut Vec<IRInstruction>,
     offset: usize,
     inited_type: &Type,
 ) {
-    match *value {
+    match value {
         Initializer::Single(_, single_init) => {
             let v = emit_tacky_and_convert(single_init, instructions);
             instructions.push(IRInstruction::CopyToOffset {
@@ -633,7 +633,7 @@ fn emit_compound_init(
                     let new_offset = offset + idx * get_size_of_type(&_type);
                     emit_compound_init(
                         name,
-                        elem_init.clone().into(),
+                        elem_init,
                         instructions,
                         new_offset,
                         element,
@@ -645,19 +645,19 @@ fn emit_compound_init(
 }
 
 fn emit_ptr_addition(
-    lhs: Box<Expression>,
-    rhs: Box<Expression>,
-    t: Type,
+    lhs: &Expression,
+    rhs: &Expression,
+    t: &Type,
     instructions: &mut Vec<IRInstruction>,
 ) -> ExpResult {
     let lhs_type = get_type(&lhs);
     let rhs_type = get_type(&rhs);
 
     if is_pointer_type(&lhs_type) && is_integer_type(&rhs_type) {
-        let ptr = emit_tacky_and_convert(*lhs, instructions);
-        let index = emit_tacky_and_convert(*rhs, instructions);
-        let scale = get_ptr_scale(lhs_type.clone());
-        let dst = make_tacky_variable(lhs_type.clone());
+        let ptr = emit_tacky_and_convert(lhs, instructions);
+        let index = emit_tacky_and_convert(rhs, instructions);
+        let scale = get_ptr_scale(lhs_type);
+        let dst = make_tacky_variable(lhs_type);
         instructions.push(IRInstruction::AddPtr {
             ptr,
             index,
@@ -666,10 +666,10 @@ fn emit_ptr_addition(
         });
         ExpResult::PlainOperand(dst)
     } else if is_integer_type(&lhs_type) && is_pointer_type(&rhs_type) {
-        let ptr = emit_tacky_and_convert(*rhs, instructions);
-        let index = emit_tacky_and_convert(*lhs, instructions);
-        let scale = get_ptr_scale(rhs_type.clone());
-        let dst = make_tacky_variable(rhs_type.clone());
+        let ptr = emit_tacky_and_convert(rhs, instructions);
+        let index = emit_tacky_and_convert(lhs, instructions);
+        let scale = get_ptr_scale(rhs_type);
+        let dst = make_tacky_variable(rhs_type);
         instructions.push(IRInstruction::AddPtr {
             ptr,
             index,
@@ -678,10 +678,10 @@ fn emit_ptr_addition(
         });
         ExpResult::PlainOperand(dst)
     } else {
-        let lhs = emit_tacky_and_convert(*lhs, instructions);
-        let rhs = emit_tacky_and_convert(*rhs, instructions);
+        let lhs = emit_tacky_and_convert(lhs, instructions);
+        let rhs = emit_tacky_and_convert(rhs, instructions);
 
-        let dst = make_tacky_variable(t.clone());
+        let dst = make_tacky_variable(t);
 
         instructions.push(IRInstruction::Binary {
             op: BinaryOp::Add,
@@ -694,11 +694,11 @@ fn emit_ptr_addition(
     }
 }
 
-pub fn make_tacky_variable(_type: Type) -> IRValue {
+pub fn make_tacky_variable(t: &Type) -> IRValue {
     let var_name = format!("var.{}", make_temporary());
     let symbol = Symbol {
         attrs: IdentifierAttrs::LocalAttr,
-        _type,
+        _type: t.to_owned(),
     };
     SYMBOL_TABLE
         .lock()
@@ -716,7 +716,7 @@ pub fn make_temporary() -> usize {
     }
 }
 
-fn get_ptr_scale(t: Type) -> usize {
+fn get_ptr_scale(t: &Type) -> usize {
     match t {
         Type::Pointer(referenced) => get_size_of_type(&referenced),
         _ => unimplemented!(),
@@ -836,7 +836,7 @@ impl Irfy for IfStatement {
         let else_label = format!("Else.{}", tmp);
         let end_label = format!("End.{}", tmp);
 
-        let condition = emit_tacky_and_convert(self.condition.clone(), &mut instructions);
+        let condition = emit_tacky_and_convert(&self.condition, &mut instructions);
 
         instructions.push(IRInstruction::JumpIfZero {
             condition,
@@ -897,7 +897,7 @@ impl Irfy for DoWhileStatement {
 
         instructions.push(IRInstruction::Label(continue_label.clone()));
 
-        let condition = emit_tacky_and_convert(self.condition.clone(), &mut instructions);
+        let condition = emit_tacky_and_convert(&self.condition, &mut instructions);
 
         instructions.push(IRInstruction::JumpIfNotZero {
             condition,
@@ -919,7 +919,7 @@ impl Irfy for WhileStatement {
 
         instructions.push(IRInstruction::Label(continue_label.clone()));
 
-        let condition = emit_tacky_and_convert(self.condition.clone(), &mut instructions);
+        let condition = emit_tacky_and_convert(&self.condition, &mut instructions);
 
         instructions.push(IRInstruction::JumpIfZero {
             condition,
@@ -950,7 +950,7 @@ impl Irfy for ForStatement {
 
         if self.condition.is_some() {
             let condition =
-                emit_tacky_and_convert(self.condition.clone().unwrap(), &mut instructions);
+                emit_tacky_and_convert(self.condition.as_ref().unwrap(), &mut instructions);
             instructions.push(IRInstruction::JumpIfZero {
                 condition,
                 target: break_label.clone(),
@@ -962,7 +962,7 @@ impl Irfy for ForStatement {
         instructions.push(IRInstruction::Label(continue_label.clone()));
 
         if self.post.is_some() {
-            emit_tacky(self.post.clone().unwrap(), &mut instructions);
+            emit_tacky(self.post.as_ref().unwrap(), &mut instructions);
         }
 
         instructions.push(IRInstruction::Jump(start_label.clone()));
@@ -979,7 +979,7 @@ impl Irfy for ForInit {
             ForInit::Expression(expr) => {
                 let mut instructions = vec![];
                 if expr.is_some() {
-                    let _ = emit_tacky(expr.clone().unwrap(), &mut instructions);
+                    let _ = emit_tacky(expr.as_ref().unwrap(), &mut instructions);
                 }
                 Some(IRNode::Instructions(instructions))
             }
@@ -991,7 +991,7 @@ impl Irfy for ForInit {
 impl Irfy for ReturnStatement {
     fn irfy(&self) -> Option<IRNode> {
         let mut instructions = vec![];
-        let result = emit_tacky_and_convert(self.expr.clone(), &mut instructions);
+        let result = emit_tacky_and_convert(&self.expr, &mut instructions);
         instructions.push(IRInstruction::Ret(result));
         Some(IRNode::Instructions(instructions))
     }
@@ -1000,7 +1000,7 @@ impl Irfy for ReturnStatement {
 impl Irfy for ExpressionStatement {
     fn irfy(&self) -> Option<IRNode> {
         let mut instructions = vec![];
-        let _ = emit_tacky(self.expr.clone(), &mut instructions);
+        let _ = emit_tacky(&self.expr, &mut instructions);
         Some(IRNode::Instructions(instructions))
     }
 }
@@ -1045,7 +1045,7 @@ impl Irfy for VariableDeclaration {
         let mut instructions = vec![];
 
         if let Some(Initializer::Single(_, init)) = &self.init {
-            let result = emit_tacky_and_convert(init.clone(), &mut instructions);
+            let result = emit_tacky_and_convert(init, &mut instructions);
             instructions.push(IRInstruction::Copy {
                 src: result,
                 dst: IRValue::Var(self.name.clone()),
@@ -1059,7 +1059,7 @@ impl Irfy for VariableDeclaration {
                     let new_offset = offset + idx * get_size_of_type(element);
                     emit_compound_init(
                         &self.name,
-                        elem_init.clone().into(),
+                        elem_init,
                         &mut instructions,
                         new_offset,
                         &self._type,
