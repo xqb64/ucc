@@ -10,202 +10,195 @@ use crate::{
 };
 
 pub trait Label {
-    fn label(&self, current_label: String) -> Result<BlockItem>;
+    fn label(&mut self, current_label: &str) -> Result<&mut Self>;
 }
 
 impl Label for ProgramStatement {
-    fn label(&self, current_label: String) -> Result<BlockItem> {
-        let labeled_items = self
-            .block_items
-            .iter()
-            .map(|item| item.label(current_label.clone()))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(BlockItem::Statement(Statement::Program(ProgramStatement {
-            block_items: labeled_items,
-        })))
+    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
+        for block_item in self.block_items.iter_mut() {
+            block_item.label(current_label)?;
+        }
+        Ok(self)
     }
 }
 
 impl Label for BlockStatement {
-    fn label(&self, current_label: String) -> Result<BlockItem> {
-        let labeled_items = self
-            .stmts
-            .iter()
-            .map(|item| item.label(current_label.clone()))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(BlockItem::Statement(Statement::Compound(BlockStatement {
-            stmts: labeled_items,
-        })))
+    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
+        for stmt in self.stmts.iter_mut() {
+            stmt.label(current_label)?;
+        }
+        Ok(self)
+    }
+}
+
+fn optionally_label_block_item(
+    block_item: &mut Option<BlockItem>,
+    current_label: &str,
+) -> Result<Option<BlockItem>> {
+    if block_item.is_some() {
+        let labeled_block_item = block_item.as_mut().unwrap().label(current_label)?;
+        Ok(Some(labeled_block_item.to_owned()))
+    } else {
+        Ok(None)
     }
 }
 
 impl Label for IfStatement {
-    fn label(&self, current_label: String) -> Result<BlockItem> {
-        let labeled_then_body = self.then_branch.label(current_label.clone())?;
-        let labeled_else_body = if self.else_branch.is_some() {
-            Some(
-                self.else_branch
-                    .clone()
-                    .unwrap()
-                    .label(current_label.clone())?,
-            )
-        } else {
-            None
-        };
-        Ok(BlockItem::Statement(Statement::If(IfStatement {
-            condition: self.condition.clone(),
-            then_branch: labeled_then_body.into(),
-            else_branch: labeled_else_body.into(),
-        })))
+    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
+        self.then_branch.label(current_label)?;
+        self.else_branch = optionally_label_block_item(&mut self.else_branch, current_label)?.into();
+        Ok(self)
     }
 }
 
 impl Label for BreakStatement {
-    fn label(&self, current_label: String) -> Result<BlockItem> {
+    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
         if current_label.is_empty() {
             bail!("break statement not within loop");
         }
 
-        Ok(BlockItem::Statement(Statement::Break(BreakStatement {
-            label: current_label,
-        })))
+        self.label = current_label.to_string();
+
+        Ok(self)
     }
 }
 
 impl Label for ContinueStatement {
-    fn label(&self, current_label: String) -> Result<BlockItem> {
+    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
         if current_label.is_empty() {
             bail!("continue statement not within loop");
         }
 
-        Ok(BlockItem::Statement(Statement::Continue(
-            ContinueStatement {
-                label: current_label,
-            },
-        )))
+        self.label = current_label.to_string();
+
+        Ok(self)
     }
 }
 
 impl Label for WhileStatement {
-    fn label(&self, _current_label: String) -> Result<BlockItem> {
+    fn label(&mut self, _current_label: &str) -> Result<&mut Self> {
         let new_label = format!("While.{}", make_temporary());
-        let labeled_body = self.body.label(new_label.clone())?;
+        
+        self.body.label(&new_label)?;
+        self.label = new_label;
 
-        Ok(BlockItem::Statement(Statement::While(WhileStatement {
-            label: new_label,
-            condition: self.condition.clone(),
-            body: labeled_body.into(),
-        })))
+        Ok(self)
     }
 }
 
 impl Label for DoWhileStatement {
-    fn label(&self, _current_label: String) -> Result<BlockItem> {
+    fn label(&mut self, _current_label: &str) -> Result<&mut Self> {
         let new_label = format!("DoWhile.{}", make_temporary());
-        let labeled_body = self.body.label(new_label.clone())?;
+        
+        self.body.label(&new_label)?;
+        self.label = new_label;
 
-        Ok(BlockItem::Statement(Statement::DoWhile(DoWhileStatement {
-            label: new_label,
-            body: labeled_body.into(),
-            condition: self.condition.clone(),
-        })))
+        Ok(self)
     }
 }
 
 impl Label for ForStatement {
-    fn label(&self, _current_label: String) -> Result<BlockItem> {
+    fn label(&mut self, _current_label: &str) -> Result<&mut Self> {
         let new_label = format!("For.{}", make_temporary());
-        let labeled_body = self.body.label(new_label.clone())?;
+        self.body.label(&new_label)?;
 
-        Ok(BlockItem::Statement(Statement::For(ForStatement {
-            label: new_label,
-            init: self.init.clone(),
-            condition: self.condition.clone(),
-            post: self.post.clone(),
-            body: labeled_body.into(),
-        })))
+        self.label = new_label;
+
+        Ok(self)
     }
 }
 
 impl Label for ReturnStatement {
-    fn label(&self, _current_label: String) -> Result<BlockItem> {
-        Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
-            expr: self.expr.clone(),
-            target_type: self.target_type.clone(),
-        })))
+    fn label(&mut self, _current_label: &str) -> Result<&mut Self> {
+        Ok(self)
     }
 }
 
 impl Label for ExpressionStatement {
-    fn label(&self, _current_label: String) -> Result<BlockItem> {
-        Ok(BlockItem::Statement(Statement::Expression(self.clone())))
+    fn label(&mut self, _current_label: &str) -> Result<&mut Self> {
+        Ok(self)
     }
 }
 
 impl Label for Statement {
-    fn label(&self, current_label: String) -> Result<BlockItem> {
+    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
         match self {
-            Statement::Program(p) => p.label(current_label),
-            Statement::Compound(b) => b.label(current_label),
-            Statement::If(i) => i.label(current_label),
-            Statement::Break(b) => b.label(current_label),
-            Statement::Continue(c) => c.label(current_label),
-            Statement::While(w) => w.label(current_label),
-            Statement::DoWhile(d) => d.label(current_label),
-            Statement::For(f) => f.label(current_label),
-            Statement::Expression(e) => e.label(current_label),
-            Statement::Return(r) => r.label(current_label),
-            Self::Null => Ok(BlockItem::Statement(Statement::Null)),
+            Statement::Program(p) => {
+                p.label(current_label)?;
+                Ok(self)
+            },
+            Statement::Compound(b) => {
+                b.label(current_label)?;
+                Ok(self)
+            },
+            Statement::If(i) => {
+                i.label(current_label)?;
+                Ok(self)
+            }
+            Statement::Break(b) => {
+                b.label(current_label)?;
+                Ok(self)
+            }
+            Statement::Continue(c) => {
+                c.label(current_label)?;
+                Ok(self)
+            }
+            Statement::While(w) => {
+                w.label(current_label)?;
+                Ok(self)
+            }
+            Statement::DoWhile(d) => {
+                d.label(current_label)?;
+                Ok(self)
+            }
+            Statement::For(f) => {
+                f.label(current_label)?;
+                Ok(self)
+            }
+            Statement::Expression(e) => {
+                e.label(current_label)?;
+                Ok(self)
+            }
+            Statement::Return(r) => {
+                r.label(current_label)?;
+                Ok(self)
+            }
+            Self::Null => Ok(self),
         }
     }
 }
 
 impl Label for BlockItem {
-    fn label(&self, current_label: String) -> Result<BlockItem> {
+    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
         match self {
             BlockItem::Statement(s) => {
-                let labeled_statement = s.label(current_label)?;
-                Ok(labeled_statement)
+                s.label(current_label)?;
+                Ok(self)
             }
 
-            BlockItem::Declaration(decl) => match decl {
-                Declaration::Function(FunctionDeclaration {
-                    name,
-                    params,
-                    body,
-                    is_global,
-                    storage_class,
-                    _type,
-                }) => {
-                    if body.is_some() {
-                        let labeled_body = body.clone().unwrap().label(current_label)?;
-                        Ok(BlockItem::Declaration(Declaration::Function(
-                            FunctionDeclaration {
-                                name: name.clone(),
-                                params: params.clone(),
-                                body: Some(labeled_body).into(),
-                                is_global: *is_global,
-                                storage_class: *storage_class,
-                                _type: _type.clone(),
-                            },
-                        )))
-                    } else {
-                        Ok(BlockItem::Declaration(Declaration::Function(
-                            FunctionDeclaration {
-                                name: name.clone(),
-                                params: params.clone(),
-                                body: None.into(),
-                                is_global: *is_global,
-                                storage_class: *storage_class,
-                                _type: _type.clone(),
-                            },
-                        )))
-                    }
-                }
-                Declaration::Variable(var_decl) => Ok(BlockItem::Declaration(
-                    Declaration::Variable(var_decl.clone()),
-                )),
+            BlockItem::Declaration(decl) => {
+                decl.label(current_label)?;
+                Ok(self)
             },
         }
+    }
+}
+
+impl Label for Declaration {
+    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
+        match self {
+            Declaration::Variable(_) => Ok(self),
+            Declaration::Function(f) => {
+                f.label(current_label)?;
+                Ok(self)
+            }
+        }
+    }
+}
+
+impl Label for FunctionDeclaration {
+    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
+        self.body = optionally_label_block_item(&mut self.body, current_label)?.into();
+        Ok(self)
     }
 }

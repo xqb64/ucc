@@ -54,7 +54,7 @@ fn run(opts: &Opt) -> Result<()> {
     let mut variable_map = HashMap::new();
     let validated_ast = ast.resolve(&mut variable_map)?;
 
-    let labeled_ast = validated_ast.label(String::new())?;
+    let labeled_ast = validated_ast.label(&String::new())?;
 
     let typechecked_ast = labeled_ast.typecheck()?;
 
