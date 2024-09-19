@@ -24,79 +24,43 @@ lazy_static::lazy_static! {
 }
 
 pub trait Typecheck {
-    fn typecheck(&self) -> Result<BlockItem>;
+    fn typecheck(&mut self) -> Result<&mut Self>
+    where
+        Self: Sized;
 }
 
 impl Typecheck for BlockItem {
-    fn typecheck(&self) -> Result<BlockItem> {
+    fn typecheck(&mut self) -> Result<&mut Self> {
         match self {
-            BlockItem::Declaration(decl) => decl.typecheck(),
-            BlockItem::Statement(stmt) => stmt.typecheck(),
+            BlockItem::Declaration(decl) => {
+                decl.typecheck()?;
+                Ok(self)
+            }
+            BlockItem::Statement(stmt) => {
+                stmt.typecheck()?;
+                Ok(self)
+            }
         }
     }
 }
 
 impl Typecheck for Declaration {
-    fn typecheck(&self) -> Result<BlockItem> {
+    fn typecheck(&mut self) -> Result<&mut Self> {
         match self {
-            Declaration::Variable(var_decl) => var_decl.typecheck(),
-            Declaration::Function(func_decl) => func_decl.typecheck(),
+            Declaration::Variable(var_decl) => {
+                var_decl.typecheck()?;
+                Ok(self)
+            }
+            Declaration::Function(func_decl) => {
+                func_decl.typecheck()?;
+                Ok(self)
+            }
         }
     }
 }
 
-fn const2type(konst: &Const, t: &Type) -> StaticInit {
-    match konst {
-        Const::Int(i) => match t {
-            Type::Int => StaticInit::Int(*i),
-            Type::Uint => StaticInit::Uint(*i as u32),
-            Type::Long => StaticInit::Long(*i as i64),
-            Type::Ulong => StaticInit::Ulong(*i as u64),
-            Type::Double => StaticInit::Double(*i as f64),
-            Type::Pointer(_) => StaticInit::Ulong(*i as u64),
-            _ => unreachable!(),
-        },
-        Const::Long(l) => match t {
-            Type::Int => StaticInit::Int(*l as i32),
-            Type::Uint => StaticInit::Uint(*l as u32),
-            Type::Long => StaticInit::Long(*l),
-            Type::Ulong => StaticInit::Ulong(*l as u64),
-            Type::Double => StaticInit::Double(*l as f64),
-            Type::Pointer(_) => StaticInit::Ulong(*l as u64),
-            _ => unreachable!(),
-        },
-        Const::UInt(u) => match t {
-            Type::Int => StaticInit::Int(*u as i32),
-            Type::Uint => StaticInit::Uint(*u),
-            Type::Long => StaticInit::Long(*u as i64),
-            Type::Ulong => StaticInit::Ulong(*u as u64),
-            Type::Double => StaticInit::Double(*u as f64),
-            Type::Pointer(_) => StaticInit::Ulong(*u as u64),
-            _ => unreachable!(),
-        },
-        Const::ULong(ul) => match t {
-            Type::Int => StaticInit::Int(*ul as i32),
-            Type::Uint => StaticInit::Uint(*ul as u32),
-            Type::Long => StaticInit::Long(*ul as i64),
-            Type::Ulong => StaticInit::Ulong(*ul),
-            Type::Double => StaticInit::Double(*ul as f64),
-            Type::Pointer(_) => StaticInit::Ulong(*ul),
-            _ => unreachable!(),
-        },
-        Const::Double(d) => match t {
-            Type::Int => StaticInit::Int(*d as i32),
-            Type::Uint => StaticInit::Uint(*d as u32),
-            Type::Long => StaticInit::Long(*d as i64),
-            Type::Ulong => StaticInit::Ulong(*d as u64),
-            Type::Double => StaticInit::Double(*d),
-            Type::Pointer(_) => StaticInit::Ulong(*d as u64),
-            _ => unreachable!(),
-        },
-    }
-}
-
 impl Typecheck for VariableDeclaration {
-    fn typecheck(&self) -> Result<BlockItem> {
+    fn typecheck(&mut self) -> Result<&mut Self> {
         match self.is_global {
             true => {
                 let default_init = if self.storage_class == Some(StorageClass::Extern) {
@@ -171,15 +135,9 @@ impl Typecheck for VariableDeclaration {
                     .unwrap()
                     .insert(self.name.clone(), symbol);
 
-                Ok(BlockItem::Declaration(Declaration::Variable(
-                    VariableDeclaration {
-                        _type: self._type.clone(),
-                        name: self.name.clone(),
-                        init: optionally_typecheck_init(&self.init, &self._type)?,
-                        storage_class: self.storage_class,
-                        is_global: self.is_global,
-                    },
-                )))
+                self.init = optionally_typecheck_init(&self.init, &self._type)?;
+
+                Ok(self)
             }
             false => {
                 match self.storage_class {
@@ -213,15 +171,9 @@ impl Typecheck for VariableDeclaration {
                             }
                         }
 
-                        Ok(BlockItem::Declaration(Declaration::Variable(
-                            VariableDeclaration {
-                                _type: self._type.clone(),
-                                name: self.name.clone(),
-                                init: optionally_typecheck_init(&self.init, &self._type)?,
-                                storage_class: self.storage_class,
-                                is_global: self.is_global,
-                            },
-                        )))
+                        self.init = optionally_typecheck_init(&self.init, &self._type)?;
+
+                        Ok(self)
                     }
                     Some(StorageClass::Static) => {
                         let zero_init = InitialValue::Initial(vec![StaticInit::Zero(
@@ -244,15 +196,9 @@ impl Typecheck for VariableDeclaration {
                             .unwrap()
                             .insert(self.name.clone(), symbol);
 
-                        Ok(BlockItem::Declaration(Declaration::Variable(
-                            VariableDeclaration {
-                                _type: self._type.clone(),
-                                name: self.name.clone(),
-                                init: optionally_typecheck_init(&self.init, &self._type)?,
-                                storage_class: self.storage_class,
-                                is_global: self.is_global,
-                            },
-                        )))
+                        self.init = optionally_typecheck_init(&self.init, &self._type)?;
+
+                        Ok(self)
                     }
                     None => {
                         let symbol = Symbol {
@@ -264,19 +210,63 @@ impl Typecheck for VariableDeclaration {
                             .unwrap()
                             .insert(self.name.clone(), symbol);
 
-                        Ok(BlockItem::Declaration(Declaration::Variable(
-                            VariableDeclaration {
-                                _type: self._type.clone(),
-                                name: self.name.clone(),
-                                init: optionally_typecheck_init(&self.init, &self._type)?,
-                                storage_class: self.storage_class,
-                                is_global: self.is_global,
-                            },
-                        )))
+                        self.init = optionally_typecheck_init(&self.init, &self._type)?;
+
+                        Ok(self)
                     }
                 }
             }
         }
+    }
+}
+
+fn const2type(konst: &Const, t: &Type) -> StaticInit {
+    match konst {
+        Const::Int(i) => match t {
+            Type::Int => StaticInit::Int(*i),
+            Type::Uint => StaticInit::Uint(*i as u32),
+            Type::Long => StaticInit::Long(*i as i64),
+            Type::Ulong => StaticInit::Ulong(*i as u64),
+            Type::Double => StaticInit::Double(*i as f64),
+            Type::Pointer(_) => StaticInit::Ulong(*i as u64),
+            _ => unreachable!(),
+        },
+        Const::Long(l) => match t {
+            Type::Int => StaticInit::Int(*l as i32),
+            Type::Uint => StaticInit::Uint(*l as u32),
+            Type::Long => StaticInit::Long(*l),
+            Type::Ulong => StaticInit::Ulong(*l as u64),
+            Type::Double => StaticInit::Double(*l as f64),
+            Type::Pointer(_) => StaticInit::Ulong(*l as u64),
+            _ => unreachable!(),
+        },
+        Const::UInt(u) => match t {
+            Type::Int => StaticInit::Int(*u as i32),
+            Type::Uint => StaticInit::Uint(*u),
+            Type::Long => StaticInit::Long(*u as i64),
+            Type::Ulong => StaticInit::Ulong(*u as u64),
+            Type::Double => StaticInit::Double(*u as f64),
+            Type::Pointer(_) => StaticInit::Ulong(*u as u64),
+            _ => unreachable!(),
+        },
+        Const::ULong(ul) => match t {
+            Type::Int => StaticInit::Int(*ul as i32),
+            Type::Uint => StaticInit::Uint(*ul as u32),
+            Type::Long => StaticInit::Long(*ul as i64),
+            Type::Ulong => StaticInit::Ulong(*ul),
+            Type::Double => StaticInit::Double(*ul as f64),
+            Type::Pointer(_) => StaticInit::Ulong(*ul),
+            _ => unreachable!(),
+        },
+        Const::Double(d) => match t {
+            Type::Int => StaticInit::Int(*d as i32),
+            Type::Uint => StaticInit::Uint(*d as u32),
+            Type::Long => StaticInit::Long(*d as i64),
+            Type::Ulong => StaticInit::Ulong(*d as u64),
+            Type::Double => StaticInit::Double(*d),
+            Type::Pointer(_) => StaticInit::Ulong(*d as u64),
+            _ => unreachable!(),
+        },
     }
 }
 
@@ -353,7 +343,7 @@ fn to_static_init(init: Initializer, t: &Type) -> Result<InitialValue> {
 }
 
 impl Typecheck for FunctionDeclaration {
-    fn typecheck(&self) -> Result<BlockItem> {
+    fn typecheck(&mut self) -> Result<&mut Self> {
         let adjust_param_type = |t: Type| match t {
             Type::Array { element, .. } => Type::Pointer(element),
             t => t,
@@ -428,113 +418,73 @@ impl Typecheck for FunctionDeclaration {
             }
         }
 
-        let body = if self.body.is_some() {
-            Some(self.body.clone().map(|b| b.typecheck()).unwrap()?)
-        } else {
-            None
-        };
+        optionally_typecheck_block_item(&mut self.body)?;
 
-        Ok(BlockItem::Declaration(Declaration::Function(
-            FunctionDeclaration {
-                _type: self._type.clone(),
-                name: self.name.clone(),
-                params: self.params.clone(),
-                body: body.into(),
-                storage_class: self.storage_class,
-                is_global: self.is_global,
-            },
-        )))
+        Ok(self)
     }
 }
 
 impl Typecheck for Statement {
-    fn typecheck(&self) -> Result<BlockItem> {
+    fn typecheck(&mut self) -> Result<&mut Self> {
         match self {
             Statement::Program(ProgramStatement { block_items: stmts }) => {
-                let mut typechecked_block_items = vec![];
-
                 for block_item in stmts {
-                    typechecked_block_items.push(block_item.typecheck()?);
+                    block_item.typecheck()?;
                 }
 
-                Ok(BlockItem::Statement(Statement::Program(ProgramStatement {
-                    block_items: typechecked_block_items,
-                })))
+                Ok(self)
             }
             Statement::Expression(ExpressionStatement { expr }) => {
-                let typechecked_expr = typecheck_and_convert(expr)?;
+                *expr = typecheck_and_convert(expr)?;
 
-                Ok(BlockItem::Statement(Statement::Expression(
-                    ExpressionStatement {
-                        expr: typechecked_expr,
-                    },
-                )))
+                Ok(self)
             }
             Statement::Compound(BlockStatement { stmts }) => {
-                let mut typechecked_stmts = vec![];
-
                 for stmt in stmts {
-                    typechecked_stmts.push(stmt.typecheck()?);
+                    stmt.typecheck()?;
                 }
 
-                Ok(BlockItem::Statement(Statement::Compound(BlockStatement {
-                    stmts: typechecked_stmts,
-                })))
+                Ok(self)
             }
             Statement::If(IfStatement {
                 condition,
                 then_branch,
                 else_branch,
             }) => {
-                let typechecked_condition = typecheck_and_convert(condition)?;
-                let typechecked_then_branch = then_branch.typecheck()?;
+                *condition = typecheck_and_convert(condition)?;
+                
+                then_branch.typecheck()?;
+                optionally_typecheck_block_item(else_branch)?;
 
-                let typechecked_else_branch = if else_branch.is_some() {
-                    Some(else_branch.as_ref().clone().unwrap().typecheck()?)
-                } else {
-                    None
-                };
-
-                Ok(BlockItem::Statement(Statement::If(IfStatement {
-                    condition: typechecked_condition,
-                    then_branch: typechecked_then_branch.into(),
-                    else_branch: typechecked_else_branch.into(),
-                })))
+                Ok(self)
             }
             Statement::While(WhileStatement {
                 condition,
                 body,
-                label,
+                label: _,
             }) => {
-                let typechecked_condition = typecheck_and_convert(condition)?;
-                let typchecked_body = body.typecheck()?;
+                *condition = typecheck_and_convert(condition)?;
+                
+                body.typecheck()?;
 
-                Ok(BlockItem::Statement(Statement::While(WhileStatement {
-                    condition: typechecked_condition,
-                    body: typchecked_body.into(),
-                    label: label.clone(),
-                })))
+                Ok(self)
             }
             Statement::DoWhile(DoWhileStatement {
                 condition,
                 body,
-                label,
+                label: _,
             }) => {
-                let typechecked_expr = typecheck_and_convert(condition)?;
-                let typechecked_body = body.typecheck()?;
+                *condition = typecheck_and_convert(condition)?;
+                body.typecheck()?;
 
-                Ok(BlockItem::Statement(Statement::DoWhile(DoWhileStatement {
-                    condition: typechecked_expr,
-                    body: typechecked_body.into(),
-                    label: label.clone(),
-                })))
+                Ok(self)
             }
             Statement::For(ForStatement {
                 init,
                 condition,
                 post,
                 body,
-                label,
+                label: _,
             }) => {
                 if let ForInit::Declaration(decl) = init {
                     if decl.storage_class.is_some() {
@@ -542,63 +492,52 @@ impl Typecheck for Statement {
                     }
                 }
 
-                let typechecked_decl = if let ForInit::Declaration(decl) = init {
-                    Some(decl.typecheck()?)
-                } else {
-                    None
-                };
+                *init = optionally_typecheck_for_init(init)?;
+                *condition = optionally_typecheck_expression(condition)?;
+                *post = optionally_typecheck_expression(post)?;
 
-                let typechecked_for_init = if let ForInit::Expression(Some(for_init_expr)) = init {
-                    Some(typecheck_and_convert(for_init_expr)?)
-                } else {
-                    None
-                };
+                body.typecheck()?;
 
-                let typechecked_condition = if condition.is_some() {
-                    Some(typecheck_and_convert(condition.as_ref().unwrap())?)
-                } else {
-                    None
-                };
-
-                let typechecked_post = if post.is_some() {
-                    Some(typecheck_and_convert(post.as_ref().unwrap())?)
-                } else {
-                    None
-                };
-
-                let typechecked_body = body.typecheck()?;
-
-                Ok(BlockItem::Statement(Statement::For(ForStatement {
-                    init: match (typechecked_decl, typechecked_for_init) {
-                        (Some(decl), None) => ForInit::Declaration(match decl {
-                            BlockItem::Declaration(Declaration::Variable(var_decl)) => var_decl,
-                            _ => unreachable!(),
-                        }),
-                        (None, Some(expr)) => ForInit::Expression(Some(expr)),
-                        _ => ForInit::Expression(None),
-                    },
-                    condition: typechecked_condition,
-                    post: typechecked_post,
-                    body: typechecked_body.into(),
-                    label: label.clone(),
-                })))
+                Ok(self)
             }
             Statement::Return(ReturnStatement { expr, target_type }) => {
-                let typechecked_expr = typecheck_and_convert(expr)?;
-                let converted_expr = convert_by_assignment(
-                    &typechecked_expr,
+                *expr = typecheck_and_convert(expr)?;
+                *expr = convert_by_assignment(
+                    &expr,
                     target_type.as_ref().unwrap_or(&Type::Int),
                 )?;
-                Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
-                    expr: converted_expr,
-                    target_type: target_type.clone(),
-                })))
+                Ok(self)
             }
             Statement::Break(_) | Statement::Continue(_) | Statement::Null => {
-                Ok(BlockItem::Statement(self.clone()))
+                Ok(self)
             }
         }
     }
+}
+
+fn optionally_typecheck_expression(expr: &mut Option<Expression>) -> Result<Option<Expression>> {
+    match expr {
+        Some(expr) => {
+            *expr = typecheck_and_convert(expr)?;
+            Ok(Some(expr.to_owned()))
+        }
+        None => Ok(None),
+    }
+}
+
+fn optionally_typecheck_for_init(
+    init: &mut ForInit,
+) -> Result<ForInit> {
+    match init {
+        ForInit::Declaration(decl) => {
+            decl.typecheck()?;
+        }
+        ForInit::Expression(Some(expr)) => {
+            *expr = typecheck_and_convert(expr)?;
+        }
+        _ => {},
+    }
+    Ok(init.to_owned())
 }
 
 fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer> {
@@ -640,6 +579,18 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             bail!("can't init a scalar object iwth a compound initializer");
         }
     }
+}
+
+fn optionally_typecheck_block_item(
+    block_item: &mut Option<BlockItem>,
+) -> Result<&mut Option<BlockItem>> {
+    match block_item {
+        Some(item) => {
+            item.typecheck()?;
+        }
+        None => {},
+    }
+    Ok(block_item)
 }
 
 fn zero_initializer(t: &Type) -> Initializer {
