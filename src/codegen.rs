@@ -256,8 +256,6 @@ impl Codegen for IRStaticVariable {
 
 impl Codegen for IRFunction {
     fn codegen(&self) -> AsmNode {
-        println!("self.body: {:?}", self.body);
-
         let mut instructions = vec![];
 
         instructions.push(AsmInstruction::AllocateStack(0));
@@ -654,7 +652,6 @@ impl Codegen for IRInstruction {
                         };
                         
                         if signedness || (is_pointer_src) {
-                            println!("EEEEEEEEEEEEEEEEEEEEE");
                             v.extend(vec![
                                 AsmInstruction::Cdq { asm_type },
                                 AsmInstruction::Idiv {

@@ -279,8 +279,6 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                         dst: negated_index.clone(),
                     });
 
-                    println!("scale, sub: {}", scale);
-
                     instructions.push(IRInstruction::AddPtr {
                         ptr,
                         index: negated_index,
@@ -601,7 +599,6 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
 }
 
 fn emit_compound_init(name: &str, value: Box<Initializer>, instructions: &mut Vec<IRInstruction>, offset: usize, inited_type: &Type) {
-    println!("called with offset {}", offset);
     match *value {
         Initializer::Single(_, single_init) => {
             let v = emit_tacky_and_convert(single_init, instructions);

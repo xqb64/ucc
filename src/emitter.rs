@@ -70,8 +70,6 @@ impl Emit for AsmStaticVariable {
     fn emit(&mut self, f: &mut File, _asm_type: &mut AsmType) -> Result<()> {
         writeln!(f)?;
         
-        println!("HEREEEEEEEEE");
-
         for init in &self.init {
             match init {
                 StaticInit::Int(n) => match n {
