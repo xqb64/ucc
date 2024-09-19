@@ -69,7 +69,7 @@ impl Emit for Vec<AsmInstruction> {
 impl Emit for AsmStaticVariable {
     fn emit(&mut self, f: &mut File, _asm_type: &mut AsmType) -> Result<()> {
         writeln!(f)?;
-        
+
         for init in &self.init {
             match init {
                 StaticInit::Int(n) => match n {
@@ -96,7 +96,7 @@ impl Emit for AsmStaticVariable {
                     0 => writeln!(f, "\t.section .bss")?,
                     _ => writeln!(f, "\t.section .data")?,
                 },
-            }    
+            }
         }
 
         if self.global {
@@ -135,8 +135,8 @@ impl Emit for AsmStaticVariable {
                 StaticInit::Double(n) => writeln!(f, "\t.quad {}", n.to_bits())?,
                 StaticInit::Zero(n) => {
                     writeln!(f, "\t.zero {}", n)?;
-                },
-            }    
+                }
+            }
         }
 
         Ok(())
@@ -146,7 +146,7 @@ impl Emit for AsmStaticVariable {
 impl Emit for AsmStaticConstant {
     fn emit(&mut self, f: &mut File, _asm_type: &mut AsmType) -> Result<()> {
         writeln!(f)?;
-        
+
         writeln!(f, "\t.section .rodata")?;
         writeln!(f, "\t.balign {}", self.alignment)?;
         writeln!(f, "{}:", self.name)?;
@@ -285,7 +285,7 @@ impl Emit for AsmInstruction {
                         AsmBinaryOp::Xor => "pd",
                         AsmBinaryOp::DivDouble => "sd",
                         _ => "sd",
-                    }
+                    },
                     _ => todo!(),
                 };
 
@@ -324,7 +324,7 @@ impl Emit for AsmInstruction {
                     AsmType::Double => "mul",
                     _ => todo!(),
                 };
-                
+
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
@@ -564,7 +564,7 @@ impl Emit for AsmRegister {
                 AsmRegister::R11 => write!(f, "%r11")?,
                 AsmRegister::BP => write!(f, "%rbp")?,
                 AsmRegister::SP => write!(f, "%rsp")?,
-            }
+            },
             _ => todo!(),
         }
 

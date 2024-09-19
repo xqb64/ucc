@@ -4,7 +4,12 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression, ProgramStatement, ReturnStatement, Statement, StorageClass, SubscriptExpression, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement,
+        BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement,
+        Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit,
+        ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression,
+        ProgramStatement, ReturnStatement, Statement, StorageClass, SubscriptExpression, Type,
+        UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement,
     },
 };
 
@@ -125,7 +130,10 @@ impl Resolve for VariableDeclaration {
     }
 }
 
-fn resolve_init(init: &Initializer, variable_map: &mut HashMap<String, Variable>) -> Result<Initializer> {
+fn resolve_init(
+    init: &Initializer,
+    variable_map: &mut HashMap<String, Variable>,
+) -> Result<Initializer> {
     match init {
         Initializer::Single(name, single_init) => {
             let resolved_expr = resolve_exp(single_init, variable_map)?;
@@ -136,7 +144,11 @@ fn resolve_init(init: &Initializer, variable_map: &mut HashMap<String, Variable>
             for init in compound_init {
                 resolved_inits.push(resolve_init(init, variable_map)?);
             }
-            Ok(Initializer::Compound(name.clone(), _type.clone(), resolved_inits))
+            Ok(Initializer::Compound(
+                name.clone(),
+                _type.clone(),
+                resolved_inits,
+            ))
         }
     }
 }
@@ -503,7 +515,11 @@ fn resolve_exp(
         }
         Expression::Literal(LiteralExpression { name, value, _type }) => {
             let resolved_init = resolve_init(&value, variable_map)?;
-            Ok(Expression::Literal(LiteralExpression { name, value: resolved_init.into(), _type }))
+            Ok(Expression::Literal(LiteralExpression {
+                name,
+                value: resolved_init.into(),
+                _type,
+            }))
         }
     }
 }

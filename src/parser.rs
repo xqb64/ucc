@@ -100,7 +100,10 @@ impl Parser {
     }
 
     fn is_type_specifier(&self, token: &Token) -> bool {
-        matches!(token, Token::Int | Token::Long | Token::Unsigned | Token::Signed | Token::Double)
+        matches!(
+            token,
+            Token::Int | Token::Long | Token::Unsigned | Token::Signed | Token::Double
+        )
     }
 
     fn is_storage_class_specifier(&self, token: &Token) -> bool {
@@ -142,8 +145,16 @@ impl Parser {
                 };
 
                 let unwrapped = self.unwrap_expression_to_initializer(&name, init);
-                
-                Ok(BlockItem::Declaration(Declaration::Variable(VariableDeclaration { name, _type: decl_type, init: unwrapped, storage_class, is_global: self.depth == 0 })))
+
+                Ok(BlockItem::Declaration(Declaration::Variable(
+                    VariableDeclaration {
+                        name,
+                        _type: decl_type,
+                        init: unwrapped,
+                        storage_class,
+                        is_global: self.depth == 0,
+                    },
+                )))
             }
         }
     }
@@ -156,22 +167,21 @@ impl Parser {
                 } else {
                     Initializer::Single(name.to_string(), expr.clone())
                 }
-            },
+            }
             Initializer::Compound(_, _type, elems) => {
-                let new_elems = elems.iter()
+                let new_elems = elems
+                    .iter()
                     .map(|elem| self.transform_initializer(name, elem))
                     .collect();
                 Initializer::Compound(name.to_string(), _type.clone(), new_elems)
-            },
+            }
         }
     }
 
     // Function to convert `Expression` to `Initializer`
     fn convert_expression_to_initializer(&self, name: &str, expr: Expression) -> Initializer {
         match expr {
-            Expression::Literal(literal) => {
-                self.transform_initializer(name, &literal.value)
-            },
+            Expression::Literal(literal) => self.transform_initializer(name, &literal.value),
             _ => {
                 // Handle other expressions by wrapping them in a Single Initializer
                 Initializer::Single(name.to_owned(), expr)
@@ -179,11 +189,14 @@ impl Parser {
         }
     }
 
-    fn unwrap_expression_to_initializer(&self, name: &str, expr_opt: Option<Expression>) -> Option<Initializer> {
+    fn unwrap_expression_to_initializer(
+        &self,
+        name: &str,
+        expr_opt: Option<Expression>,
+    ) -> Option<Initializer> {
         expr_opt.map(|expr| self.convert_expression_to_initializer(name, expr))
     }
-    
-    
+
     fn parse_declarator(&mut self) -> Result<Declarator> {
         match self.current.as_ref().unwrap() {
             Token::Star => {
@@ -191,7 +204,7 @@ impl Parser {
                 let inner = self.parse_declarator()?;
                 Ok(Declarator::Pointer(Box::new(inner)))
             }
-            _ => self.parse_direct_declarator()
+            _ => self.parse_direct_declarator(),
         }
     }
 
@@ -201,7 +214,7 @@ impl Parser {
             Token::LParen => {
                 self.consume(&Token::LParen)?;
                 let params = self.parse_param_list()?;
-                Ok(Declarator::Func(params, Box::new(simple_declarator)))    
+                Ok(Declarator::Func(params, Box::new(simple_declarator)))
             }
             Token::LBracket => {
                 let decl = self.parse_array_decl_suffix(&simple_declarator)?;
@@ -230,12 +243,12 @@ impl Parser {
         // Get the next array dimension
         let dim = self.parse_dim()?;
         let mut new_decl = Declarator::Array(Box::new(base_decl.clone()), dim);
-    
+
         if let Some(Token::LBracket) = self.current.as_ref() {
             // There's another dimension
             new_decl = self.parse_array_decl_suffix(&new_decl)?;
         }
-    
+
         Ok(new_decl)
     }
 
@@ -259,7 +272,7 @@ impl Parser {
         if in_front_of_us == vec![Token::Void] {
             self.consume(&Token::Void)?;
             self.consume(&Token::RParen)?;
-            
+
             Ok(vec![])
         } else {
             let mut params = vec![];
@@ -273,10 +286,10 @@ impl Parser {
             Ok(params)
         }
     }
-    
+
     fn parse_param(&mut self) -> Result<ParamInfo> {
         let specifier_list = self.consume_while_specifier();
-        let param_t = self.parse_type(&specifier_list   )?;
+        let param_t = self.parse_type(&specifier_list)?;
         let param_decl = self.parse_declarator()?;
         Ok((param_t, param_decl.into()))
     }
@@ -289,38 +302,52 @@ impl Parser {
         }
         specifier_list
     }
-    
-    fn process_declarator(&self, declarator: &Declarator, base_type: &Type) -> Result<(String, Type, Vec<String>)> {
-        let some_fn_type = Type::Func { params: vec![], ret: Box::new(Type::Int) };
+
+    fn process_declarator(
+        &self,
+        declarator: &Declarator,
+        base_type: &Type,
+    ) -> Result<(String, Type, Vec<String>)> {
+        let some_fn_type = Type::Func {
+            params: vec![],
+            ret: Box::new(Type::Int),
+        };
         match declarator {
             Declarator::Ident(name) => Ok((name.clone(), base_type.clone(), vec![])),
             Declarator::Pointer(decl) => {
                 let derived_type = Type::Pointer(base_type.clone().into());
                 self.process_declarator(decl, &derived_type)
             }
-            Declarator::Func(params, decl) => {
-                match *decl.clone() {
-                    Declarator::Ident(name) => {
-                        let mut param_names = vec![];
-                        let mut param_types = vec![];
+            Declarator::Func(params, decl) => match *decl.clone() {
+                Declarator::Ident(name) => {
+                    let mut param_names = vec![];
+                    let mut param_types = vec![];
 
-                        for (param_base_type, param_declarator) in params {
-                            let (param_name, param_type, _) = self.process_declarator(param_declarator, param_base_type)?;
-                            if std::mem::discriminant(&param_type) == std::mem::discriminant(&some_fn_type) {
-                                bail!("Function pointers in parameters are not supported.")
-                            }
-                            param_names.push(param_name);
-                            param_types.push(param_type);
+                    for (param_base_type, param_declarator) in params {
+                        let (param_name, param_type, _) =
+                            self.process_declarator(param_declarator, param_base_type)?;
+                        if std::mem::discriminant(&param_type)
+                            == std::mem::discriminant(&some_fn_type)
+                        {
+                            bail!("Function pointers in parameters are not supported.")
                         }
-
-                        let derived_type = Type::Func { params: param_types, ret: base_type.clone().into() };
-                        Ok((name.clone(), derived_type, param_names))
+                        param_names.push(param_name);
+                        param_types.push(param_type);
                     }
-                    _ => bail!("Can't apply additional type derivations to a function type."),
+
+                    let derived_type = Type::Func {
+                        params: param_types,
+                        ret: base_type.clone().into(),
+                    };
+                    Ok((name.clone(), derived_type, param_names))
                 }
-            }
+                _ => bail!("Can't apply additional type derivations to a function type."),
+            },
             Declarator::Array(inner, size) => {
-                let derived_type = Type::Array { element: Box::new(base_type.clone()), size: *size };
+                let derived_type = Type::Array {
+                    element: Box::new(base_type.clone()),
+                    size: *size,
+                };
                 self.process_declarator(inner, &derived_type)
             }
         }
@@ -399,7 +426,17 @@ impl Parser {
     }
 
     fn contains_no_specifiers(&self, specifier_list: &[Token]) -> bool {
-        !specifier_list.iter().all(|specifier| matches!(specifier, Token::Int | Token::Long | Token::Double | Token::Signed | Token::Unsigned | Token::Void))
+        !specifier_list.iter().all(|specifier| {
+            matches!(
+                specifier,
+                Token::Int
+                    | Token::Long
+                    | Token::Double
+                    | Token::Signed
+                    | Token::Unsigned
+                    | Token::Void
+            )
+        })
     }
 
     fn contains_same_specifier_twice(&self, specifier_list: &[Token]) -> bool {
@@ -894,12 +931,16 @@ impl Parser {
                 // fix up the trailing comma case
                 if self.is_next(&[Token::Comma]) {
                     continue;
-                } 
+                }
             }
             if inits.is_empty() {
                 bail!("empty compound literal");
             }
-            Ok(Expression::Literal(LiteralExpression { name: String::new(), value: Initializer::Compound(String::new(), Type::Dummy, inits).into(), _type: Type::Dummy })) 
+            Ok(Expression::Literal(LiteralExpression {
+                name: String::new(),
+                value: Initializer::Compound(String::new(), Type::Dummy, inits).into(),
+                _type: Type::Dummy,
+            }))
         } else {
             println!("got token: {:?}, {:?}", self.current, self.previous);
             bail!("expected primary");
@@ -931,7 +972,9 @@ impl Parser {
             Token::Star => {
                 self.consume(&Token::Star)?;
                 let inner = match self.current.as_ref().unwrap() {
-                    Token::Star | Token::LParen | Token::LBracket => self.parse_abstract_declarator()?,
+                    Token::Star | Token::LParen | Token::LBracket => {
+                        self.parse_abstract_declarator()?
+                    }
                     _ => AbstractDeclarator::Base,
                 };
                 Ok(AbstractDeclarator::Pointer(Box::new(inner)))
@@ -946,7 +989,7 @@ impl Parser {
                 self.consume(&Token::LParen)?;
                 let inner = self.parse_abstract_declarator()?;
                 self.consume(&Token::RParen)?;
-                
+
                 if let Token::LBracket = self.current.as_ref().unwrap() {
                     self.parse_abstract_array_decl_suffix(&inner)
                 } else {
@@ -974,17 +1017,19 @@ impl Parser {
         }
     }
 
-    fn parse_abstract_array_decl_suffix(&mut self, base_decl: &AbstractDeclarator) -> Result<AbstractDeclarator> {
+    fn parse_abstract_array_decl_suffix(
+        &mut self,
+        base_decl: &AbstractDeclarator,
+    ) -> Result<AbstractDeclarator> {
         let dim = self.parse_dim()?;
         let new_decl = AbstractDeclarator::Array(Box::new(base_decl.clone()), dim);
-        
+
         if let Some(Token::LBracket) = self.current {
             self.parse_abstract_array_decl_suffix(&new_decl)
         } else {
             Ok(new_decl)
         }
     }
-    
 }
 
 #[derive(Debug, Clone, PartialEq)]

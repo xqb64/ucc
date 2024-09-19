@@ -101,19 +101,18 @@ fn run(opts: &Opt) -> Result<()> {
 
     if opts.l.is_none() {
         std::process::Command::new("gcc")
-        .arg("-o")
-        .arg(opts.path.with_extension(""))
-        .arg(opts.path.with_extension("s"))
-        .status()?;
+            .arg("-o")
+            .arg(opts.path.with_extension(""))
+            .arg(opts.path.with_extension("s"))
+            .status()?;
     } else {
         std::process::Command::new("gcc")
-        .arg("-o")
-        .arg(opts.path.with_extension(""))
-        .arg(opts.path.with_extension("s"))
-        .arg("-l")
-        .arg(opts.l.as_ref().unwrap())
-        .status()?;
-
+            .arg("-o")
+            .arg(opts.path.with_extension(""))
+            .arg(opts.path.with_extension("s"))
+            .arg("-l")
+            .arg(opts.l.as_ref().unwrap())
+            .status()?;
     }
 
     Ok(())
