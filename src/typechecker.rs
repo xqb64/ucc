@@ -134,7 +134,6 @@ impl Typecheck for VariableDeclaration {
                             Ok((global, init))
                         }
                         _ => {
-                            ("old_d: {:?}", old_d);
                             unreachable!()
                         }
                     }
@@ -279,7 +278,7 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             if matches!(value, Const::Int(0) | Const::Long(0) | Const::UInt(0) | Const::ULong(0) | Const::Double(0.0)) {
                 Ok(vec![StaticInit::Zero(get_size_of_type(t))])
             } else {
-                Ok(vec![const2type(&value, t)])
+                Ok(vec![const2type(value, t)])
             }
         }
         (Type::Pointer { .. }, _) => bail!("InvalidPointerInitializer"),
@@ -287,18 +286,16 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         (Type::Array { element, size }, Initializer::Compound(name, _type, inits)) => {
             let mut static_inits = Vec::with_capacity(inits.len());
             for init in inits.iter() {
-                let static_init = static_init_helper(init.clone(), &element)?;
+                let static_init = static_init_helper(init.clone(), element)?;
                 static_inits.extend(static_init);
             }
 
             let padding_size = size.saturating_sub(inits.len());
-            let padding = if padding_size > 0 {
-                vec![StaticInit::Zero(get_size_of_type(&element) * padding_size)]
-            } else if padding_size == 0 {
-                vec![]
-            } else {
-                bail!("Too many initializers")
-            };
+            let padding = match padding_size.cmp(&0) {
+                std::cmp::Ordering::Greater => vec![StaticInit::Zero(get_size_of_type(element) * padding_size)],
+                std::cmp::Ordering::Equal => vec![],
+                std::cmp::Ordering::Less => bail!("Too many initializers"),
+            };            
 
             static_inits.extend(padding);
             Ok(static_inits)
@@ -543,7 +540,7 @@ impl Typecheck for Statement {
             }
             Statement::Return(ReturnStatement { expr, target_type }) => {
                 let typechecked_expr = typecheck_and_convert(expr)?;
-                let converted_expr = convert_by_assignment(&typechecked_expr, &target_type.as_ref().unwrap_or(&Type::Int))?;
+                let converted_expr = convert_by_assignment(&typechecked_expr, target_type.as_ref().unwrap_or(&Type::Int))?;
                 Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
                     expr: converted_expr,
                     target_type: target_type.clone(),
@@ -571,7 +568,7 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             }
 
             while typechecked_inits.len() < *size {
-                typechecked_inits.push(zero_initializer(&*element));
+                typechecked_inits.push(zero_initializer(element));
             }
 
 
@@ -840,11 +837,11 @@ fn typecheck_negate(expr: &Expression) -> Result<Expression> {
     match t {
         Type::Pointer(_) => bail!("can't negate a ptr"),
         _ => {
-            return Ok(Expression::Unary(UnaryExpression {
+            Ok(Expression::Unary(UnaryExpression {
                 kind: UnaryExpressionKind::Negate,
                 expr: Box::new(typed_expr),
                 _type: t,
-            }));
+            }))
         }
     }
 }
@@ -1061,11 +1058,8 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             let t1 = get_type(&typed_inner);
             let t2 = target_type;
 
-            match t2 {
-                Type::Array { element, size } => {
-                    bail!("Array type in cast");
-                }
-                _ => {}
+            if let Type::Array { .. } = t2 {
+                bail!("Array type in cast");
             }
 
             if let Type::Pointer(_) = t1 {
@@ -1105,7 +1099,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
         Expression::AddrOf(AddrOfExpression { expr, _type }) => {
             match *expr.clone() {
                 Expression::Variable(_) | Expression::Deref(_) | Expression::Subscript(_) => {
-                    let typed_inner = typecheck_expr(&expr)?;
+                    let typed_inner = typecheck_expr(expr)?;
                     let referenced_type = get_type(&typed_inner);
                     Ok(Expression::AddrOf(AddrOfExpression {
                         expr: Box::new(typed_inner),
@@ -1128,67 +1122,38 @@ fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
     let type_of_expr = get_type(&typed_expr);
     match type_of_expr {
         Type::Array { element, .. } => {
-            let addr_of_expr = Expression::AddrOf(AddrOfExpression { expr: typed_expr.into(), _type: Type::Pointer(element) });
-            return Ok(addr_of_expr);
+            Ok(Expression::AddrOf(AddrOfExpression { expr: typed_expr.into(), _type: Type::Pointer(element) }))
         }
-        _ => return Ok(typed_expr),
+        _ => Ok(typed_expr),
     }
 }
 
 fn convert_by_assignment(e: &Expression, target_type: &Type) -> Result<Expression> {
     if get_type(e) == *target_type {
-        return Ok(e.clone());
-    } else if is_arithmetic(&get_type(e)) && is_arithmetic(target_type) {
-        return Ok(convert_to(e, target_type));
-    } else if is_null_ptr_constant(e) && is_pointer_type(target_type) {
-        return Ok(convert_to(e, target_type));
+        Ok(e.clone())
+    } else if (is_arithmetic(&get_type(e)) && is_arithmetic(target_type)) || (is_null_ptr_constant(e) && is_pointer_type(target_type)) {
+        Ok(convert_to(e, target_type))
     } else {
         bail!("cannot convert");
    }
 }
 
 fn is_arithmetic(t: &Type) -> bool {
-    match t {
-        Type::Int => true,
-        Type::Uint => true,
-        Type::Long => true,
-        Type::Ulong => true,
-        Type::Double => true,
-        _ => false,
-    }
+    matches!(t, Type::Int | Type::Uint | Type::Long | Type::Ulong | Type::Double)
 }
 
 pub fn is_integer_type(t: &Type) -> bool {
-    match t {
-        Type::Int => true,
-        Type::Uint => true,
-        Type::Long => true,
-        Type::Ulong => true,
-        _ => false,
-    }
+    matches!(t, Type::Int | Type::Uint | Type::Long | Type::Ulong)
 }
 
 pub fn is_pointer_type(t: &Type) -> bool {
-    match t {
-        Type::Pointer(_) => true,
-        _ => false,
-    }
+    matches!(t, Type::Pointer(_))
 }
 
 fn is_null_ptr_constant(e: &Expression) -> bool {
     match e {
-        Expression::Constant(ConstantExpression { value, _type }) => match value {
-            Const::Int(0) => true,
-            Const::Long(0) => true,
-            Const::UInt(0) => true,
-            Const::ULong(0) => true,
-            _ => {
-                false
-            }
-        },
-        _ => {
-            false
-        }
+        Expression::Constant(ConstantExpression { value, _type }) => matches!(value, Const::Int(0) | Const::Long(0) | Const::UInt(0) | Const::ULong(0)),
+        _ => false
     }
 }
 
@@ -1197,11 +1162,11 @@ fn get_common_ptr_type(e1: &Expression, e2: &Expression) -> Result<Type> {
     let e2_t = get_type(e2);
 
     if e1_t == e2_t {
-        return Ok(e1_t);
+        Ok(e1_t)
     } else if is_null_ptr_constant(e1) {
-        return Ok(e2_t);
+        Ok(e2_t)
     } else if is_null_ptr_constant(e2) {
-        return Ok(e1_t);
+        Ok(e1_t)
     } else {
         bail!("Incompatible pointer types");
     }
@@ -1225,9 +1190,9 @@ pub fn get_common_type(type1: &Type, type2: &Type) -> Type {
     }
 
     if get_size_of_type(type1) > get_size_of_type(type2) {
-        return type1.clone();
+        type1.clone()
     } else {
-        return type2.clone();
+        type2.clone()
     }
 }
 
@@ -1261,12 +1226,11 @@ fn convert_to(e: &Expression, _type: &Type) -> Expression {
     if get_type(e) == *_type {
         return e.clone();
     }
-    let cast_expr = Expression::Cast(CastExpression {
+    Expression::Cast(CastExpression {
         target_type: _type.clone(),
         expr: Box::new(e.clone()),
         _type: _type.clone(),
-    });
-    return cast_expr;
+    })
 }
 
 pub fn get_type(e: &Expression) -> Type {
