@@ -264,7 +264,7 @@ impl Codegen for IRFunction {
         instructions.push(AsmInstruction::AllocateStack(0));
 
         let (int_reg_params, double_reg_params, stack_params) =
-            classify_parameters(self.params.clone());
+            classify_parameters(&self.params);
 
         let int_regs = [
             AsmRegister::DI,
@@ -993,7 +993,7 @@ impl Codegen for IRInstruction {
                 let mut instructions = vec![];
 
                 let (int_args, double_args, stack_args) =
-                    classify_parameters_from_irvalue(args.clone());
+                    classify_parameters_from_irvalue(&args);
 
                 let stack_padding = if stack_args.len() % 2 != 0 { 8 } else { 0 };
 
@@ -2871,7 +2871,7 @@ type ParametersAsmNode = (
     Vec<ParameterAsmNode>,
 );
 
-fn classify_parameters_from_irvalue(parameters: Vec<IRValue>) -> ParametersAsmNode {
+fn classify_parameters_from_irvalue(parameters: &[IRValue]) -> ParametersAsmNode {
     let mut int_reg_args = vec![];
     let mut double_reg_args = vec![];
     let mut stack_args = vec![];
@@ -2905,7 +2905,7 @@ type ParametersString = (
     Vec<ParameterString>,
 );
 
-fn classify_parameters(parameters: Vec<String>) -> ParametersString {
+fn classify_parameters(parameters: &[String]) -> ParametersString {
     let mut int_reg_args = vec![];
     let mut double_reg_args = vec![];
     let mut stack_args = vec![];
@@ -2914,7 +2914,7 @@ fn classify_parameters(parameters: Vec<String>) -> ParametersString {
         let param_entry = ASM_SYMBOL_TABLE
             .lock()
             .unwrap()
-            .get(&parameter)
+            .get(parameter)
             .unwrap()
             .clone();
         let type_of_param = match param_entry {
@@ -2925,16 +2925,16 @@ fn classify_parameters(parameters: Vec<String>) -> ParametersString {
         match type_of_param {
             AsmType::Double => {
                 if double_reg_args.len() < 8 {
-                    double_reg_args.push((type_of_param, parameter));
+                    double_reg_args.push((type_of_param, parameter.to_owned()));
                 } else {
-                    stack_args.push((type_of_param, parameter));
+                    stack_args.push((type_of_param, parameter.to_owned()));
                 }
             }
             _ => {
                 if int_reg_args.len() < 6 {
-                    int_reg_args.push((type_of_param, parameter));
+                    int_reg_args.push((type_of_param, parameter.to_owned()));
                 } else {
-                    stack_args.push((type_of_param, parameter));
+                    stack_args.push((type_of_param, parameter.to_owned()));
                 }
             }
         }
