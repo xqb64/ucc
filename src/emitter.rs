@@ -132,9 +132,7 @@ impl Emit for AsmStaticVariable {
                     0 => writeln!(f, "\t.zero 8")?,
                     _ => writeln!(f, "\t.quad {}", n)?,
                 },
-                StaticInit::Double(n) => match n {
-                    _ => writeln!(f, "\t.quad {}", n.to_bits())?,
-                },
+                StaticInit::Double(n) => writeln!(f, "\t.quad {}", n.to_bits())?,
                 StaticInit::Zero(n) => {
                     writeln!(f, "\t.zero {}", n)?;
                 },

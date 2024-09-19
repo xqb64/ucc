@@ -189,7 +189,7 @@ impl Parser {
             Token::Star => {
                 self.consume(&Token::Star)?;
                 let inner = self.parse_declarator()?;
-                return Ok(Declarator::Pointer(Box::new(inner)));
+                Ok(Declarator::Pointer(Box::new(inner)))
             }
             _ => self.parse_direct_declarator()
         }
@@ -290,13 +290,13 @@ impl Parser {
         specifier_list
     }
     
-    fn process_declarator(&mut self, declarator: &Declarator, base_type: &Type) -> Result<(String, Type, Vec<String>)> {
+    fn process_declarator(&self, declarator: &Declarator, base_type: &Type) -> Result<(String, Type, Vec<String>)> {
         let some_fn_type = Type::Func { params: vec![], ret: Box::new(Type::Int) };
         match declarator {
             Declarator::Ident(name) => Ok((name.clone(), base_type.clone(), vec![])),
             Declarator::Pointer(decl) => {
                 let derived_type = Type::Pointer(base_type.clone().into());
-                return self.process_declarator(decl, &derived_type);
+                self.process_declarator(decl, &derived_type)
             }
             Declarator::Func(params, decl) => {
                 match *decl.clone() {
@@ -305,7 +305,7 @@ impl Parser {
                         let mut param_types = vec![];
 
                         for (param_base_type, param_declarator) in params {
-                            let (param_name, param_type, _) = self.process_declarator(&param_declarator, &param_base_type)?;
+                            let (param_name, param_type, _) = self.process_declarator(param_declarator, param_base_type)?;
                             if std::mem::discriminant(&param_type) == std::mem::discriminant(&some_fn_type) {
                                 bail!("Function pointers in parameters are not supported.")
                             }
@@ -314,14 +314,14 @@ impl Parser {
                         }
 
                         let derived_type = Type::Func { params: param_types, ret: base_type.clone().into() };
-                        return Ok((name.clone(), derived_type, param_names));
+                        Ok((name.clone(), derived_type, param_names))
                     }
                     _ => bail!("Can't apply additional type derivations to a function type."),
                 }
             }
             Declarator::Array(inner, size) => {
                 let derived_type = Type::Array { element: Box::new(base_type.clone()), size: *size };
-                return self.process_declarator(inner, &derived_type);
+                self.process_declarator(inner, &derived_type)
             }
         }
     }
@@ -364,7 +364,7 @@ impl Parser {
     }
 
     fn parse_type(&mut self, specifier_list: &[Token]) -> Result<Type> {
-        if specifier_list == &[Token::Double] {
+        if specifier_list == [Token::Double] {
             return Ok(Type::Double);
         }
 
@@ -375,7 +375,7 @@ impl Parser {
             );
         }
 
-        if self.contains_no_specifiers(&specifier_list)
+        if self.contains_no_specifiers(specifier_list)
             || specifier_list.is_empty()
             || self.contains_same_specifier_twice(specifier_list)
             || self.contains_both_signed_and_unsigned(specifier_list)
@@ -399,15 +399,7 @@ impl Parser {
     }
 
     fn contains_no_specifiers(&self, specifier_list: &[Token]) -> bool {
-        !specifier_list.iter().all(|specifier| match specifier {
-            Token::Int
-            | Token::Long
-            | Token::Double
-            | Token::Signed
-            | Token::Unsigned
-            | Token::Void => true,
-            _ => false,
-        })
+        !specifier_list.iter().all(|specifier| matches!(specifier, Token::Int | Token::Long | Token::Double | Token::Signed | Token::Unsigned | Token::Void))
     }
 
     fn contains_same_specifier_twice(&self, specifier_list: &[Token]) -> bool {
@@ -831,8 +823,7 @@ impl Parser {
     }
 
     fn lookahead_until(&mut self, token: &Token) -> Vec<Token> {
-        let mut v = vec![];
-        v.push(self.current.clone().unwrap());
+        let v = [self.current.clone().unwrap()];
         v.iter()
             .chain(&self.tokens)
             .take_while(|&t| t != token)
@@ -941,9 +932,9 @@ impl Parser {
                 self.consume(&Token::Star)?;
                 let inner = match self.current.as_ref().unwrap() {
                     Token::Star | Token::LParen | Token::LBracket => self.parse_abstract_declarator()?,
-                    _ => AbstractDeclarator::AbstractBase,
+                    _ => AbstractDeclarator::Base,
                 };
-                Ok(AbstractDeclarator::AbstractPointer(Box::new(inner)))
+                Ok(AbstractDeclarator::Pointer(Box::new(inner)))
             }
             _ => self.parse_direct_abstract_declarator(),
         }
@@ -957,35 +948,35 @@ impl Parser {
                 self.consume(&Token::RParen)?;
                 
                 if let Token::LBracket = self.current.as_ref().unwrap() {
-                    return self.parse_abstract_array_decl_suffix(&inner);
+                    self.parse_abstract_array_decl_suffix(&inner)
                 } else {
-                    return Ok(inner);
+                    Ok(inner)
                 }
             }
-            _ => self.parse_abstract_array_decl_suffix(&AbstractDeclarator::AbstractBase),
+            _ => self.parse_abstract_array_decl_suffix(&AbstractDeclarator::Base),
         }
     }
 
-    fn process_abstract_declarator(&mut self, decl: &AbstractDeclarator, base_type: &Type) -> Type {
+    fn process_abstract_declarator(&self, decl: &AbstractDeclarator, base_type: &Type) -> Type {
         match decl {
-            AbstractDeclarator::AbstractBase => base_type.clone(),
-            AbstractDeclarator::AbstractPointer(inner) => {
+            AbstractDeclarator::Base => base_type.clone(),
+            AbstractDeclarator::Pointer(inner) => {
                 let derived_type = Type::Pointer(base_type.clone().into());
-                return self.process_abstract_declarator(inner, &derived_type);
+                self.process_abstract_declarator(inner, &derived_type)
             }
-            AbstractDeclarator::AbstractArray(inner, size) => {
+            AbstractDeclarator::Array(inner, size) => {
                 let derived_type = Type::Array {
                     element: Box::new(base_type.clone()),
                     size: *size,
                 };
-                return self.process_abstract_declarator(inner, &derived_type);
+                self.process_abstract_declarator(inner, &derived_type)
             }
         }
     }
 
     fn parse_abstract_array_decl_suffix(&mut self, base_decl: &AbstractDeclarator) -> Result<AbstractDeclarator> {
         let dim = self.parse_dim()?;
-        let new_decl = AbstractDeclarator::AbstractArray(Box::new(base_decl.clone()), dim);
+        let new_decl = AbstractDeclarator::Array(Box::new(base_decl.clone()), dim);
         
         if let Some(Token::LBracket) = self.current {
             self.parse_abstract_array_decl_suffix(&new_decl)
@@ -1269,7 +1260,7 @@ type ParamInfo = (Type, Box<Declarator>);
 
 #[derive(Debug, Clone, PartialEq)]
 enum AbstractDeclarator {
-    AbstractPointer(Box<AbstractDeclarator>),
-    AbstractArray(Box<AbstractDeclarator>, usize),
-    AbstractBase,
+    Pointer(Box<AbstractDeclarator>),
+    Array(Box<AbstractDeclarator>, usize),
+    Base,
 }

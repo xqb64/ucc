@@ -264,8 +264,8 @@ fn optionally_typecheck_init(init: &Option<Initializer>, t: &Type) -> Result<Opt
 
 fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
     let unwrapped_init = match init {
-        Initializer::Single(ref name, ref expr) => match expr {
-            Expression::Literal(LiteralExpression { name, value, _type }) => *value.clone(),
+        Initializer::Single(ref _name, ref expr) => match expr {
+            Expression::Literal(LiteralExpression { name: _, value, _type }) => *value.clone(),
             _ => init.clone(),
         },
         Initializer::Compound(name, _type, inits) => Initializer::Compound(name, _type, inits),
@@ -274,7 +274,7 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         (Type::Array { .. }, Initializer::Single(_, _)) => {
             bail!("Can't initialize array from scalar value");
         }
-        (_, Initializer::Single(name, Expression::Constant(ConstantExpression { value, _type }))) => {
+        (_, Initializer::Single(_, Expression::Constant(ConstantExpression { value, _type }))) => {
             if matches!(value, Const::Int(0) | Const::Long(0) | Const::UInt(0) | Const::ULong(0) | Const::Double(0.0)) {
                 Ok(vec![StaticInit::Zero(get_size_of_type(t))])
             } else {
@@ -283,7 +283,7 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         }
         (Type::Pointer { .. }, _) => bail!("InvalidPointerInitializer"),
         (_, Initializer::Single(_, _)) => bail!("StaticInitError::NonConstantInitializer"),
-        (Type::Array { element, size }, Initializer::Compound(name, _type, inits)) => {
+        (Type::Array { element, size }, Initializer::Compound(_, _type, inits)) => {
             let mut static_inits = Vec::with_capacity(inits.len());
             for init in inits.iter() {
                 let static_init = static_init_helper(init.clone(), element)?;
@@ -319,9 +319,9 @@ impl Typecheck for FunctionDeclaration {
             t => t,
         };
     
-        let (param_ts, return_t, fun_type) = match self._type.clone() {
+        let (param_ts, _, fun_type) = match self._type.clone() {
             Type::Func { params, ret } => {
-                if let Type::Array { element, size } = *ret {
+                if let Type::Array { .. } = *ret {
                     bail!("Function return type is an array");
                 }
                 let param_types: Vec<Type> = params.into_iter().map(adjust_param_type).collect();
@@ -996,13 +996,13 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             let t2 = get_type(&typed_else_expr);
 
             let common_type = match (t1.clone(), t2.clone()) {
-                (Type::Pointer(ptr1), Type::Pointer(ptr2)) => {
+                (Type::Pointer(_), Type::Pointer(_)) => {
                     get_common_ptr_type(&typed_then_expr, &typed_else_expr)?
                 }
-                (Type::Pointer(ptr1), _) => {
+                (Type::Pointer(_), _) => {
                     get_common_ptr_type(&typed_then_expr, &typed_else_expr)?
                 }
-                (_, Type::Pointer(ptr2)) => {
+                (_, Type::Pointer(_)) => {
                     get_common_ptr_type(&typed_then_expr, &typed_else_expr)?
                 }
                 _ => {

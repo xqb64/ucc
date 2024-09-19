@@ -393,14 +393,14 @@ fn emit_tacky(e: Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult
                         src: rval,
                         dst: val,
                     });
-                    return lval;
+                    lval
                 }
                 ExpResult::DereferencedPointer(ptr) => {
                     instructions.push(IRInstruction::Store {
                         src: rval.clone(),
                         dst_ptr: ptr,
                     });
-                    return ExpResult::PlainOperand(rval);
+                    ExpResult::PlainOperand(rval)
                 }
             }
         }
@@ -608,7 +608,7 @@ fn emit_compound_init(name: &str, value: Box<Initializer>, instructions: &mut Ve
             if let Type::Array { element, size: _ } = inited_type {
                 for (idx, elem_init) in compound_init.into_iter().enumerate() {
                     let new_offset = offset + idx * get_size_of_type(&_type);
-                    emit_compound_init(name, elem_init.clone().into(), instructions, new_offset, &element);
+                    emit_compound_init(name, elem_init.clone().into(), instructions, new_offset, element);
                 }    
             }
         }
@@ -659,10 +659,6 @@ fn emit_ptr_addition(lhs: Box<Expression>, rhs: Box<Expression>, t: Type, instru
         ExpResult::PlainOperand(dst)
     }
     
-}
-
-fn emit_ptr_diff() {
-
 }
 
 pub fn make_tacky_variable(_type: Type) -> IRValue {
@@ -1026,7 +1022,7 @@ impl Irfy for VariableDeclaration {
             let offset = 0;
             if let Type::Array { element, size: _ } = &self._type {
                 for (idx, elem_init) in compound_init.iter().enumerate() {
-                    let new_offset = offset + idx * get_size_of_type(&element);
+                    let new_offset = offset + idx * get_size_of_type(element);
                     emit_compound_init(&self.name, elem_init.clone().into(), &mut instructions, new_offset, &self._type);
                 }
             }
@@ -1095,7 +1091,7 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                             Type::Uint => StaticInit::Uint(0),
                             Type::Double => StaticInit::Double(0.0),
                             Type::Pointer(_) => StaticInit::Ulong(0),
-                            Type::Array { element, size } => StaticInit::Zero(get_size_of_type(&element) * size),
+                            Type::Array { element, size } => StaticInit::Zero(get_size_of_type(element) * size),
                             _ => unimplemented!(),
                         }],
                     }))
