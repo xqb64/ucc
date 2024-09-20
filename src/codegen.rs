@@ -1991,7 +1991,7 @@ impl Fixup for AsmFunction {
                                         dst: AsmOperand::Register(AsmRegister::XMM15),
                                     },
                                     AsmInstruction::Binary {
-                                        asm_type: dbg!(*asm_type),
+                                        asm_type: *asm_type,
                                         op: *op,
                                         lhs: lhs.clone(),
                                         rhs: AsmOperand::Register(AsmRegister::XMM15),
