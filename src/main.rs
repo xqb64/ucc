@@ -58,7 +58,7 @@ fn run(opts: &Opt) -> Result<()> {
     let typechecked_ast = labeled_ast.typecheck()?;
 
     if opts.validate {
-        println!("{:?}", typechecked_ast);
+        println!("{:#?}", typechecked_ast);
         std::process::exit(0);
     }
 
@@ -67,11 +67,10 @@ fn run(opts: &Opt) -> Result<()> {
 
     if let IRNode::Program(prog) = &mut tac {
         prog.static_vars = tacky_defs;
-        println!("prog.static_vars: {:?}", prog.static_vars);
     }
 
     if opts.tacky {
-        println!("tac: {:?}", tac);
+        println!("tac: {:#?}", tac);
         std::process::exit(0);
     }
 
@@ -80,7 +79,7 @@ fn run(opts: &Opt) -> Result<()> {
     let mut asm_prog = tac.codegen().replace_pseudo().fixup();
 
     if opts.codegen {
-        println!("{:?}", asm_prog);
+        println!("{:#?}", asm_prog);
         std::process::exit(0);
     }
 
