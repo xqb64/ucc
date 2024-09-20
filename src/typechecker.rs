@@ -4,7 +4,7 @@ use crate::{
         AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem,
         BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression,
         Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit,
-        ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression,
+        ForStatement, FunctionDeclaration, IfStatement, Initializer,
         ProgramStatement, ReturnStatement, Statement, StorageClass, SubscriptExpression, Type,
         UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression,
         WhileStatement,
@@ -70,7 +70,7 @@ impl Typecheck for VariableDeclaration {
                 };
 
                 let static_init = match &self.init {
-                    Some(init) => to_static_init(init.clone(), &self._type)?,
+                    Some(init) => to_static_init(init, &self._type)?,
                     None => default_init,
                 };
 
@@ -180,7 +180,7 @@ impl Typecheck for VariableDeclaration {
                             get_size_of_type(&self._type),
                         )]);
                         let static_init = match &self.init {
-                            Some(init) => to_static_init(init.clone(), &self._type)?,
+                            Some(init) => to_static_init(init, &self._type)?,
                             None => zero_init,
                         };
 
@@ -280,19 +280,8 @@ fn optionally_typecheck_init(init: &Option<Initializer>, t: &Type) -> Result<Opt
     }
 }
 
-fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
-    let unwrapped_init = match init {
-        Initializer::Single(ref _name, ref expr) => match expr {
-            Expression::Literal(LiteralExpression {
-                name: _,
-                value,
-                _type,
-            }) => *value.clone(),
-            _ => init.clone(),
-        },
-        Initializer::Compound(name, _type, inits) => Initializer::Compound(name, _type, inits),
-    };
-    match (t, &unwrapped_init) {
+fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
+    match (t, init) {
         (Type::Array { .. }, Initializer::Single(_, _)) => {
             bail!("Can't initialize array from scalar value");
         }
@@ -315,7 +304,7 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         (Type::Array { element, size }, Initializer::Compound(_, _type, inits)) => {
             let mut static_inits = Vec::with_capacity(inits.len());
             for init in inits.iter() {
-                let static_init = static_init_helper(init.clone(), element)?;
+                let static_init = static_init_helper(init, element)?;
                 static_inits.extend(static_init);
             }
 
@@ -337,7 +326,7 @@ fn static_init_helper(init: Initializer, t: &Type) -> Result<Vec<StaticInit>> {
     }
 }
 
-fn to_static_init(init: Initializer, t: &Type) -> Result<InitialValue> {
+fn to_static_init(init: &Initializer, t: &Type) -> Result<InitialValue> {
     let init_list = static_init_helper(init, t)?;
     Ok(InitialValue::Initial(init_list))
 }
