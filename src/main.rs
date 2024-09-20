@@ -98,21 +98,18 @@ fn run(opts: &Opt) -> Result<()> {
         std::process::exit(0);
     }
 
-    if opts.l.is_none() {
-        std::process::Command::new("gcc")
-            .arg("-o")
-            .arg(opts.path.with_extension(""))
-            .arg(opts.path.with_extension("s"))
-            .status()?;
-    } else {
-        std::process::Command::new("gcc")
-            .arg("-o")
-            .arg(opts.path.with_extension(""))
-            .arg(opts.path.with_extension("s"))
-            .arg("-l")
-            .arg(opts.l.as_ref().unwrap())
-            .status()?;
+    let mut final_executable_cmd = std::process::Command::new("gcc");
+
+    final_executable_cmd
+        .arg("-o")
+        .arg(opts.path.with_extension(""))
+        .arg(opts.path.with_extension("s"));
+
+    if let Some(ref lib) = opts.l {
+        final_executable_cmd.arg("-l").arg(lib);
     }
+
+    final_executable_cmd.status()?;
 
     Ok(())
 }
