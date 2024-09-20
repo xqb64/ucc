@@ -46,7 +46,8 @@ fn optionally_label_block_item(
 impl Label for IfStatement {
     fn label(&mut self, current_label: &str) -> Result<&mut Self> {
         self.then_branch.label(current_label)?;
-        self.else_branch = optionally_label_block_item(&mut self.else_branch, current_label)?.into();
+        self.else_branch =
+            optionally_label_block_item(&mut self.else_branch, current_label)?.into();
         Ok(self)
     }
 }
@@ -78,7 +79,7 @@ impl Label for ContinueStatement {
 impl Label for WhileStatement {
     fn label(&mut self, _current_label: &str) -> Result<&mut Self> {
         let new_label = format!("While.{}", make_temporary());
-        
+
         self.body.label(&new_label)?;
         self.label = new_label;
 
@@ -89,7 +90,7 @@ impl Label for WhileStatement {
 impl Label for DoWhileStatement {
     fn label(&mut self, _current_label: &str) -> Result<&mut Self> {
         let new_label = format!("DoWhile.{}", make_temporary());
-        
+
         self.body.label(&new_label)?;
         self.label = new_label;
 
@@ -126,11 +127,11 @@ impl Label for Statement {
             Statement::Program(p) => {
                 p.label(current_label)?;
                 Ok(self)
-            },
+            }
             Statement::Compound(b) => {
                 b.label(current_label)?;
                 Ok(self)
-            },
+            }
             Statement::If(i) => {
                 i.label(current_label)?;
                 Ok(self)
@@ -179,7 +180,7 @@ impl Label for BlockItem {
             BlockItem::Declaration(decl) => {
                 decl.label(current_label)?;
                 Ok(self)
-            },
+            }
         }
     }
 }

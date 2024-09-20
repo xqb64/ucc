@@ -22,7 +22,8 @@ pub struct Variable {
 
 pub trait Resolve {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>) -> Result<&mut Self>
-    where Self: Sized;
+    where
+        Self: Sized;
 }
 
 impl Resolve for Declaration {
@@ -209,11 +210,11 @@ impl Resolve for BlockItem {
             BlockItem::Declaration(decl) => {
                 decl.resolve(variable_map)?;
                 Ok(self)
-            },
+            }
             BlockItem::Statement(stmt) => {
                 stmt.resolve(variable_map)?;
                 Ok(self)
-            },
+            }
         }
     }
 }
@@ -237,23 +238,23 @@ impl Resolve for Statement {
             Statement::If(if_stmt) => {
                 if_stmt.resolve(variable_map)?;
                 Ok(self)
-            },
+            }
             Statement::Compound(block) => {
                 block.resolve(variable_map)?;
                 Ok(self)
-            },
+            }
             Statement::For(for_stmt) => {
                 for_stmt.resolve(variable_map)?;
                 Ok(self)
-            },
+            }
             Statement::DoWhile(do_while) => {
                 do_while.resolve(variable_map)?;
                 Ok(self)
-            },
+            }
             Statement::While(while_stmt) => {
                 while_stmt.resolve(variable_map)?;
                 Ok(self)
-            },
+            }
             Statement::Break(break_stmt) => {
                 break_stmt.resolve(variable_map)?;
                 Ok(self)

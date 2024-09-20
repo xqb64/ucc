@@ -117,7 +117,8 @@ impl Iterator for Lexer {
         } else if let Some(m) = self.constant_re.find(src) {
             self.pos += m.as_str().len();
 
-            let suffix = self.constant_re
+            let suffix = self
+                .constant_re
                 .captures(src)
                 .unwrap()
                 .name("suffix")

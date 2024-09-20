@@ -263,8 +263,7 @@ impl Codegen for IRFunction {
 
         instructions.push(AsmInstruction::AllocateStack(0));
 
-        let (int_reg_params, double_reg_params, stack_params) =
-            classify_parameters(&self.params);
+        let (int_reg_params, double_reg_params, stack_params) = classify_parameters(&self.params);
 
         let int_regs = [
             AsmRegister::DI,
@@ -992,8 +991,7 @@ impl Codegen for IRInstruction {
 
                 let mut instructions = vec![];
 
-                let (int_args, double_args, stack_args) =
-                    classify_parameters_from_irvalue(&args);
+                let (int_args, double_args, stack_args) = classify_parameters_from_irvalue(&args);
 
                 let stack_padding = if stack_args.len() % 2 != 0 { 8 } else { 0 };
 

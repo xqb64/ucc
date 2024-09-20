@@ -631,13 +631,7 @@ fn emit_compound_init(
             if let Type::Array { element, size: _ } = inited_type {
                 for (idx, elem_init) in compound_init.into_iter().enumerate() {
                     let new_offset = offset + idx * get_size_of_type(&_type);
-                    emit_compound_init(
-                        name,
-                        elem_init,
-                        instructions,
-                        new_offset,
-                        element,
-                    );
+                    emit_compound_init(name, elem_init, instructions, new_offset, element);
                 }
             }
         }

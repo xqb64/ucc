@@ -452,7 +452,7 @@ impl Typecheck for Statement {
                 else_branch,
             }) => {
                 *condition = typecheck_and_convert(condition)?;
-                
+
                 then_branch.typecheck()?;
                 optionally_typecheck_block_item(else_branch)?;
 
@@ -464,7 +464,7 @@ impl Typecheck for Statement {
                 label: _,
             }) => {
                 *condition = typecheck_and_convert(condition)?;
-                
+
                 body.typecheck()?;
 
                 Ok(self)
@@ -502,15 +502,10 @@ impl Typecheck for Statement {
             }
             Statement::Return(ReturnStatement { expr, target_type }) => {
                 *expr = typecheck_and_convert(expr)?;
-                *expr = convert_by_assignment(
-                    &expr,
-                    target_type.as_ref().unwrap_or(&Type::Int),
-                )?;
+                *expr = convert_by_assignment(&expr, target_type.as_ref().unwrap_or(&Type::Int))?;
                 Ok(self)
             }
-            Statement::Break(_) | Statement::Continue(_) | Statement::Null => {
-                Ok(self)
-            }
+            Statement::Break(_) | Statement::Continue(_) | Statement::Null => Ok(self),
         }
     }
 }
@@ -525,9 +520,7 @@ fn optionally_typecheck_expression(expr: &mut Option<Expression>) -> Result<Opti
     }
 }
 
-fn optionally_typecheck_for_init(
-    init: &mut ForInit,
-) -> Result<ForInit> {
+fn optionally_typecheck_for_init(init: &mut ForInit) -> Result<ForInit> {
     match init {
         ForInit::Declaration(decl) => {
             decl.typecheck()?;
@@ -535,7 +528,7 @@ fn optionally_typecheck_for_init(
         ForInit::Expression(Some(expr)) => {
             *expr = typecheck_and_convert(expr)?;
         }
-        _ => {},
+        _ => {}
     }
     Ok(init.to_owned())
 }
@@ -588,7 +581,7 @@ fn optionally_typecheck_block_item(
         Some(item) => {
             item.typecheck()?;
         }
-        None => {},
+        None => {}
     }
     Ok(block_item)
 }
