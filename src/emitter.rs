@@ -92,9 +92,8 @@ impl Emit for AsmStaticVariable {
                     0.0 => writeln!(f, "\t.section .bss")?,
                     _ => writeln!(f, "\t.section .data")?,
                 },
-                StaticInit::Zero(n) => match n {
-                    0 => writeln!(f, "\t.section .bss")?,
-                    _ => writeln!(f, "\t.section .data")?,
+                StaticInit::Zero(_) => {
+                    writeln!(f, "\t.section .data")?;
                 },
             }
         }
