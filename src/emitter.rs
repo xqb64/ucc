@@ -512,7 +512,7 @@ impl Emit for AsmRegister {
                 AsmRegister::XMM14 => write!(f, "%xmm14")?,
                 AsmRegister::XMM15 => write!(f, "%xmm15")?,
             },
-            AsmType::Quadword => match self {
+            _ => match self {
                 AsmRegister::AX => write!(f, "%rax")?,
                 AsmRegister::DX => write!(f, "%rdx")?,
                 AsmRegister::CX => write!(f, "%rcx")?,
@@ -535,30 +535,6 @@ impl Emit for AsmRegister {
                 AsmRegister::XMM14 => write!(f, "%xmm14")?,
                 AsmRegister::XMM15 => write!(f, "%xmm15")?,
             },
-            AsmType::Double => match self {
-                AsmRegister::XMM0 => write!(f, "%xmm0")?,
-                AsmRegister::XMM1 => write!(f, "%xmm1")?,
-                AsmRegister::XMM2 => write!(f, "%xmm2")?,
-                AsmRegister::XMM3 => write!(f, "%xmm3")?,
-                AsmRegister::XMM4 => write!(f, "%xmm4")?,
-                AsmRegister::XMM5 => write!(f, "%xmm5")?,
-                AsmRegister::XMM6 => write!(f, "%xmm6")?,
-                AsmRegister::XMM7 => write!(f, "%xmm7")?,
-                AsmRegister::XMM14 => write!(f, "%xmm14")?,
-                AsmRegister::XMM15 => write!(f, "%xmm15")?,
-                AsmRegister::AX => write!(f, "%rax")?,
-                AsmRegister::DX => write!(f, "%rdx")?,
-                AsmRegister::CX => write!(f, "%rcx")?,
-                AsmRegister::DI => write!(f, "%rdi")?,
-                AsmRegister::SI => write!(f, "%rsi")?,
-                AsmRegister::R8 => write!(f, "%r8")?,
-                AsmRegister::R9 => write!(f, "%r9")?,
-                AsmRegister::R10 => write!(f, "%r10")?,
-                AsmRegister::R11 => write!(f, "%r11")?,
-                AsmRegister::BP => write!(f, "%rbp")?,
-                AsmRegister::SP => write!(f, "%rsp")?,
-            },
-            _ => todo!(),
         }
 
         Ok(())
