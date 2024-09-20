@@ -1276,53 +1276,18 @@ fn convert_to(e: &Expression, _type: &Type) -> Expression {
 
 pub fn get_type(e: &Expression) -> &Type {
     match e {
-        Expression::Assign(AssignExpression {
-            op: _,
-            lhs: _,
-            rhs: _,
-            _type,
-        }) => _type,
-        Expression::Binary(BinaryExpression {
-            kind: _,
-            lhs: _,
-            rhs: _,
-            _type,
-        }) => _type,
-        Expression::Call(CallExpression {
-            name: _,
-            args: _,
-            _type,
-        }) => _type,
-        Expression::Cast(CastExpression {
-            target_type: _,
-            expr: _,
-            _type,
-        }) => _type,
-        Expression::Conditional(ConditionalExpression {
-            condition: _,
-            then_expr: _,
-            else_expr: _,
-            _type,
-        }) => _type,
-        Expression::Constant(ConstantExpression { value: _, _type }) => _type,
-        Expression::Unary(UnaryExpression {
-            kind: _,
-            expr: _,
-            _type,
-        }) => _type,
-        Expression::Variable(VariableExpression { value: _, _type }) => _type,
-        Expression::Deref(DerefExpression { expr: _, _type }) => _type,
-        Expression::AddrOf(AddrOfExpression { expr: _, _type }) => _type,
-        Expression::Literal(LiteralExpression {
-            name: _,
-            value: _,
-            _type,
-        }) => _type,
-        Expression::Subscript(SubscriptExpression {
-            expr: _,
-            index: _,
-            _type,
-        }) => _type,
+        Expression::Assign(assign) => &assign._type,
+        Expression::Binary(binary) => &binary._type,
+        Expression::Call(call) => &call._type,
+        Expression::Cast(cast) => &cast._type,
+        Expression::Conditional(conditional) => &conditional._type,
+        Expression::Constant(constant) => &constant._type,
+        Expression::Unary(unary) => &unary._type,
+        Expression::Variable(variable) => &variable._type,
+        Expression::Deref(deref) => &deref._type,
+        Expression::AddrOf(addr_of) => &addr_of._type,
+        Expression::Literal(literal) => &literal._type,
+        Expression::Subscript(subscript) => &subscript._type,
     }
 }
 
