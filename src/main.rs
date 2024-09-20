@@ -115,7 +115,7 @@ fn run(opts: &Opt) -> Result<()> {
 }
 
 fn preprocess(path: &PathBuf) -> Result<PathBuf> {
-    let new_path = path.clone().with_extension("i");
+    let new_path = path.with_extension("i");
 
     std::process::Command::new("gcc")
         .arg("-E")
