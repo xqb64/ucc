@@ -117,46 +117,37 @@ impl Label for Statement {
         match self {
             Statement::Program(p) => {
                 p.label(current_label)?;
-                Ok(self)
             }
             Statement::Compound(b) => {
                 b.label(current_label)?;
-                Ok(self)
             }
             Statement::If(i) => {
                 i.label(current_label)?;
-                Ok(self)
             }
             Statement::Break(b) => {
                 b.label(current_label)?;
-                Ok(self)
             }
             Statement::Continue(c) => {
                 c.label(current_label)?;
-                Ok(self)
             }
             Statement::While(w) => {
                 w.label(current_label)?;
-                Ok(self)
             }
             Statement::DoWhile(d) => {
                 d.label(current_label)?;
-                Ok(self)
             }
             Statement::For(f) => {
                 f.label(current_label)?;
-                Ok(self)
             }
             Statement::Expression(e) => {
                 e.label(current_label)?;
-                Ok(self)
             }
             Statement::Return(r) => {
                 r.label(current_label)?;
-                Ok(self)
             }
-            Self::Null => Ok(self),
+            Self::Null => {},
         }
+        Ok(self)
     }
 }
 
