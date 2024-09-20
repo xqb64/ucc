@@ -4,10 +4,9 @@ use crate::{
         AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem,
         BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression,
         Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit,
-        ForStatement, FunctionDeclaration, IfStatement, Initializer,
-        ProgramStatement, ReturnStatement, Statement, StorageClass, SubscriptExpression, Type,
-        UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression,
-        WhileStatement,
+        ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement,
+        ReturnStatement, Statement, StorageClass, SubscriptExpression, Type, UnaryExpression,
+        UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement,
     },
 };
 use anyhow::{bail, Ok, Result};

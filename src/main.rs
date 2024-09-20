@@ -8,7 +8,7 @@ use ucc::codegen::{build_asm_symbol_table, AsmType, Codegen, Fixup, ReplacePseud
 use ucc::emitter::Emit;
 use ucc::ir::{convert_symbols_to_tacky, IRNode, Irfy};
 use ucc::lexer::{Lexer, Token};
-use ucc::loop_label::Label;
+use ucc::loop_label::LoopLabel;
 use ucc::parser::Parser;
 use ucc::resolver::Resolve;
 use ucc::typechecker::Typecheck;
@@ -44,25 +44,26 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let mut parser = Parser::new(tokens);
-    let mut ast = parser.parse()?;
+    let mut raw_ast = parser.parse()?;
 
     if opts.parse {
-        println!("{:#?}", ast);
+        println!("{:#?}", raw_ast);
         std::process::exit(0);
     }
 
     let mut variable_map = HashMap::new();
 
-    let validated_ast = ast.resolve(&mut variable_map)?;
-    let labeled_ast = validated_ast.label(&String::new())?;
-    let typechecked_ast = labeled_ast.typecheck()?;
+    let cooked_ast = raw_ast
+        .resolve(&mut variable_map)?
+        .loop_label("")?
+        .typecheck()?;
 
     if opts.validate {
-        println!("{:#?}", typechecked_ast);
+        println!("{:#?}", cooked_ast);
         std::process::exit(0);
     }
 
-    let mut tac = typechecked_ast.irfy().unwrap();
+    let mut tac = cooked_ast.irfy().unwrap();
     let tacky_defs = convert_symbols_to_tacky();
 
     if let IRNode::Program(prog) = &mut tac {

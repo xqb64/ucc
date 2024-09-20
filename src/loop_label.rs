@@ -9,42 +9,42 @@ use crate::{
     },
 };
 
-pub trait Label {
-    fn label(&mut self, current_label: &str) -> Result<&mut Self>;
+pub trait LoopLabel {
+    fn loop_label(&mut self, current_label: &str) -> Result<&mut Self>;
 }
 
-impl Label for ProgramStatement {
-    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
+impl LoopLabel for ProgramStatement {
+    fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
         for block_item in self.block_items.iter_mut() {
-            block_item.label(current_label)?;
+            block_item.loop_label(current_label)?;
         }
         Ok(self)
     }
 }
 
-impl Label for BlockStatement {
-    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
+impl LoopLabel for BlockStatement {
+    fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
         for stmt in self.stmts.iter_mut() {
-            stmt.label(current_label)?;
+            stmt.loop_label(current_label)?;
         }
         Ok(self)
     }
 }
 
-impl Label for IfStatement {
-    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
-        self.then_branch.label(current_label)?;
+impl LoopLabel for IfStatement {
+    fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
+        self.then_branch.loop_label(current_label)?;
 
         if let Some(ref mut else_branch) = *self.else_branch {
-            else_branch.label(current_label)?;
+            else_branch.loop_label(current_label)?;
         }
 
         Ok(self)
     }
 }
 
-impl Label for BreakStatement {
-    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
+impl LoopLabel for BreakStatement {
+    fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
         if current_label.is_empty() {
             bail!("break statement not within loop");
         }
@@ -55,8 +55,8 @@ impl Label for BreakStatement {
     }
 }
 
-impl Label for ContinueStatement {
-    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
+impl LoopLabel for ContinueStatement {
+    fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
         if current_label.is_empty() {
             bail!("continue statement not within loop");
         }
@@ -67,32 +67,32 @@ impl Label for ContinueStatement {
     }
 }
 
-impl Label for WhileStatement {
-    fn label(&mut self, _current_label: &str) -> Result<&mut Self> {
+impl LoopLabel for WhileStatement {
+    fn loop_label(&mut self, _current_label: &str) -> Result<&mut Self> {
         let new_label = format!("While.{}", make_temporary());
 
-        self.body.label(&new_label)?;
+        self.body.loop_label(&new_label)?;
         self.label = new_label;
 
         Ok(self)
     }
 }
 
-impl Label for DoWhileStatement {
-    fn label(&mut self, _current_label: &str) -> Result<&mut Self> {
+impl LoopLabel for DoWhileStatement {
+    fn loop_label(&mut self, _current_label: &str) -> Result<&mut Self> {
         let new_label = format!("DoWhile.{}", make_temporary());
 
-        self.body.label(&new_label)?;
+        self.body.loop_label(&new_label)?;
         self.label = new_label;
 
         Ok(self)
     }
 }
 
-impl Label for ForStatement {
-    fn label(&mut self, _current_label: &str) -> Result<&mut Self> {
+impl LoopLabel for ForStatement {
+    fn loop_label(&mut self, _current_label: &str) -> Result<&mut Self> {
         let new_label = format!("For.{}", make_temporary());
-        self.body.label(&new_label)?;
+        self.body.loop_label(&new_label)?;
 
         self.label = new_label;
 
@@ -100,89 +100,89 @@ impl Label for ForStatement {
     }
 }
 
-impl Label for ReturnStatement {
-    fn label(&mut self, _current_label: &str) -> Result<&mut Self> {
+impl LoopLabel for ReturnStatement {
+    fn loop_label(&mut self, _current_label: &str) -> Result<&mut Self> {
         Ok(self)
     }
 }
 
-impl Label for ExpressionStatement {
-    fn label(&mut self, _current_label: &str) -> Result<&mut Self> {
+impl LoopLabel for ExpressionStatement {
+    fn loop_label(&mut self, _current_label: &str) -> Result<&mut Self> {
         Ok(self)
     }
 }
 
-impl Label for Statement {
-    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
+impl LoopLabel for Statement {
+    fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
         match self {
             Statement::Program(p) => {
-                p.label(current_label)?;
+                p.loop_label(current_label)?;
             }
             Statement::Compound(b) => {
-                b.label(current_label)?;
+                b.loop_label(current_label)?;
             }
             Statement::If(i) => {
-                i.label(current_label)?;
+                i.loop_label(current_label)?;
             }
             Statement::Break(b) => {
-                b.label(current_label)?;
+                b.loop_label(current_label)?;
             }
             Statement::Continue(c) => {
-                c.label(current_label)?;
+                c.loop_label(current_label)?;
             }
             Statement::While(w) => {
-                w.label(current_label)?;
+                w.loop_label(current_label)?;
             }
             Statement::DoWhile(d) => {
-                d.label(current_label)?;
+                d.loop_label(current_label)?;
             }
             Statement::For(f) => {
-                f.label(current_label)?;
+                f.loop_label(current_label)?;
             }
             Statement::Expression(e) => {
-                e.label(current_label)?;
+                e.loop_label(current_label)?;
             }
             Statement::Return(r) => {
-                r.label(current_label)?;
+                r.loop_label(current_label)?;
             }
-            Self::Null => {},
+            Self::Null => {}
         }
         Ok(self)
     }
 }
 
-impl Label for BlockItem {
-    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
+impl LoopLabel for BlockItem {
+    fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
         match self {
             BlockItem::Statement(s) => {
-                s.label(current_label)?;
+                s.loop_label(current_label)?;
                 Ok(self)
             }
 
             BlockItem::Declaration(decl) => {
-                decl.label(current_label)?;
+                decl.loop_label(current_label)?;
                 Ok(self)
             }
         }
     }
 }
 
-impl Label for Declaration {
-    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
+impl LoopLabel for Declaration {
+    fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
         match self {
             Declaration::Variable(_) => Ok(self),
             Declaration::Function(f) => {
-                f.label(current_label)?;
+                f.loop_label(current_label)?;
                 Ok(self)
             }
         }
     }
 }
 
-impl Label for FunctionDeclaration {
-    fn label(&mut self, current_label: &str) -> Result<&mut Self> {
+impl LoopLabel for FunctionDeclaration {
+    fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
         if let Some(ref mut body) = *self.body {
-            body.label(current_label)?;
+            body.loop_label(current_label)?;
         }
         Ok(self)
     }
