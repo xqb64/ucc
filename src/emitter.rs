@@ -103,14 +103,7 @@ impl Emit for AsmStaticVariable {
             writeln!(f, "\t.globl {}", self.name)?;
         }
 
-        match self.alignment {
-            1 => writeln!(f, "\t.balign 1")?,
-            2 => writeln!(f, "\t.balign 2")?,
-            4 => writeln!(f, "\t.balign 4")?,
-            8 => writeln!(f, "\t.balign 8")?,
-            16 => writeln!(f, "\t.balign 16")?,
-            _ => unreachable!(),
-        }
+        writeln!(f, "\t.balign {}", self.alignment)?;
 
         writeln!(f, "{}:", self.name)?;
 
