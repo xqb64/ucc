@@ -31,23 +31,14 @@ impl Label for BlockStatement {
     }
 }
 
-fn optionally_label_block_item(
-    block_item: &mut Option<BlockItem>,
-    current_label: &str,
-) -> Result<Option<BlockItem>> {
-    if block_item.is_some() {
-        let labeled_block_item = block_item.as_mut().unwrap().label(current_label)?;
-        Ok(Some(labeled_block_item.to_owned()))
-    } else {
-        Ok(None)
-    }
-}
-
 impl Label for IfStatement {
     fn label(&mut self, current_label: &str) -> Result<&mut Self> {
         self.then_branch.label(current_label)?;
-        self.else_branch =
-            optionally_label_block_item(&mut self.else_branch, current_label)?.into();
+
+        if let Some(ref mut else_branch) = *self.else_branch {
+            else_branch.label(current_label)?;
+        }
+
         Ok(self)
     }
 }
@@ -199,7 +190,9 @@ impl Label for Declaration {
 
 impl Label for FunctionDeclaration {
     fn label(&mut self, current_label: &str) -> Result<&mut Self> {
-        self.body = optionally_label_block_item(&mut self.body, current_label)?.into();
+        if let Some(ref mut body) = *self.body {
+            body.label(current_label)?;
+        }
         Ok(self)
     }
 }
