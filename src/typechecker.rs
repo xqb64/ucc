@@ -234,6 +234,8 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
             Type::Ulong => StaticInit::ULong(*l as u64),
             Type::Double => StaticInit::Double(*l as f64),
             Type::Pointer(_) => StaticInit::ULong(*l as u64),
+            Type::Char | Type::SChar => StaticInit::Char(*l as i32),
+            Type::UChar => StaticInit::UChar(*l as u32),
             _ => unreachable!(),
         },
         Const::UInt(u) => match t {
@@ -243,6 +245,8 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
             Type::Ulong => StaticInit::ULong(*u as u64),
             Type::Double => StaticInit::Double(*u as f64),
             Type::Pointer(_) => StaticInit::ULong(*u as u64),
+            Type::Char | Type::SChar => StaticInit::Char(*u as i32),
+            Type::UChar => StaticInit::UChar(*u as u32),
             _ => unreachable!(),
         },
         Const::ULong(ul) => match t {
@@ -252,6 +256,8 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
             Type::Ulong => StaticInit::ULong(*ul),
             Type::Double => StaticInit::Double(*ul as f64),
             Type::Pointer(_) => StaticInit::ULong(*ul),
+            Type::Char | Type::SChar => StaticInit::Char(*ul as i32),
+            Type::UChar => StaticInit::UChar(*ul as u32),
             _ => unreachable!(),
         },
         Const::Double(d) => match t {
@@ -261,6 +267,8 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
             Type::Ulong => StaticInit::ULong(*d as u64),
             Type::Double => StaticInit::Double(*d),
             Type::Pointer(_) => StaticInit::ULong(*d as u64),
+            Type::Char | Type::SChar => StaticInit::Char(*d as i32),
+            Type::UChar => StaticInit::UChar(*d as u32),
             _ => unreachable!(),
         },
         _ => todo!(),
