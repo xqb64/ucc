@@ -72,11 +72,11 @@ impl Emit for AsmStaticVariable {
                     0 => writeln!(f, "\t.section .bss")?,
                     _ => writeln!(f, "\t.section .data")?,
                 },
-                StaticInit::Uint(n) => match n {
+                StaticInit::UInt(n) => match n {
                     0 => writeln!(f, "\t.section .bss")?,
                     _ => writeln!(f, "\t.section .data")?,
                 },
-                StaticInit::Ulong(n) => match n {
+                StaticInit::ULong(n) => match n {
                     0 => writeln!(f, "\t.section .bss")?,
                     _ => writeln!(f, "\t.section .data")?,
                 },
@@ -87,6 +87,7 @@ impl Emit for AsmStaticVariable {
                 StaticInit::Zero(_) => {
                     writeln!(f, "\t.section .data")?;
                 }
+                _ => todo!(),
             }
         }
 
@@ -108,11 +109,11 @@ impl Emit for AsmStaticVariable {
                     0 => writeln!(f, "\t.zero 8")?,
                     _ => writeln!(f, "\t.quad {}", n)?,
                 },
-                StaticInit::Uint(n) => match n {
+                StaticInit::UInt(n) => match n {
                     0 => writeln!(f, "\t.zero 4")?,
                     _ => writeln!(f, "\t.long {}", n)?,
                 },
-                StaticInit::Ulong(n) => match n {
+                StaticInit::ULong(n) => match n {
                     0 => writeln!(f, "\t.zero 8")?,
                     _ => writeln!(f, "\t.quad {}", n)?,
                 },
@@ -120,6 +121,7 @@ impl Emit for AsmStaticVariable {
                 StaticInit::Zero(n) => {
                     writeln!(f, "\t.zero {}", n)?;
                 }
+                _ => todo!(),
             }
         }
 
@@ -138,8 +140,8 @@ impl Emit for AsmStaticConstant {
         match self.init {
             StaticInit::Int(n) => writeln!(f, "\t.long {}", n)?,
             StaticInit::Long(n) => writeln!(f, "\t.quad {}", n)?,
-            StaticInit::Uint(n) => writeln!(f, "\t.long {}", n)?,
-            StaticInit::Ulong(n) => writeln!(f, "\t.quad {}", n)?,
+            StaticInit::UInt(n) => writeln!(f, "\t.long {}", n)?,
+            StaticInit::ULong(n) => writeln!(f, "\t.quad {}", n)?,
             StaticInit::Double(n) => writeln!(f, "\t.quad {}", n.to_bits())?,
             _ => todo!(),
         }

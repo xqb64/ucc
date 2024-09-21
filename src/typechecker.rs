@@ -1,12 +1,7 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem,
-        BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression,
-        Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit,
-        ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement,
-        ReturnStatement, Statement, StorageClass, SubscriptExpression, Type, UnaryExpression,
-        UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement,
+        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, Statement, StorageClass, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement
     },
 };
 use anyhow::{bail, Result};
@@ -223,47 +218,47 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
     match konst {
         Const::Int(i) => match t {
             Type::Int => StaticInit::Int(*i),
-            Type::Uint => StaticInit::Uint(*i as u32),
+            Type::Uint => StaticInit::UInt(*i as u32),
             Type::Long => StaticInit::Long(*i as i64),
-            Type::Ulong => StaticInit::Ulong(*i as u64),
+            Type::Ulong => StaticInit::ULong(*i as u64),
             Type::Double => StaticInit::Double(*i as f64),
-            Type::Pointer(_) => StaticInit::Ulong(*i as u64),
+            Type::Pointer(_) => StaticInit::ULong(*i as u64),
             _ => unreachable!(),
         },
         Const::Long(l) => match t {
             Type::Int => StaticInit::Int(*l as i32),
-            Type::Uint => StaticInit::Uint(*l as u32),
+            Type::Uint => StaticInit::UInt(*l as u32),
             Type::Long => StaticInit::Long(*l),
-            Type::Ulong => StaticInit::Ulong(*l as u64),
+            Type::Ulong => StaticInit::ULong(*l as u64),
             Type::Double => StaticInit::Double(*l as f64),
-            Type::Pointer(_) => StaticInit::Ulong(*l as u64),
+            Type::Pointer(_) => StaticInit::ULong(*l as u64),
             _ => unreachable!(),
         },
         Const::UInt(u) => match t {
             Type::Int => StaticInit::Int(*u as i32),
-            Type::Uint => StaticInit::Uint(*u),
+            Type::Uint => StaticInit::UInt(*u),
             Type::Long => StaticInit::Long(*u as i64),
-            Type::Ulong => StaticInit::Ulong(*u as u64),
+            Type::Ulong => StaticInit::ULong(*u as u64),
             Type::Double => StaticInit::Double(*u as f64),
-            Type::Pointer(_) => StaticInit::Ulong(*u as u64),
+            Type::Pointer(_) => StaticInit::ULong(*u as u64),
             _ => unreachable!(),
         },
         Const::ULong(ul) => match t {
             Type::Int => StaticInit::Int(*ul as i32),
-            Type::Uint => StaticInit::Uint(*ul as u32),
+            Type::Uint => StaticInit::UInt(*ul as u32),
             Type::Long => StaticInit::Long(*ul as i64),
-            Type::Ulong => StaticInit::Ulong(*ul),
+            Type::Ulong => StaticInit::ULong(*ul),
             Type::Double => StaticInit::Double(*ul as f64),
-            Type::Pointer(_) => StaticInit::Ulong(*ul),
+            Type::Pointer(_) => StaticInit::ULong(*ul),
             _ => unreachable!(),
         },
         Const::Double(d) => match t {
             Type::Int => StaticInit::Int(*d as i32),
-            Type::Uint => StaticInit::Uint(*d as u32),
+            Type::Uint => StaticInit::UInt(*d as u32),
             Type::Long => StaticInit::Long(*d as i64),
-            Type::Ulong => StaticInit::Ulong(*d as u64),
+            Type::Ulong => StaticInit::ULong(*d as u64),
             Type::Double => StaticInit::Double(*d),
-            Type::Pointer(_) => StaticInit::Ulong(*d as u64),
+            Type::Pointer(_) => StaticInit::ULong(*d as u64),
             _ => unreachable!(),
         },
         _ => todo!(),
@@ -282,8 +277,51 @@ fn optionally_typecheck_init(init: &Option<Initializer>, t: &Type) -> Result<Opt
 
 fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
     match (t, init) {
-        (Type::Array { .. }, Initializer::Single(_, _)) => {
-            bail!("Can't initialize array from scalar value");
+        (Type::Array { element, size }, Initializer::Single(name, expr)) => {
+            if let Expression::String(string_expr) = expr {
+                if !is_char_type(&element) {
+                    bail!("Can't initialize array with non-char type");
+                }
+
+                if string_expr.value.len() > *size {
+                    bail!("String too long for array");
+                }
+
+                let mut static_inits = vec![];
+                for c in string_expr.value.chars() {
+                    static_inits.push(StaticInit::Char(c as i32));
+                }
+
+                let padding_size = size.saturating_sub(string_expr.value.len());
+                for _ in 0..padding_size {
+                    static_inits.push(StaticInit::Char(0));
+                }
+
+                Ok(static_inits)
+            } else {
+                bail!("Can't initialize array with non-string");
+            }
+        }
+        (Type::Pointer(_), Initializer::Single(name, Expression::String(string_expr))) => {
+            let string_name = format!("__string_literal_{}", name);
+            let string_symbol = Symbol {
+                _type: Type::Array {
+                    element: Box::new(Type::Char),
+                    size: string_expr.value.len() + 1,
+                },
+                attrs: IdentifierAttrs::ConstantAttr(StaticInit::String(string_expr.value.to_owned(), true))
+            }; 
+
+            SYMBOL_TABLE.lock().unwrap().insert(string_name.clone(), string_symbol);
+
+            let ptr_symbol = Symbol {
+                _type: Type::Pointer(Box::new(Type::Char)),
+                attrs: IdentifierAttrs::StaticAttr { initial_value: InitialValue::Initial(vec![StaticInit::Pointer(string_name)]), global: false }
+            };
+
+            SYMBOL_TABLE.lock().unwrap().insert(name.clone(), ptr_symbol);
+
+            Ok(vec![])
         }
         (_, Initializer::Single(_, Expression::Constant(ConstantExpression { value, _type }))) => {
             if matches!(
@@ -524,6 +562,21 @@ fn optionally_typecheck_for_init(init: &mut ForInit) -> Result<ForInit> {
 
 fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer> {
     match (target_type, init) {
+        (Type::Array { element, size }, Initializer::Single(name, expr)) => {
+            if let Expression::String(string_expr) = expr {
+                if !is_char_type(&element) {
+                    bail!("Can't initialize array with non-char type");
+                }
+
+                if string_expr.value.len() > *size {
+                    bail!("String too long for array");
+                }
+
+                return Ok(Initializer::Single(name.to_owned(), Expression::String(StringExpression { value: string_expr.value.clone(), _type: target_type.clone() } )));
+            } else {
+                return Ok(init.to_owned());
+            }
+        }
         (Type::Array { element, size }, Initializer::Compound(name, _type, inits)) => {
             if inits.len() > *size {
                 bail!("Too many initializers");
@@ -610,6 +663,20 @@ fn zero_initializer(t: &Type) -> Initializer {
             Expression::Constant(ConstantExpression {
                 value: Const::Double(0.0),
                 _type: Type::Double,
+            }),
+        ),
+        Type::Char | Type::SChar => Initializer::Single(
+            String::new(),
+            Expression::Constant(ConstantExpression {
+                value: Const::Char(0),
+                _type: Type::Char,
+            }),
+        ),
+        Type::UChar => Initializer::Single(
+            String::new(),
+            Expression::Constant(ConstantExpression {
+                value: Const::UChar(0),
+                _type: Type::UChar,
             }),
         ),
         Type::Pointer(_) => Initializer::Single(
@@ -840,6 +907,15 @@ fn typecheck_complement(expr: &Expression) -> Result<Expression> {
         bail!("Invalid operand for bitwise complement");
     }
 
+    if is_char_type(t) {
+        let typed_expr = convert_to(&typed_expr, &Type::Int);
+        return Ok(Expression::Unary(UnaryExpression {
+            kind: UnaryExpressionKind::Complement,
+            expr: Box::new(typed_expr),
+            _type: Type::Int,
+        }));
+    }
+
     Ok(Expression::Unary(UnaryExpression {
         kind: UnaryExpressionKind::Complement,
         expr: Box::new(typed_expr.clone()),
@@ -850,14 +926,22 @@ fn typecheck_complement(expr: &Expression) -> Result<Expression> {
 fn typecheck_negate(expr: &Expression) -> Result<Expression> {
     let typed_expr = typecheck_and_convert(expr)?;
 
-    let t = get_type(&typed_expr);
+    let inner_t = get_type(&typed_expr);
 
-    match t {
+    match inner_t {
         Type::Pointer(_) => bail!("can't negate a ptr"),
+        Type::Char | Type::UChar | Type::SChar => {
+            let typed_inner = convert_to(&typed_expr, &Type::Int);
+            Ok(Expression::Unary(UnaryExpression {
+                kind: UnaryExpressionKind::Negate,
+                expr: Box::new(typed_inner),
+                _type: Type::Int,
+            }))
+        }
         _ => Ok(Expression::Unary(UnaryExpression {
             kind: UnaryExpressionKind::Negate,
             expr: Box::new(typed_expr.clone()),
-            _type: t.to_owned(),
+            _type: inner_t.to_owned(),
         })),
     }
 }
@@ -975,14 +1059,15 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             _type,
         }) => {
             match *lhs.clone() {
-                Expression::Variable(_) | Expression::Deref(_) | Expression::Subscript(_) => {
+                Expression::Variable(_) | Expression::Deref(_) | Expression::Subscript(_) | Expression::String(_) => {
                     let typed_lhs = typecheck_and_convert(lhs)?;
 
                     // if typed_lhs is not an lvalue
                     match typed_lhs {
                         Expression::Variable(_)
                         | Expression::Deref(_)
-                        | Expression::Subscript(_) => {}
+                        | Expression::Subscript(_)
+                        | Expression::String(_) => {}
                         _ => {
                             bail!("Invalid lvalue in assignment");
                         }
@@ -1142,6 +1227,12 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
         Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
             typecheck_subscript(expr, index)
         }
+        Expression::String(StringExpression { value, _type }) => {
+            Ok(Expression::String(StringExpression {
+                value: value.clone(),
+                _type: Type::Array { element: Type::Char.into(), size: value.len() + 1 },
+            }))
+        }
         _ => todo!(),
     }
 }
@@ -1210,9 +1301,21 @@ fn get_common_ptr_type<'a>(e1: &'a Expression, e2: &'a Expression) -> Result<&'a
     }
 }
 
-pub fn get_common_type<'a>(type1: &'a Type, type2: &'a Type) -> &'a Type {
+pub fn is_char_type(t: &Type) -> bool {
+    matches!(t, Type::Char | Type::UChar | Type::SChar)
+}
+
+pub fn get_common_type<'a>(mut type1: &'a Type, mut type2: &'a Type) -> &'a Type {
     if type1 == type2 {
         return type1;
+    }
+
+    if is_char_type(type1) {
+        type1 = &Type::Int;
+    }
+
+    if is_char_type(type2) {
+        type2 = &Type::Int;
     }
 
     if type1 == &Type::Double || type2 == &Type::Double {
@@ -1299,6 +1402,7 @@ pub enum IdentifierAttrs {
         initial_value: InitialValue,
         global: bool,
     },
+    ConstantAttr(StaticInit),
     LocalAttr,
 }
 
@@ -1309,12 +1413,16 @@ pub enum InitialValue {
     NoInitializer,
 }
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StaticInit {
     Int(i32),
     Long(i64),
-    Uint(u32),
-    Ulong(u64),
+    UInt(u32),
+    ULong(u64),
     Double(f64),
+    Char(i32),
+    UChar(u32),
+    String(String, bool),
+    Pointer(String),
     Zero(usize),
 }

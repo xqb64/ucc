@@ -3049,6 +3049,28 @@ pub fn build_asm_symbol_table() {
                     is_constant: false,
                 }
             }
+            IdentifierAttrs::ConstantAttr(_) => {
+                let asm_type = match symbol._type {
+                    Type::Int => AsmType::Longword,
+                    Type::Long => AsmType::Quadword,
+                    Type::Uint => AsmType::Longword,
+                    Type::Ulong => AsmType::Quadword,
+                    Type::Double => AsmType::Double,
+                    Type::Pointer(_) => AsmType::Quadword,
+                    Type::Array { ref element, size } => AsmType::Bytearray {
+                        size: get_size_of_type(element) * size,
+                        alignment: calculate_alignment_of_array(&symbol._type),
+                    },
+                    _ => {
+                        panic!("Unsupported type for static variable");
+                    }
+                };
+                AsmSymtabEntry::Object {
+                    _type: asm_type,
+                    is_static: false,
+                    is_constant: true,
+                }
+            }
         };
 
         asm_symbol_table.insert(identifier.clone(), entry);
