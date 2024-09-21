@@ -417,7 +417,7 @@ impl Parser {
                     || unique_specifiers.len() != sorted_specifiers.len()
                     || sorted_specifiers.contains(&Token::Double)
                     || sorted_specifiers.contains(&Token::Char)
-                    && (sorted_specifiers.contains(&Token::Signed) && sorted_specifiers.contains(&Token::Unsigned))
+                    || (sorted_specifiers.contains(&Token::Signed) && sorted_specifiers.contains(&Token::Unsigned))
                 {
                     bail!("Invalid type specifier");
                 } else if sorted_specifiers.contains(&Token::Unsigned)
