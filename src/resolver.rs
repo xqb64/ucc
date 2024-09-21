@@ -1,15 +1,10 @@
 use anyhow::{bail, Ok, Result};
-use std::collections::HashMap;
+use std::{collections::HashMap, f32::consts::E};
 
 use crate::{
     ir::make_temporary,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement,
-        BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement,
-        Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit,
-        ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression,
-        ProgramStatement, ReturnStatement, Statement, StorageClass, SubscriptExpression, Type,
-        UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement,
+        AddrOfExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression, ProgramStatement, ReturnStatement, Statement, StorageClass, StringExpression, SubscriptExpression, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
     },
 };
 
@@ -496,7 +491,10 @@ fn resolve_exp(
                 _type,
             }))
         }
-        _ => todo!(),
+        Expression::String(StringExpression { value, _type }) => Ok(Expression::String(StringExpression {
+            value,
+            _type,
+        })),
     }
 }
 
