@@ -288,8 +288,17 @@ impl Parser {
         }
     }
 
+    fn consume_while_type_specifier(&mut self) -> Vec<Token> {
+        let mut specifier_list = vec![];
+        while self.is_type_specifier(self.current.as_ref().unwrap()) {
+            specifier_list.push(self.current.clone().unwrap());
+            self.advance();
+        }
+        specifier_list
+    }
+
     fn parse_param(&mut self) -> Result<ParamInfo> {
-        let specifier_list = self.consume_while_specifier();
+        let specifier_list = self.consume_while_type_specifier();
         let param_t = self.parse_type(specifier_list)?;
         let param_decl = self.parse_declarator()?;
         Ok((param_t, param_decl.into()))
