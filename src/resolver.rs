@@ -1,5 +1,5 @@
 use anyhow::{bail, Ok, Result};
-use std::{collections::HashMap, f32::consts::E};
+use std::collections::HashMap;
 
 use crate::{
     ir::make_temporary,

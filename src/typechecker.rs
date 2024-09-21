@@ -223,6 +223,8 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
             Type::Ulong => StaticInit::ULong(*i as u64),
             Type::Double => StaticInit::Double(*i as f64),
             Type::Pointer(_) => StaticInit::ULong(*i as u64),
+            Type::Char | Type::SChar => StaticInit::Char(*i),
+            Type::UChar => StaticInit::UChar(*i as u32),
             _ => unreachable!(),
         },
         Const::Long(l) => match t {
@@ -277,7 +279,7 @@ fn optionally_typecheck_init(init: &Option<Initializer>, t: &Type) -> Result<Opt
 
 fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
     match (t, init) {
-        (Type::Array { element, size }, Initializer::Single(name, expr)) => {
+        (Type::Array { element, size }, Initializer::Single(_, expr)) => {
             if let Expression::String(string_expr) = expr {
                 if !is_char_type(&element) {
                     bail!("Can't initialize array with non-char type");
@@ -562,21 +564,22 @@ fn optionally_typecheck_for_init(init: &mut ForInit) -> Result<ForInit> {
 
 fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer> {
     match (target_type, init) {
-        (Type::Array { element, size }, Initializer::Single(name, expr)) => {
-            if let Expression::String(string_expr) = expr {
-                if !is_char_type(&element) {
-                    bail!("Can't initialize array with non-char type");
-                }
-
-                if string_expr.value.len() > *size {
-                    bail!("String too long for array");
-                }
-
-                return Ok(Initializer::Single(name.to_owned(), Expression::String(StringExpression { value: string_expr.value.clone(), _type: target_type.clone() } )));
-            } else {
-                return Ok(init.to_owned());
+        (Type::Array { element, size }, Initializer::Single(name, Expression::String(StringExpression { value, _type }))) => {
+            if !is_char_type(&element) {
+                bail!("Can't initialize array with non-char type");
             }
+
+            if value.len() > *size {
+                bail!("String too long for array");
+            }
+
+            Ok(Initializer::Single(name.to_owned(), Expression::String(StringExpression { value: value.clone(), _type: target_type.clone() } )))
         }
+        (_, Initializer::Single(name, expr)) => {
+            let typechecked_expr = typecheck_and_convert(expr)?;
+            let converted_expr = convert_by_assignment(&typechecked_expr, target_type)?;
+            Ok(Initializer::Single(name.clone(), converted_expr))
+        },
         (Type::Array { element, size }, Initializer::Compound(name, _type, inits)) => {
             if inits.len() > *size {
                 bail!("Too many initializers");
@@ -599,17 +602,6 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
                 typechecked_inits,
             ))
         }
-        (_, Initializer::Single(name, expr)) => match expr {
-            Expression::Literal(_) => {
-                let typechecked_expr = typecheck_and_convert(expr)?;
-                Ok(Initializer::Single(name.clone(), typechecked_expr.clone()))
-            }
-            _ => {
-                let typechecked_expr = typecheck_and_convert(expr)?;
-                let converted_expr = convert_by_assignment(&typechecked_expr, target_type)?;
-                Ok(Initializer::Single(name.clone(), converted_expr))
-            }
-        },
         _ => {
             bail!("can't init a scalar object iwth a compound initializer");
         }
@@ -1264,7 +1256,7 @@ fn convert_by_assignment(e: &Expression, target_type: &Type) -> Result<Expressio
 fn is_arithmetic(t: &Type) -> bool {
     matches!(
         t,
-        Type::Int | Type::Uint | Type::Long | Type::Ulong | Type::Double
+        Type::Int | Type::Uint | Type::Long | Type::Ulong | Type::Double | Type::Char | Type::UChar | Type::SChar
     )
 }
 
