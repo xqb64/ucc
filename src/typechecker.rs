@@ -266,6 +266,7 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
             Type::Pointer(_) => StaticInit::Ulong(*d as u64),
             _ => unreachable!(),
         },
+        _ => todo!(),
     }
 }
 
@@ -1068,6 +1069,14 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 value: Const::Double(*d),
                 _type: Type::Double,
             })),
+            Const::Char(c) => Ok(Expression::Constant(ConstantExpression {
+                value: Const::Char(*c as i8),
+                _type: Type::Int,
+            })),
+            Const::UChar(uc) => Ok(Expression::Constant(ConstantExpression {
+                value: Const::UChar(*uc as u8),
+                _type: Type::Uint,
+            })),
         },
         Expression::Cast(CastExpression {
             target_type,
@@ -1276,6 +1285,7 @@ pub fn get_type(e: &Expression) -> &Type {
         Expression::AddrOf(addr_of) => &addr_of._type,
         Expression::Literal(literal) => &literal._type,
         Expression::Subscript(subscript) => &subscript._type,
+        Expression::String(string) => &string._type,
     }
 }
 

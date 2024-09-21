@@ -368,6 +368,7 @@ impl Codegen for IRValue {
                     STATIC_CONSTANTS.lock().unwrap().push(static_const.clone());
                     AsmNode::Operand(AsmOperand::Data(static_const.name))
                 }
+                _ => todo!(),
             },
             IRValue::Var(name) => {
                 let symbol = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
@@ -644,6 +645,8 @@ impl Codegen for IRInstruction {
                                 Const::Long(_) => true,
                                 Const::UInt(_) => false,
                                 Const::ULong(_) => false,
+                                Const::Char(_) => true,
+                                Const::UChar(_) => false,
                                 Const::Double(_) => unreachable!(),
                             },
                         };
@@ -713,7 +716,9 @@ impl Codegen for IRInstruction {
                                 Const::Long(_) => true,
                                 Const::UInt(_) => false,
                                 Const::ULong(_) => false,
-                                Const::Double(_) => true,
+                                Const::Char(_) => true,
+                                Const::UChar(_) => false,
+                                Const::Double(_) => unreachable!(),
                             },
                         };
 
@@ -778,6 +783,8 @@ impl Codegen for IRInstruction {
                                 Const::UInt(_) => Type::Uint,
                                 Const::ULong(_) => Type::Ulong,
                                 Const::Double(_) => Type::Double,
+                                Const::Char(_) => Type::Char,
+                                Const::UChar(_) => Type::UChar,
                             },
                         };
 
@@ -797,6 +804,8 @@ impl Codegen for IRInstruction {
                                 Const::UInt(_) => Type::Uint,
                                 Const::ULong(_) => Type::Ulong,
                                 Const::Double(_) => Type::Double,
+                                Const::Char(_) => Type::Char,
+                                Const::UChar(_) => Type::UChar,
                             },
                         };
 
@@ -2945,6 +2954,7 @@ fn get_asm_type(value: &IRValue) -> AsmType {
             Const::UInt(_) => AsmType::Longword,
             Const::ULong(_) => AsmType::Quadword,
             Const::Double(_) => AsmType::Double,
+            _ => todo!(),
         },
         IRValue::Var(var_name) => {
             let _type = SYMBOL_TABLE

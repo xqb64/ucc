@@ -608,6 +608,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             }
         }
         Expression::Literal(_) => todo!(),
+        _ => todo!(),
     }
 }
 

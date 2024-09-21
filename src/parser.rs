@@ -1,6 +1,6 @@
 use crate::lexer::{Const, Token};
 use anyhow::{bail, Result};
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 pub struct Parser {
     pub tokens: VecDeque<Token>,
@@ -66,6 +66,7 @@ impl Parser {
         if self.is_next(&[
             Token::Int,
             Token::Long,
+            Token::Char,
             Token::Double,
             Token::Signed,
             Token::Unsigned,
@@ -102,7 +103,7 @@ impl Parser {
     fn is_type_specifier(&self, token: &Token) -> bool {
         matches!(
             token,
-            Token::Int | Token::Long | Token::Unsigned | Token::Signed | Token::Double
+            Token::Int | Token::Long | Token::Char | Token::Unsigned | Token::Signed | Token::Double
         )
     }
 
@@ -289,7 +290,7 @@ impl Parser {
 
     fn parse_param(&mut self) -> Result<ParamInfo> {
         let specifier_list = self.consume_while_specifier();
-        let param_t = self.parse_type(&specifier_list)?;
+        let param_t = self.parse_type(specifier_list)?;
         let param_decl = self.parse_declarator()?;
         Ok((param_t, param_decl.into()))
     }
@@ -389,71 +390,42 @@ impl Parser {
             },
         )))
     }
-
-    fn parse_type(&mut self, specifier_list: &[Token]) -> Result<Type> {
-        if specifier_list == [Token::Double] {
-            return Ok(Type::Double);
-        }
-
-        if specifier_list.contains(&Token::Double) {
-            bail!(
-                "can't combine double with other specifiers: {:?}",
-                specifier_list
-            );
-        }
-
-        if self.contains_no_specifiers(specifier_list)
-            || specifier_list.is_empty()
-            || self.contains_same_specifier_twice(specifier_list)
-            || self.contains_both_signed_and_unsigned(specifier_list)
-        {
-            bail!("invalid type specifier list: {:?}", specifier_list);
-        }
-
-        if specifier_list.contains(&Token::Unsigned) && specifier_list.contains(&Token::Long) {
-            return Ok(Type::Ulong);
-        }
-
-        if specifier_list.contains(&Token::Unsigned) {
-            return Ok(Type::Uint);
-        }
-
-        if specifier_list.contains(&Token::Long) {
-            return Ok(Type::Long);
-        }
-
-        Ok(Type::Int)
-    }
-
-    fn contains_no_specifiers(&self, specifier_list: &[Token]) -> bool {
-        !specifier_list.iter().all(|specifier| {
-            matches!(
-                specifier,
-                Token::Int
-                    | Token::Long
-                    | Token::Double
-                    | Token::Signed
-                    | Token::Unsigned
-                    | Token::Void
-            )
-        })
-    }
-
-    fn contains_same_specifier_twice(&self, specifier_list: &[Token]) -> bool {
-        let mut seen = vec![];
-        for specifier in specifier_list {
-            if seen.contains(specifier) {
-                return true;
+    
+    fn parse_type(&self, specifier_list: Vec<Token>) -> Result<Type> {
+        // Sort specifiers
+        let mut sorted_specifiers = specifier_list.clone();
+        sorted_specifiers.sort();
+    
+        match &sorted_specifiers[..] {
+            [Token::Double] => Ok(Type::Double),
+            [Token::Char] => Ok(Type::Char),
+            [Token::Char, Token::Signed] => Ok(Type::SChar),
+            [Token::Char, Token::Unsigned] => Ok(Type::UChar),
+            _ => {
+                // Check for invalid specifiers
+                let unique_specifiers: HashSet<_> = sorted_specifiers.iter().collect();
+                if sorted_specifiers.is_empty()
+                    || unique_specifiers.len() != sorted_specifiers.len()
+                    || sorted_specifiers.contains(&Token::Double)
+                    || sorted_specifiers.contains(&Token::Char)
+                    && (sorted_specifiers.contains(&Token::Signed) && sorted_specifiers.contains(&Token::Unsigned))
+                {
+                    bail!("Invalid type specifier");
+                } else if sorted_specifiers.contains(&Token::Unsigned)
+                    && sorted_specifiers.contains(&Token::Long)
+                {
+                    Ok(Type::Ulong)
+                } else if sorted_specifiers.contains(&Token::Unsigned) {
+                    Ok(Type::Uint)
+                } else if sorted_specifiers.contains(&Token::Long) {
+                    Ok(Type::Long)
+                } else {
+                    Ok(Type::Int)
+                }
             }
-            seen.push(specifier.clone());
         }
-        false
     }
-
-    fn contains_both_signed_and_unsigned(&self, specifier_list: &[Token]) -> bool {
-        specifier_list.contains(&Token::Signed) && specifier_list.contains(&Token::Unsigned)
-    }
-
+    
     fn parse_type_and_storage_specifiers(
         &mut self,
         specifier_list: &[Token],
@@ -468,6 +440,7 @@ impl Parser {
                 || specifier == &Token::Unsigned
                 || specifier == &Token::Signed
                 || specifier == &Token::Void
+                || specifier == &Token::Char
             {
                 types.push(specifier.clone());
             } else {
@@ -475,7 +448,7 @@ impl Parser {
             }
         }
 
-        let _type = self.parse_type(&types)?;
+        let _type = self.parse_type(types)?;
 
         if storage_classes.len() > 1 {
             bail!(
@@ -822,7 +795,7 @@ impl Parser {
             if self.is_type_specifier(self.current.as_ref().unwrap()) {
                 let mut specifier_list = vec![];
                 self.parse_specifier_list(&mut specifier_list)?;
-                let base_type = self.parse_type(&specifier_list)?;
+                let base_type = self.parse_type(specifier_list)?;
                 let target_type = match self.current.as_ref().unwrap() {
                     Token::RParen => base_type.clone(),
                     _ => {
@@ -941,6 +914,16 @@ impl Parser {
                 value: Initializer::Compound(String::new(), Type::Dummy, inits).into(),
                 _type: Type::Dummy,
             }))
+        } else if self.is_next(&[Token::CharLiteral('a')]) {
+            match self.previous.as_ref().unwrap() {
+                Token::CharLiteral(c) => self.parse_char(c),
+                _ => unreachable!(),
+            }
+        } else if self.is_next(&[Token::StringLiteral("".to_owned())]) {
+            match self.previous.as_ref().unwrap() {
+                Token::StringLiteral(s) => self.parse_string(s),
+                _ => unreachable!(),
+            }
         } else {
             println!("got token: {:?}, {:?}", self.current, self.previous);
             bail!("expected primary");
@@ -959,6 +942,17 @@ impl Parser {
             value: var.to_owned(),
             _type: Type::Dummy,
         }))
+    }
+
+    fn parse_char(&self, c: &char) -> Result<Expression> {
+        Ok(Expression::Constant(ConstantExpression {
+            value: Const::Int(*c as i32),
+            _type: Type::Dummy,
+        }))
+    }
+
+    fn parse_string(&self, s: &str) -> Result<Expression> {
+        Ok(Expression::String(StringExpression { value: s.to_owned(), _type: Type::Dummy }))
     }
 
     fn parse_grouping(&mut self) -> Result<Expression> {
@@ -1063,6 +1057,9 @@ pub enum Type {
     Func { params: Vec<Type>, ret: Box<Type> },
     Pointer(Box<Type>),
     Array { element: Box<Type>, size: usize },
+    Char,
+    SChar,
+    UChar,
     Dummy,
 }
 
@@ -1167,6 +1164,7 @@ pub struct ContinueStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Constant(ConstantExpression),
+    String(StringExpression),
     Literal(LiteralExpression),
     Variable(VariableExpression),
     Unary(UnaryExpression),
@@ -1178,6 +1176,12 @@ pub enum Expression {
     Deref(DerefExpression),
     AddrOf(AddrOfExpression),
     Subscript(SubscriptExpression),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StringExpression {
+    pub value: String,
+    pub _type: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,5 +1,7 @@
+use std::hash::Hash;
+
 use anyhow::{bail, Result};
-use regex::{escape, Regex};
+use regex::Regex;
 
 pub struct Lexer {
     src: String,
@@ -29,8 +31,8 @@ impl Lexer {
             )
             .unwrap(),
             identifier_re: Regex::new(r"^[a-zA-Z_]\w*\b").unwrap(),
-            char_const_re: Regex::new(r#"'([^'\\\n]|\\['"?\\abfnrtv])'"#).unwrap(),
-            string_re: Regex::new(r#""([^"\\\n]|\\['"\\?abfnrtv])*""#).unwrap(),
+            char_const_re: Regex::new(r#"^'([^'\\\n]|\\['"?\\abfnrtv])'"#).unwrap(),
+            string_re: Regex::new(r#"^"([^"\\\n]|\\['"\\?abfnrtv])*""#).unwrap(),
          }
     }
 }
@@ -143,8 +145,13 @@ impl Iterator for Lexer {
         } else if let Some(m) = self.identifier_re.find(src) {
             self.pos += m.as_str().len();
             Token::Identifier(m.as_str().to_string())
+        } else if let Some(m) = self.string_re.find(src) {
+            self.pos += m.as_str().len();
+            let s = m.as_str().trim_start_matches("\"").trim_end_matches("\"");
+            Token::StringLiteral(s.to_string()) 
         } else if let Some(m) = self.char_const_re.find(src) {
             self.pos += m.as_str().len();
+            println!("m: {}", m.as_str());
             let ch = m.as_str().trim_start_matches("'").trim_end_matches("'");
             let ch = match ch {
                 r"\a" => '\x07',
@@ -161,10 +168,6 @@ impl Iterator for Lexer {
                 _ => ch.parse().unwrap(),
             };
             Token::CharLiteral(ch)
-        } else if let Some(m) = self.string_re.find(src) {
-            self.pos += m.as_str().len();
-            let s = m.as_str().trim_start_matches("\"").trim_end_matches("\"");
-            Token::StringLiteral(s.to_string()) 
         } else {
             if src.is_empty() {
                 return None;
@@ -176,7 +179,7 @@ impl Iterator for Lexer {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Hash)]
 pub enum Token {
     Int,
     Long,
@@ -246,13 +249,49 @@ impl Token {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialOrd)]
 pub enum Const {
     Int(i32),
     Long(i64),
     UInt(u32),
     ULong(u64),
     Double(f64),
+    Char(i8),
+    UChar(u8),
+}
+
+impl Ord for Const {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (Const::Double(d1), Const::Double(d2)) => d1.partial_cmp(d2).unwrap(),
+            _ => self.cmp(other),
+        }
+    }
+}
+
+impl PartialEq for Const {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Const::Double(d1), Const::Double(d2)) => d1 == d2,
+            _ => self.eq(other),
+        }
+    }
+}
+
+impl Eq for Const {}
+
+impl Hash for Const {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Const::Int(i) => i.hash(state),
+            Const::Long(i) => i.hash(state),
+            Const::UInt(i) => i.hash(state),
+            Const::ULong(i) => i.hash(state),
+            Const::Double(d) => d.to_bits().hash(state),
+            Const::Char(c) => c.hash(state),
+            Const::UChar(c) => c.hash(state),
+        }
+    }
 }
 
 fn parse_integer(suffix: &str, just_number: &str) -> Result<Const> {
