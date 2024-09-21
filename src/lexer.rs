@@ -148,7 +148,26 @@ impl Iterator for Lexer {
         } else if let Some(m) = self.string_re.find(src) {
             self.pos += m.as_str().len();
             let s = m.as_str().trim_start_matches("\"").trim_end_matches("\"");
-            Token::StringLiteral(s.to_string()) 
+            
+            let mut result = String::new();
+
+            s.replace(r"\a", "\x07")
+                .replace(r"\b", "\x08")
+                .replace(r"\f", "\x0c")
+                .replace(r"\n", "\x0a")
+                .replace(r"\r", "\x0d")
+                .replace(r"\t", "\x09")
+                .replace(r"\v", "\x0b")
+                .replace(r#"\'"#, "\x27")
+                .replace(r#"\""#, "\x22")
+                .replace(r"\\", "\x5c")
+                .replace(r"\?", "\x3f")
+                .chars()
+                .for_each(|ch| result.push(ch));
+
+            println!("result: {}, result.len(): {}", result, result.len());
+            
+            Token::StringLiteral(result.to_string()) 
         } else if let Some(m) = self.char_const_re.find(src) {
             self.pos += m.as_str().len();
             println!("m: {}", m.as_str());

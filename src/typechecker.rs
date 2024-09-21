@@ -234,8 +234,6 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
             Type::Ulong => StaticInit::ULong(*l as u64),
             Type::Double => StaticInit::Double(*l as f64),
             Type::Pointer(_) => StaticInit::ULong(*l as u64),
-            Type::Char | Type::SChar => StaticInit::Char(*l as i32),
-            Type::UChar => StaticInit::UChar(*l as u32),
             _ => unreachable!(),
         },
         Const::UInt(u) => match t {
@@ -245,8 +243,6 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
             Type::Ulong => StaticInit::ULong(*u as u64),
             Type::Double => StaticInit::Double(*u as f64),
             Type::Pointer(_) => StaticInit::ULong(*u as u64),
-            Type::Char | Type::SChar => StaticInit::Char(*u as i32),
-            Type::UChar => StaticInit::UChar(*u as u32),
             _ => unreachable!(),
         },
         Const::ULong(ul) => match t {
@@ -256,8 +252,6 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
             Type::Ulong => StaticInit::ULong(*ul),
             Type::Double => StaticInit::Double(*ul as f64),
             Type::Pointer(_) => StaticInit::ULong(*ul),
-            Type::Char | Type::SChar => StaticInit::Char(*ul as i32),
-            Type::UChar => StaticInit::UChar(*ul as u32),
             _ => unreachable!(),
         },
         Const::Double(d) => match t {
@@ -267,8 +261,6 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
             Type::Ulong => StaticInit::ULong(*d as u64),
             Type::Double => StaticInit::Double(*d),
             Type::Pointer(_) => StaticInit::ULong(*d as u64),
-            Type::Char | Type::SChar => StaticInit::Char(*d as i32),
-            Type::UChar => StaticInit::UChar(*d as u32),
             _ => unreachable!(),
         },
         _ => todo!(),
@@ -293,21 +285,17 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                     bail!("Can't initialize array with non-char type");
                 }
 
-                if string_expr.value.len() > *size {
-                    bail!("String too long for array");
+                let len_diff = size - string_expr.value.len();
+                match len_diff {
+                    0 => Ok(vec![StaticInit::String(string_expr.value.to_owned(), false)]),
+                    1 => Ok(vec![StaticInit::String(string_expr.value.to_owned(), true)]),
+                    n if n > 0 => {
+                        let mut initializers = vec![StaticInit::String(string_expr.value.to_owned(), true)];
+                        initializers.push(StaticInit::Zero((n - 1) as usize));
+                        Ok(initializers)
+                    }
+                    _ => bail!("String too long for array"),
                 }
-
-                let mut static_inits = vec![];
-                for c in string_expr.value.chars() {
-                    static_inits.push(StaticInit::Char(c as i32));
-                }
-
-                let padding_size = size.saturating_sub(string_expr.value.len());
-                for _ in 0..padding_size {
-                    static_inits.push(StaticInit::Char(0));
-                }
-
-                Ok(static_inits)
             } else {
                 bail!("Can't initialize array with non-string");
             }
@@ -576,6 +564,8 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             if !is_char_type(&element) {
                 bail!("Can't initialize array with non-char type");
             }
+
+            println!("value: {} size: {}", value.len(), size);
 
             if value.len() > *size {
                 bail!("String too long for array");
