@@ -9,7 +9,7 @@ use crate::{
         UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement,
     },
 };
-use anyhow::{bail, Ok, Result};
+use anyhow::{bail, Result};
 use std::{collections::HashMap, sync::Mutex};
 
 #[derive(Debug, Clone, PartialEq)]
