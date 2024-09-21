@@ -937,8 +937,8 @@ impl Parser {
                 _ => unreachable!(),
             }
         } else if self.is_next(&[Token::StringLiteral("".to_owned())]) {
-            match self.previous.as_ref().unwrap() {
-                Token::StringLiteral(s) => self.parse_string(s),
+            match self.previous.as_ref().cloned().unwrap() {
+                Token::StringLiteral(s) => self.parse_string(&s),
                 _ => unreachable!(),
             }
         } else {
@@ -968,7 +968,14 @@ impl Parser {
         }))
     }
 
-    fn parse_string(&self, s: &str) -> Result<Expression> {
+    fn parse_string(&mut self, s: &str) -> Result<Expression> {
+        let mut s = s.to_owned().clone();
+        while self.is_next(&[Token::StringLiteral("".to_owned())]) {
+            match self.previous.as_ref().unwrap() {
+                Token::StringLiteral(s2) => s.push_str(s2),
+                _ => unreachable!(),
+            }
+        }
         Ok(Expression::String(StringExpression { value: s.to_owned(), _type: Type::Dummy }))
     }
 
