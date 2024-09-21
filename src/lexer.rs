@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use regex::Regex;
+use regex::{escape, Regex};
 
 pub struct Lexer {
     src: String,
@@ -10,6 +10,8 @@ pub struct Lexer {
     identifier_re: Regex,
     constant_re: Regex,
     double_constant_re: Regex,
+    char_const_re: Regex,
+    string_re: Regex,
 }
 
 impl Lexer {
@@ -18,7 +20,7 @@ impl Lexer {
             punctuation_re: Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\]]").unwrap(),
             punctuation_double_re: Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\|").unwrap(),
             keyword_re: Regex::new(
-                r"^int\b|^long\b|^signed\b|^unsigned\b|^double\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b|^static\b|^extern\b",
+                r"^int\b|^long\b|^char\b|^signed\b|^unsigned\b|^double\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b|^static\b|^extern\b",
             )
             .unwrap(),
             constant_re: Regex::new(r"^[0-9]+(?P<suffix>[lL]?[uU]?|[uU]?[lL]?)\b").unwrap(),
@@ -27,6 +29,8 @@ impl Lexer {
             )
             .unwrap(),
             identifier_re: Regex::new(r"^[a-zA-Z_]\w*\b").unwrap(),
+            char_const_re: Regex::new(r#"'([^'\\\n]|\\['"?\\abfnrtv])'"#).unwrap(),
+            string_re: Regex::new(r#""([^"\\\n]|\\['"\\?abfnrtv])*""#).unwrap(),
          }
     }
 }
@@ -93,6 +97,7 @@ impl Iterator for Lexer {
             match m.as_str() {
                 "int" => Token::Int,
                 "long" => Token::Long,
+                "char" => Token::Char,
                 "signed" => Token::Signed,
                 "unsigned" => Token::Unsigned,
                 "double" => Token::Double,
@@ -138,6 +143,28 @@ impl Iterator for Lexer {
         } else if let Some(m) = self.identifier_re.find(src) {
             self.pos += m.as_str().len();
             Token::Identifier(m.as_str().to_string())
+        } else if let Some(m) = self.char_const_re.find(src) {
+            self.pos += m.as_str().len();
+            let ch = m.as_str().trim_start_matches("'").trim_end_matches("'");
+            let ch = match ch {
+                r"\a" => '\x07',
+                r"\b" => '\x08',
+                r"\f" => '\x0c',
+                r"\n" => '\x0a',
+                r"\r" => '\x0d',
+                r"\t" => '\x09',
+                r"\v" => '\x0b',
+                r"\'" => '\x27',
+                r#"\""# => '\x22',
+                r"\\" => '\x5c',
+                r"\?" => '\x3f',
+                _ => ch.parse().unwrap(),
+            };
+            Token::CharLiteral(ch)
+        } else if let Some(m) = self.string_re.find(src) {
+            self.pos += m.as_str().len();
+            let s = m.as_str().trim_start_matches("\"").trim_end_matches("\"");
+            Token::StringLiteral(s.to_string()) 
         } else {
             if src.is_empty() {
                 return None;
@@ -153,6 +180,7 @@ impl Iterator for Lexer {
 pub enum Token {
     Int,
     Long,
+    Char,
     Signed,
     Unsigned,
     Double,
@@ -197,6 +225,8 @@ pub enum Token {
     Semicolon,
     Identifier(String),
     Constant(Const),
+    CharLiteral(char),
+    StringLiteral(String),
     Error,
 }
 
