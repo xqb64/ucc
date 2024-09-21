@@ -4,14 +4,16 @@ use std::{collections::VecDeque, fs::File, path::PathBuf};
 use anyhow::{bail, Result};
 use structopt::StructOpt;
 
-use ucc::codegen::{build_asm_symbol_table, AsmType, Codegen, Fixup, ReplacePseudo};
-use ucc::emitter::Emit;
-use ucc::ir::{convert_symbols_to_tacky, IRNode, Irfy};
-use ucc::lexer::{Lexer, Token};
-use ucc::loop_label::LoopLabel;
-use ucc::parser::Parser;
-use ucc::resolver::Resolve;
-use ucc::typechecker::Typecheck;
+use ucc::{
+    codegen::{build_asm_symbol_table, AsmType, Codegen, Fixup, ReplacePseudo},
+    emitter::Emit,
+    ir::{convert_symbols_to_tacky, IRNode, Irfy},
+    lexer::{Lexer, Token},
+    loop_label::LoopLabel,
+    parser::Parser,
+    resolver::Resolve,
+    typechecker::Typecheck,
+};
 
 fn main() {
     let opts = Opt::from_args();

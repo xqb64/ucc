@@ -1,21 +1,13 @@
-use crate::codegen::AsmBinaryOp;
-use crate::codegen::AsmFunction;
-use crate::codegen::AsmInstruction;
-use crate::codegen::AsmNode;
-use crate::codegen::AsmOperand;
-use crate::codegen::AsmProgram;
-use crate::codegen::AsmRegister;
-use crate::codegen::AsmStaticConstant;
-use crate::codegen::AsmStaticVariable;
-use crate::codegen::AsmSymtabEntry;
-use crate::codegen::AsmType;
-use crate::codegen::AsmUnaryOp;
-use crate::codegen::ConditionCode;
-use crate::codegen::ASM_SYMBOL_TABLE;
-use crate::typechecker::StaticInit;
+use crate::{
+    codegen::{
+        AsmBinaryOp, AsmFunction, AsmInstruction, AsmNode, AsmOperand, AsmProgram, AsmRegister,
+        AsmStaticConstant, AsmStaticVariable, AsmSymtabEntry, AsmType, AsmUnaryOp, ConditionCode,
+        ASM_SYMBOL_TABLE,
+    },
+    typechecker::StaticInit,
+};
 use anyhow::Result;
-use std::fs::File;
-use std::io::Write;
+use std::{fs::File, io::Write};
 
 pub trait Emit {
     fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()>;
@@ -94,7 +86,7 @@ impl Emit for AsmStaticVariable {
                 },
                 StaticInit::Zero(_) => {
                     writeln!(f, "\t.section .data")?;
-                },
+                }
             }
         }
 
