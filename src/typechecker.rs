@@ -1261,7 +1261,7 @@ fn is_arithmetic(t: &Type) -> bool {
 }
 
 pub fn is_integer_type(t: &Type) -> bool {
-    matches!(t, Type::Int | Type::Uint | Type::Long | Type::Ulong)
+    matches!(t, Type::Int | Type::Uint | Type::Long | Type::Ulong | Type::Char | Type::UChar | Type::SChar)
 }
 
 pub fn is_pointer_type(t: &Type) -> bool {
