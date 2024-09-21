@@ -1346,6 +1346,7 @@ pub fn get_size_of_type(t: &Type) -> usize {
         Type::Double => 8,
         Type::Pointer(_) => 8,
         Type::Array { element, size } => get_size_of_type(element) * size,
+        Type::Char | Type::UChar | Type::SChar => 1,
         _ => {
             unreachable!()
         }
@@ -1359,6 +1360,8 @@ pub fn get_signedness(t: &Type) -> bool {
         Type::Long => true,
         Type::Ulong => false,
         Type::Pointer(_) => false,
+        Type::Char | Type::SChar => true,
+        Type::UChar => false,
         _ => unreachable!(),
     }
 }
