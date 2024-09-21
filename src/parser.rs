@@ -253,18 +253,26 @@ impl Parser {
         Ok(new_decl)
     }
 
+    fn consume_constant_or_char_literal(&mut self) -> Result<Option<Token>> {
+        match self.current {
+            Some(Token::Constant(_)) | Some(Token::CharLiteral(_)) => Ok(self.advance()),
+            _ => bail!("expected constant, got: {:?}", self.current),
+        }
+    }
+
     fn parse_dim(&mut self) -> Result<usize> {
         self.consume(&Token::LBracket).unwrap();
-        let dim = self.consume(&Token::Constant(Const::Int(0)))?.unwrap();
+        let dim = self.consume_constant_or_char_literal()?.unwrap();
         self.consume(&Token::RBracket).unwrap();
         Ok(match dim {
             Token::Constant(Const::Int(n)) => n as usize,
             Token::Constant(Const::Long(n)) => n as usize,
             Token::Constant(Const::UInt(n)) => n as usize,
             Token::Constant(Const::ULong(n)) => n as usize,
-            _ => {
-                unreachable!()
-            }
+            Token::Constant(Const::Char(n)) => n as usize,
+            Token::Constant(Const::UChar(n)) => n as usize,
+            Token::CharLiteral(ch) => ch as usize,
+            _ => unreachable!(),
         })
     }
     fn parse_param_list(&mut self) -> Result<Vec<ParamInfo>> {
