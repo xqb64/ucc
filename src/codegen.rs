@@ -1630,17 +1630,17 @@ impl ReplacePseudo for AsmOperand {
             AsmOperand::Register(_) => self.clone(),
             AsmOperand::Data(_) => self.clone(),
             AsmOperand::PseudoMem(name, offset) => {
-                let (is_static, _type) =
+                let (is_static, is_constant, _type) =
                     match ASM_SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap() {
                         AsmSymtabEntry::Object {
                             _type,
                             is_static,
-                            is_constant: _,
-                        } => (is_static, _type),
+                            is_constant,
+                        } => (is_static, is_constant, _type),
                         _ => unreachable!(),
                     };
 
-                if !is_static {
+                if !is_static && !is_constant {
                     let previously_assigned: isize = VAR_TO_STACK_POS
                         .lock()
                         .unwrap()
@@ -2667,7 +2667,7 @@ impl Fixup for AsmFunction {
                                 dst: AsmOperand::Register(AsmRegister::R11),
                             },
                             AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
+                                asm_type: AsmType::Longword,
                                 src: AsmOperand::Register(AsmRegister::R11),
                                 dst: dst.clone(),
                             },

@@ -171,7 +171,7 @@ impl Iterator for Lexer {
         } else if let Some(m) = self.char_const_re.find(src) {
             self.pos += m.as_str().len();
             println!("m: {}", m.as_str());
-            let ch = m.as_str().trim_start_matches("'").trim_end_matches("'");
+            let ch = &m.as_str()[1..m.as_str().len() - 1];
             let ch = match ch {
                 r"\a" => '\x07',
                 r"\b" => '\x08',
@@ -184,8 +184,13 @@ impl Iterator for Lexer {
                 r#"\""# => '\x22',
                 r"\\" => '\x5c',
                 r"\?" => '\x3f',
-                _ => ch.parse().unwrap(),
+                _ => {
+                    println!("no no");
+                    ch.parse().unwrap()
+                }
             };
+            let byte = ch as u8;
+            println!("ch: {}", byte);
             Token::CharLiteral(ch)
         } else {
             if src.is_empty() {
