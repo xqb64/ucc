@@ -681,6 +681,7 @@ fn emit_compound_init(
     match value {
         Initializer::Single(_, Expression::String(string_expr)) => {
             if let Type::Array { element: _, size } = inited_type {
+                println!("hererereerre");
                 let str_bytes = string_expr.value.as_bytes();
                 let padding_sz = size.saturating_sub(str_bytes.len());
 
@@ -691,8 +692,6 @@ fn emit_compound_init(
                     combined_bytes.push(0);
                 }
 
-                println!("name is {}", name);
-                
                 instructions.extend(emit_string_init(name.to_owned(), offset, &combined_bytes));
             }
         }
@@ -1133,19 +1132,13 @@ impl Irfy for VariableDeclaration {
                 dst: IRValue::Var(self.name.clone()),
             });
         } else if let Some(Initializer::Compound(_, _type, compound_init)) = &self.init {
-            let offset = 0;
-            if let Type::Array { element, size: _ } = &self._type {
-                for (idx, elem_init) in compound_init.iter().enumerate() {
-                    let new_offset = offset + idx * get_size_of_type(element);
-                    emit_compound_init(
-                        &self.name,
-                        elem_init,
-                        &mut instructions,
-                        new_offset,
-                        &self._type,
-                    );
-                }
-            }
+            emit_compound_init(
+                &self.name,
+                self.init.as_ref().unwrap(),
+                &mut instructions,
+                0,
+                &self._type,
+            );
         }
 
         Some(IRNode::Instructions(instructions))

@@ -244,7 +244,11 @@ impl Emit for AsmInstruction {
                     (AsmType::Byte, AsmType::Quadword) => "bq",
                     (AsmType::Quadword, AsmType::Byte) => "qb",
                     (AsmType::Longword, AsmType::Byte) => "lb",
-                    _ => todo!(),
+                    (AsmType::Byte, AsmType::Double) => "lq",
+                    _ => {
+                        println!("src_type: {:?}, dst_type: {:?}", src_type, dst_type);
+                        todo!()
+                    },
                 };
                 
                 write!(f, "movs{} ", suffix)?;
