@@ -306,6 +306,7 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::Div { operand, asm_type } => {
                 let suffix = match asm_type {
+                    AsmType::Byte => "b",
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     _ => todo!(),

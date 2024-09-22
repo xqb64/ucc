@@ -254,7 +254,7 @@ impl Codegen for IRStaticVariable {
                 Type::Ulong => 8,
                 Type::Double => 8,
                 Type::Pointer(_) => 8,
-                Type::Array { .. } => calculate_alignment_of_array(&self._type),
+                Type::Array { .. } => get_alignment_of_type(&self._type),
                 Type::Char | Type::UChar | Type::SChar => 1,
                 _ => unreachable!(),
             },
@@ -281,7 +281,7 @@ fn get_alignment_of_type(t: &Type) -> usize {
         Type::Ulong => 8,
         Type::Double => 8,
         Type::Pointer(_) => 8,
-        Type::Array { .. } => calculate_alignment_of_array(t),
+        Type::Array { element, size } => if get_size_of_type(&element) * size >= 16 { 16 } else { get_alignment_of_type(element) },
         _ => unreachable!(),
     }
 }
@@ -2195,7 +2195,7 @@ impl Fixup for AsmFunction {
                             AsmOperand::Memory(AsmRegister::BP, src_n),
                             AsmOperand::Memory(AsmRegister::BP, dst_n),
                         ) => match asm_type {
-                            AsmType::Longword | AsmType::Quadword => {
+                            AsmType::Byte | AsmType::Longword | AsmType::Quadword => {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
                                         asm_type: *asm_type,
@@ -2230,7 +2230,7 @@ impl Fixup for AsmFunction {
                                     },
                                 ]);
                             }
-                            _ => todo!(),
+                            _ => instructions.push(instr.clone()),
                         },
                         (AsmOperand::Data(src), AsmOperand::Memory(AsmRegister::BP, dst_n)) => {
                             if asm_type == &AsmType::Double {
@@ -2329,7 +2329,7 @@ impl Fixup for AsmFunction {
                                 AsmOperand::Memory(AsmRegister::BP, _),
                                 AsmOperand::Memory(AsmRegister::BP, _),
                             ) => match asm_type {
-                                AsmType::Longword | AsmType::Quadword => {
+                                AsmType::Byte | AsmType::Longword | AsmType::Quadword => {
                                     instructions.extend(vec![
                                         AsmInstruction::Mov {
                                             asm_type: *asm_type,
@@ -2561,6 +2561,7 @@ impl Fixup for AsmFunction {
                     operand,
                     asm_type: _,
                 } => {
+                    println!("HEREEEEEEEEEEEE");
                     if let AsmOperand::Imm(konst) = operand {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
@@ -3278,29 +3279,11 @@ fn get_asm_type(value: &IRValue) -> AsmType {
                 Type::Pointer(_) => AsmType::Quadword,
                 Type::Array { ref element, size } => AsmType::Bytearray {
                     size: get_size_of_type(element) * size,
-                    alignment: calculate_alignment_of_array(&_type),
+                    alignment: get_alignment_of_type(&_type),
                 },
                 _ => unreachable!(),
             }
         }
-    }
-}
-
-fn calculate_alignment_of_array(array: &Type) -> usize {
-    // if the array is smaller than 16 bytes, it has the alignment
-    // as its scalar elements. however, if it is larger than 16 bytes,
-    // it has an alignment of 16 bytes.
-    match array {
-        Type::Array { element, size } => {
-            let element_size = get_size_of_type(element);
-            println!("element_size: {}, size: {}", element_size, size);
-            if element_size * size <= 16 {
-                element_size
-            } else {
-                16
-            }
-        }
-        _ => unimplemented!(),
     }
 }
 
@@ -3324,7 +3307,7 @@ pub fn build_asm_symbol_table() {
                     Type::Pointer(_) => AsmType::Quadword,
                     Type::Array { ref element, size } => AsmType::Bytearray {
                         size: get_size_of_type(element) * size,
-                        alignment: calculate_alignment_of_array(&symbol._type),
+                        alignment: get_alignment_of_type(&symbol._type),
                     },
                     _ => panic!("Unsupported type for static variable"),
                 };
@@ -3345,7 +3328,7 @@ pub fn build_asm_symbol_table() {
                     Type::Pointer(_) => AsmType::Quadword,
                     Type::Array { ref element, size } => AsmType::Bytearray {
                         size: get_size_of_type(element) * size,
-                        alignment: calculate_alignment_of_array(&symbol._type),
+                        alignment: get_alignment_of_type(&symbol._type),
                     },
                     _ => {
                         panic!("Unsupported type for static backend_symtab: {}", identifier);
@@ -3368,7 +3351,7 @@ pub fn build_asm_symbol_table() {
                     Type::Pointer(_) => AsmType::Quadword,
                     Type::Array { ref element, size } => AsmType::Bytearray {
                         size: get_size_of_type(element) * size,
-                        alignment: calculate_alignment_of_array(&symbol._type),
+                        alignment: get_alignment_of_type(&symbol._type),
                     },
                     _ => {
                         panic!("Unsupported type for static variable");

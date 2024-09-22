@@ -809,6 +809,10 @@ fn typecheck_multiplicative(
         let converted_lhs = convert_to(&typed_lhs, &common_type);
         let converted_rhs = convert_to(&typed_rhs, &common_type);
 
+        println!("common type: {:?}", common_type);
+        println!("lhs: {:?}", converted_lhs);
+        println!("rhs: {:?}", converted_rhs);
+
         match kind {
             BinaryExpressionKind::Rem if common_type == &Type::Double => {
                 bail!("remainder operator cannot be applied to floating-point types");
@@ -1335,6 +1339,7 @@ pub fn get_common_type<'a>(mut type1: &'a Type, mut type2: &'a Type) -> &'a Type
 
 pub fn get_size_of_type(t: &Type) -> usize {
     match t {
+        Type::Char | Type::UChar | Type::SChar => 1,
         Type::Int => 4,
         Type::Uint => 4,
         Type::Long => 8,
@@ -1342,7 +1347,6 @@ pub fn get_size_of_type(t: &Type) -> usize {
         Type::Double => 8,
         Type::Pointer(_) => 8,
         Type::Array { element, size } => get_size_of_type(element) * size,
-        Type::Char | Type::UChar | Type::SChar => 1,
         _ => {
             unreachable!()
         }
