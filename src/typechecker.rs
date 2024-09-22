@@ -573,8 +573,6 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
                 bail!("Can't initialize array with non-char type");
             }
 
-            println!("value: {} size: {}", value.len(), size);
-
             if value.len() > *size {
                 bail!("String too long for array");
             }

@@ -87,6 +87,9 @@ impl Emit for AsmStaticVariable {
                 StaticInit::Zero(_) => {
                     writeln!(f, "\t.section .data")?;
                 }
+                StaticInit::String(_, _) => {
+                    writeln!(f, "\t.section .rodata")?;
+                }
                 _ => todo!(),
             }
         }
@@ -121,6 +124,15 @@ impl Emit for AsmStaticVariable {
                 StaticInit::Zero(n) => {
                     writeln!(f, "\t.zero {}", n)?;
                 }
+                StaticInit::Char(c) => writeln!(f, "\t.byte {}", c)?,
+                StaticInit::UChar(c) => writeln!(f, "\t.byte {}", c)?,
+                StaticInit::String(value, null_terminated) => {
+                    if *null_terminated {
+                        writeln!(f, "\t.asciz \"{}\"", value)?;
+                    } else {
+                        writeln!(f, "\t.ascii \"{}\"", value)?;
+                    }
+                }
                 _ => todo!(),
             }
         }
@@ -137,13 +149,25 @@ impl Emit for AsmStaticConstant {
         writeln!(f, "\t.balign {}", self.alignment)?;
         writeln!(f, "{}:", self.name)?;
 
-        match self.init {
+        match &self.init {
             StaticInit::Int(n) => writeln!(f, "\t.long {}", n)?,
             StaticInit::Long(n) => writeln!(f, "\t.quad {}", n)?,
             StaticInit::UInt(n) => writeln!(f, "\t.long {}", n)?,
             StaticInit::ULong(n) => writeln!(f, "\t.quad {}", n)?,
             StaticInit::Double(n) => writeln!(f, "\t.quad {}", n.to_bits())?,
-            _ => todo!(),
+            StaticInit::Char(c) => writeln!(f, "\t.byte {}", c)?,
+            StaticInit::UChar(c) => writeln!(f, "\t.byte {}", c)?,
+            StaticInit::Zero(n) => {
+                writeln!(f, "\t.zero {}", n)?;
+            }
+            StaticInit::String(value, null_terminated) => {
+                if *null_terminated {
+                    writeln!(f, "\t.asciz \"{}\"", value)?;
+                } else {
+                    writeln!(f, "\t.ascii \"{}\"", value)?;
+                }
+            }
+            _ => unreachable!(),
         }
 
         Ok(())
@@ -192,6 +216,7 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::Mov { src, dst, asm_type } => {
                 let suffix = match asm_type {
+                    AsmType::Byte => "b",
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     AsmType::Double => "sd",
@@ -204,7 +229,7 @@ impl Emit for AsmInstruction {
                 writeln!(f)?;
             }
             AsmInstruction::Movsx { src_type, src, dst_type, dst } => {
-                let suffix = match (src_type, dst_type) {
+                let suffix = match (&src_type, &dst_type) {
                     (AsmType::Longword, AsmType::Quadword) => "lq",
                     (AsmType::Quadword, AsmType::Longword) => "ql",
                     (AsmType::Byte, AsmType::Longword) => "bl",
@@ -215,9 +240,9 @@ impl Emit for AsmInstruction {
                 };
                 
                 write!(f, "movs{} ", suffix)?;
-                src.emit(f, &mut AsmType::Longword)?;
+                src.emit(f, src_type)?;
                 write!(f, ", ")?;
-                dst.emit(f, &mut AsmType::Quadword)?;
+                dst.emit(f, dst_type)?;
                 writeln!(f)?;
             }
             AsmInstruction::Ret => {
@@ -336,6 +361,7 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::Cmp { lhs, rhs, asm_type } => {
                 let instr = match asm_type {
+                    AsmType::Byte => "cmpb",
                     AsmType::Longword => "cmpl",
                     AsmType::Quadword => "cmpq",
                     AsmType::Double => "comisd",
@@ -413,7 +439,23 @@ impl Emit for AsmInstruction {
                 operand.emit(f, &mut AsmType::Quadword)?;
                 writeln!(f)?;
             }
-            AsmInstruction::MovZeroExtend { .. } => unreachable!(),
+            AsmInstruction::MovZeroExtend { src_type, src, dst_type, dst } => {
+                let suffix = match (&src_type, &dst_type) {
+                    (AsmType::Longword, AsmType::Quadword) => "lq",
+                    (AsmType::Quadword, AsmType::Longword) => "ql",
+                    (AsmType::Byte, AsmType::Longword) => "bl",
+                    (AsmType::Byte, AsmType::Quadword) => "bq",
+                    (AsmType::Quadword, AsmType::Byte) => "qb",
+                    (AsmType::Longword, AsmType::Byte) => "lb",
+                    _ => todo!(),
+                };
+
+                write!(f, "movz{} ", suffix)?;
+                src.emit(f, src_type)?;
+                write!(f, ", ")?;
+                dst.emit(f, dst_type)?;
+                writeln!(f)?;
+            },
             AsmInstruction::Cvtsi2sd { asm_type, src, dst } => {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",

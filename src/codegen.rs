@@ -216,7 +216,7 @@ impl Codegen for IRNode {
             IRNode::Instructions(instrs) => instrs.codegen(),
             IRNode::Value(value) => value.codegen(),
             IRNode::StaticVariable(static_var) => static_var.codegen(),
-            _ => todo!(),
+            IRNode::StaticConstant(static_const) => static_const.codegen(),
         }
     }
 }
@@ -396,7 +396,8 @@ impl Codegen for IRValue {
                     STATIC_CONSTANTS.lock().unwrap().push(static_const.clone());
                     AsmNode::Operand(AsmOperand::Data(static_const.name))
                 }
-                _ => todo!(),
+                Const::Char(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
+                Const::UChar(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
             },
             IRValue::Var(name) => {
                 let symbol = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
@@ -1762,7 +1763,7 @@ impl Fixup for AsmFunction {
                         AsmOperand::Memory(AsmRegister::BP, src_n),
                         AsmOperand::Memory(_reg, _dst_n),
                     ) => match asm_type {
-                        AsmType::Longword | AsmType::Quadword => {
+                        AsmType::Byte | AsmType::Longword | AsmType::Quadword => {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
                                     asm_type: *asm_type,
@@ -1790,13 +1791,16 @@ impl Fixup for AsmFunction {
                                 },
                             ]);
                         }
-                        _ => todo!(),
+                        _ => {
+                            println!("{:?}", instr);
+                            todo!()
+                        }
                     },
                     (
                         AsmOperand::Memory(_reg, _src_n),
                         AsmOperand::Memory(AsmRegister::BP, _dst_n),
                     ) => match asm_type {
-                        AsmType::Longword | AsmType::Quadword => {
+                        AsmType::Byte | AsmType::Longword | AsmType::Quadword => {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
                                     asm_type: *asm_type,
@@ -1824,11 +1828,11 @@ impl Fixup for AsmFunction {
                                 },
                             ]);
                         }
-                        _ => todo!(),
+                        _ => unreachable!(),
                     },
                     (AsmOperand::Data(src), AsmOperand::Memory(AsmRegister::BP, dst_n)) => {
                         match asm_type {
-                            AsmType::Longword | AsmType::Quadword => {
+                            AsmType::Byte | AsmType::Longword | AsmType::Quadword => {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
                                         asm_type: *asm_type,
@@ -1860,7 +1864,7 @@ impl Fixup for AsmFunction {
                         }
                     }
                     (AsmOperand::Data(src), AsmOperand::Memory(_reg, _dst_n)) => match asm_type {
-                        AsmType::Longword | AsmType::Quadword => {
+                        AsmType::Byte | AsmType::Longword | AsmType::Quadword => {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
                                     asm_type: *asm_type,
@@ -1892,7 +1896,7 @@ impl Fixup for AsmFunction {
                     },
                     (AsmOperand::Memory(AsmRegister::BP, src_n), AsmOperand::Data(dst)) => {
                         match asm_type {
-                            AsmType::Longword | AsmType::Quadword => {
+                            AsmType::Byte | AsmType::Longword | AsmType::Quadword => {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
                                         asm_type: *asm_type,
@@ -1924,7 +1928,7 @@ impl Fixup for AsmFunction {
                         }
                     }
                     (AsmOperand::Data(src), AsmOperand::Data(dst)) => match asm_type {
-                        AsmType::Longword | AsmType::Quadword => {
+                        AsmType::Byte | AsmType::Longword | AsmType::Quadword => {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
                                     asm_type: *asm_type,
@@ -2032,7 +2036,7 @@ impl Fixup for AsmFunction {
                             AsmOperand::Memory(AsmRegister::BP, src_n),
                             AsmOperand::Memory(AsmRegister::BP, dst_n),
                         ) => match asm_type {
-                            AsmType::Longword | AsmType::Quadword => {
+                            AsmType::Byte | AsmType::Longword | AsmType::Quadword => {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
                                         asm_type: *asm_type,
@@ -2166,7 +2170,7 @@ impl Fixup for AsmFunction {
                                 AsmOperand::Memory(AsmRegister::BP, _),
                                 AsmOperand::Memory(AsmRegister::BP, _),
                             ) => match asm_type {
-                                AsmType::Longword | AsmType::Quadword => {
+                                AsmType::Byte | AsmType::Longword | AsmType::Quadword => {
                                     instructions.extend(vec![
                                         AsmInstruction::Mov {
                                             asm_type: *asm_type,
@@ -2547,7 +2551,7 @@ impl Fixup for AsmFunction {
                             }
                         }
                         (AsmOperand::Data(src), AsmOperand::Data(dst)) => match asm_type {
-                            AsmType::Longword | AsmType::Quadword => {
+                            AsmType::Byte | AsmType::Longword | AsmType::Quadword => {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
                                         asm_type: *asm_type,
@@ -3032,6 +3036,7 @@ fn classify_parameters(parameters: &[String]) -> ParametersString {
 fn get_asm_type(value: &IRValue) -> AsmType {
     match value {
         IRValue::Constant(konst) => match konst {
+            Const::Char(_) | Const::UChar(_) => AsmType::Byte,
             Const::Int(_) => AsmType::Longword,
             Const::Long(_) => AsmType::Quadword,
             Const::UInt(_) => AsmType::Longword,
@@ -3048,6 +3053,7 @@ fn get_asm_type(value: &IRValue) -> AsmType {
                 .unwrap()
                 ._type;
             match _type {
+                Type::Char | Type::UChar | Type::SChar => AsmType::Byte,
                 Type::Int => AsmType::Longword,
                 Type::Long => AsmType::Quadword,
                 Type::Uint => AsmType::Longword,
@@ -3092,6 +3098,7 @@ pub fn build_asm_symbol_table() {
                 initial_value: _, ..
             } => {
                 let asm_type = match symbol._type {
+                    Type::Char | Type::UChar | Type::SChar => AsmType::Byte,
                     Type::Int => AsmType::Longword,
                     Type::Long => AsmType::Quadword,
                     Type::Uint => AsmType::Longword,
@@ -3112,6 +3119,7 @@ pub fn build_asm_symbol_table() {
             }
             IdentifierAttrs::LocalAttr => {
                 let asm_type = match symbol._type {
+                    Type::Char | Type::UChar | Type::SChar => AsmType::Byte,
                     Type::Int => AsmType::Longword,
                     Type::Long => AsmType::Quadword,
                     Type::Uint => AsmType::Longword,
@@ -3134,6 +3142,7 @@ pub fn build_asm_symbol_table() {
             }
             IdentifierAttrs::ConstantAttr(_) => {
                 let asm_type = match symbol._type {
+                    Type::Char | Type::UChar | Type::SChar => AsmType::Byte,
                     Type::Int => AsmType::Longword,
                     Type::Long => AsmType::Quadword,
                     Type::Uint => AsmType::Longword,

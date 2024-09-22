@@ -682,9 +682,6 @@ fn emit_compound_init(
         Initializer::Single(_, Expression::String(string_expr)) => {
             if let Type::Array { element: _, size } = inited_type {
                 let str_bytes = string_expr.value.as_bytes();
-                
-                println!("array size: {}", size);
-                println!("string size: {}", str_bytes.len());
                 let padding_sz = size.saturating_sub(str_bytes.len());
 
                 let mut combined_bytes = vec![];
@@ -693,8 +690,10 @@ fn emit_compound_init(
                 for _ in 0..padding_sz {
                     combined_bytes.push(0);
                 }
+
+                println!("name is {}", name);
                 
-                emit_string_init(string_expr.value.to_owned(), offset, &combined_bytes);
+                instructions.extend(emit_string_init(name.to_owned(), offset, &combined_bytes));
             }
         }
         Initializer::Single(_, single_init) => {
@@ -1116,6 +1115,16 @@ impl Irfy for FunctionDeclaration {
 impl Irfy for VariableDeclaration {
     fn irfy(&self) -> Option<IRNode> {
         let mut instructions = vec![];
+
+        if let Some(Initializer::Single(_, Expression::String(string_expr))) = &self.init {
+            emit_compound_init(
+                &self.name,
+                self.init.as_ref().unwrap(),
+                &mut instructions,
+                0,
+                &self._type,
+            );
+        }
 
         if let Some(Initializer::Single(_, init)) = &self.init {
             let result = emit_tacky_and_convert(init, &mut instructions);
