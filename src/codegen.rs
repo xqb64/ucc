@@ -2419,23 +2419,20 @@ impl Fixup for AsmFunction {
                         instructions.push(instr.clone());
                     }
                 }
-                AsmInstruction::MovZeroExtend { src_type: _, src, dst_type: _, dst } => match dst {
+                AsmInstruction::MovZeroExtend { src_type, src, dst_type, dst } => match &dst {
                     AsmOperand::Register(reg) => {
                         instructions.extend(vec![AsmInstruction::Mov {
                             asm_type: AsmType::Longword,
                             src: src.clone(),
                             dst: AsmOperand::Register(*reg),
-                        }]);
+                        },
+                        AsmInstruction::MovZeroExtend { src_type: *src_type, src: AsmOperand::Register(*reg), dst_type: *dst_type, dst: dst.clone() }]);
                     }
                     AsmOperand::Memory(AsmRegister::BP, dst_n) => {
                         instructions.extend(vec![
+                            AsmInstruction::MovZeroExtend { src_type: *src_type, src: src.to_owned(), dst_type: *dst_type, dst: AsmOperand::Register(AsmRegister::R11) },
                             AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::R11),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
+                                asm_type: dst_type.to_owned(),
                                 src: AsmOperand::Register(AsmRegister::R11),
                                 dst: AsmOperand::Memory(AsmRegister::BP, *dst_n),
                             },
