@@ -417,15 +417,12 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::MovZeroExtend { src_type, src, dst_type, dst } => {
                 let suffix = match (&src_type, &dst_type) {
-                    (AsmType::Longword, AsmType::Quadword) => "q",
-                    (AsmType::Quadword, AsmType::Longword) => "l",
+                    (AsmType::Longword, AsmType::Longword) => "l",
                     (AsmType::Byte, AsmType::Longword) => "zbl",
                     (AsmType::Byte, AsmType::Quadword) => "zbq",
                     (AsmType::Quadword, AsmType::Byte) => "zqb",
                     (AsmType::Longword, AsmType::Byte) => "zlb",
-                    _ => {
-                        todo!()
-                    }
+                    _ => unreachable!(),
                 };
 
                 write!(f, "mov{} ", suffix)?;

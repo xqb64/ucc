@@ -1131,6 +1131,7 @@ impl Codegen for IRInstruction {
             }
             IRInstruction::UIntToDouble { src, dst } => {
                 let src_type = get_asm_type(src);
+                println!("src_type: {:?}", src_type);
                 match src_type {
                     AsmType::Byte => AsmNode::Instructions(vec![
                         AsmInstruction::MovZeroExtend {
@@ -1147,9 +1148,9 @@ impl Codegen for IRInstruction {
                     ]),
                     AsmType::Longword => AsmNode::Instructions(vec![
                         AsmInstruction::MovZeroExtend {
-                            src_type: get_asm_type(src),
+                            src_type: AsmType::Longword,
                             src: src.codegen().into(),
-                            dst_type: get_asm_type(dst),
+                            dst_type: AsmType::Longword,
                             dst: AsmOperand::Register(AsmRegister::AX),
                         },
                         AsmInstruction::Cvtsi2sd {
