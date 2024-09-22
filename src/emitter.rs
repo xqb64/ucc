@@ -90,6 +90,14 @@ impl Emit for AsmStaticVariable {
                 StaticInit::String(_, _) => {
                     writeln!(f, "\t.section .rodata")?;
                 }
+                StaticInit::Char(c) => match c {
+                    0 => writeln!(f, "\t.section .bss")?,
+                    _ => writeln!(f, "\t.section .data")?,
+                },
+                StaticInit::UChar(c) => match c {
+                    0 => writeln!(f, "\t.section .bss")?,
+                    _ => writeln!(f, "\t.section .data")?,
+                }
                 _ => todo!(),
             }
         }
