@@ -7,6 +7,7 @@ use crate::{
     typechecker::StaticInit,
 };
 use anyhow::Result;
+use regex::Regex;
 use std::{fs::File, io::Write};
 
 pub trait Emit {
@@ -97,9 +98,9 @@ impl Emit for AsmStaticVariable {
                 StaticInit::UChar(c) => writeln!(f, "\t.byte {}", c)?,
                 StaticInit::String(value, null_terminated) => {
                     if *null_terminated {
-                        writeln!(f, "\t.asciz \"{}\"", value)?;
+                        writeln!(f, "\t.asciz \"{}\"", escape(value))?;
                     } else {
-                        writeln!(f, "\t.ascii \"{}\"", value)?;
+                        writeln!(f, "\t.ascii \"{}\"", escape(value))?;
                     }
                 }
                 _ => todo!(),
@@ -131,9 +132,9 @@ impl Emit for AsmStaticConstant {
             }
             StaticInit::String(value, null_terminated) => {
                 if *null_terminated {
-                    writeln!(f, "\t.asciz \"{}\"", value)?;
+                    writeln!(f, "\t.asciz \"{}\"", escape(value))?;
                 } else {
-                    writeln!(f, "\t.ascii \"{}\"", value)?;
+                    writeln!(f, "\t.ascii \"{}\"", escape(value))?;
                 }
             }
             _ => unreachable!(),
@@ -422,7 +423,9 @@ impl Emit for AsmInstruction {
                     (AsmType::Byte, AsmType::Quadword) => "zbq",
                     (AsmType::Quadword, AsmType::Byte) => "zqb",
                     (AsmType::Longword, AsmType::Byte) => "zlb",
-                    _ => todo!(),
+                    _ => {
+                        todo!()
+                    }
                 };
 
                 write!(f, "mov{} ", suffix)?;
@@ -583,4 +586,26 @@ impl Emit for AsmRegister {
 
         Ok(())
     }
+}
+
+fn escape(s: &str) -> String {
+    let re = Regex::new(r#"[\x07\x08\t\n\x0B\x0C\r\\'\"?]"#).unwrap();
+
+    re.replace_all(s, |caps: &regex::Captures| {
+        let c = &caps[0];
+        match c.chars().next().unwrap() {
+            '\x07' => format!("\\{:03o}", 0x07), // Bell
+            '\x08' => format!("\\{:03o}", 0x08), // Backspace
+            '\t'   => format!("\\{:03o}", 0x09), // Horizontal Tab
+            '\n'   => format!("\\{:03o}", 0x0A), // Line Feed
+            '\x0B' => format!("\\{:03o}", 0x0B), // Vertical Tab
+            '\x0C' => format!("\\{:03o}", 0x0C), // Form Feed
+            '\r'   => format!("\\{:03o}", 0x0D), // Carriage Return
+            '\\'   => format!("\\{:03o}", 0x5C), // Backslash
+            '\''   => format!("\\{:03o}", 0x27), // Single Quote
+            '"'    => format!("\\{:03o}", 0x22), // Double Quote
+            '?'    => format!("\\{:03o}", 0x3F), // Question Mark
+            _      => c.to_string(),
+        }
+    }).to_string()
 }

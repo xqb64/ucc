@@ -506,10 +506,17 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                     }
                 }
                 (_, Type::Double) => {
-                    instructions.push(IRInstruction::DoubleToInt {
-                        src: result.clone(),
-                        dst: dst.clone(),
-                    });
+                    if get_signedness(target_type) {
+                        instructions.push(IRInstruction::DoubleToInt {
+                            src: result.clone(),
+                            dst: dst.clone(),
+                        });
+                    } else {
+                        instructions.push(IRInstruction::DoubletoUInt {
+                            src: result.clone(),
+                            dst: dst.clone(),
+                        });
+                    }
                 }
                 (_, _) => {
                     if get_size_of_type(target_type) == get_size_of_type(inner_type) {
