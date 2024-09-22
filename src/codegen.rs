@@ -1854,6 +1854,101 @@ impl Fixup for AsmFunction {
                         _ => instructions.push(instr.clone()),
                     }
                 }
+                AsmInstruction::Mov { asm_type: AsmType::Longword, src, dst } => {
+                    match (&src, &dst) {
+                        (AsmOperand::Imm(imm), AsmOperand::Memory(_, _)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: src.clone(),
+                                    dst: AsmOperand::Register(AsmRegister::R10),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: AsmOperand::Register(AsmRegister::R10),
+                                    dst: dst.clone(),
+                            }]);
+                        }
+                        (AsmOperand::Imm(imm), AsmOperand::Data(_)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: src.clone(),
+                                    dst: AsmOperand::Register(AsmRegister::R10),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: AsmOperand::Register(AsmRegister::R10),
+                                    dst: dst.clone(),
+                            }]);
+                        }
+                        (AsmOperand::Memory(_, _), AsmOperand::Memory(_, _)) => {
+                            let scratch = AsmOperand::Register(AsmRegister::R10);
+        
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: src.clone(),
+                                    dst: scratch.clone(),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: scratch.clone(),
+                                    dst: dst.clone(),
+                                },
+                            ]);
+                        }
+                        (AsmOperand::Data(_), AsmOperand::Memory(_, _)) => {
+                            let scratch = AsmOperand::Register(AsmRegister::R10);
+        
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: src.clone(),
+                                    dst: scratch.clone(),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: scratch.clone(),
+                                    dst: dst.clone(),
+                                },
+                            ]);
+                        }
+                        (AsmOperand::Memory(_, _), AsmOperand::Data(_)) => {
+                            let scratch = AsmOperand::Register(AsmRegister::R10);
+        
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: src.clone(),
+                                    dst: scratch.clone(),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: scratch.clone(),
+                                    dst: dst.clone(),
+                                },
+                            ]);
+                        }
+                        (AsmOperand::Data(_), AsmOperand::Data(_)) => {
+                            let scratch = AsmOperand::Register(AsmRegister::R10);
+        
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: src.clone(),
+                                    dst: scratch.clone(),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Longword,
+                                    src: scratch.clone(),
+                                    dst: dst.clone(),
+                                },
+                            ]);
+                        }
+                        _ => instructions.push(instr.clone()),
+                    }
+                }
                 AsmInstruction::Mov { asm_type: AsmType::Longword, src: AsmOperand::Imm(imm), dst } => {
                     if *imm < i32::MIN as i64 || *imm > i32::MAX as i64 {
                         instructions.extend(vec![
