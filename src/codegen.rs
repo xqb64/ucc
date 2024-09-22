@@ -213,6 +213,7 @@ impl Codegen for IRNode {
             IRNode::Instructions(instrs) => instrs.codegen(),
             IRNode::Value(value) => value.codegen(),
             IRNode::StaticVariable(static_var) => static_var.codegen(),
+            _ => todo!(),
         }
     }
 }

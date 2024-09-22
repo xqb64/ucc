@@ -1,12 +1,7 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem,
-        BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression,
-        ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression,
-        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer,
-        ProgramStatement, ReturnStatement, Statement, SubscriptExpression, Type, UnaryExpression,
-        UnaryExpressionKind, VariableDeclaration, WhileStatement,
+        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, Statement, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
     },
     typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
@@ -26,6 +21,13 @@ pub struct IRFunction {
     pub params: Vec<String>,
     pub body: Vec<IRInstruction>,
     pub global: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IRStaticConstant {
+    name: String,
+    _type: Type,
+    init: StaticInit,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -608,7 +610,64 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             }
         }
         Expression::Literal(_) => todo!(),
-        _ => todo!(),
+        Expression::String(StringExpression { value, _type }) => {
+            let var_name = format!("str.{}", make_temporary());
+            let t = Type::Array {
+                element: Box::new(Type::Char),
+                size: value.len() + 1,
+            };
+            let symbol = Symbol {
+                attrs: IdentifierAttrs::ConstantAttr(StaticInit::String(value.to_owned(), true)),
+                _type: t,
+            };
+            SYMBOL_TABLE
+                .lock()
+                .unwrap()
+                .insert(var_name.clone(), symbol);
+
+            ExpResult::PlainOperand(IRValue::Var(var_name))
+        }
+    }
+}
+
+fn emit_string_init(dst: String, offset: usize, s: &[u8]) -> Vec<IRInstruction> {
+    let len = s.len();
+    
+    if len == 0 {
+        return vec![];
+    } else if len >= 8 {
+        let l = i64::from_le_bytes(s[0..8].try_into().unwrap());
+        let instr = IRInstruction::CopyToOffset {
+            src: IRValue::Constant(Const::Long(l)),
+            dst: dst.clone(),
+            offset,
+        };
+        let rest = &s[8..];
+        let mut instructions = vec![instr];
+        instructions.extend(emit_string_init(dst, offset + 8, rest));
+        return instructions;
+    } else if len >= 4 {
+        let i = i32::from_le_bytes(s[0..4].try_into().unwrap());
+        let instr = IRInstruction::CopyToOffset {
+            src: IRValue::Constant(Const::Int(i)),
+            dst: dst.clone(),
+            offset,
+        };
+        let rest = &s[4..];
+        let mut instructions = vec![instr];
+        instructions.extend(emit_string_init(dst, offset + 4, rest));
+        return instructions;
+    } else {
+        let c = s[0] as i8; // Convert u8 to i8
+        let instr = IRInstruction::CopyToOffset {
+            src: IRValue::Constant(Const::Char(c)),
+            dst: dst.clone(),
+            offset,
+        };
+        let rest = &s[1..];
+        let mut instructions = vec![instr];
+        instructions.extend(emit_string_init(dst, offset + 1, rest));
+        return instructions;
     }
 }
 
@@ -620,6 +679,24 @@ fn emit_compound_init(
     inited_type: &Type,
 ) {
     match value {
+        Initializer::Single(_, Expression::String(string_expr)) => {
+            if let Type::Array { element: _, size } = inited_type {
+                let str_bytes = string_expr.value.as_bytes();
+                
+                println!("array size: {}", size);
+                println!("string size: {}", str_bytes.len());
+                let padding_sz = size.saturating_sub(str_bytes.len());
+
+                let mut combined_bytes = vec![];
+                combined_bytes.extend_from_slice(str_bytes);
+
+                for _ in 0..padding_sz {
+                    combined_bytes.push(0);
+                }
+                
+                emit_string_init(string_expr.value.to_owned(), offset, &combined_bytes);
+            }
+        }
         Initializer::Single(_, single_init) => {
             let v = emit_tacky_and_convert(single_init, instructions);
             instructions.push(IRInstruction::CopyToOffset {
@@ -725,6 +802,7 @@ pub enum IRNode {
     Instructions(Vec<IRInstruction>),
     Value(IRValue),
     StaticVariable(IRStaticVariable),
+    StaticConstant(IRStaticConstant),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1135,6 +1213,13 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                 }
                 _ => continue,
             }
+        }
+        if let IdentifierAttrs::ConstantAttr(init) = entry.attrs.clone() {
+            tacky_defs.push(IRNode::StaticConstant(IRStaticConstant {
+                name: name.clone(),
+                init,
+                _type: entry._type.clone(),
+            }))
         }
     }
     tacky_defs
