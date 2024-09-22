@@ -1760,6 +1760,53 @@ impl Fixup for AsmFunction {
                         _ => instructions.push(instr.clone()),
                     }
                 }
+                AsmInstruction::Mov { asm_type: AsmType::Double, src, dst } => {
+                    match (&src, &dst) {
+                        (AsmOperand::Memory(_, _), AsmOperand::Data(_)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Double,
+                                    src: src.clone(),
+                                    dst: AsmOperand::Register(AsmRegister::XMM14),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Double,
+                                    src: AsmOperand::Register(AsmRegister::XMM14),
+                                    dst: dst.clone(),
+                                },
+                            ]);
+                        }
+                        (AsmOperand::Data(_), AsmOperand::Memory(_, _)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Double,
+                                    src: src.clone(),
+                                    dst: AsmOperand::Register(AsmRegister::XMM14),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Double,
+                                    src: AsmOperand::Register(AsmRegister::XMM14),
+                                    dst: dst.clone(),
+                                },
+                            ]);
+                        }
+                        (AsmOperand::Memory(_, _), AsmOperand::Memory(_, _)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Double,
+                                    src: src.clone(),
+                                    dst: AsmOperand::Register(AsmRegister::XMM14),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Double,
+                                    src: AsmOperand::Register(AsmRegister::XMM14),
+                                    dst: dst.clone(),
+                                },
+                            ]);
+                        }
+                        _ => instructions.push(instr.clone()),
+                    }
+                }
                 AsmInstruction::Mov { asm_type: AsmType::Quadword, src, dst } => {
                     match (&src, &dst) {
                         (AsmOperand::Imm(imm), AsmOperand::Memory(_, _)) => {
