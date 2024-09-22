@@ -1761,7 +1761,7 @@ impl Fixup for AsmFunction {
                 }
                 AsmInstruction::Mov { asm_type: AsmType::Quadword, src, dst } => {
                     match (&src, &dst) {
-                        (AsmOperand::Imm(imm), AsmOperand::Memory(_, _) | AsmOperand::Data(_)) => {
+                        (AsmOperand::Imm(imm), AsmOperand::Memory(_, _)) => {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
                                     asm_type: AsmType::Quadword,
@@ -1773,6 +1773,35 @@ impl Fixup for AsmFunction {
                                     src: AsmOperand::Register(AsmRegister::R10),
                                     dst: dst.clone(),
                             }]);
+                        }
+                        (AsmOperand::Imm(imm), AsmOperand::Data(_)) => {
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Quadword,
+                                    src: src.clone(),
+                                    dst: AsmOperand::Register(AsmRegister::R10),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Quadword,
+                                    src: AsmOperand::Register(AsmRegister::R10),
+                                    dst: dst.clone(),
+                            }]);
+                        }
+                        (AsmOperand::Memory(_, _), AsmOperand::Memory(_, _)) => {
+                            let scratch = AsmOperand::Register(AsmRegister::R10);
+        
+                            instructions.extend(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Quadword,
+                                    src: src.clone(),
+                                    dst: scratch.clone(),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Quadword,
+                                    src: scratch.clone(),
+                                    dst: dst.clone(),
+                                },
+                            ]);
                         }
                         _ => instructions.push(instr.clone()),
                     }
@@ -1805,14 +1834,13 @@ impl Fixup for AsmFunction {
                 }
                 AsmInstruction::Mov { asm_type, src, dst } => {
                     match (&src, &dst) {
-                        ((AsmOperand::Memory(_, _) | AsmOperand::Data(_)), (AsmOperand::Memory(_, _) | AsmOperand::Data(_))) => {
+                        (AsmOperand::Memory(_, _), AsmOperand::Memory(_, _)) => {
                             let scratch = if asm_type == &AsmType::Double {
                                 AsmOperand::Register(AsmRegister::XMM14)
                             } else {
                                 AsmOperand::Register(AsmRegister::R10)
                             };
         
-                            // FROM src to scratch, and from sccratch to dst
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
                                     asm_type: *asm_type,
