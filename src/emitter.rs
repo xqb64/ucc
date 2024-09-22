@@ -94,8 +94,8 @@ impl Emit for AsmStaticVariable {
                 StaticInit::Zero(n) => {
                     writeln!(f, "\t.zero {}", n)?;
                 }
-                StaticInit::Char(c) => writeln!(f, "\t.byte {}", c)?,
-                StaticInit::UChar(c) => writeln!(f, "\t.byte {}", c)?,
+                StaticInit::Char(c) => writeln!(f, "\t.byte {}", *c as u8)?,
+                StaticInit::UChar(c) => writeln!(f, "\t.byte {}", *c as u8)?,
                 StaticInit::String(value, null_terminated) => {
                     if *null_terminated {
                         writeln!(f, "\t.asciz \"{}\"", escape(value))?;
