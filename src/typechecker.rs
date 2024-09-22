@@ -1302,16 +1302,16 @@ pub fn is_char_type(t: &Type) -> bool {
 }
 
 pub fn get_common_type<'a>(mut type1: &'a Type, mut type2: &'a Type) -> &'a Type {
-    if type1 == type2 {
-        return type1;
-    }
-
     if is_char_type(type1) {
         type1 = &Type::Int;
     }
 
     if is_char_type(type2) {
         type2 = &Type::Int;
+    }
+
+    if type1 == type2 {
+        return type1;
     }
 
     if type1 == &Type::Double || type2 == &Type::Double {

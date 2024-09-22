@@ -62,50 +62,11 @@ impl Emit for AsmStaticVariable {
     fn emit(&mut self, f: &mut File, _asm_type: &mut AsmType) -> Result<()> {
         writeln!(f)?;
 
-        for init in &self.init {
-            match init {
-                StaticInit::Int(n) => match n {
-                    0 => writeln!(f, "\t.section .bss")?,
-                    _ => writeln!(f, "\t.section .data")?,
-                },
-                StaticInit::Long(n) => match n {
-                    0 => writeln!(f, "\t.section .bss")?,
-                    _ => writeln!(f, "\t.section .data")?,
-                },
-                StaticInit::UInt(n) => match n {
-                    0 => writeln!(f, "\t.section .bss")?,
-                    _ => writeln!(f, "\t.section .data")?,
-                },
-                StaticInit::ULong(n) => match n {
-                    0 => writeln!(f, "\t.section .bss")?,
-                    _ => writeln!(f, "\t.section .data")?,
-                },
-                StaticInit::Double(n) => match n {
-                    0.0 => writeln!(f, "\t.section .bss")?,
-                    _ => writeln!(f, "\t.section .data")?,
-                },
-                StaticInit::Zero(_) => {
-                    writeln!(f, "\t.section .data")?;
-                }
-                StaticInit::String(_, _) => {
-                    writeln!(f, "\t.section .rodata")?;
-                }
-                StaticInit::Char(c) => match c {
-                    0 => writeln!(f, "\t.section .bss")?,
-                    _ => writeln!(f, "\t.section .data")?,
-                },
-                StaticInit::UChar(c) => match c {
-                    0 => writeln!(f, "\t.section .bss")?,
-                    _ => writeln!(f, "\t.section .data")?,
-                }
-                _ => todo!(),
-            }
-        }
-
+        writeln!(f, "\t.section .data")?;
         if self.global {
             writeln!(f, "\t.globl {}", self.name)?;
         }
-
+    
         writeln!(f, "\t.balign {}", self.alignment)?;
 
         writeln!(f, "{}:", self.name)?;
@@ -288,7 +249,7 @@ impl Emit for AsmInstruction {
             AsmInstruction::Cdq { asm_type } => match asm_type {
                 AsmType::Longword => writeln!(f, "cdq")?,
                 AsmType::Quadword => writeln!(f, "cqo")?,
-                _ => todo!(),
+                _ => writeln!(f, "cdq")?,
             },
             AsmInstruction::Binary {
                 op,
@@ -319,6 +280,7 @@ impl Emit for AsmInstruction {
                         AsmBinaryOp::DivDouble => "sd",
                         _ => "sd",
                     },
+                    AsmType::Byte => "b",
                     _ => todo!(),
                 };
 
@@ -332,6 +294,7 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::Idiv { operand, asm_type } => {
                 let suffix = match asm_type {
+                    AsmType::Byte => "b",
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     _ => todo!(),

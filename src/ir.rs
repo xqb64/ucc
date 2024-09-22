@@ -488,97 +488,52 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             if target_type == inner_type {
                 return ExpResult::PlainOperand(result);
             }
-
-            match (inner_type, &target_type) {
-                (Type::Int, Type::Double) => {
-                    let dst = make_tacky_variable(target_type);
-                    instructions.push(IRInstruction::IntToDouble {
-                        src: result.clone(),
-                        dst: dst.clone(),
-                    });
-                    return ExpResult::PlainOperand(dst);
-                }
-                (Type::Double, Type::Int) => {
-                    let dst = make_tacky_variable(target_type);
-                    instructions.push(IRInstruction::DoubleToInt {
-                        src: result.clone(),
-                        dst: dst.clone(),
-                    });
-                    return ExpResult::PlainOperand(dst);
-                }
-                (Type::Uint, Type::Double) => {
-                    let dst = make_tacky_variable(target_type);
-                    instructions.push(IRInstruction::UIntToDouble {
-                        src: result.clone(),
-                        dst: dst.clone(),
-                    });
-                    return ExpResult::PlainOperand(dst);
-                }
-                (Type::Double, Type::Uint) => {
-                    let dst = make_tacky_variable(target_type);
-                    instructions.push(IRInstruction::DoubletoUInt {
-                        src: result.clone(),
-                        dst: dst.clone(),
-                    });
-                    return ExpResult::PlainOperand(dst);
-                }
-                (Type::Long, Type::Double) => {
-                    let dst = make_tacky_variable(target_type);
-                    instructions.push(IRInstruction::IntToDouble {
-                        src: result.clone(),
-                        dst: dst.clone(),
-                    });
-                    return ExpResult::PlainOperand(dst);
-                }
-                (Type::Double, Type::Long) => {
-                    let dst = make_tacky_variable(target_type);
-                    instructions.push(IRInstruction::DoubleToInt {
-                        src: result.clone(),
-                        dst: dst.clone(),
-                    });
-                    return ExpResult::PlainOperand(dst);
-                }
-                (Type::Double, Type::Ulong) => {
-                    let dst = make_tacky_variable(target_type);
-                    instructions.push(IRInstruction::DoubletoUInt {
-                        src: result.clone(),
-                        dst: dst.clone(),
-                    });
-                    return ExpResult::PlainOperand(dst);
-                }
-                (Type::Ulong, Type::Double) => {
-                    let dst = make_tacky_variable(target_type);
-                    instructions.push(IRInstruction::UIntToDouble {
-                        src: result.clone(),
-                        dst: dst.clone(),
-                    });
-                    return ExpResult::PlainOperand(dst);
-                }
-                _ => {}
-            }
-
+            
             let dst = make_tacky_variable(target_type);
 
-            if get_size_of_type(&target_type) == get_size_of_type(&inner_type) {
-                instructions.push(IRInstruction::Copy {
-                    src: result.clone(),
-                    dst: dst.clone(),
-                });
-            } else if get_size_of_type(&target_type) < get_size_of_type(&inner_type) {
-                instructions.push(IRInstruction::Truncate {
-                    src: result.clone(),
-                    dst: dst.clone(),
-                });
-            } else if get_signedness(&inner_type) {
-                instructions.push(IRInstruction::SignExtend {
-                    src: result.clone(),
-                    dst: dst.clone(),
-                });
-            } else {
-                instructions.push(IRInstruction::ZeroExtend {
-                    src: result.clone(),
-                    dst: dst.clone(),
-                });
+            match (target_type, &inner_type) {
+                (Type::Double, _) => {
+                    if get_signedness(&inner_type) {
+                        instructions.push(IRInstruction::IntToDouble {
+                            src: result.clone(),
+                            dst: dst.clone(),
+                        });
+                    } else {
+                        instructions.push(IRInstruction::UIntToDouble {
+                            src: result.clone(),
+                            dst: dst.clone(),
+                        });
+                    }
+                }
+                (_, Type::Double) => {
+                    instructions.push(IRInstruction::DoubleToInt {
+                        src: result.clone(),
+                        dst: dst.clone(),
+                    });
+                }
+                (_, _) => {
+                    if get_size_of_type(target_type) == get_size_of_type(inner_type) {
+                        instructions.push(IRInstruction::Copy {
+                            src: result.clone(),
+                            dst: dst.clone(),
+                        });
+                    } else if get_size_of_type(target_type) < get_size_of_type(inner_type) {
+                        instructions.push(IRInstruction::Truncate {
+                            src: result.clone(),
+                            dst: dst.clone(),
+                        });
+                    } else if get_signedness(&inner_type) {
+                        instructions.push(IRInstruction::SignExtend {
+                            src: result.clone(),
+                            dst: dst.clone(),
+                        });
+                    } else {
+                        instructions.push(IRInstruction::ZeroExtend {
+                            src: result.clone(),
+                            dst: dst.clone(),
+                        });
+                    }
+                }
             }
 
             ExpResult::PlainOperand(dst)
