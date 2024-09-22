@@ -2015,17 +2015,31 @@ impl Fixup for AsmFunction {
                 AsmInstruction::Mov { asm_type: AsmType::Byte, src, dst } => {
                     match (&src, &dst) {
                         (AsmOperand::Imm(imm), AsmOperand::Memory(_, _)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: AsmType::Byte,
-                                    src: src.clone(),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: AsmType::Byte,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: dst.clone(),
-                            }]);
+                            if *imm < i8::MIN as i64 || *imm > i8::MAX as i64 {
+                                instructions.extend(vec![
+                                    AsmInstruction::Mov {
+                                        asm_type: AsmType::Byte,
+                                        src: AsmOperand::Imm(*imm as i8 as i64),
+                                        dst: AsmOperand::Register(AsmRegister::R10),
+                                    },
+                                    AsmInstruction::Mov {
+                                        asm_type: AsmType::Byte,
+                                        src: AsmOperand::Register(AsmRegister::R10),
+                                        dst: dst.clone(),
+                                }]);    
+                            } else {
+                                instructions.extend(vec![
+                                    AsmInstruction::Mov {
+                                        asm_type: AsmType::Byte,
+                                        src: src.clone(),
+                                        dst: AsmOperand::Register(AsmRegister::R10),
+                                    },
+                                    AsmInstruction::Mov {
+                                        asm_type: AsmType::Byte,
+                                        src: AsmOperand::Register(AsmRegister::R10),
+                                        dst: dst.clone(),
+                                }]);    
+                            }
                         }
                         (AsmOperand::Imm(imm), AsmOperand::Data(_)) => {
                             instructions.extend(vec![
@@ -2105,32 +2119,6 @@ impl Fixup for AsmFunction {
                             ]);
                         }
                         _ => instructions.push(instr.clone()),
-                    }
-                }
-                AsmInstruction::Mov { asm_type: AsmType::Longword, src: AsmOperand::Imm(imm), dst } => {
-                    if *imm < i32::MIN as i64 || *imm > i32::MAX as i64 {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: AsmOperand::Imm(*imm as i32 as i64),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    } else {
-                        instructions.push(instr.clone());
-                    }
-                }
-                AsmInstruction::Mov { asm_type: AsmType::Byte, src: AsmOperand::Imm(imm), dst } => {
-                    if *imm < i8::MIN as i64 || *imm > i8::MAX as i64 {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Byte,
-                                src: AsmOperand::Imm(*imm as i8 as i64),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    } else {
-                        instructions.push(instr.clone());
                     }
                 }
                 AsmInstruction::Mov { asm_type, src, dst } => {
