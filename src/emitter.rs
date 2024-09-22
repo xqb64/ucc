@@ -534,6 +534,29 @@ impl std::fmt::Display for AsmRegister {
 impl Emit for AsmRegister {
     fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         match asm_type {
+            AsmType::Byte => match self {
+                AsmRegister::AX => write!(f, "%al")?,
+                AsmRegister::DX => write!(f, "%dl")?,
+                AsmRegister::CX => write!(f, "%cl")?,
+                AsmRegister::DI => write!(f, "%dil")?,
+                AsmRegister::SI => write!(f, "%sil")?,
+                AsmRegister::R8 => write!(f, "%r8b")?,
+                AsmRegister::R9 => write!(f, "%r9b")?,
+                AsmRegister::R10 => write!(f, "%r10b")?,
+                AsmRegister::R11 => write!(f, "%r11b")?,
+                AsmRegister::SP => write!(f, "%spl")?,
+                AsmRegister::BP => write!(f, "%bpl")?,
+                AsmRegister::XMM0 => write!(f, "%xmm0")?,
+                AsmRegister::XMM1 => write!(f, "%xmm1")?,
+                AsmRegister::XMM2 => write!(f, "%xmm2")?,
+                AsmRegister::XMM3 => write!(f, "%xmm3")?,
+                AsmRegister::XMM4 => write!(f, "%xmm4")?,
+                AsmRegister::XMM5 => write!(f, "%xmm5")?,
+                AsmRegister::XMM6 => write!(f, "%xmm6")?,
+                AsmRegister::XMM7 => write!(f, "%xmm7")?,
+                AsmRegister::XMM14 => write!(f, "%xmm14")?,
+                AsmRegister::XMM15 => write!(f, "%xmm15")?,
+            },
             AsmType::Longword => match self {
                 AsmRegister::AX => write!(f, "%eax")?,
                 AsmRegister::DX => write!(f, "%edx")?,
@@ -557,7 +580,7 @@ impl Emit for AsmRegister {
                 AsmRegister::XMM14 => write!(f, "%xmm14")?,
                 AsmRegister::XMM15 => write!(f, "%xmm15")?,
             },
-            _ => match self {
+            AsmType::Quadword | AsmType::Double => match self {
                 AsmRegister::AX => write!(f, "%rax")?,
                 AsmRegister::DX => write!(f, "%rdx")?,
                 AsmRegister::CX => write!(f, "%rcx")?,
@@ -580,6 +603,7 @@ impl Emit for AsmRegister {
                 AsmRegister::XMM14 => write!(f, "%xmm14")?,
                 AsmRegister::XMM15 => write!(f, "%xmm15")?,
             },
+            _ => todo!(),
         }
 
         Ok(())

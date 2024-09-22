@@ -1124,17 +1124,15 @@ impl Irfy for VariableDeclaration {
                 0,
                 &self._type,
             );
-        }
-
-        if let Some(Initializer::Single(_, init)) = &self.init {
+        } else if let Some(Initializer::Single(_, init)) = &self.init {
             let result = emit_tacky_and_convert(init, &mut instructions);
+            println!("src is {:?}", result);
+            println!("dst is {:?}", self.name);
             instructions.push(IRInstruction::Copy {
                 src: result,
                 dst: IRValue::Var(self.name.clone()),
             });
-        }
-
-        if let Some(Initializer::Compound(_, _type, compound_init)) = &self.init {
+        } else if let Some(Initializer::Compound(_, _type, compound_init)) = &self.init {
             let offset = 0;
             if let Type::Array { element, size: _ } = &self._type {
                 for (idx, elem_init) in compound_init.iter().enumerate() {
