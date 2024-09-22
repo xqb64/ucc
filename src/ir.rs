@@ -25,9 +25,9 @@ pub struct IRFunction {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IRStaticConstant {
-    name: String,
-    _type: Type,
-    init: StaticInit,
+    pub name: String,
+    pub _type: Type,
+    pub init: StaticInit,
 }
 
 #[derive(Debug, Clone, PartialEq)]

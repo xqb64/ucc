@@ -203,8 +203,18 @@ impl Emit for AsmInstruction {
                 dst.emit(f, asm_type)?;
                 writeln!(f)?;
             }
-            AsmInstruction::Movsx { src, dst } => {
-                write!(f, "movslq ")?;
+            AsmInstruction::Movsx { src_type, src, dst_type, dst } => {
+                let suffix = match (src_type, dst_type) {
+                    (AsmType::Longword, AsmType::Quadword) => "lq",
+                    (AsmType::Quadword, AsmType::Longword) => "ql",
+                    (AsmType::Byte, AsmType::Longword) => "bl",
+                    (AsmType::Byte, AsmType::Quadword) => "bq",
+                    (AsmType::Quadword, AsmType::Byte) => "qb",
+                    (AsmType::Longword, AsmType::Byte) => "lb",
+                    _ => todo!(),
+                };
+                
+                write!(f, "movs{} ", suffix)?;
                 src.emit(f, &mut AsmType::Longword)?;
                 write!(f, ", ")?;
                 dst.emit(f, &mut AsmType::Quadword)?;

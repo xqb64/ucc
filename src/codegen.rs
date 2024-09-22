@@ -2,8 +2,7 @@ use std::{collections::HashMap, sync::Mutex};
 
 use crate::{
     ir::{
-        make_temporary, BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRStaticVariable,
-        IRValue, UnaryOp,
+        make_temporary, BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRStaticConstant, IRStaticVariable, IRValue, UnaryOp
     },
     lexer::Const,
     parser::Type,
@@ -61,11 +60,15 @@ pub enum AsmInstruction {
         dst: AsmOperand,
     },
     Movsx {
+        src_type: AsmType,
         src: AsmOperand,
+        dst_type: AsmType,
         dst: AsmOperand,
     },
     MovZeroExtend {
+        src_type: AsmType,
         src: AsmOperand,
+        dst_type: AsmType,
         dst: AsmOperand,
     },
     Cvttsd2si {
@@ -255,6 +258,30 @@ impl Codegen for IRStaticVariable {
                 _ => unreachable!(),
             },
         })
+    }
+}
+
+impl Codegen for IRStaticConstant {
+    fn codegen(&self) -> AsmNode {
+        AsmNode::StaticConstant(AsmStaticConstant {
+            name: self.name.clone(),
+            init: self.init.clone(),
+            alignment: get_alignment_of_type(&self._type),
+        })
+    }
+}
+
+fn get_alignment_of_type(t: &Type) -> usize {
+    match t {
+        Type::Char | Type::UChar | Type::SChar => 1,
+        Type::Int => 4,
+        Type::Long => 8,
+        Type::Uint => 4,
+        Type::Ulong => 8,
+        Type::Double => 8,
+        Type::Pointer(_) => 8,
+        Type::Array { .. } => calculate_alignment_of_array(t),
+        _ => unreachable!(),
     }
 }
 
@@ -1079,29 +1106,48 @@ impl Codegen for IRInstruction {
             }
             IRInstruction::SignExtend { src, dst } => {
                 AsmNode::Instructions(vec![AsmInstruction::Movsx {
+                    src_type: get_asm_type(src),
                     src: src.codegen().into(),
+                    dst_type: get_asm_type(dst),
                     dst: dst.codegen().into(),
                 }])
             }
             IRInstruction::Truncate { src, dst } => {
                 AsmNode::Instructions(vec![AsmInstruction::Mov {
-                    asm_type: AsmType::Longword,
+                    asm_type: get_asm_type(dst),
                     src: src.codegen().into(),
                     dst: dst.codegen().into(),
                 }])
             }
             IRInstruction::ZeroExtend { src, dst } => {
                 AsmNode::Instructions(vec![AsmInstruction::MovZeroExtend {
+                    src_type: get_asm_type(src),
                     src: src.codegen().into(),
+                    dst_type: get_asm_type(dst),
                     dst: dst.codegen().into(),
                 }])
             }
             IRInstruction::UIntToDouble { src, dst } => {
                 let src_type = get_asm_type(src);
                 match src_type {
+                    AsmType::Byte => AsmNode::Instructions(vec![
+                        AsmInstruction::MovZeroExtend {
+                            src_type: AsmType::Byte,
+                            src: src.codegen().into(),
+                            dst_type: AsmType::Longword,
+                            dst: AsmOperand::Register(AsmRegister::AX),
+                        },
+                        AsmInstruction::Cvtsi2sd {
+                            asm_type: AsmType::Longword,
+                            src: AsmOperand::Register(AsmRegister::AX),
+                            dst: dst.codegen().into(),
+                        },
+                    ]),
                     AsmType::Longword => AsmNode::Instructions(vec![
                         AsmInstruction::MovZeroExtend {
+                            src_type: get_asm_type(src),
                             src: src.codegen().into(),
+                            dst_type: get_asm_type(dst),
                             dst: AsmOperand::Register(AsmRegister::AX),
                         },
                         AsmInstruction::Cvtsi2sd {
@@ -1180,15 +1226,31 @@ impl Codegen for IRInstruction {
                 }
             }
             IRInstruction::DoubleToInt { src, dst } => {
-                AsmNode::Instructions(vec![AsmInstruction::Cvttsd2si {
-                    asm_type: get_asm_type(dst),
-                    src: src.codegen().into(),
-                    dst: dst.codegen().into(),
-                }])
+                let dst_type = get_asm_type(dst);
+                match dst_type {
+                    AsmType::Byte => {
+                        AsmNode::Instructions(vec![
+                            AsmInstruction::Cvttsd2si { asm_type: AsmType::Longword, src: src.codegen().into(), dst: AsmOperand::Register(AsmRegister::AX) },
+                            AsmInstruction::Mov { asm_type: AsmType::Byte, src: AsmOperand::Register(AsmRegister::AX), dst: dst.codegen().into() },
+                        ])
+                    }
+                    AsmType::Longword | AsmType::Quadword => {
+                        AsmNode::Instructions(vec![AsmInstruction::Cvttsd2si {
+                            asm_type: get_asm_type(dst),
+                            src: src.codegen().into(),
+                            dst: dst.codegen().into(),
+                        }])        
+                    }
+                    _ => unreachable!(),
+                }
             }
             IRInstruction::DoubletoUInt { src, dst } => {
                 let dst_type = get_asm_type(dst);
                 match dst_type {
+                    AsmType::Byte => AsmNode::Instructions(vec![
+                        AsmInstruction::Cvttsd2si { asm_type: AsmType::Longword, src: src.codegen().into(), dst: AsmOperand::Register(AsmRegister::AX) },
+                        AsmInstruction::Mov { asm_type: AsmType::Byte, src: AsmOperand::Register(AsmRegister::AX), dst: dst.codegen().into() },
+                    ]),
                     AsmType::Longword => AsmNode::Instructions(vec![
                         AsmInstruction::Cvttsd2si {
                             asm_type: AsmType::Quadword,
@@ -1269,11 +1331,22 @@ impl Codegen for IRInstruction {
                 }
             }
             IRInstruction::IntToDouble { src, dst } => {
-                AsmNode::Instructions(vec![AsmInstruction::Cvtsi2sd {
-                    asm_type: get_asm_type(src),
-                    src: src.codegen().into(),
-                    dst: dst.codegen().into(),
-                }])
+                let src_type = get_asm_type(src);
+                match src_type {
+                    AsmType::Byte => {
+                        AsmNode::Instructions(vec![
+                            AsmInstruction::Movsx { src_type: AsmType::Byte, src: src.codegen().into(), dst_type: AsmType::Longword, dst: AsmOperand::Register(AsmRegister::AX) },
+                            AsmInstruction::Cvtsi2sd { asm_type: AsmType::Longword, src: AsmOperand::Register(AsmRegister::AX), dst: dst.codegen().into() },
+                        ])
+                    }
+                    _ => {
+                        AsmNode::Instructions(vec![AsmInstruction::Cvtsi2sd {
+                            asm_type: get_asm_type(src),
+                            src: src.codegen().into(),
+                            dst: dst.codegen().into(),
+                        }])        
+                    }
+                }
             }
             IRInstruction::Load { src_ptr, dst } => AsmNode::Instructions(vec![
                 AsmInstruction::Mov {
@@ -1451,16 +1524,20 @@ impl ReplacePseudo for AsmInstruction {
                 operand: operand.replace_pseudo(),
             },
             AsmInstruction::Push(operand) => AsmInstruction::Push(operand.replace_pseudo()),
-            AsmInstruction::Movsx { src, dst } => AsmInstruction::Movsx {
+            AsmInstruction::Movsx { src_type, src, dst_type, dst } => AsmInstruction::Movsx {
+                src_type: src_type.clone(),
                 src: src.replace_pseudo(),
+                dst_type: dst_type.clone(),
                 dst: dst.replace_pseudo(),
             },
             AsmInstruction::Div { operand, asm_type } => AsmInstruction::Div {
                 asm_type: *asm_type,
                 operand: operand.replace_pseudo(),
             },
-            AsmInstruction::MovZeroExtend { src, dst } => AsmInstruction::MovZeroExtend {
+            AsmInstruction::MovZeroExtend { src_type, src, dst_type,  dst } => AsmInstruction::MovZeroExtend {
+                src_type: src_type.clone(),
                 src: src.replace_pseudo(),
+                dst_type: dst_type.clone(),
                 dst: dst.replace_pseudo(),
             },
             AsmInstruction::Cvtsi2sd { asm_type, src, dst } => AsmInstruction::Cvtsi2sd {
@@ -2337,7 +2414,7 @@ impl Fixup for AsmFunction {
                         instructions.push(instr.clone());
                     }
                 }
-                AsmInstruction::MovZeroExtend { src, dst } => match dst {
+                AsmInstruction::MovZeroExtend { src_type: _, src, dst_type: _, dst } => match dst {
                     AsmOperand::Register(reg) => {
                         instructions.extend(vec![AsmInstruction::Mov {
                             asm_type: AsmType::Longword,
@@ -2555,7 +2632,7 @@ impl Fixup for AsmFunction {
                         _ => instructions.push(instr.clone()),
                     }
                 }
-                AsmInstruction::Movsx { src, dst } => match (&src, &dst) {
+                AsmInstruction::Movsx { src_type, src, dst_type, dst } => match (&src, &dst) {
                     (AsmOperand::Imm(konst), AsmOperand::Memory(AsmRegister::BP, dst_n)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
@@ -2564,7 +2641,9 @@ impl Fixup for AsmFunction {
                                 dst: AsmOperand::Register(AsmRegister::R10),
                             },
                             AsmInstruction::Movsx {
+                                src_type: *src_type,
                                 src: AsmOperand::Register(AsmRegister::R10),
+                                dst_type: *dst_type,
                                 dst: AsmOperand::Register(AsmRegister::R11),
                             },
                             AsmInstruction::Mov {
@@ -2577,7 +2656,9 @@ impl Fixup for AsmFunction {
                     (_, AsmOperand::Memory(AsmRegister::BP, _dst_n)) => {
                         instructions.extend(vec![
                             AsmInstruction::Movsx {
+                                src_type: *src_type,
                                 src: src.clone(),
+                                dst_type: *dst_type,
                                 dst: AsmOperand::Register(AsmRegister::R11),
                             },
                             AsmInstruction::Mov {
@@ -2862,6 +2943,7 @@ impl From<BinaryOp> for AsmBinaryOp {
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum AsmType {
+    Byte,
     Longword,
     Quadword,
     Double,
@@ -3122,6 +3204,7 @@ impl VarToStackPos {
                 self.last_used_stack_pos.0 -= alloc;
 
                 let alignment = match Alignment::default_of(asm_type) {
+                    Alignment::B1 => 1,
                     Alignment::B4 => 4,
                     Alignment::B8 => 8,
                     Alignment::B16 => 16,
@@ -3156,6 +3239,7 @@ impl<T: Into<AsmType>> From<T> for OperandByteLen {
     fn from(t: T) -> Self {
         let asm_type = t.into();
         match asm_type {
+            AsmType::Byte => Self::B1,
             AsmType::Longword => Self::B4,
             AsmType::Quadword => Self::B8,
             AsmType::Double => Self::B8,
@@ -3167,6 +3251,7 @@ impl<T: Into<AsmType>> From<T> for OperandByteLen {
 #[derive(PartialEq, Eq, Hash, Debug)]
 #[repr(usize)]
 pub enum Alignment {
+    B1 = 1,
     B4 = 4,
     B8 = 8,
     B16 = 16,
@@ -3181,6 +3266,7 @@ impl Alignment {
     pub fn default_of<T: Into<AsmType>>(t: T) -> Self {
         let asm_type = t.into();
         match asm_type {
+            AsmType::Byte => Self::B1,
             AsmType::Longword => Self::B4,
             AsmType::Quadword => Self::B8,
             AsmType::Double => Self::B8,
