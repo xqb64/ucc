@@ -496,7 +496,7 @@ impl Typecheck for Statement {
                 then_branch,
                 else_branch,
             }) => {
-                *condition = typecheck_and_convert(condition)?;
+                *condition = typecheck_scalar(condition)?;
 
                 then_branch.typecheck()?;
                 optionally_typecheck_block_item(else_branch)?;
@@ -1550,4 +1550,13 @@ fn validate_type_specifier(t: &Type) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn typecheck_scalar(e: &Expression) -> Result<Expression> {
+    let typechecked_expr = typecheck_and_convert(e)?;
+    if is_scalar(get_type(&typechecked_expr)) {
+        Ok(typechecked_expr)
+    } else {
+        bail!("Non-scalar expression used where scalar expression expected");
+    }
 }
