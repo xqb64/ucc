@@ -1454,7 +1454,8 @@ pub fn get_type(e: &Expression) -> &Type {
         Expression::Literal(literal) => &literal._type,
         Expression::Subscript(subscript) => &subscript._type,
         Expression::String(string) => &string._type,
-        _ => todo!(),
+        Expression::Sizeof(sizeof) => &sizeof._type,
+        Expression::SizeofT(sizeof_t) => &sizeof_t._type,
     }
 }
 

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression, ProgramStatement, ReturnStatement, Statement, StorageClass, StringExpression, SubscriptExpression, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression, ProgramStatement, ReturnStatement, SizeofExpression, Statement, StorageClass, StringExpression, SubscriptExpression, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
     },
 };
 
@@ -271,7 +271,7 @@ impl Resolve for ExpressionStatement {
 
 impl Resolve for ReturnStatement {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>) -> Result<&mut Self> {
-        self.expr = Some(resolve_exp(&self.expr.as_ref().unwrap(), variable_map)?);
+        self.expr = resolve_optional_expr(&self.expr, variable_map)?;
         Ok(self)
     }
 }
@@ -495,7 +495,14 @@ fn resolve_exp(
             value,
             _type,
         })),
-        _ => todo!(),
+        Expression::Sizeof(SizeofExpression { expr, _type }) => {
+            let resolved_expr = resolve_exp(&expr, variable_map)?;
+            Ok(Expression::Sizeof(SizeofExpression {
+                expr: resolved_expr.into(),
+                _type,
+            }))
+        }
+        _ => Ok(exp.to_owned()),
     }
 }
 
