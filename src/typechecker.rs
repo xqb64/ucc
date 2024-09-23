@@ -1293,7 +1293,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             Ok(Expression::SizeofT(SizeofTExpression { t: t.clone(), _type: Type::Ulong }))
         }
         Expression::Sizeof(SizeofExpression { expr, _type }) => {
-            let typed_inner = typecheck_and_convert(expr)?;
+            let typed_inner = typecheck_expr(expr)?;
             if !is_complete(get_type(&typed_inner)) {
                 bail!("Sizeof operator applied to incomplete type");
             }

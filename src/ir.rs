@@ -605,6 +605,8 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             ExpResult::PlainOperand(IRValue::Var(var_name))
         }
         Expression::Sizeof(SizeofExpression { expr, _type }) => {
+            println!("type of expr is {:?}", get_type(&expr));
+            println!("type is {:?}", _type);
             ExpResult::PlainOperand(IRValue::Constant(Const::ULong(get_size_of_type(get_type(&expr)) as u64)))
         }
         Expression::SizeofT(SizeofTExpression { t, _type }) => {
