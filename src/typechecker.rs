@@ -1199,6 +1199,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             expr,
             _type,
         }) => {
+            validate_type_specifier(target_type)?;
             let typed_inner = typecheck_and_convert(expr)?;
 
             let t1 = get_type(&typed_inner);
