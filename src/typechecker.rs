@@ -508,7 +508,7 @@ impl Typecheck for Statement {
                 body,
                 label: _,
             }) => {
-                *condition = typecheck_and_convert(condition)?;
+                *condition = typecheck_scalar(condition)?;
 
                 body.typecheck()?;
 
@@ -519,7 +519,7 @@ impl Typecheck for Statement {
                 body,
                 label: _,
             }) => {
-                *condition = typecheck_and_convert(condition)?;
+                *condition = typecheck_scalar(condition)?;
                 body.typecheck()?;
 
                 Ok(self)
@@ -538,7 +538,7 @@ impl Typecheck for Statement {
                 }
 
                 *init = optionally_typecheck_for_init(init)?;
-                *condition = optionally_typecheck_expression(condition)?;
+                *condition = optionally_typecheck_scalar(condition)?;
                 *post = optionally_typecheck_expression(post)?;
 
                 body.typecheck()?;
@@ -724,8 +724,8 @@ fn typecheck_logical(
     lhs: &Expression,
     rhs: &Expression,
 ) -> Result<Expression> {
-    let typed_lhs = typecheck_and_convert(lhs)?;
-    let typed_rhs = typecheck_and_convert(rhs)?;
+    let typed_lhs = typecheck_scalar(lhs)?;
+    let typed_rhs = typecheck_scalar(rhs)?;
 
     Ok(Expression::Binary(BinaryExpression {
         kind: kind.clone(),
@@ -1124,7 +1124,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             else_expr,
             _type,
         }) => {
-            let typed_condition = typecheck_and_convert(condition)?;
+            let typed_condition = typecheck_scalar(condition)?;
 
             let typed_then_expr = typecheck_and_convert(then_expr)?;
             let typed_else_expr = typecheck_and_convert(else_expr)?;
@@ -1558,5 +1558,15 @@ fn typecheck_scalar(e: &Expression) -> Result<Expression> {
         Ok(typechecked_expr)
     } else {
         bail!("Non-scalar expression used where scalar expression expected");
+    }
+}
+
+fn optionally_typecheck_scalar(e: &Option<Expression>) -> Result<Option<Expression>> {
+    match e {
+        Some(expr) => {
+            let typechecked_expr = typecheck_scalar(expr)?;
+            Ok(Some(typechecked_expr))
+        }
+        None => Ok(None),
     }
 }
