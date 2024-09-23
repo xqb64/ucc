@@ -438,6 +438,17 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                 target: e2_label.clone(),
             });
 
+            if get_type(e) == &Type::Void {
+                emit_tacky_and_convert(&then_expr, instructions);
+                instructions.extend(vec![
+                    IRInstruction::Jump(end_label.clone()),
+                    IRInstruction::Label(e2_label.clone()),
+                ]);
+                emit_tacky_and_convert(&else_expr, instructions);
+                instructions.push(IRInstruction::Label(end_label));
+                return ExpResult::PlainOperand(IRValue::Var("DUMMY".to_owned()));
+            }
+
             let e1 = emit_tacky_and_convert(then_expr, instructions);
 
             instructions.push(IRInstruction::Copy {
