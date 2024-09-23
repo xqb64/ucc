@@ -605,8 +605,6 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             ExpResult::PlainOperand(IRValue::Var(var_name))
         }
         Expression::Sizeof(SizeofExpression { expr, _type }) => {
-            println!("type of expr is {:?}", get_type(&expr));
-            println!("type is {:?}", _type);
             ExpResult::PlainOperand(IRValue::Constant(Const::ULong(get_size_of_type(get_type(&expr)) as u64)))
         }
         Expression::SizeofT(SizeofTExpression { t, _type }) => {
@@ -666,7 +664,6 @@ fn emit_compound_init(
     match value {
         Initializer::Single(_, Expression::String(string_expr)) => {
             if let Type::Array { element: _, size } = inited_type {
-                println!("hererereerre");
                 let str_bytes = string_expr.value.as_bytes();
                 let padding_sz = size.saturating_sub(str_bytes.len());
 
@@ -1110,8 +1107,6 @@ impl Irfy for VariableDeclaration {
             );
         } else if let Some(Initializer::Single(_, init)) = &self.init {
             let result = emit_tacky_and_convert(init, &mut instructions);
-            println!("src is {:?}", result);
-            println!("dst is {:?}", self.name);
             instructions.push(IRInstruction::Copy {
                 src: result,
                 dst: IRValue::Var(self.name.clone()),

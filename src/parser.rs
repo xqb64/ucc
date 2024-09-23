@@ -430,7 +430,6 @@ impl Parser {
                     || sorted_specifiers.contains(&Token::Void)
                     || (sorted_specifiers.contains(&Token::Signed) && sorted_specifiers.contains(&Token::Unsigned))
                 {
-                    println!("sorted_specifiers: {:?}", sorted_specifiers);
                     bail!("Invalid type specifier");
                 } else if sorted_specifiers.contains(&Token::Unsigned)
                     && sorted_specifiers.contains(&Token::Long)
@@ -836,7 +835,6 @@ impl Parser {
             }));
         } else {
             let next_three_tokens = self.peek(3);
-            println!("next_three_tokens: {:?}", next_three_tokens);
             match next_three_tokens.as_slice() {
                 [Token::Sizeof, Token::LParen, _] => {
                     if self.is_type_specifier(next_three_tokens.last().unwrap()) {
@@ -858,7 +856,6 @@ impl Parser {
                 }
                 [Token::LParen, _, _] => {
                     if self.is_type_specifier(&next_three_tokens[1]) {
-                        println!("also here");
                         self.consume(&Token::LParen)?;
                         let base_type = self.parse_type_name()?;
                         self.consume(&Token::RParen)?;

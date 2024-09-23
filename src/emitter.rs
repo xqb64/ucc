@@ -208,7 +208,6 @@ impl Emit for AsmInstruction {
                     (AsmType::Longword, AsmType::Byte) => "lb",
                     (AsmType::Byte, AsmType::Double) => "lq",
                     _ => {
-                        println!("src_type: {:?}, dst_type: {:?}", src_type, dst_type);
                         todo!()
                     },
                 };

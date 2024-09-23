@@ -1138,7 +1138,6 @@ impl Codegen for IRInstruction {
             }
             IRInstruction::UIntToDouble { src, dst } => {
                 let src_type = get_asm_type(src);
-                println!("src_type: {:?}", src_type);
                 match src_type {
                     AsmType::Byte => AsmNode::Instructions(vec![
                         AsmInstruction::MovZeroExtend {
@@ -2571,7 +2570,6 @@ impl Fixup for AsmFunction {
                     operand,
                     asm_type: _,
                 } => {
-                    println!("HEREEEEEEEEEEEE");
                     if let AsmOperand::Imm(konst) = operand {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
@@ -3297,8 +3295,6 @@ fn get_asm_type(value: &IRValue) -> AsmType {
 }
 
 pub fn build_asm_symbol_table() {
-    println!("SYMBOL_TABLE: {:?}", SYMBOL_TABLE.lock().unwrap());
-
     let frontend_symtab = SYMBOL_TABLE.lock().unwrap();
     let mut asm_symbol_table = ASM_SYMBOL_TABLE.lock().unwrap();
 
@@ -3342,8 +3338,6 @@ pub fn build_asm_symbol_table() {
                         alignment: get_alignment_of_type(&symbol._type),
                     },
                     _ => {
-                        println!("got symbol: {:?}", symbol);
-                        println!("got type: {:?}", symbol._type);
                         panic!("Unsupported type for static backend_symtab: {}", identifier);
                     }
                 };

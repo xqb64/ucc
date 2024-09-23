@@ -829,10 +829,6 @@ fn typecheck_multiplicative(
         let converted_lhs = convert_to(&typed_lhs, &common_type);
         let converted_rhs = convert_to(&typed_rhs, &common_type);
 
-        println!("common type: {:?}", common_type);
-        println!("lhs: {:?}", converted_lhs);
-        println!("rhs: {:?}", converted_rhs);
-
         match kind {
             BinaryExpressionKind::Rem if common_type == &Type::Double => {
                 bail!("remainder operator cannot be applied to floating-point types");

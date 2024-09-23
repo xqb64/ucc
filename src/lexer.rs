@@ -166,12 +166,9 @@ impl Iterator for Lexer {
                 .chars()
                 .for_each(|ch| result.push(ch));
 
-            println!("result: {}, result.len(): {}", result, result.len());
-            
             Token::StringLiteral(result.to_string()) 
         } else if let Some(m) = self.char_const_re.find(src) {
             self.pos += m.as_str().len();
-            println!("m: {}", m.as_str());
             let ch = &m.as_str()[1..m.as_str().len() - 1];
             let ch = match ch {
                 r"\a" => '\x07',
@@ -186,12 +183,9 @@ impl Iterator for Lexer {
                 r"\\" => '\x5c',
                 r"\?" => '\x3f',
                 _ => {
-                    println!("no no");
                     ch.parse().unwrap()
                 }
             };
-            let byte = ch as u8;
-            println!("ch: {}", byte);
             Token::CharLiteral(ch)
         } else {
             if src.is_empty() {
