@@ -3262,7 +3262,6 @@ fn get_asm_type(value: &IRValue) -> AsmType {
             Const::UInt(_) => AsmType::Longword,
             Const::ULong(_) => AsmType::Quadword,
             Const::Double(_) => AsmType::Double,
-            _ => todo!(),
         },
         IRValue::Var(var_name) => {
             let _type = SYMBOL_TABLE

@@ -271,7 +271,7 @@ impl Resolve for ExpressionStatement {
 
 impl Resolve for ReturnStatement {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>) -> Result<&mut Self> {
-        self.expr = resolve_exp(&self.expr, variable_map)?;
+        self.expr = Some(resolve_exp(&self.expr.as_ref().unwrap(), variable_map)?);
         Ok(self)
     }
 }
@@ -495,6 +495,7 @@ fn resolve_exp(
             value,
             _type,
         })),
+        _ => todo!(),
     }
 }
 

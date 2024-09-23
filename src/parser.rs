@@ -70,6 +70,7 @@ impl Parser {
             Token::Double,
             Token::Signed,
             Token::Unsigned,
+            Token::Void,
             Token::Static,
             Token::Extern,
         ]) {
@@ -103,7 +104,7 @@ impl Parser {
     fn is_type_specifier(&self, token: &Token) -> bool {
         matches!(
             token,
-            Token::Int | Token::Long | Token::Char | Token::Unsigned | Token::Signed | Token::Double
+            Token::Int | Token::Long | Token::Char | Token::Unsigned | Token::Signed | Token::Double | Token::Void
         )
     }
 
@@ -414,6 +415,7 @@ impl Parser {
         sorted_specifiers.sort();
     
         match &sorted_specifiers[..] {
+            [Token::Void] => Ok(Type::Void),
             [Token::Double] => Ok(Type::Double),
             [Token::Char] => Ok(Type::Char),
             [Token::Char, Token::Signed] => Ok(Type::SChar),
@@ -425,8 +427,10 @@ impl Parser {
                     || unique_specifiers.len() != sorted_specifiers.len()
                     || sorted_specifiers.contains(&Token::Double)
                     || sorted_specifiers.contains(&Token::Char)
+                    || sorted_specifiers.contains(&Token::Void)
                     || (sorted_specifiers.contains(&Token::Signed) && sorted_specifiers.contains(&Token::Unsigned))
                 {
+                    println!("sorted_specifiers: {:?}", sorted_specifiers);
                     bail!("Invalid type specifier");
                 } else if sorted_specifiers.contains(&Token::Unsigned)
                     && sorted_specifiers.contains(&Token::Long)
@@ -626,8 +630,13 @@ impl Parser {
     }
 
     fn parse_return_statement(&mut self) -> Result<BlockItem> {
-        let expr = self.parse_expression()?;
-        self.consume(&Token::Semicolon)?;
+        let expr = if self.is_next(&[Token::Semicolon]) {
+            None
+        } else {
+            let expr = Some(self.parse_expression()?);
+            self.consume(&Token::Semicolon)?;
+            expr
+        };
         Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
             expr,
             target_type: self.current_target_type.clone(),
@@ -652,7 +661,7 @@ impl Parser {
     }
 
     fn conditional(&mut self) -> Result<Expression> {
-        let result = self.or()?;
+        let mut result = self.or()?;
         if self.is_next(&[Token::QuestionMark]) {
             let then_expr = self.parse_expression()?;
 
@@ -663,15 +672,14 @@ impl Parser {
 
             self.consume(&Token::Colon)?;
             let else_expr = self.parse_expression()?;
-            Ok(Expression::Conditional(ConditionalExpression {
+            result = Expression::Conditional(ConditionalExpression {
                 condition: result.into(),
                 then_expr: then_expr.into(),
                 else_expr: else_expr.into(),
                 _type: Type::Dummy,
-            }))
-        } else {
-            Ok(result)
-        }
+            });
+        } 
+        Ok(result)
     }
 
     fn or(&mut self) -> Result<Expression> {
@@ -844,9 +852,34 @@ impl Parser {
                 expr: expr.into(),
                 _type: Type::Dummy,
             }));
+        } else if self.is_next(&[Token::Sizeof]) {
+            if self.is_next(&[Token::LParen]) {
+                if self.is_type_specifier(self.current.as_ref().unwrap()) {
+                    let type_name = self.parse_type_name()?;
+                    self.consume(&Token::RParen)?;
+                    return Ok(Expression::SizeofT(type_name));
+                } else {
+                    return Ok(Expression::Sizeof(self.parse_grouping()?.into()));
+                }
+            } else {
+                let expr = self.unary()?;
+                return Ok(Expression::Sizeof(expr.into()));
+            }
         }
 
         self.call()
+    }
+
+    fn parse_type_name(&mut self) -> Result<Type> {
+        let specifier_list = self.consume_while_type_specifier();
+        let base_type = self.parse_type(specifier_list)?;
+        match self.current.as_ref().unwrap() {
+            Token::RParen => Ok(base_type),
+            _ => {
+                let decl = self.parse_abstract_declarator().unwrap();
+                Ok(self.process_abstract_declarator(&decl, &base_type))
+            }
+        }
     }
 
     fn lookahead_until(&mut self, token: &Token) -> Vec<Token> {
@@ -1084,6 +1117,7 @@ pub enum Type {
     Char,
     SChar,
     UChar,
+    Void,
     Dummy,
 }
 
@@ -1125,7 +1159,7 @@ pub enum StorageClass {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnStatement {
-    pub expr: Expression,
+    pub expr: Option<Expression>,
     pub target_type: Option<Type>,
 }
 
@@ -1200,6 +1234,8 @@ pub enum Expression {
     Deref(DerefExpression),
     AddrOf(AddrOfExpression),
     Subscript(SubscriptExpression),
+    Sizeof(Box<Expression>),
+    SizeofT(Type),
 }
 
 #[derive(Debug, Clone, PartialEq)]

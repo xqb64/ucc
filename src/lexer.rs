@@ -22,7 +22,7 @@ impl Lexer {
             punctuation_re: Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\]]").unwrap(),
             punctuation_double_re: Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\|").unwrap(),
             keyword_re: Regex::new(
-                r"^int\b|^long\b|^char\b|^signed\b|^unsigned\b|^double\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b|^static\b|^extern\b",
+                r"^int\b|^long\b|^char\b|^signed\b|^unsigned\b|^double\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b|^static\b|^extern\b|^sizeof\b",
             )
             .unwrap(),
             constant_re: Regex::new(r"^[0-9]+(?P<suffix>[lL]?[uU]?|[uU]?[lL]?)\b").unwrap(),
@@ -114,6 +114,7 @@ impl Iterator for Lexer {
                 "continue" => Token::Continue,
                 "static" => Token::Static,
                 "extern" => Token::Extern,
+                "sizeof" => Token::Sizeof,
                 _ => unreachable!(),
             }
         } else if let Some(m) = self.double_constant_re.find(src) {
@@ -222,6 +223,7 @@ pub enum Token {
     Continue,
     Static,
     Extern,
+    Sizeof,
     LParen,
     RParen,
     LBrace,

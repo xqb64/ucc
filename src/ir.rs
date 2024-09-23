@@ -589,6 +589,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
 
             ExpResult::PlainOperand(IRValue::Var(var_name))
         }
+        _ => todo!(),
     }
 }
 
@@ -1024,7 +1025,7 @@ impl Irfy for ForInit {
 impl Irfy for ReturnStatement {
     fn irfy(&self) -> Option<IRNode> {
         let mut instructions = vec![];
-        let result = emit_tacky_and_convert(&self.expr, &mut instructions);
+        let result = emit_tacky_and_convert(&self.expr.as_ref().unwrap(), &mut instructions);
         instructions.push(IRInstruction::Ret(result));
         Some(IRNode::Instructions(instructions))
     }

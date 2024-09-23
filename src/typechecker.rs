@@ -534,8 +534,8 @@ impl Typecheck for Statement {
                 Ok(self)
             }
             Statement::Return(ReturnStatement { expr, target_type }) => {
-                *expr = typecheck_and_convert(expr)?;
-                *expr = convert_by_assignment(&expr, target_type.as_ref().unwrap_or(&Type::Int))?;
+                *expr = Some(typecheck_and_convert(expr.as_ref().unwrap())?);
+                *expr = Some(convert_by_assignment(&expr.as_ref().unwrap(), target_type.as_ref().unwrap_or(&Type::Int))?);
                 Ok(self)
             }
             Statement::Break(_) | Statement::Continue(_) | Statement::Null => Ok(self),
@@ -1392,6 +1392,7 @@ pub fn get_type(e: &Expression) -> &Type {
         Expression::Literal(literal) => &literal._type,
         Expression::Subscript(subscript) => &subscript._type,
         Expression::String(string) => &string._type,
+        _ => todo!(),
     }
 }
 
