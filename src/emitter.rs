@@ -67,7 +67,7 @@ impl Emit for AsmStaticVariable {
         if self.global {
             writeln!(f, "\t.globl {}", self.name)?;
         }
-    
+
         writeln!(f, "\t.balign {}", self.alignment)?;
 
         writeln!(f, "{}:", self.name)?;
@@ -198,7 +198,12 @@ impl Emit for AsmInstruction {
                 dst.emit(f, asm_type)?;
                 writeln!(f)?;
             }
-            AsmInstruction::Movsx { src_type, src, dst_type, dst } => {
+            AsmInstruction::Movsx {
+                src_type,
+                src,
+                dst_type,
+                dst,
+            } => {
                 let suffix = match (&src_type, &dst_type) {
                     (AsmType::Longword, AsmType::Quadword) => "lq",
                     (AsmType::Quadword, AsmType::Longword) => "ql",
@@ -209,9 +214,9 @@ impl Emit for AsmInstruction {
                     (AsmType::Byte, AsmType::Double) => "lq",
                     _ => {
                         todo!()
-                    },
+                    }
                 };
-                
+
                 write!(f, "movs{} ", suffix)?;
                 src.emit(f, src_type)?;
                 write!(f, ", ")?;
@@ -415,7 +420,12 @@ impl Emit for AsmInstruction {
                 operand.emit(f, &mut AsmType::Quadword)?;
                 writeln!(f)?;
             }
-            AsmInstruction::MovZeroExtend { src_type, src, dst_type, dst } => {
+            AsmInstruction::MovZeroExtend {
+                src_type,
+                src,
+                dst_type,
+                dst,
+            } => {
                 let suffix = match (&src_type, &dst_type) {
                     (AsmType::Longword, AsmType::Longword) => "l",
                     (AsmType::Byte, AsmType::Longword) => "zbl",
@@ -430,7 +440,7 @@ impl Emit for AsmInstruction {
                 write!(f, ", ")?;
                 dst.emit(f, dst_type)?;
                 writeln!(f)?;
-            },
+            }
             AsmInstruction::Cvtsi2sd { asm_type, src, dst } => {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
@@ -593,16 +603,17 @@ fn escape(s: &str) -> String {
         match c.chars().next().unwrap() {
             '\x07' => format!("\\{:03o}", 0x07), // Bell
             '\x08' => format!("\\{:03o}", 0x08), // Backspace
-            '\t'   => format!("\\{:03o}", 0x09), // Horizontal Tab
-            '\n'   => format!("\\{:03o}", 0x0A), // Line Feed
+            '\t' => format!("\\{:03o}", 0x09),   // Horizontal Tab
+            '\n' => format!("\\{:03o}", 0x0A),   // Line Feed
             '\x0B' => format!("\\{:03o}", 0x0B), // Vertical Tab
             '\x0C' => format!("\\{:03o}", 0x0C), // Form Feed
-            '\r'   => format!("\\{:03o}", 0x0D), // Carriage Return
-            '\\'   => format!("\\{:03o}", 0x5C), // Backslash
-            '\''   => format!("\\{:03o}", 0x27), // Single Quote
-            '"'    => format!("\\{:03o}", 0x22), // Double Quote
-            '?'    => format!("\\{:03o}", 0x3F), // Question Mark
-            _      => c.to_string(),
+            '\r' => format!("\\{:03o}", 0x0D),   // Carriage Return
+            '\\' => format!("\\{:03o}", 0x5C),   // Backslash
+            '\'' => format!("\\{:03o}", 0x27),   // Single Quote
+            '"' => format!("\\{:03o}", 0x22),    // Double Quote
+            '?' => format!("\\{:03o}", 0x3F),    // Question Mark
+            _ => c.to_string(),
         }
-    }).to_string()
+    })
+    .to_string()
 }

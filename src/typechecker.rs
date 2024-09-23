@@ -1,7 +1,13 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem,
+        BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression,
+        Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit,
+        ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement,
+        ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
+        StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind,
+        VariableDeclaration, VariableExpression, WhileStatement,
     },
 };
 use anyhow::{bail, Result};
@@ -300,10 +306,14 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
 
                 let len_diff = size - string_expr.value.len();
                 match len_diff {
-                    0 => Ok(vec![StaticInit::String(string_expr.value.to_owned(), false)]),
+                    0 => Ok(vec![StaticInit::String(
+                        string_expr.value.to_owned(),
+                        false,
+                    )]),
                     1 => Ok(vec![StaticInit::String(string_expr.value.to_owned(), true)]),
                     n if n > 0 => {
-                        let mut initializers = vec![StaticInit::String(string_expr.value.to_owned(), true)];
+                        let mut initializers =
+                            vec![StaticInit::String(string_expr.value.to_owned(), true)];
                         initializers.push(StaticInit::Zero((n - 1) as usize));
                         Ok(initializers)
                     }
@@ -320,17 +330,29 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                     element: Box::new(Type::Char),
                     size: string_expr.value.len() + 1,
                 },
-                attrs: IdentifierAttrs::ConstantAttr(StaticInit::String(string_expr.value.to_owned(), true))
-            }; 
+                attrs: IdentifierAttrs::ConstantAttr(StaticInit::String(
+                    string_expr.value.to_owned(),
+                    true,
+                )),
+            };
 
-            SYMBOL_TABLE.lock().unwrap().insert(string_name.clone(), string_symbol);
+            SYMBOL_TABLE
+                .lock()
+                .unwrap()
+                .insert(string_name.clone(), string_symbol);
 
             let ptr_symbol = Symbol {
                 _type: Type::Pointer(Box::new(Type::Char)),
-                attrs: IdentifierAttrs::StaticAttr { initial_value: InitialValue::Initial(vec![StaticInit::Pointer(string_name)]), global: false }
+                attrs: IdentifierAttrs::StaticAttr {
+                    initial_value: InitialValue::Initial(vec![StaticInit::Pointer(string_name)]),
+                    global: false,
+                },
             };
 
-            SYMBOL_TABLE.lock().unwrap().insert(name.clone(), ptr_symbol);
+            SYMBOL_TABLE
+                .lock()
+                .unwrap()
+                .insert(name.clone(), ptr_symbol);
 
             Ok(vec![])
         }
@@ -388,18 +410,23 @@ impl Typecheck for FunctionDeclaration {
             validate_type_specifier(&self._type)?;
         }
 
-        let adjust_param_type = |t: Type| -> Result<Type> { match t {
-            Type::Array { element, .. } => Ok(Type::Pointer(element)),
-            Type::Void => bail!("Function parameter has void type"),
-            t => Ok(t),
-        }};
+        let adjust_param_type = |t: Type| -> Result<Type> {
+            match t {
+                Type::Array { element, .. } => Ok(Type::Pointer(element)),
+                Type::Void => bail!("Function parameter has void type"),
+                t => Ok(t),
+            }
+        };
 
         let (param_ts, _, fun_type) = match self._type.clone() {
             Type::Func { params, ret } => {
                 if let Type::Array { .. } = *ret {
                     bail!("Function return type is an array");
                 }
-                let param_types: Vec<Type> = params.into_iter().map(adjust_param_type).collect::<Result<Vec<_>>>()?;
+                let param_types: Vec<Type> = params
+                    .into_iter()
+                    .map(adjust_param_type)
+                    .collect::<Result<Vec<_>>>()?;
                 (
                     param_types.clone(),
                     ret.clone(),
@@ -545,17 +572,26 @@ impl Typecheck for Statement {
 
                 Ok(self)
             }
-            Statement::Return(ReturnStatement { expr: Some(expression), target_type }) => {
+            Statement::Return(ReturnStatement {
+                expr: Some(expression),
+                target_type,
+            }) => {
                 if target_type == &Some(Type::Void) {
                     bail!("Return statement with expression in void function");
                 } else {
                     let typechecked_expr = typecheck_and_convert(expression)?;
-                    let converted_expr = convert_by_assignment(&typechecked_expr, target_type.as_ref().unwrap_or(&Type::Int))?;
+                    let converted_expr = convert_by_assignment(
+                        &typechecked_expr,
+                        target_type.as_ref().unwrap_or(&Type::Int),
+                    )?;
                     *expression = converted_expr;
                 }
                 Ok(self)
             }
-            Statement::Return(ReturnStatement { expr: None, target_type }) => {
+            Statement::Return(ReturnStatement {
+                expr: None,
+                target_type,
+            }) => {
                 if target_type == &Some(Type::Void) {
                     Ok(self)
                 } else {
@@ -592,7 +628,10 @@ fn optionally_typecheck_for_init(init: &mut ForInit) -> Result<ForInit> {
 
 fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer> {
     match (target_type, init) {
-        (Type::Array { element, size }, Initializer::Single(name, Expression::String(StringExpression { value, _type }))) => {
+        (
+            Type::Array { element, size },
+            Initializer::Single(name, Expression::String(StringExpression { value, _type })),
+        ) => {
             if !is_char_type(&element) {
                 bail!("Can't initialize array with non-char type");
             }
@@ -601,13 +640,19 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
                 bail!("String too long for array");
             }
 
-            Ok(Initializer::Single(name.to_owned(), Expression::String(StringExpression { value: value.clone(), _type: target_type.clone() } )))
+            Ok(Initializer::Single(
+                name.to_owned(),
+                Expression::String(StringExpression {
+                    value: value.clone(),
+                    _type: target_type.clone(),
+                }),
+            ))
         }
         (_, Initializer::Single(name, expr)) => {
             let typechecked_expr = typecheck_and_convert(expr)?;
             let converted_expr = convert_by_assignment(&typechecked_expr, target_type)?;
             Ok(Initializer::Single(name.clone(), converted_expr))
-        },
+        }
         (Type::Array { element, size }, Initializer::Compound(name, _type, inits)) => {
             if inits.len() > *size {
                 bail!("Too many initializers");
@@ -976,13 +1021,14 @@ fn typecheck_subscript(expr: &Expression, index: &Expression) -> Result<Expressi
     let t1 = get_type(&typed_e1);
     let t2 = get_type(&typed_e2);
 
-    let (ptr_type, converted_lhs, converted_rhs) = if is_ptr_to_complete(&t1) && is_integer_type(&t2) {
-        (t1, typed_e1.clone(), convert_to(&typed_e2, &Type::Long))
-    } else if is_ptr_to_complete(&t2) && is_integer_type(&t1) {
-        (t2, convert_to(&typed_e1, &Type::Long), typed_e2.clone())
-    } else {
-        bail!("Invalid operands for subscript");
-    };
+    let (ptr_type, converted_lhs, converted_rhs) =
+        if is_ptr_to_complete(&t1) && is_integer_type(&t2) {
+            (t1, typed_e1.clone(), convert_to(&typed_e2, &Type::Long))
+        } else if is_ptr_to_complete(&t2) && is_integer_type(&t1) {
+            (t2, convert_to(&typed_e1, &Type::Long), typed_e2.clone())
+        } else {
+            bail!("Invalid operands for subscript");
+        };
 
     let result_type = match ptr_type {
         Type::Pointer(ptr_type) => ptr_type,
@@ -1082,7 +1128,10 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             _type,
         }) => {
             match *lhs.clone() {
-                Expression::Variable(_) | Expression::Deref(_) | Expression::Subscript(_) | Expression::String(_) => {
+                Expression::Variable(_)
+                | Expression::Deref(_)
+                | Expression::Subscript(_)
+                | Expression::String(_) => {
                     let typed_lhs = typecheck_and_convert(lhs)?;
 
                     // if typed_lhs is not an lvalue
@@ -1260,7 +1309,10 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }
         }
         Expression::AddrOf(AddrOfExpression { expr, _type }) => match *expr.clone() {
-            Expression::Variable(_) | Expression::Deref(_) | Expression::Subscript(_) | Expression::String(_) => {
+            Expression::Variable(_)
+            | Expression::Deref(_)
+            | Expression::Subscript(_)
+            | Expression::String(_) => {
                 let typed_inner = typecheck_expr(expr)?;
                 let referenced_type = get_type(&typed_inner);
                 Ok(Expression::AddrOf(AddrOfExpression {
@@ -1278,7 +1330,10 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
         Expression::String(StringExpression { value, _type }) => {
             Ok(Expression::String(StringExpression {
                 value: value.clone(),
-                _type: Type::Array { element: Type::Char.into(), size: value.len() + 1 },
+                _type: Type::Array {
+                    element: Type::Char.into(),
+                    size: value.len() + 1,
+                },
             }))
         }
         Expression::SizeofT(SizeofTExpression { t, _type }) => {
@@ -1286,7 +1341,10 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             if !is_complete(t) {
                 bail!("Sizeof operator applied to incomplete type");
             }
-            Ok(Expression::SizeofT(SizeofTExpression { t: t.clone(), _type: Type::Ulong }))
+            Ok(Expression::SizeofT(SizeofTExpression {
+                t: t.clone(),
+                _type: Type::Ulong,
+            }))
         }
         Expression::Sizeof(SizeofExpression { expr, _type }) => {
             let typed_inner = typecheck_expr(expr)?;
@@ -1333,12 +1391,22 @@ fn convert_by_assignment(e: &Expression, target_type: &Type) -> Result<Expressio
 fn is_arithmetic(t: &Type) -> bool {
     matches!(
         t,
-        Type::Int | Type::Uint | Type::Long | Type::Ulong | Type::Double | Type::Char | Type::UChar | Type::SChar
+        Type::Int
+            | Type::Uint
+            | Type::Long
+            | Type::Ulong
+            | Type::Double
+            | Type::Char
+            | Type::UChar
+            | Type::SChar
     )
 }
 
 pub fn is_integer_type(t: &Type) -> bool {
-    matches!(t, Type::Int | Type::Uint | Type::Long | Type::Ulong | Type::Char | Type::UChar | Type::SChar)
+    matches!(
+        t,
+        Type::Int | Type::Uint | Type::Long | Type::Ulong | Type::Char | Type::UChar | Type::SChar
+    )
 }
 
 pub fn is_pointer_type(t: &Type) -> bool {
@@ -1349,7 +1417,12 @@ fn is_null_ptr_constant(e: &Expression) -> bool {
     match e {
         Expression::Constant(ConstantExpression { value, _type }) => matches!(
             value,
-            Const::Int(0) | Const::Long(0) | Const::UInt(0) | Const::ULong(0) | Const::Char(0) | Const::UChar(0)
+            Const::Int(0)
+                | Const::Long(0)
+                | Const::UInt(0)
+                | Const::ULong(0)
+                | Const::Char(0)
+                | Const::UChar(0)
         ),
         _ => false,
     }

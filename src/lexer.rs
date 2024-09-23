@@ -149,7 +149,7 @@ impl Iterator for Lexer {
         } else if let Some(m) = self.string_re.find(src) {
             self.pos += m.as_str().len();
             let s = m.as_str().trim_start_matches("\"").trim_end_matches("\"");
-            
+
             let mut result = String::new();
 
             s.replace(r"\a", "\x07")
@@ -166,7 +166,7 @@ impl Iterator for Lexer {
                 .chars()
                 .for_each(|ch| result.push(ch));
 
-            Token::StringLiteral(result.to_string()) 
+            Token::StringLiteral(result.to_string())
         } else if let Some(m) = self.char_const_re.find(src) {
             self.pos += m.as_str().len();
             let ch = &m.as_str()[1..m.as_str().len() - 1];
@@ -182,9 +182,7 @@ impl Iterator for Lexer {
                 r#"\""# => '\x22',
                 r"\\" => '\x5c',
                 r"\?" => '\x3f',
-                _ => {
-                    ch.parse().unwrap()
-                }
+                _ => ch.parse().unwrap(),
             };
             Token::CharLiteral(ch)
         } else {

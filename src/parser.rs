@@ -104,7 +104,13 @@ impl Parser {
     fn is_type_specifier(&self, token: &Token) -> bool {
         matches!(
             token,
-            Token::Int | Token::Long | Token::Char | Token::Unsigned | Token::Signed | Token::Double | Token::Void
+            Token::Int
+                | Token::Long
+                | Token::Char
+                | Token::Unsigned
+                | Token::Signed
+                | Token::Double
+                | Token::Void
         )
     }
 
@@ -408,12 +414,12 @@ impl Parser {
             },
         )))
     }
-    
+
     fn parse_type(&self, specifier_list: Vec<Token>) -> Result<Type> {
         // Sort specifiers
         let mut sorted_specifiers = specifier_list.clone();
         sorted_specifiers.sort();
-    
+
         match &sorted_specifiers[..] {
             [Token::Void] => Ok(Type::Void),
             [Token::Double] => Ok(Type::Double),
@@ -428,7 +434,8 @@ impl Parser {
                     || sorted_specifiers.contains(&Token::Double)
                     || sorted_specifiers.contains(&Token::Char)
                     || sorted_specifiers.contains(&Token::Void)
-                    || (sorted_specifiers.contains(&Token::Signed) && sorted_specifiers.contains(&Token::Unsigned))
+                    || (sorted_specifiers.contains(&Token::Signed)
+                        && sorted_specifiers.contains(&Token::Unsigned))
                 {
                     bail!("Invalid type specifier");
                 } else if sorted_specifiers.contains(&Token::Unsigned)
@@ -445,7 +452,7 @@ impl Parser {
             }
         }
     }
-    
+
     fn parse_type_and_storage_specifiers(
         &mut self,
         specifier_list: &[Token],
@@ -677,7 +684,7 @@ impl Parser {
                 else_expr: else_expr.into(),
                 _type: Type::Dummy,
             });
-        } 
+        }
         Ok(result)
     }
 
@@ -842,17 +849,26 @@ impl Parser {
                         self.consume(&Token::LParen)?;
                         let base_type = self.parse_type_name()?;
                         self.consume(&Token::RParen)?;
-                        return Ok(Expression::SizeofT(SizeofTExpression { t: base_type, _type: Type::Dummy }));
+                        return Ok(Expression::SizeofT(SizeofTExpression {
+                            t: base_type,
+                            _type: Type::Dummy,
+                        }));
                     } else {
                         self.consume(&Token::Sizeof)?;
                         let expr = self.unary()?;
-                        return Ok(Expression::Sizeof(SizeofExpression { expr: expr.into(), _type: Type::Dummy }));    
+                        return Ok(Expression::Sizeof(SizeofExpression {
+                            expr: expr.into(),
+                            _type: Type::Dummy,
+                        }));
                     }
                 }
                 [Token::Sizeof, _, _] => {
                     self.consume(&Token::Sizeof)?;
                     let expr = self.unary()?;
-                    return Ok(Expression::Sizeof(SizeofExpression { expr: expr.into(), _type: Type::Dummy }));
+                    return Ok(Expression::Sizeof(SizeofExpression {
+                        expr: expr.into(),
+                        _type: Type::Dummy,
+                    }));
                 }
                 [Token::LParen, _, _] => {
                     if self.is_type_specifier(&next_three_tokens[1]) {
@@ -869,7 +885,7 @@ impl Parser {
                 }
                 _ => {}
             }
-        } 
+        }
 
         self.call()
     }
@@ -1013,7 +1029,10 @@ impl Parser {
                 _ => unreachable!(),
             }
         }
-        Ok(Expression::String(StringExpression { value: s.to_owned(), _type: Type::Dummy }))
+        Ok(Expression::String(StringExpression {
+            value: s.to_owned(),
+            _type: Type::Dummy,
+        }))
     }
 
     fn parse_grouping(&mut self) -> Result<Expression> {

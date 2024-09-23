@@ -4,7 +4,13 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression, ProgramStatement, ReturnStatement, SizeofExpression, Statement, StorageClass, StringExpression, SubscriptExpression, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement,
+        BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement,
+        Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit,
+        ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression,
+        ProgramStatement, ReturnStatement, SizeofExpression, Statement, StorageClass,
+        StringExpression, SubscriptExpression, Type, UnaryExpression, VariableDeclaration,
+        VariableExpression, WhileStatement,
     },
 };
 
@@ -491,10 +497,9 @@ fn resolve_exp(
                 _type,
             }))
         }
-        Expression::String(StringExpression { value, _type }) => Ok(Expression::String(StringExpression {
-            value,
-            _type,
-        })),
+        Expression::String(StringExpression { value, _type }) => {
+            Ok(Expression::String(StringExpression { value, _type }))
+        }
         Expression::Sizeof(SizeofExpression { expr, _type }) => {
             let resolved_expr = resolve_exp(&expr, variable_map)?;
             Ok(Expression::Sizeof(SizeofExpression {

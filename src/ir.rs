@@ -1,7 +1,13 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem,
+        BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression,
+        ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression,
+        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer,
+        ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement,
+        StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind,
+        VariableDeclaration, WhileStatement,
     },
     typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
@@ -454,21 +460,21 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                     src: e1,
                     dst: result.clone(),
                 });
-    
+
                 instructions.push(IRInstruction::Jump(end_label.clone()));
-    
+
                 instructions.push(IRInstruction::Label(e2_label));
-    
+
                 let e2 = emit_tacky_and_convert(else_expr, instructions);
-    
+
                 instructions.push(IRInstruction::Copy {
                     src: e2,
                     dst: result.clone(),
                 });
-    
+
                 instructions.push(IRInstruction::Label(end_label));
-    
-                ExpResult::PlainOperand(result)    
+
+                ExpResult::PlainOperand(result)
             }
         }
         Expression::Call(CallExpression { name, args, _type }) => {
@@ -477,7 +483,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             } else {
                 Some(make_tacky_variable(_type))
             };
-            
+
             let mut arg_values = vec![];
 
             for arg in args {
@@ -503,7 +509,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             if target_type == inner_type || target_type == &Type::Void {
                 return ExpResult::PlainOperand(result);
             }
-            
+
             let dst = make_tacky_variable(target_type);
 
             match (target_type, &inner_type) {
@@ -604,9 +610,9 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
 
             ExpResult::PlainOperand(IRValue::Var(var_name))
         }
-        Expression::Sizeof(SizeofExpression { expr, _type }) => {
-            ExpResult::PlainOperand(IRValue::Constant(Const::ULong(get_size_of_type(get_type(&expr)) as u64)))
-        }
+        Expression::Sizeof(SizeofExpression { expr, _type }) => ExpResult::PlainOperand(
+            IRValue::Constant(Const::ULong(get_size_of_type(get_type(&expr)) as u64)),
+        ),
         Expression::SizeofT(SizeofTExpression { t, _type }) => {
             ExpResult::PlainOperand(IRValue::Constant(Const::ULong(get_size_of_type(t) as u64)))
         }
@@ -615,7 +621,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
 
 fn emit_string_init(dst: String, offset: usize, s: &[u8]) -> Vec<IRInstruction> {
     let len = s.len();
-    
+
     if len == 0 {
         return vec![];
     } else if len >= 8 {
