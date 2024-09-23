@@ -55,6 +55,11 @@ impl Typecheck for Declaration {
 
 impl Typecheck for VariableDeclaration {
     fn typecheck(&mut self) -> Result<&mut Self> {
+        if self._type == Type::Void {
+            bail!("Variable declared with void type");
+        } else {
+            validate_type_specifier(&self._type)?;
+        }
         match self.is_global {
             true => {
                 let default_init = if self.storage_class == Some(StorageClass::Extern) {
@@ -377,6 +382,12 @@ fn to_static_init(init: &Initializer, t: &Type) -> Result<InitialValue> {
 
 impl Typecheck for FunctionDeclaration {
     fn typecheck(&mut self) -> Result<&mut Self> {
+        if self._type == Type::Void {
+            bail!("Variable declared with void type");
+        } else {
+            validate_type_specifier(&self._type)?;
+        }
+
         let adjust_param_type = |t: Type| match t {
             Type::Array { element, .. } => Type::Pointer(element),
             t => t,
@@ -812,7 +823,7 @@ fn typecheck_multiplicative(
     let t1 = get_type(&typed_lhs);
     let t2 = get_type(&typed_rhs);
 
-    if is_arithmetic(&t1) || is_arithmetic(&t2) {
+    if is_arithmetic(&t1) && is_arithmetic(&t2) {
         let common_type = get_common_type(&t1, &t2);
         let converted_lhs = convert_to(&typed_lhs, &common_type);
         let converted_rhs = convert_to(&typed_rhs, &common_type);
@@ -944,22 +955,21 @@ fn typecheck_negate(expr: &Expression) -> Result<Expression> {
 
     let inner_t = get_type(&typed_expr);
 
-    match inner_t {
-        Type::Pointer(_) => bail!("can't negate a ptr"),
-        Type::Char | Type::UChar | Type::SChar => {
-            let typed_inner = convert_to(&typed_expr, &Type::Int);
-            Ok(Expression::Unary(UnaryExpression {
-                kind: UnaryExpressionKind::Negate,
-                expr: Box::new(typed_inner),
-                _type: Type::Int,
-            }))
+    let typed_expr = if is_arithmetic(inner_t) {
+        if is_char_type(inner_t) {
+            convert_to(&typed_expr, &Type::Int)
+        } else {
+            typed_expr.clone()
         }
-        _ => Ok(Expression::Unary(UnaryExpression {
-            kind: UnaryExpressionKind::Negate,
-            expr: Box::new(typed_expr.clone()),
-            _type: inner_t.to_owned(),
-        })),
-    }
+    } else {
+        bail!("Invalid operand for negation");
+    };
+
+    Ok(Expression::Unary(UnaryExpression {
+        kind: UnaryExpressionKind::Negate,
+        expr: Box::new(typed_expr),
+        _type: Type::Int,
+    }))
 }
 
 fn typecheck_subscript(expr: &Expression, index: &Expression) -> Result<Expression> {
