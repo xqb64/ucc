@@ -968,8 +968,8 @@ fn typecheck_negate(expr: &Expression) -> Result<Expression> {
 
     Ok(Expression::Unary(UnaryExpression {
         kind: UnaryExpressionKind::Negate,
-        expr: Box::new(typed_expr),
-        _type: Type::Int,
+        expr: Box::new(typed_expr.clone()),
+        _type: get_type(&typed_expr).to_owned(),
     }))
 }
 

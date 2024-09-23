@@ -518,25 +518,29 @@ impl Codegen for IRInstruction {
                 }
             }
             IRInstruction::Ret(value) => {
-                let asm_type = get_asm_type(value);
-                if asm_type == AsmType::Double {
-                    AsmNode::Instructions(vec![
-                        AsmInstruction::Mov {
-                            asm_type: AsmType::Double,
-                            src: value.codegen().into(),
-                            dst: AsmOperand::Register(AsmRegister::XMM0),
-                        },
-                        AsmInstruction::Ret,
-                    ])
+                if value.is_some() {
+                    let asm_type = get_asm_type(&value.clone().unwrap());
+                    if asm_type == AsmType::Double {
+                        AsmNode::Instructions(vec![
+                            AsmInstruction::Mov {
+                                asm_type: AsmType::Double,
+                                src: value.clone().unwrap().codegen().into(),
+                                dst: AsmOperand::Register(AsmRegister::XMM0),
+                            },
+                            AsmInstruction::Ret,
+                        ])
+                    } else {
+                        AsmNode::Instructions(vec![
+                            AsmInstruction::Mov {
+                                asm_type: get_asm_type(&value.clone().unwrap()),
+                                src: value.clone().unwrap().codegen().into(),
+                                dst: AsmOperand::Register(AsmRegister::AX),
+                            },
+                            AsmInstruction::Ret,
+                        ])
+                    }    
                 } else {
-                    AsmNode::Instructions(vec![
-                        AsmInstruction::Mov {
-                            asm_type: get_asm_type(value),
-                            src: value.codegen().into(),
-                            dst: AsmOperand::Register(AsmRegister::AX),
-                        },
-                        AsmInstruction::Ret,
-                    ])
+                    AsmNode::Instructions(vec![AsmInstruction::Ret])
                 }
             }
             IRInstruction::Binary { op, lhs, rhs, dst } => {
@@ -1087,21 +1091,24 @@ impl Codegen for IRInstruction {
                     instructions.push(AsmInstruction::DeallocateStack(bytes_to_remove));
                 }
 
-                let assembly_dst = dst.codegen().into();
-                let return_type = get_asm_type(dst);
-
-                if return_type == AsmType::Double {
-                    instructions.push(AsmInstruction::Mov {
-                        asm_type: AsmType::Double,
-                        src: AsmOperand::Register(AsmRegister::XMM0),
-                        dst: assembly_dst,
-                    });
-                } else {
-                    instructions.push(AsmInstruction::Mov {
-                        asm_type: return_type,
-                        src: AsmOperand::Register(AsmRegister::AX),
-                        dst: assembly_dst,
-                    });
+                if dst.is_some() {
+                    let dst = dst.clone().unwrap();
+                    let assembly_dst = dst.codegen().into();
+                    let return_type = get_asm_type(&dst);
+    
+                    if return_type == AsmType::Double {
+                        instructions.push(AsmInstruction::Mov {
+                            asm_type: AsmType::Double,
+                            src: AsmOperand::Register(AsmRegister::XMM0),
+                            dst: assembly_dst,
+                        });
+                    } else {
+                        instructions.push(AsmInstruction::Mov {
+                            asm_type: return_type,
+                            src: AsmOperand::Register(AsmRegister::AX),
+                            dst: assembly_dst,
+                        });
+                    }    
                 }
 
                 AsmNode::Instructions(instructions)
@@ -3290,6 +3297,8 @@ fn get_asm_type(value: &IRValue) -> AsmType {
 }
 
 pub fn build_asm_symbol_table() {
+    println!("SYMBOL_TABLE: {:?}", SYMBOL_TABLE.lock().unwrap());
+
     let frontend_symtab = SYMBOL_TABLE.lock().unwrap();
     let mut asm_symbol_table = ASM_SYMBOL_TABLE.lock().unwrap();
 
@@ -3333,6 +3342,8 @@ pub fn build_asm_symbol_table() {
                         alignment: get_alignment_of_type(&symbol._type),
                     },
                     _ => {
+                        println!("got symbol: {:?}", symbol);
+                        println!("got type: {:?}", symbol._type);
                         panic!("Unsupported type for static backend_symtab: {}", identifier);
                     }
                 };

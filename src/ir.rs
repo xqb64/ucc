@@ -1,7 +1,7 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, Statement, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
     },
     typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
@@ -72,7 +72,7 @@ pub enum IRInstruction {
     Call {
         target: String,
         args: Vec<IRValue>,
-        dst: IRValue,
+        dst: Option<IRValue>,
     },
     SignExtend {
         src: IRValue,
@@ -113,7 +113,7 @@ pub enum IRInstruction {
         dst: String,
         offset: usize,
     },
-    Ret(IRValue),
+    Ret(Option<IRValue>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -461,13 +461,17 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             ExpResult::PlainOperand(result)
         }
         Expression::Call(CallExpression { name, args, _type }) => {
+            let result = if _type == &Type::Void {
+                None
+            } else {
+                Some(make_tacky_variable(_type))
+            };
+            
             let mut arg_values = vec![];
 
             for arg in args {
                 arg_values.push(emit_tacky_and_convert(arg, instructions));
             }
-
-            let result = make_tacky_variable(_type);
 
             instructions.push(IRInstruction::Call {
                 target: name.to_owned(),
@@ -475,7 +479,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                 dst: result.clone(),
             });
 
-            ExpResult::PlainOperand(result)
+            ExpResult::PlainOperand(result.unwrap_or(IRValue::Var("DUMMY".to_owned())))
         }
         Expression::Cast(CastExpression {
             target_type,
@@ -485,7 +489,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             let result = emit_tacky_and_convert(expr, instructions);
             let inner_type = get_type(&expr);
 
-            if target_type == inner_type {
+            if target_type == inner_type || target_type == &Type::Void {
                 return ExpResult::PlainOperand(result);
             }
             
@@ -589,7 +593,12 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
 
             ExpResult::PlainOperand(IRValue::Var(var_name))
         }
-        _ => todo!(),
+        Expression::Sizeof(SizeofExpression { expr, _type }) => {
+            ExpResult::PlainOperand(IRValue::Constant(Const::ULong(get_size_of_type(get_type(&expr)) as u64)))
+        }
+        Expression::SizeofT(SizeofTExpression { t, _type }) => {
+            ExpResult::PlainOperand(IRValue::Constant(Const::ULong(get_size_of_type(t) as u64)))
+        }
     }
 }
 
@@ -1025,7 +1034,7 @@ impl Irfy for ForInit {
 impl Irfy for ReturnStatement {
     fn irfy(&self) -> Option<IRNode> {
         let mut instructions = vec![];
-        let result = emit_tacky_and_convert(&self.expr.as_ref().unwrap(), &mut instructions);
+        let result = optionally_emit_tacky_and_convert(&self.expr, &mut instructions);
         instructions.push(IRInstruction::Ret(result));
         Some(IRNode::Instructions(instructions))
     }
@@ -1063,7 +1072,7 @@ impl Irfy for FunctionDeclaration {
             instructions.extend::<Vec<IRInstruction>>(stmt.irfy().unwrap().into());
         }
 
-        instructions.push(IRInstruction::Ret(IRValue::Constant(Const::Int(0))));
+        instructions.push(IRInstruction::Ret(Some(IRValue::Constant(Const::Int(0)))));
 
         Some(IRNode::Function(IRFunction {
             name: self.name.clone(),
@@ -1186,4 +1195,14 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
         }
     }
     tacky_defs
+}
+
+fn optionally_emit_tacky_and_convert(
+    e: &Option<Expression>,
+    instructions: &mut Vec<IRInstruction>,
+) -> Option<IRValue> {
+    match e {
+        Some(expr) => Some(emit_tacky_and_convert(expr, instructions)),
+        None => None,
+    }
 }
