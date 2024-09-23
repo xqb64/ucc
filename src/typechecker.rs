@@ -1600,7 +1600,7 @@ fn is_ptr_to_complete(t: &Type) -> bool {
 
 fn validate_type_specifier(t: &Type) -> Result<()> {
     match t {
-        Type::Array { element, size } => {
+        Type::Array { element, size: _ } => {
             if !is_complete(&element) {
                 bail!("Incomplete type");
             }

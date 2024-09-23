@@ -1856,7 +1856,7 @@ impl Fixup for AsmFunction {
                     src,
                     dst,
                 } => match (&src, &dst) {
-                    (AsmOperand::Imm(imm), AsmOperand::Memory(_, _)) => {
+                    (AsmOperand::Imm(_), AsmOperand::Memory(_, _)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Quadword,
@@ -1870,7 +1870,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Imm(imm), AsmOperand::Data(_)) => {
+                    (AsmOperand::Imm(_), AsmOperand::Data(_)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Quadword,
@@ -1984,7 +1984,7 @@ impl Fixup for AsmFunction {
                             ]);
                         }
                     }
-                    (AsmOperand::Imm(imm), AsmOperand::Data(_)) => {
+                    (AsmOperand::Imm(_), AsmOperand::Data(_)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Longword,
@@ -2098,7 +2098,7 @@ impl Fixup for AsmFunction {
                             ]);
                         }
                     }
-                    (AsmOperand::Imm(imm), AsmOperand::Data(_)) => {
+                    (AsmOperand::Imm(_), AsmOperand::Data(_)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Byte,
@@ -2733,7 +2733,7 @@ impl Fixup for AsmFunction {
                 },
                 AsmInstruction::Cmp {
                     asm_type: AsmType::Double,
-                    lhs,
+                    lhs: _,
                     rhs: AsmOperand::Register(_),
                 } => instructions.push(instr.clone()),
                 AsmInstruction::Cmp {
@@ -3187,10 +3187,6 @@ impl Fixup for Vec<AsmInstruction> {
 
         instructions
     }
-}
-
-fn is_large(imm: &i64) -> bool {
-    *imm < i32::MIN as i64 || *imm > i32::MAX as i64
 }
 
 impl From<AsmNode> for AsmFunction {

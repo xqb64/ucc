@@ -1103,7 +1103,7 @@ impl Irfy for VariableDeclaration {
     fn irfy(&self) -> Option<IRNode> {
         let mut instructions = vec![];
 
-        if let Some(Initializer::Single(_, Expression::String(string_expr))) = &self.init {
+        if let Some(Initializer::Single(_, Expression::String(_))) = &self.init {
             emit_compound_init(
                 &self.name,
                 self.init.as_ref().unwrap(),
@@ -1117,7 +1117,7 @@ impl Irfy for VariableDeclaration {
                 src: result,
                 dst: IRValue::Var(self.name.clone()),
             });
-        } else if let Some(Initializer::Compound(_, _type, compound_init)) = &self.init {
+        } else if let Some(Initializer::Compound(_, _type, _)) = &self.init {
             emit_compound_init(
                 &self.name,
                 self.init.as_ref().unwrap(),
