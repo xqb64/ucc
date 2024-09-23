@@ -1,7 +1,7 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, Statement, StorageClass, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement
+        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement
     },
 };
 use anyhow::{bail, Result};
@@ -533,10 +533,22 @@ impl Typecheck for Statement {
 
                 Ok(self)
             }
-            Statement::Return(ReturnStatement { expr, target_type }) => {
-                *expr = Some(typecheck_and_convert(expr.as_ref().unwrap())?);
-                *expr = Some(convert_by_assignment(&expr.as_ref().unwrap(), target_type.as_ref().unwrap_or(&Type::Int))?);
+            Statement::Return(ReturnStatement { expr: Some(expression), target_type }) => {
+                if target_type == &Some(Type::Void) {
+                    bail!("Return statement with expression in void function");
+                } else {
+                    let typechecked_expr = typecheck_and_convert(expression)?;
+                    let converted_expr = convert_by_assignment(&typechecked_expr, target_type.as_ref().unwrap_or(&Type::Int))?;
+                    *expression = converted_expr;
+                }
                 Ok(self)
+            }
+            Statement::Return(ReturnStatement { expr: None, target_type }) => {
+                if target_type == &Some(Type::Void) {
+                    Ok(self)
+                } else {
+                    bail!("Return statement with no expression in non-void function");
+                }
             }
             Statement::Break(_) | Statement::Continue(_) | Statement::Null => Ok(self),
         }
@@ -727,7 +739,7 @@ fn typecheck_addition(lhs: &Expression, rhs: &Expression) -> Result<Expression> 
             rhs: Box::new(converted_rhs),
             _type: common_type.to_owned(),
         }))
-    } else if is_pointer_type(&get_type(&typed_lhs)) && is_integer_type(&get_type(&typed_rhs)) {
+    } else if is_ptr_to_complete(&get_type(&typed_lhs)) && is_integer_type(&get_type(&typed_rhs)) {
         let converted_rhs = convert_to(&typed_rhs, &Type::Long);
 
         Ok(Expression::Binary(BinaryExpression {
@@ -736,7 +748,7 @@ fn typecheck_addition(lhs: &Expression, rhs: &Expression) -> Result<Expression> 
             rhs: Box::new(converted_rhs),
             _type: get_type(&typed_lhs).to_owned(),
         }))
-    } else if is_pointer_type(&get_type(&typed_rhs)) && is_integer_type(&get_type(&typed_lhs)) {
+    } else if is_ptr_to_complete(&get_type(&typed_rhs)) && is_integer_type(&get_type(&typed_lhs)) {
         let converted_lhs = convert_to(&typed_lhs, &Type::Long);
 
         Ok(Expression::Binary(BinaryExpression {
@@ -768,7 +780,7 @@ fn typecheck_subtraction(lhs: &Expression, rhs: &Expression) -> Result<Expressio
             rhs: Box::new(converted_rhs),
             _type: common_type.to_owned(),
         }))
-    } else if is_pointer_type(&t1) && is_integer_type(&t2) {
+    } else if is_ptr_to_complete(&t1) && is_integer_type(&t2) {
         let converted_rhs = convert_to(&typed_rhs, &Type::Long);
 
         Ok(Expression::Binary(BinaryExpression {
@@ -777,7 +789,7 @@ fn typecheck_subtraction(lhs: &Expression, rhs: &Expression) -> Result<Expressio
             rhs: Box::new(converted_rhs),
             _type: t1.to_owned(),
         }))
-    } else if is_pointer_type(&t1) && get_type(&typed_lhs) == get_type(&typed_rhs) {
+    } else if is_ptr_to_complete(&t1) && get_type(&typed_lhs) == get_type(&typed_rhs) {
         Ok(Expression::Binary(BinaryExpression {
             kind: BinaryExpressionKind::Sub,
             lhs: Box::new(typed_lhs.clone()),
@@ -800,11 +812,7 @@ fn typecheck_multiplicative(
     let t1 = get_type(&typed_lhs);
     let t2 = get_type(&typed_rhs);
 
-    if is_pointer_type(&t1) || is_pointer_type(&t2) {
-        bail!(
-            "multiplication, division, and remainder operators cannot be applied to pointer types"
-        );
-    } else {
+    if is_arithmetic(&t1) || is_arithmetic(&t2) {
         let common_type = get_common_type(&t1, &t2);
         let converted_lhs = convert_to(&typed_lhs, &common_type);
         let converted_rhs = convert_to(&typed_rhs, &common_type);
@@ -827,6 +835,8 @@ fn typecheck_multiplicative(
             }
             _ => unreachable!(),
         }
+    } else {
+        bail!("Invalid operands for multiplication");
     }
 }
 
@@ -843,8 +853,10 @@ fn typecheck_equality(
 
     let common_type = if is_pointer_type(&t1) || is_pointer_type(&t2) {
         get_common_ptr_type(&typed_lhs, &typed_rhs)?
+    } else if is_arithmetic(t1) && is_arithmetic(t2) {
+        get_common_type(&t1, &t2).to_owned()
     } else {
-        get_common_type(&t1, &t2)
+        bail!("Invalid operands for equality operator");
     };
 
     let converted_lhs = convert_to(&typed_lhs, &common_type);
@@ -890,6 +902,10 @@ fn typecheck_relational(
 
 fn typecheck_not(expr: &Expression) -> Result<Expression> {
     let typed_expr = typecheck_and_convert(expr)?;
+
+    if !is_scalar(get_type(&typed_expr)) {
+        bail!("Invalid operand for logical not");
+    }
 
     Ok(Expression::Unary(UnaryExpression {
         kind: UnaryExpressionKind::Not,
@@ -953,9 +969,9 @@ fn typecheck_subscript(expr: &Expression, index: &Expression) -> Result<Expressi
     let t1 = get_type(&typed_e1);
     let t2 = get_type(&typed_e2);
 
-    let (ptr_type, converted_lhs, converted_rhs) = if is_pointer_type(&t1) && is_integer_type(&t2) {
+    let (ptr_type, converted_lhs, converted_rhs) = if is_ptr_to_complete(&t1) && is_integer_type(&t2) {
         (t1, typed_e1.clone(), convert_to(&typed_e2, &Type::Long))
-    } else if is_pointer_type(&t2) && is_integer_type(&t1) {
+    } else if is_ptr_to_complete(&t2) && is_integer_type(&t1) {
         (t2, convert_to(&typed_e1, &Type::Long), typed_e2.clone())
     } else {
         bail!("Invalid operands for subscript");
@@ -1102,16 +1118,21 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             let typed_then_expr = typecheck_and_convert(then_expr)?;
             let typed_else_expr = typecheck_and_convert(else_expr)?;
 
+            if !is_scalar(get_type(&typed_condition)) {
+                bail!("Non-scalar condition in conditional expression");
+            }
+
             let t1 = get_type(&typed_then_expr);
             let t2 = get_type(&typed_else_expr);
 
             let common_type = match (t1.clone(), t2.clone()) {
+                (Type::Void, Type::Void) => Type::Void,
                 (Type::Pointer(_), Type::Pointer(_)) => {
                     get_common_ptr_type(&typed_then_expr, &typed_else_expr)?
                 }
                 (Type::Pointer(_), _) => get_common_ptr_type(&typed_then_expr, &typed_else_expr)?,
                 (_, Type::Pointer(_)) => get_common_ptr_type(&typed_then_expr, &typed_else_expr)?,
-                _ => get_common_type(&t1, &t2),
+                _ => get_common_type(&t1, &t2).to_owned(),
             };
             let converted_then_expr = convert_to(&typed_then_expr, &common_type);
             let converted_else_expr = convert_to(&typed_else_expr, &common_type);
@@ -1189,6 +1210,22 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 }
             }
 
+            if target_type == &Type::Void {
+                return Ok(Expression::Cast(CastExpression {
+                    target_type: target_type.clone(),
+                    expr: Box::new(typed_inner),
+                    _type: target_type.clone(),
+                }));
+            }
+
+            if !is_scalar(target_type) {
+                bail!("Non-scalar type in cast (can only cast to scalar or void)");
+            }
+
+            if !is_scalar(t1) {
+                bail!("Cannot cast non-scalar expression to scalar type.")
+            }
+
             Ok(Expression::Cast(CastExpression {
                 target_type: target_type.clone(),
                 expr: Box::new(typed_inner),
@@ -1233,6 +1270,23 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _type: Type::Array { element: Type::Char.into(), size: value.len() + 1 },
             }))
         }
+        Expression::SizeofT(SizeofTExpression { t, _type }) => {
+            validate_type_specifier(t)?;
+            if !is_complete(t) {
+                bail!("Sizeof operator applied to incomplete type");
+            }
+            Ok(Expression::SizeofT(SizeofTExpression { t: t.clone(), _type: Type::Ulong }))
+        }
+        Expression::Sizeof(SizeofExpression { expr, _type }) => {
+            let typed_inner = typecheck_and_convert(expr)?;
+            if !is_complete(get_type(&typed_inner)) {
+                bail!("Sizeof operator applied to incomplete type");
+            }
+            Ok(Expression::Sizeof(SizeofExpression {
+                expr: Box::new(typed_inner),
+                _type: Type::Ulong,
+            }))
+        }
         _ => todo!(),
     }
 }
@@ -1255,6 +1309,10 @@ fn convert_by_assignment(e: &Expression, target_type: &Type) -> Result<Expressio
     } else if (is_arithmetic(&get_type(e)) && is_arithmetic(target_type))
         || (is_null_ptr_constant(e) && is_pointer_type(target_type))
     {
+        Ok(convert_to(e, target_type))
+    } else if target_type == &Type::Pointer(Type::Void.into()) && is_pointer_type(get_type(e)) {
+        Ok(convert_to(e, target_type))
+    } else if is_pointer_type(target_type) && get_type(e) == &Type::Pointer(Type::Void.into()) {
         Ok(convert_to(e, target_type))
     } else {
         bail!("cannot convert");
@@ -1286,16 +1344,20 @@ fn is_null_ptr_constant(e: &Expression) -> bool {
     }
 }
 
-fn get_common_ptr_type<'a>(e1: &'a Expression, e2: &'a Expression) -> Result<&'a Type> {
+fn get_common_ptr_type<'a>(e1: &'a Expression, e2: &'a Expression) -> Result<Type> {
     let e1_t = get_type(e1);
     let e2_t = get_type(e2);
 
     if e1_t == e2_t {
-        Ok(e1_t)
+        Ok(e1_t.to_owned())
     } else if is_null_ptr_constant(e1) {
-        Ok(e2_t)
+        Ok(e2_t.to_owned())
     } else if is_null_ptr_constant(e2) {
-        Ok(e1_t)
+        Ok(e1_t.to_owned())
+    } else if e1_t == &Type::Pointer(Type::Void.into()) && is_pointer_type(e2_t) {
+        Ok(Type::Pointer(Type::Void.into()))
+    } else if e2_t == &Type::Pointer(Type::Void.into()) && is_pointer_type(e1_t) {
+        Ok(Type::Pointer(Type::Void.into()))
     } else {
         bail!("Incompatible pointer types");
     }
@@ -1429,4 +1491,47 @@ pub enum StaticInit {
     String(String, bool),
     Pointer(String),
     Zero(usize),
+}
+
+fn is_scalar(t: &Type) -> bool {
+    match t {
+        Type::Void => false,
+        Type::Array { .. } => false,
+        Type::Func { .. } => false,
+        _ => true,
+    }
+}
+
+fn is_complete(t: &Type) -> bool {
+    t != &Type::Void
+}
+
+fn is_ptr_to_complete(t: &Type) -> bool {
+    match t {
+        Type::Pointer(inner) => is_complete(inner),
+        _ => false,
+    }
+}
+
+fn validate_type_specifier(t: &Type) -> Result<()> {
+    match t {
+        Type::Array { element, size } => {
+            if !is_complete(&element) {
+                bail!("Incomplete type");
+            }
+            validate_type_specifier(element)?;
+        }
+        Type::Pointer(referenced) => {
+            validate_type_specifier(&referenced)?;
+        }
+        Type::Func { params, ret } => {
+            for param in params {
+                validate_type_specifier(param)?;
+            }
+            validate_type_specifier(ret)?;
+        }
+        _ => {}
+    }
+
+    Ok(())
 }

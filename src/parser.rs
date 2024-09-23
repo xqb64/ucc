@@ -844,17 +844,17 @@ impl Parser {
                         self.consume(&Token::LParen)?;
                         let base_type = self.parse_type_name()?;
                         self.consume(&Token::RParen)?;
-                        return Ok(Expression::SizeofT(base_type));
+                        return Ok(Expression::SizeofT(SizeofTExpression { t: base_type, _type: Type::Dummy }));
                     } else {
                         self.consume(&Token::Sizeof)?;
                         let expr = self.unary()?;
-                        return Ok(Expression::Sizeof(expr.into()));    
+                        return Ok(Expression::Sizeof(SizeofExpression { expr: expr.into(), _type: Type::Dummy }));    
                     }
                 }
                 [Token::Sizeof, _, _] => {
                     self.consume(&Token::Sizeof)?;
                     let expr = self.unary()?;
-                    return Ok(Expression::Sizeof(expr.into()));
+                    return Ok(Expression::Sizeof(SizeofExpression { expr: expr.into(), _type: Type::Dummy }));
                 }
                 [Token::LParen, _, _] => {
                     if self.is_type_specifier(&next_three_tokens[1]) {
@@ -1241,8 +1241,20 @@ pub enum Expression {
     Deref(DerefExpression),
     AddrOf(AddrOfExpression),
     Subscript(SubscriptExpression),
-    Sizeof(Box<Expression>),
-    SizeofT(Type),
+    Sizeof(SizeofExpression),
+    SizeofT(SizeofTExpression),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SizeofExpression {
+    pub expr: Box<Expression>,
+    pub _type: Type,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SizeofTExpression {
+    pub t: Type,
+    pub _type: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
