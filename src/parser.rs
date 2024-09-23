@@ -800,6 +800,12 @@ impl Parser {
         Ok(result)
     }
 
+    fn peek(&self, n: usize) -> Vec<Token> {
+        let mut v = vec![self.current.clone().unwrap()];
+        v.extend(self.tokens.iter().take(n - 1).cloned().collect::<Vec<_>>());
+        v
+    }
+
     fn unary(&mut self) -> Result<Expression> {
         if self.is_next(&[Token::Hyphen, Token::Tilde, Token::Bang]) {
             let op = self.previous.clone().unwrap();
@@ -816,30 +822,6 @@ impl Parser {
                 },
                 _type: Type::Dummy,
             }));
-        } else if self.is_next(&[Token::LParen]) {
-            if self.is_type_specifier(self.current.as_ref().unwrap()) {
-                let mut specifier_list = vec![];
-                self.parse_specifier_list(&mut specifier_list)?;
-                let base_type = self.parse_type(specifier_list)?;
-                let target_type = match self.current.as_ref().unwrap() {
-                    Token::RParen => base_type.clone(),
-                    _ => {
-                        let decl = self.parse_abstract_declarator()?;
-                        self.process_abstract_declarator(&decl, &base_type)
-                    }
-                };
-                self.consume(&Token::RParen)?;
-                let inner_expr = self.unary()?;
-
-                return Ok(Expression::Cast(CastExpression {
-                    target_type,
-                    expr: inner_expr.into(),
-                    _type: Type::Dummy,
-                }));
-            } else {
-                let expr = self.parse_grouping()?;
-                return Ok(expr);
-            }
         } else if self.is_next(&[Token::Star]) {
             let expr = self.unary()?;
             return Ok(Expression::Deref(DerefExpression {
@@ -852,20 +834,45 @@ impl Parser {
                 expr: expr.into(),
                 _type: Type::Dummy,
             }));
-        } else if self.is_next(&[Token::Sizeof]) {
-            if self.is_next(&[Token::LParen]) {
-                if self.is_type_specifier(self.current.as_ref().unwrap()) {
-                    let type_name = self.parse_type_name()?;
-                    self.consume(&Token::RParen)?;
-                    return Ok(Expression::SizeofT(type_name));
-                } else {
-                    return Ok(Expression::Sizeof(self.parse_grouping()?.into()));
+        } else {
+            let next_three_tokens = self.peek(3);
+            println!("next_three_tokens: {:?}", next_three_tokens);
+            match next_three_tokens.as_slice() {
+                [Token::Sizeof, Token::LParen, _] => {
+                    if self.is_type_specifier(next_three_tokens.last().unwrap()) {
+                        self.consume(&Token::Sizeof)?;
+                        self.consume(&Token::LParen)?;
+                        let base_type = self.parse_type_name()?;
+                        self.consume(&Token::RParen)?;
+                        return Ok(Expression::SizeofT(base_type));
+                    } else {
+                        self.consume(&Token::Sizeof)?;
+                        let expr = self.unary()?;
+                        return Ok(Expression::Sizeof(expr.into()));    
+                    }
                 }
-            } else {
-                let expr = self.unary()?;
-                return Ok(Expression::Sizeof(expr.into()));
+                [Token::Sizeof, _, _] => {
+                    self.consume(&Token::Sizeof)?;
+                    let expr = self.unary()?;
+                    return Ok(Expression::Sizeof(expr.into()));
+                }
+                [Token::LParen, _, _] => {
+                    if self.is_type_specifier(&next_three_tokens[1]) {
+                        println!("also here");
+                        self.consume(&Token::LParen)?;
+                        let base_type = self.parse_type_name()?;
+                        self.consume(&Token::RParen)?;
+                        let expr = self.unary()?;
+                        return Ok(Expression::Cast(CastExpression {
+                            target_type: base_type,
+                            expr: expr.into(),
+                            _type: Type::Dummy,
+                        }));
+                    }
+                }
+                _ => {}
             }
-        }
+        } 
 
         self.call()
     }
