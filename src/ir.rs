@@ -427,8 +427,6 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
         }) => {
             let tmp = make_temporary();
 
-            let result = make_tacky_variable(_type);
-
             let e2_label = format!("Cond.{}.else", tmp);
             let end_label = format!("Cond.{}.end", tmp);
             let condition = emit_tacky_and_convert(condition, instructions);
@@ -447,29 +445,31 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                 emit_tacky_and_convert(&else_expr, instructions);
                 instructions.push(IRInstruction::Label(end_label));
                 return ExpResult::PlainOperand(IRValue::Var("DUMMY".to_owned()));
+            } else {
+                let result = make_tacky_variable(_type);
+
+                let e1 = emit_tacky_and_convert(then_expr, instructions);
+
+                instructions.push(IRInstruction::Copy {
+                    src: e1,
+                    dst: result.clone(),
+                });
+    
+                instructions.push(IRInstruction::Jump(end_label.clone()));
+    
+                instructions.push(IRInstruction::Label(e2_label));
+    
+                let e2 = emit_tacky_and_convert(else_expr, instructions);
+    
+                instructions.push(IRInstruction::Copy {
+                    src: e2,
+                    dst: result.clone(),
+                });
+    
+                instructions.push(IRInstruction::Label(end_label));
+    
+                ExpResult::PlainOperand(result)    
             }
-
-            let e1 = emit_tacky_and_convert(then_expr, instructions);
-
-            instructions.push(IRInstruction::Copy {
-                src: e1,
-                dst: result.clone(),
-            });
-
-            instructions.push(IRInstruction::Jump(end_label.clone()));
-
-            instructions.push(IRInstruction::Label(e2_label));
-
-            let e2 = emit_tacky_and_convert(else_expr, instructions);
-
-            instructions.push(IRInstruction::Copy {
-                src: e2,
-                dst: result.clone(),
-            });
-
-            instructions.push(IRInstruction::Label(end_label));
-
-            ExpResult::PlainOperand(result)
         }
         Expression::Call(CallExpression { name, args, _type }) => {
             let result = if _type == &Type::Void {
