@@ -388,17 +388,18 @@ impl Typecheck for FunctionDeclaration {
             validate_type_specifier(&self._type)?;
         }
 
-        let adjust_param_type = |t: Type| match t {
-            Type::Array { element, .. } => Type::Pointer(element),
-            t => t,
-        };
+        let adjust_param_type = |t: Type| -> Result<Type> { match t {
+            Type::Array { element, .. } => Ok(Type::Pointer(element)),
+            Type::Void => bail!("Function parameter has void type"),
+            t => Ok(t),
+        }};
 
         let (param_ts, _, fun_type) = match self._type.clone() {
             Type::Func { params, ret } => {
                 if let Type::Array { .. } = *ret {
                     bail!("Function return type is an array");
                 }
-                let param_types: Vec<Type> = params.into_iter().map(adjust_param_type).collect();
+                let param_types: Vec<Type> = params.into_iter().map(adjust_param_type).collect::<Result<Vec<_>>>()?;
                 (
                     param_types.clone(),
                     ret.clone(),
