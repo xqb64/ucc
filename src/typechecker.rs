@@ -1251,6 +1251,9 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
             match inner_type {
                 Type::Pointer(inner_type) => {
+                    if inner_type == &Type::Void.into() {
+                        bail!("Dereference of void pointer");
+                    }
                     let deref_expr = Expression::Deref(DerefExpression {
                         expr: Box::new(typed_inner.to_owned()),
                         _type: *inner_type.to_owned(),
