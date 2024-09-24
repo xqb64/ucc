@@ -161,7 +161,7 @@ fn emit_tacky_and_convert(e: &Expression, instructions: &mut Vec<IRInstruction>)
     match result {
         ExpResult::PlainOperand(val) => val,
         ExpResult::DereferencedPointer(ptr) => {
-            let dst = make_tacky_variable(get_type(&e));
+            let dst = make_tacky_variable(get_type(e));
             instructions.push(IRInstruction::Load {
                 src_ptr: ptr,
                 dst: dst.clone(),
@@ -173,7 +173,7 @@ fn emit_tacky_and_convert(e: &Expression, instructions: &mut Vec<IRInstruction>)
 }
 
 fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult {
-    let t = get_type(&e);
+    let t = get_type(e);
     match e {
         Expression::Constant(const_expr) => {
             ExpResult::PlainOperand(IRValue::Constant(const_expr.value))
@@ -278,10 +278,10 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             }
             BinaryExpressionKind::Add => emit_ptr_addition(lhs, rhs, t, instructions),
             BinaryExpressionKind::Sub => {
-                let lhs_type = get_type(&lhs);
-                let rhs_type = get_type(&rhs);
+                let lhs_type = get_type(lhs);
+                let rhs_type = get_type(rhs);
 
-                if is_pointer_type(&lhs_type) && is_integer_type(&rhs_type) {
+                if is_pointer_type(lhs_type) && is_integer_type(rhs_type) {
                     let ptr = emit_tacky_and_convert(lhs, instructions);
                     let index = emit_tacky_and_convert(rhs, instructions);
                     let scale = get_ptr_scale(lhs_type);
@@ -303,7 +303,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                     });
 
                     ExpResult::PlainOperand(dst)
-                } else if is_pointer_type(&lhs_type) && is_pointer_type(&rhs_type) {
+                } else if is_pointer_type(lhs_type) && is_pointer_type(rhs_type) {
                     let ptr1 = emit_tacky_and_convert(lhs, instructions);
                     let ptr2 = emit_tacky_and_convert(rhs, instructions);
 
@@ -329,7 +329,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                     });
 
                     ExpResult::PlainOperand(dst)
-                } else if is_pointer_type(&lhs_type) && is_pointer_type(&rhs_type) {
+                } else if is_pointer_type(lhs_type) && is_pointer_type(rhs_type) {
                     let ptr1 = emit_tacky_and_convert(lhs, instructions);
                     let ptr2 = emit_tacky_and_convert(rhs, instructions);
 
@@ -443,14 +443,14 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             });
 
             if get_type(e) == &Type::Void {
-                emit_tacky_and_convert(&then_expr, instructions);
+                emit_tacky_and_convert(then_expr, instructions);
                 instructions.extend(vec![
                     IRInstruction::Jump(end_label.clone()),
                     IRInstruction::Label(e2_label.clone()),
                 ]);
-                emit_tacky_and_convert(&else_expr, instructions);
+                emit_tacky_and_convert(else_expr, instructions);
                 instructions.push(IRInstruction::Label(end_label));
-                return ExpResult::PlainOperand(IRValue::Var("DUMMY".to_owned()));
+                ExpResult::PlainOperand(IRValue::Var("DUMMY".to_owned()))
             } else {
                 let result = make_tacky_variable(_type);
 
@@ -504,7 +504,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             _type,
         }) => {
             let result = emit_tacky_and_convert(expr, instructions);
-            let inner_type = get_type(&expr);
+            let inner_type = get_type(expr);
 
             if target_type == inner_type || target_type == &Type::Void {
                 return ExpResult::PlainOperand(result);
@@ -514,7 +514,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
 
             match (target_type, &inner_type) {
                 (Type::Double, _) => {
-                    if get_signedness(&inner_type) {
+                    if get_signedness(inner_type) {
                         instructions.push(IRInstruction::IntToDouble {
                             src: result.clone(),
                             dst: dst.clone(),
@@ -550,7 +550,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                             src: result.clone(),
                             dst: dst.clone(),
                         });
-                    } else if get_signedness(&inner_type) {
+                    } else if get_signedness(inner_type) {
                         instructions.push(IRInstruction::SignExtend {
                             src: result.clone(),
                             dst: dst.clone(),
@@ -611,7 +611,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             ExpResult::PlainOperand(IRValue::Var(var_name))
         }
         Expression::Sizeof(SizeofExpression { expr, _type }) => ExpResult::PlainOperand(
-            IRValue::Constant(Const::ULong(get_size_of_type(get_type(&expr)) as u64)),
+            IRValue::Constant(Const::ULong(get_size_of_type(get_type(expr)) as u64)),
         ),
         Expression::SizeofT(SizeofTExpression { t, _type }) => {
             ExpResult::PlainOperand(IRValue::Constant(Const::ULong(get_size_of_type(t) as u64)))
@@ -623,7 +623,7 @@ fn emit_string_init(dst: String, offset: usize, s: &[u8]) -> Vec<IRInstruction> 
     let len = s.len();
 
     if len == 0 {
-        return vec![];
+        vec![]
     } else if len >= 8 {
         let l = i64::from_le_bytes(s[0..8].try_into().unwrap());
         let instr = IRInstruction::CopyToOffset {
@@ -693,8 +693,8 @@ fn emit_compound_init(
         }
         Initializer::Compound(_, _type, compound_init) => {
             if let Type::Array { element, size: _ } = inited_type {
-                for (idx, elem_init) in compound_init.into_iter().enumerate() {
-                    let new_offset = offset + idx * get_size_of_type(&_type);
+                for (idx, elem_init) in compound_init.iter().enumerate() {
+                    let new_offset = offset + idx * get_size_of_type(_type);
                     emit_compound_init(name, elem_init, instructions, new_offset, element);
                 }
             }
@@ -708,10 +708,10 @@ fn emit_ptr_addition(
     t: &Type,
     instructions: &mut Vec<IRInstruction>,
 ) -> ExpResult {
-    let lhs_type = get_type(&lhs);
-    let rhs_type = get_type(&rhs);
+    let lhs_type = get_type(lhs);
+    let rhs_type = get_type(rhs);
 
-    if is_pointer_type(&lhs_type) && is_integer_type(&rhs_type) {
+    if is_pointer_type(lhs_type) && is_integer_type(rhs_type) {
         let ptr = emit_tacky_and_convert(lhs, instructions);
         let index = emit_tacky_and_convert(rhs, instructions);
         let scale = get_ptr_scale(lhs_type);
@@ -723,7 +723,7 @@ fn emit_ptr_addition(
             dst: dst.clone(),
         });
         ExpResult::PlainOperand(dst)
-    } else if is_integer_type(&lhs_type) && is_pointer_type(&rhs_type) {
+    } else if is_integer_type(lhs_type) && is_pointer_type(rhs_type) {
         let ptr = emit_tacky_and_convert(rhs, instructions);
         let index = emit_tacky_and_convert(lhs, instructions);
         let scale = get_ptr_scale(rhs_type);
@@ -776,7 +776,7 @@ pub fn make_temporary() -> usize {
 
 fn get_ptr_scale(t: &Type) -> usize {
     match t {
-        Type::Pointer(referenced) => get_size_of_type(&referenced),
+        Type::Pointer(referenced) => get_size_of_type(referenced),
         _ => unimplemented!(),
     }
 }
@@ -1215,8 +1215,5 @@ fn optionally_emit_tacky_and_convert(
     e: &Option<Expression>,
     instructions: &mut Vec<IRInstruction>,
 ) -> Option<IRValue> {
-    match e {
-        Some(expr) => Some(emit_tacky_and_convert(expr, instructions)),
-        None => None,
-    }
+    e.as_ref().map(|e| emit_tacky_and_convert(e, instructions))
 }

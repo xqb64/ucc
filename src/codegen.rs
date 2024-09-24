@@ -283,7 +283,7 @@ fn get_alignment_of_type(t: &Type) -> usize {
         Type::Double => 8,
         Type::Pointer(_) => 8,
         Type::Array { element, size } => {
-            if get_size_of_type(&element) * size >= 16 {
+            if get_size_of_type(element) * size >= 16 {
                 16
             } else {
                 get_alignment_of_type(element)
@@ -876,7 +876,7 @@ impl Codegen for IRInstruction {
                                 },
                             ])
                         } else {
-                            let signedness = get_signedness(&get_common_type(&lhs_type, &rhs_type));
+                            let signedness = get_signedness(get_common_type(&lhs_type, &rhs_type));
 
                             if signedness {
                                 AsmNode::Instructions(vec![
@@ -1041,7 +1041,7 @@ impl Codegen for IRInstruction {
 
                 let mut instructions = vec![];
 
-                let (int_args, double_args, stack_args) = classify_parameters_from_irvalue(&args);
+                let (int_args, double_args, stack_args) = classify_parameters_from_irvalue(args);
 
                 let stack_padding = if stack_args.len() % 2 != 0 { 8 } else { 0 };
 
@@ -1565,9 +1565,9 @@ impl ReplacePseudo for AsmInstruction {
                 dst_type,
                 dst,
             } => AsmInstruction::Movsx {
-                src_type: src_type.clone(),
+                src_type: *src_type,
                 src: src.replace_pseudo(),
-                dst_type: dst_type.clone(),
+                dst_type: *dst_type,
                 dst: dst.replace_pseudo(),
             },
             AsmInstruction::Div { operand, asm_type } => AsmInstruction::Div {
@@ -1580,9 +1580,9 @@ impl ReplacePseudo for AsmInstruction {
                 dst_type,
                 dst,
             } => AsmInstruction::MovZeroExtend {
-                src_type: src_type.clone(),
+                src_type: *src_type,
                 src: src.replace_pseudo(),
-                dst_type: dst_type.clone(),
+                dst_type: *dst_type,
                 dst: dst.replace_pseudo(),
             },
             AsmInstruction::Cvtsi2sd { asm_type, src, dst } => AsmInstruction::Cvtsi2sd {
@@ -3268,7 +3268,7 @@ fn classify_parameters_from_irvalue(parameters: &[IRValue]) -> ParametersAsmNode
     let mut stack_args = vec![];
 
     for parameter in parameters {
-        let type_of_param = get_asm_type(&parameter);
+        let type_of_param = get_asm_type(parameter);
         let operand: AsmNode = parameter.codegen();
 
         let typed_operand = (type_of_param, operand);
