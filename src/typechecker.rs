@@ -1021,14 +1021,14 @@ fn typecheck_subscript(expr: &Expression, index: &Expression) -> Result<Expressi
     let t1 = get_type(&typed_e1);
     let t2 = get_type(&typed_e2);
 
-    let (ptr_type, converted_lhs, converted_rhs) =
-        if is_ptr_to_complete(t1) && is_integer_type(t2) {
-            (t1, typed_e1.clone(), convert_to(&typed_e2, &Type::Long))
-        } else if is_ptr_to_complete(t2) && is_integer_type(t1) {
-            (t2, convert_to(&typed_e1, &Type::Long), typed_e2.clone())
-        } else {
-            bail!("Invalid operands for subscript");
-        };
+    let (ptr_type, converted_lhs, converted_rhs) = if is_ptr_to_complete(t1) && is_integer_type(t2)
+    {
+        (t1, typed_e1.clone(), convert_to(&typed_e2, &Type::Long))
+    } else if is_ptr_to_complete(t2) && is_integer_type(t1) {
+        (t2, convert_to(&typed_e1, &Type::Long), typed_e2.clone())
+    } else {
+        bail!("Invalid operands for subscript");
+    };
 
     let result_type = match ptr_type {
         Type::Pointer(ptr_type) => ptr_type,
@@ -1376,7 +1376,10 @@ fn convert_by_assignment(e: &Expression, target_type: &Type) -> Result<Expressio
     if get_type(e) == target_type {
         Ok(e.clone())
     } else if (is_arithmetic(get_type(e)) && is_arithmetic(target_type))
-        || (is_null_ptr_constant(e) && is_pointer_type(target_type)) || target_type == &Type::Pointer(Type::Void.into()) && is_pointer_type(get_type(e)) || is_pointer_type(target_type) && get_type(e) == &Type::Pointer(Type::Void.into()) {
+        || (is_null_ptr_constant(e) && is_pointer_type(target_type))
+        || target_type == &Type::Pointer(Type::Void.into()) && is_pointer_type(get_type(e))
+        || is_pointer_type(target_type) && get_type(e) == &Type::Pointer(Type::Void.into())
+    {
         Ok(convert_to(e, target_type))
     } else {
         bail!("cannot convert");
@@ -1433,7 +1436,9 @@ fn get_common_ptr_type<'a>(e1: &'a Expression, e2: &'a Expression) -> Result<Typ
         Ok(e2_t.to_owned())
     } else if is_null_ptr_constant(e2) {
         Ok(e1_t.to_owned())
-    } else if e1_t == &Type::Pointer(Type::Void.into()) && is_pointer_type(e2_t) || e2_t == &Type::Pointer(Type::Void.into()) && is_pointer_type(e1_t) {
+    } else if e1_t == &Type::Pointer(Type::Void.into()) && is_pointer_type(e2_t)
+        || e2_t == &Type::Pointer(Type::Void.into()) && is_pointer_type(e1_t)
+    {
         Ok(Type::Pointer(Type::Void.into()))
     } else {
         bail!("Incompatible pointer types");
