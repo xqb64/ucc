@@ -1,17 +1,11 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem,
-        BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression,
-        Declaration, DerefExpression, DoWhileStatement, Expression, ExpressionStatement, ForInit,
-        ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement,
-        ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
-        StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind,
-        VariableDeclaration, VariableExpression, WhileStatement,
+        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement
     },
 };
 use anyhow::{bail, Result};
-use std::{collections::HashMap, sync::Mutex};
+use std::{cmp::max, collections::HashMap, sync::Mutex};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Symbol {
@@ -19,8 +13,23 @@ pub struct Symbol {
     pub attrs: IdentifierAttrs,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructEntry {
+    pub alignment: usize,
+    pub size: usize,
+    pub members: Vec<MemberEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MemberEntry {
+    pub name: String,
+    pub _type: Type,
+    pub offset: usize,
+}
+
 lazy_static::lazy_static! {
     pub static ref SYMBOL_TABLE: Mutex<HashMap<String, Symbol>> = Mutex::new(HashMap::new());
+    pub static ref TYPE_TABLE: Mutex<HashMap<String, StructEntry>> = Mutex::new(HashMap::new());
 }
 
 pub trait Typecheck {
@@ -55,8 +64,118 @@ impl Typecheck for Declaration {
                 func_decl.typecheck()?;
                 Ok(self)
             }
-            _ => todo!(),
+            Declaration::Struct(struct_decl) => {
+                struct_decl.typecheck()?;
+                Ok(self)
+            }
         }
+    }
+}
+
+fn alignment(t: &Type) -> usize {
+    match t {
+        Type::Char | Type::UChar | Type::SChar => 1,
+        Type::Int | Type::Uint => 4,
+        Type::Double | Type::Long | Type::Ulong | Type::Pointer(_) => 8,
+        Type::Struct { tag } => TYPE_TABLE.lock().unwrap()[tag].alignment,
+        Type::Array { element, size } => alignment(element),
+        Type::Dummy | Type::Void | Type::Func { .. } => unreachable!(),
+    }
+}
+
+fn round_up(n: usize, x: usize) -> usize {
+    if x % n == 0 {
+        return x;
+    } else if x < 0 {
+        // When x is negative and n is positive, x mod n will be negative
+        return x - n - (x % n);
+    } else {
+        return x + n - (x % n);
+    }
+}
+
+fn validate_struct_definition(definition: &mut StructDeclaration) -> Result<()> {
+    use std::collections::HashSet;
+
+    let tag = &definition.tag;
+
+    if TYPE_TABLE.lock().unwrap().contains_key(tag) {
+        panic!("Structure was already declared");
+    } else {
+        let mut member_names = HashSet::new();
+
+        for member in &definition.members {
+            let member_name = &member.name;
+
+            if member_names.contains(member_name) {
+                bail!(
+                    "Duplicate declaration of member {} in structure {}",
+                    member_name, tag
+                );
+            } else {
+                member_names.insert(member_name.clone());
+            }
+
+            validate_type_specifier(&member._type);
+
+            match &member._type {
+                Type::Func { .. } => {
+                    bail!("Can't declare structure member with function type");
+                }
+                _ => {
+                    if !is_complete(&member._type) {
+                        bail!("Cannot declare structure member with incomplete type");
+                    }
+                }
+            }
+        }
+
+        // Insert the new structure into the type table
+        TYPE_TABLE.lock().unwrap().insert(tag.clone(), StructEntry { alignment: 0, size: 0, members: vec![] });
+    }
+
+    Ok(())
+}
+impl Typecheck for StructDeclaration {
+    fn typecheck(&mut self) -> Result<&mut Self>
+    where
+        Self: Sized
+    {
+        if self.members.is_empty() {
+            return Ok(self);
+        }
+
+        validate_struct_definition(self)?;
+
+        let mut member_entries = vec![];
+        let mut struct_size = 0;
+        let mut struct_alignment = 1;
+
+        for member in &self.members {
+            let member_alignment = alignment(&member._type);
+            let member_offset = round_up(struct_size, member_alignment);
+            let m = MemberEntry {
+                name: member.name.clone(),
+                _type: member._type.clone(),
+                offset: member_offset,
+            };
+
+            member_entries.push(m);
+
+            struct_alignment = max(struct_alignment, member_alignment);
+            struct_size = member_offset + get_size_of_type(&member._type);
+        }
+
+        struct_size = round_up(struct_size, struct_alignment);
+        let s = StructEntry {
+            alignment: struct_alignment,
+            size: struct_size,
+            members: member_entries,
+        };
+
+        TYPE_TABLE.lock().unwrap().insert(self.tag.clone(), s);
+
+        Ok(self)
     }
 }
 
@@ -299,6 +418,40 @@ fn optionally_typecheck_init(init: &Option<Initializer>, t: &Type) -> Result<Opt
 
 fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
     match (t, init) {
+        (Type::Struct { tag }, Initializer::Compound(name, _type, compound_init)) => {
+            let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+            if compound_init.len() > struct_def.members.len() {
+                bail!("Too many initializers");
+            }
+
+            let mut current_offset = 0;
+            let mut i = 0;
+
+            let mut static_inits = vec![];
+
+            for init_elem in compound_init {
+                let member = struct_def.members[i].clone();
+                if member.offset != current_offset {
+                    static_inits.push(StaticInit::Zero(member.offset - current_offset));
+                }
+
+                let more_static_inits = static_init_helper(init_elem, &member._type)?;
+                static_inits.extend(more_static_inits);
+
+                current_offset = member.offset + get_size_of_type(&member._type);
+
+                i += 1;
+            }
+
+            if struct_def.size != current_offset {
+                static_inits.push(StaticInit::Zero(struct_def.size - current_offset));
+            }
+
+            Ok(static_inits)
+        }
+        (Type::Struct { .. }, Initializer::Single(_, _)) => {
+            bail!("Single initializer for struct type");
+        }
         (Type::Array { element, size }, Initializer::Single(_, expr)) => {
             if let Expression::String(string_expr) = expr {
                 if !is_char_type(element) {
@@ -649,6 +802,36 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
                 }),
             ))
         }
+        (Type::Struct { tag }, Initializer::Compound(name, _type, compound_init)) => {
+            let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+            if compound_init.len() > struct_def.members.len() {
+                bail!("Too many initializers");
+            }
+
+            let mut i = 0;
+            let mut typechecked_inits = vec![];
+
+            for init_elem in compound_init.iter() {
+                let member = &struct_def.members[i];
+                let typechecked_init = typecheck_init(&member._type, init_elem)?;
+                typechecked_inits.push(typechecked_init);
+                i += 1;
+            }
+
+            while i < struct_def.members.len() {
+                let member = &struct_def.members[i];
+                typechecked_inits.push(zero_initializer(&member._type));
+                i += 1;
+            }
+
+            Ok(Initializer::Compound(
+                name.clone(),
+                Type::Struct {
+                    tag: tag.clone(),
+                },
+                typechecked_inits,
+            ))
+        }
         (_, Initializer::Single(name, expr)) => {
             let typechecked_expr = typecheck_and_convert(expr)?;
             let converted_expr = convert_by_assignment(&typechecked_expr, target_type)?;
@@ -760,6 +943,16 @@ fn zero_initializer(t: &Type) -> Initializer {
             }
 
             Initializer::Compound(String::new(), *element.clone(), inits)
+        }
+        Type::Struct { tag } => {
+            let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+            let mut inits = vec![];
+
+            for member in struct_def.members.iter() {
+                inits.push(zero_initializer(&member._type));
+            }
+
+            Initializer::Compound(String::new(), Type::Struct { tag: tag.clone() }, inits)
         }
         _ => unreachable!(),
     }
@@ -1357,6 +1550,54 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _type: Type::Ulong,
             }))
         }
+        Expression::Dot(DotExpression { structure, member, _type }) => {
+            let typed_structure = typecheck_and_convert(structure)?;
+            match get_type(&typed_structure) {
+                Type::Struct { tag } => {
+                    let struct_def = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
+                    
+                    if !struct_def.members.to_vec().into_iter().any(|m| m.name == *member) {
+                        bail!("Unknown member in struct");
+                    }
+
+                    // find the type of the member
+                    let member_def = struct_def.members.to_vec().into_iter().find(|m| m.name == *member).unwrap();
+
+                    Ok(Expression::Dot(DotExpression {
+                        structure: Box::new(typed_structure),
+                        member: member.clone(),
+                        _type: member_def._type.to_owned(),
+                    }))
+                }
+                _ => bail!("Non-struct type in dot expression"),
+            }
+        }
+        Expression::Arrow(ArrowExpression { pointer, member, _type }) => {
+            let typed_pointer = typecheck_and_convert(pointer)?;
+            match get_type(&typed_pointer) {
+                Type::Pointer(referenced) => {
+                    if let Type::Struct { tag } = &**referenced {
+                        let struct_def = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
+                        
+                        if !struct_def.members.to_vec().into_iter().any(|m| m.name == *member) {
+                            bail!("Unknown member in struct");
+                        }
+
+                        // find the type of the member
+                        let member_def = struct_def.members.to_vec().into_iter().find(|m| m.name == *member).unwrap();
+
+                        Ok(Expression::Arrow(ArrowExpression {
+                            pointer: Box::new(typed_pointer),
+                            member: member.clone(),
+                            _type: member_def._type.to_owned(),
+                        }))
+                    } else {
+                        bail!("Non-struct type in arrow expression");
+                    }
+                }
+                _ => bail!("Non-struct type in arrow expression"),
+            }
+        }
         _ => todo!(),
     }
 }
@@ -1369,6 +1610,12 @@ fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
             expr: typed_expr.to_owned().into(),
             _type: Type::Pointer(element.to_owned()),
         })),
+        Type::Struct { tag } => {
+            if !TYPE_TABLE.lock().unwrap().contains_key(tag) {
+                bail!("Unknown struct type");
+            }
+            Ok(typed_expr)
+        }
         _ => Ok(typed_expr),
     }
 }
@@ -1580,11 +1827,21 @@ pub enum StaticInit {
 }
 
 fn is_scalar(t: &Type) -> bool {
-    !matches!(t, Type::Void | Type::Array { .. } | Type::Func { .. })
+    !matches!(t, Type::Void | Type::Array { .. } | Type::Func { .. } | Type::Struct { .. })
 }
 
 fn is_complete(t: &Type) -> bool {
-    t != &Type::Void
+    match t {
+        Type::Void => false,
+        Type::Struct { tag } => {
+            if TYPE_TABLE.lock().unwrap().contains_key(tag) {
+                true
+            } else {
+                false
+            }
+        }
+        _ => true,
+    }
 }
 
 fn is_ptr_to_complete(t: &Type) -> bool {
