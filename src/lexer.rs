@@ -19,10 +19,10 @@ pub struct Lexer {
 impl Lexer {
     pub fn new(src: String) -> Lexer {
         Lexer { src, pos: 0,
-            punctuation_re: Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\]]").unwrap(),
-            punctuation_double_re: Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\|").unwrap(),
+            punctuation_re: Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\].]").unwrap(),
+            punctuation_double_re: Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\||^->").unwrap(),
             keyword_re: Regex::new(
-                r"^int\b|^long\b|^char\b|^signed\b|^unsigned\b|^double\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b|^static\b|^extern\b|^sizeof\b",
+                r"^int\b|^long\b|^char\b|^signed\b|^unsigned\b|^double\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b|^static\b|^extern\b|^sizeof\b|^struct\b|^union\b|^enum\b|^typedef\b|^const\b|^volatile\b|^register\b|^auto\b|^restrict\b|^inline\b|^_Bool\b|^_Complex\b|^_Imaginary\b",
             )
             .unwrap(),
             constant_re: Regex::new(r"^[0-9]+(?P<suffix>[lL]?[uU]?|[uU]?[lL]?)\b").unwrap(),
@@ -56,7 +56,61 @@ impl Iterator for Lexer {
 
         let src = &self.src[self.pos..];
 
-        let token = if let Some(m) = self.punctuation_double_re.find(src) {
+        let token = if let Some(m) = self.keyword_re.find(src) {
+            self.pos += m.as_str().len();
+            match m.as_str() {
+                "int" => Token::Int,
+                "long" => Token::Long,
+                "char" => Token::Char,
+                "signed" => Token::Signed,
+                "unsigned" => Token::Unsigned,
+                "double" => Token::Double,
+                "void" => Token::Void,
+                "return" => Token::Return,
+                "if" => Token::If,
+                "else" => Token::Else,
+                "do" => Token::Do,
+                "while" => Token::While,
+                "for" => Token::For,
+                "break" => Token::Break,
+                "continue" => Token::Continue,
+                "static" => Token::Static,
+                "extern" => Token::Extern,
+                "sizeof" => Token::Sizeof,
+                "struct" => Token::Struct,
+                _ => unreachable!(),
+            }
+        } else if let Some(m) = self.double_constant_re.find(src) {
+            self.pos += m.as_str().len() - 1;              
+            Token::Constant(Const::Double(
+                m.as_str()[..m.as_str().len() - 1].parse::<f64>().unwrap(),
+            ))
+        } else if let Some(m) = self.constant_re.find(src) {
+            self.pos += m.as_str().len();
+
+            if self.src.chars().nth(self.pos).is_some_and(|ch| ch == '.') {
+                return Some(Token::Error);
+            }
+
+            let suffix = self
+                .constant_re
+                .captures(src)
+                .unwrap()
+                .name("suffix")
+                .unwrap()
+                .as_str();
+            let just_number = m.as_str().trim_end_matches(suffix);
+
+            let normalized_suffix = suffix
+                .chars()
+                .map(|ch| ch.to_ascii_lowercase())
+                .collect::<String>();
+
+            match parse_integer(&normalized_suffix, just_number) {
+                Ok(konst) => Token::Constant(konst),
+                Err(_) => Token::Error,
+            }
+        } else if let Some(m) = self.punctuation_double_re.find(src) {
             self.pos += m.as_str().len();
             match m.as_str() {
                 "--" => Token::DoubleHyphen,
@@ -66,10 +120,12 @@ impl Iterator for Lexer {
                 "<=" => Token::LessEqual,
                 "&&" => Token::DoubleAmpersand,
                 "||" => Token::DoublePipe,
+                "->" => Token::Arrow,
                 _ => unreachable!(),
             }
         } else if let Some(m) = self.punctuation_re.find(src) {
             self.pos += m.as_str().len();
+
             match m.as_str() {
                 "+" => Token::Plus,
                 "-" => Token::Hyphen,
@@ -92,56 +148,15 @@ impl Iterator for Lexer {
                 "," => Token::Comma,
                 "&" => Token::Ampersand,
                 ";" => Token::Semicolon,
+                "." => { 
+                    // if the next character is a constant followed by a suffix, it's an error
+                    if self.constant_re.is_match(&self.src[self.pos..]) {
+                        return Some(Token::Error);
+                    }
+
+                    Token::Dot
+                }
                 _ => unreachable!(),
-            }
-        } else if let Some(m) = self.keyword_re.find(src) {
-            self.pos += m.as_str().len();
-            match m.as_str() {
-                "int" => Token::Int,
-                "long" => Token::Long,
-                "char" => Token::Char,
-                "signed" => Token::Signed,
-                "unsigned" => Token::Unsigned,
-                "double" => Token::Double,
-                "void" => Token::Void,
-                "return" => Token::Return,
-                "if" => Token::If,
-                "else" => Token::Else,
-                "do" => Token::Do,
-                "while" => Token::While,
-                "for" => Token::For,
-                "break" => Token::Break,
-                "continue" => Token::Continue,
-                "static" => Token::Static,
-                "extern" => Token::Extern,
-                "sizeof" => Token::Sizeof,
-                _ => unreachable!(),
-            }
-        } else if let Some(m) = self.double_constant_re.find(src) {
-            self.pos += m.as_str().len() - 1;
-            Token::Constant(Const::Double(
-                m.as_str()[..m.as_str().len() - 1].parse::<f64>().unwrap(),
-            ))
-        } else if let Some(m) = self.constant_re.find(src) {
-            self.pos += m.as_str().len();
-
-            let suffix = self
-                .constant_re
-                .captures(src)
-                .unwrap()
-                .name("suffix")
-                .unwrap()
-                .as_str();
-            let just_number = m.as_str().trim_end_matches(suffix);
-
-            let normalized_suffix = suffix
-                .chars()
-                .map(|ch| ch.to_ascii_lowercase())
-                .collect::<String>();
-
-            match parse_integer(&normalized_suffix, just_number) {
-                Ok(konst) => Token::Constant(konst),
-                Err(_) => Token::Error,
             }
         } else if let Some(m) = self.identifier_re.find(src) {
             self.pos += m.as_str().len();
@@ -216,6 +231,7 @@ pub enum Token {
     Static,
     Extern,
     Sizeof,
+    Struct,
     LParen,
     RParen,
     LBrace,
@@ -236,6 +252,8 @@ pub enum Token {
     DoublePipe,
     DoubleEqual,
     BangEqual,
+    Dot,
+    Arrow,
     Less,
     Greater,
     LessEqual,
