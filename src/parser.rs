@@ -356,8 +356,18 @@ impl Parser {
     fn consume_while_type_specifier(&mut self) -> Vec<Token> {
         let mut specifier_list = vec![];
         while self.is_type_specifier(self.current.as_ref().unwrap()) {
-            specifier_list.push(self.current.clone().unwrap());
-            self.advance();
+            match self.current {
+                Some(Token::Struct) => {
+                    specifier_list.push(self.current.clone().unwrap());
+                    self.advance();
+                    specifier_list.push(self.current.clone().unwrap());
+                    self.advance();
+                }
+                _ => {
+                    specifier_list.push(self.current.clone().unwrap());
+                    self.advance();
+                }
+            }
         }
         specifier_list
     }
