@@ -179,13 +179,10 @@ impl Typecheck for VariableDeclaration {
         } else {
             validate_type_specifier(&self._type)?;
         }
- 
-        if !is_complete(&self._type) {
-            bail!("Variable declared with incomplete type");
-        }
- 
+  
         match self.is_global {
             true => {
+
                 let default_init = if self.storage_class == Some(StorageClass::Extern) {
                     InitialValue::NoInitializer
                 } else {
@@ -199,10 +196,14 @@ impl Typecheck for VariableDeclaration {
 
                 let is_global = self.storage_class != Some(StorageClass::Static);
 
+                println!("self.name: {:?}", self.name);
                 let old_decl = SYMBOL_TABLE.lock().unwrap().get(&self.name).cloned();
+                println!("old_decl: {:?}", old_decl);
 
                 let check_against_previous = |old_d: &Symbol| -> Result<(bool, InitialValue)> {
                     if old_d._type != self._type {
+                        println!("old_d: {:?}", old_d);
+                        println!("self._type: {:?}", self._type);
                         bail!("Variable redeclaration with different type");
                     }
 
@@ -253,6 +254,7 @@ impl Typecheck for VariableDeclaration {
                     },
                 };
 
+                println!("inserting symbol under name {}: {:?}", self.name, symbol);
                 SYMBOL_TABLE
                     .lock()
                     .unwrap()
@@ -502,10 +504,10 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 },
             };
 
-            SYMBOL_TABLE
-                .lock()
-                .unwrap()
-                .insert(name.clone(), ptr_symbol);
+            // SYMBOL_TABLE
+            //     .lock()
+            //     .unwrap()
+            //     .insert(name.clone(), ptr_symbol);
 
             Ok(vec![])
         }
