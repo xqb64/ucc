@@ -483,7 +483,7 @@ impl Parser {
         println!("sorted specifiers: {:?}", sorted_specifiers);
 
         match &sorted_specifiers[..] {
-            [Token::Identifier(tag)] => Ok(Type::Struct { tag: tag.clone() }),
+            [Token::Struct, Token::Identifier(tag)] => Ok(Type::Struct { tag: tag.clone() }),
             [Token::Void] => Ok(Type::Void),
             [Token::Double] => Ok(Type::Double),
             [Token::Char] => Ok(Type::Char),
