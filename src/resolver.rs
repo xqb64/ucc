@@ -194,9 +194,7 @@ fn resolve_init(
 }
 
 impl Resolve for FunctionDeclaration {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
-        self._type = resolve_type(&self._type, struct_map)?;
-        
+    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {       
         if self.body.is_some() && !self.is_global {
             bail!("function definition in non-global scope");
         }
@@ -252,6 +250,7 @@ impl Resolve for FunctionDeclaration {
 
         self.body = resolve_optional_block_item(&mut self.body, &mut inner_map, &mut new_struct_map)?.into();
         self.params = new_params;
+        self._type = resolve_type(&self._type, struct_map)?;
 
         Ok(self)
     }
@@ -330,7 +329,20 @@ impl Resolve for ExpressionStatement {
 impl Resolve for ReturnStatement {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, _struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
         self.expr = resolve_optional_expr(&self.expr, variable_map)?;
+        self.target_type = optionally_resolve_type(&self.target_type, _struct_map)?;
         Ok(self)
+    }
+}
+
+fn optionally_resolve_type(
+    target_type: &Option<Type>,
+    struct_map: &mut HashMap<String, StructTableEntry>,
+) -> Result<Option<Type>> {
+    if target_type.is_some() {
+        let resolved_type = resolve_type(target_type.as_ref().unwrap(), struct_map)?;
+        Ok(Some(resolved_type))
+    } else {
+        Ok(None)
     }
 }
 

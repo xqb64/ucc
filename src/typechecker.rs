@@ -732,11 +732,13 @@ impl Typecheck for Statement {
                 if target_type == &Some(Type::Void) {
                     bail!("Return statement with expression in void function");
                 } else {
+                    println!("target_type in return: {:?}", target_type);
                     let typechecked_expr = typecheck_and_convert(expression)?;
                     let converted_expr = convert_by_assignment(
                         &typechecked_expr,
                         target_type.as_ref().unwrap_or(&Type::Int),
                     )?;
+                    println!("survived in return: {:?}", target_type);
                     *expression = converted_expr;
                 }
                 Ok(self)
@@ -1607,11 +1609,13 @@ fn convert_by_assignment(e: &Expression, target_type: &Type) -> Result<Expressio
         Ok(e.clone())
     } else if (is_arithmetic(get_type(e)) && is_arithmetic(target_type))
         || (is_null_ptr_constant(e) && is_pointer_type(target_type))
-        || target_type == &Type::Pointer(Type::Void.into()) && is_pointer_type(get_type(e))
-        || is_pointer_type(target_type) && get_type(e) == &Type::Pointer(Type::Void.into())
+        || (target_type == &Type::Pointer(Type::Void.into()) && is_pointer_type(get_type(e)))
+        || (is_pointer_type(target_type) && get_type(e) == &Type::Pointer(Type::Void.into()))
     {
         Ok(convert_to(e, target_type))
     } else {
+        println!("expression: {:?}", e);
+        println!("target_type: {:?}", target_type);
         bail!("cannot convert");
     }
 }
