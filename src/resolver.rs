@@ -29,6 +29,7 @@ pub trait Resolve {
 
 impl Resolve for Declaration {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+        println!("variable_map: {:?}", variable_map);
         match self {
             Declaration::Variable(var_decl) => {
                 var_decl.resolve(variable_map, struct_map)?;
@@ -46,12 +47,12 @@ impl Resolve for Declaration {
     }
 }
 
-fn resolve_structure_declaration<'a>(decl: &'a mut StructDeclaration, struct_map: &'a mut HashMap<String, StructTableEntry>) -> Result<&'a mut StructDeclaration> {
+fn resolve_structure_declaration<'a>(decl: &'a mut StructDeclaration, struct_map: &'a mut HashMap<String, StructTableEntry>) -> Result<StructDeclaration> {
     let prev_entry = struct_map.get(&decl.tag).cloned();
 
     let unique_tag;
     if prev_entry.is_none() || !prev_entry.clone().unwrap().from_current_scope {
-        unique_tag = format!("struct.{}", make_temporary());
+        unique_tag = format!("struct.{}.{}", decl.tag.clone(), make_temporary());
         struct_map.insert(
             decl.tag.clone(),
             StructTableEntry {
@@ -75,12 +76,10 @@ fn resolve_structure_declaration<'a>(decl: &'a mut StructDeclaration, struct_map
         processed_members.push(processed_member);
     }
 
-    *decl = StructDeclaration {
+    Ok(StructDeclaration {
         tag: unique_tag.clone(),
         members: processed_members,
-    };
-
-    Ok(decl)
+    })
 }
 
 fn optionally_resolve_init(

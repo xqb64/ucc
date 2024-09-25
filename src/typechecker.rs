@@ -78,20 +78,13 @@ fn alignment(t: &Type) -> usize {
         Type::Int | Type::Uint => 4,
         Type::Double | Type::Long | Type::Ulong | Type::Pointer(_) => 8,
         Type::Struct { tag } => TYPE_TABLE.lock().unwrap()[tag].alignment,
-        Type::Array { element, size } => alignment(element),
+        Type::Array { element, size: _ } => alignment(element),
         Type::Dummy | Type::Void | Type::Func { .. } => unreachable!(),
     }
 }
 
-fn round_up(n: usize, x: usize) -> usize {
-    if x % n == 0 {
-        return x;
-    } else if x < 0 {
-        // When x is negative and n is positive, x mod n will be negative
-        return x - n - (x % n);
-    } else {
-        return x + n - (x % n);
-    }
+fn round_up(value: usize, alignment: usize) -> usize {
+    (value + alignment - 1) & !(alignment - 1)
 }
 
 fn validate_struct_definition(definition: &mut StructDeclaration) -> Result<()> {
@@ -116,7 +109,7 @@ fn validate_struct_definition(definition: &mut StructDeclaration) -> Result<()> 
                 member_names.insert(member_name.clone());
             }
 
-            validate_type_specifier(&member._type);
+            validate_type_specifier(&member._type)?;
 
             match &member._type {
                 Type::Func { .. } => {
@@ -129,13 +122,11 @@ fn validate_struct_definition(definition: &mut StructDeclaration) -> Result<()> 
                 }
             }
         }
-
-        // Insert the new structure into the type table
-        TYPE_TABLE.lock().unwrap().insert(tag.clone(), StructEntry { alignment: 0, size: 0, members: vec![] });
     }
 
     Ok(())
 }
+
 impl Typecheck for StructDeclaration {
     fn typecheck(&mut self) -> Result<&mut Self>
     where
@@ -153,11 +144,13 @@ impl Typecheck for StructDeclaration {
 
         for member in &self.members {
             let member_alignment = alignment(&member._type);
+            println!("member_alignment: {}", member_alignment);
+
             let member_offset = round_up(struct_size, member_alignment);
             let m = MemberEntry {
                 name: member.name.clone(),
                 _type: member._type.clone(),
-                offset: member_offset,
+                offset: member_offset as usize,
             };
 
             member_entries.push(m);
@@ -335,6 +328,7 @@ impl Typecheck for VariableDeclaration {
                             .unwrap()
                             .insert(self.name.clone(), symbol);
 
+                        println!("called from where I think it's called");
                         self.init = optionally_typecheck_init(&self.init, &self._type)?;
 
                         Ok(self)
@@ -418,7 +412,7 @@ fn optionally_typecheck_init(init: &Option<Initializer>, t: &Type) -> Result<Opt
 
 fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
     match (t, init) {
-        (Type::Struct { tag }, Initializer::Compound(name, _type, compound_init)) => {
+        (Type::Struct { tag }, Initializer::Compound(_name, _type, compound_init)) => {
             let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
             if compound_init.len() > struct_def.members.len() {
                 bail!("Too many initializers");
@@ -803,6 +797,7 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             ))
         }
         (Type::Struct { tag }, Initializer::Compound(name, _type, compound_init)) => {
+            println!("searching for {} in {:?}", tag, TYPE_TABLE.lock().unwrap());
             let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
             if compound_init.len() > struct_def.members.len() {
                 bail!("Too many initializers");
@@ -1321,41 +1316,28 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             rhs,
             _type,
         }) => {
-            match *lhs.clone() {
-                Expression::Variable(_)
-                | Expression::Deref(_)
-                | Expression::Subscript(_)
-                | Expression::String(_) => {
-                    let typed_lhs = typecheck_and_convert(lhs)?;
-
-                    // if typed_lhs is not an lvalue
-                    match typed_lhs {
-                        Expression::Variable(_)
-                        | Expression::Deref(_)
-                        | Expression::Subscript(_)
-                        | Expression::String(_) => {}
-                        _ => {
-                            bail!("Invalid lvalue in assignment");
-                        }
-                    }
-
-                    let typed_rhs = typecheck_and_convert(rhs)?;
-
-                    let left_type = get_type(&typed_lhs);
-
-                    let converted_right = convert_by_assignment(&typed_rhs, left_type)?;
-
-                    Ok(Expression::Assign(AssignExpression {
-                        op: op.clone(),
-                        lhs: Box::new(typed_lhs.to_owned()),
-                        rhs: Box::new(converted_right),
-                        _type: left_type.to_owned(),
-                    }))
-                }
-                _ => {
+            if is_lvalue(lhs) {
+                let typed_lhs = typecheck_and_convert(lhs)?;
+                // if typed_lhs is not an lvalue
+                if !is_lvalue(&typed_lhs) {
                     bail!("Invalid lvalue in assignment");
                 }
-            }
+
+                let typed_rhs = typecheck_and_convert(rhs)?;
+
+                let left_type = get_type(&typed_lhs);
+
+                let converted_right = convert_by_assignment(&typed_rhs, left_type)?;
+
+                Ok(Expression::Assign(AssignExpression {
+                    op: op.clone(),
+                    lhs: Box::new(typed_lhs.to_owned()),
+                    rhs: Box::new(converted_right),
+                    _type: left_type.to_owned(),
+                }))            
+            } else {
+                bail!("Invalid lvalue in assignment");
+            }              
         }
         Expression::Conditional(ConditionalExpression {
             condition,
@@ -1502,21 +1484,15 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _ => bail!("Dereference of non-pointer type"),
             }
         }
-        Expression::AddrOf(AddrOfExpression { expr, _type }) => match *expr.clone() {
-            Expression::Variable(_)
-            | Expression::Deref(_)
-            | Expression::Subscript(_)
-            | Expression::String(_) => {
-                let typed_inner = typecheck_expr(expr)?;
-                let referenced_type = get_type(&typed_inner);
-                Ok(Expression::AddrOf(AddrOfExpression {
-                    expr: Box::new(typed_inner.to_owned()),
-                    _type: Type::Pointer(Box::new(referenced_type.to_owned())),
-                }))
-            }
-            _ => {
-                bail!("Can't take address of a non-lvalue");
-            }
+        Expression::AddrOf(AddrOfExpression { expr, _type }) => if is_lvalue(expr) {
+            let typed_inner = typecheck_expr(expr)?;
+            let referenced_type = get_type(&typed_inner);
+            Ok(Expression::AddrOf(AddrOfExpression {
+                expr: Box::new(typed_inner.to_owned()),
+                _type: Type::Pointer(Box::new(referenced_type.to_owned())),
+            }))
+        } else {
+            bail!("Can't take address of a non-lvalue");
         },
         Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
             typecheck_subscript(expr, index)
@@ -1739,6 +1715,10 @@ pub fn get_size_of_type(t: &Type) -> usize {
         Type::Double => 8,
         Type::Pointer(_) => 8,
         Type::Array { element, size } => get_size_of_type(element) * size,
+        Type::Struct { tag } => {
+            let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+            struct_def.size
+        }
         _ => {
             unreachable!()
         }
@@ -1890,5 +1870,17 @@ fn optionally_typecheck_scalar(e: &Option<Expression>) -> Result<Option<Expressi
             Ok(Some(typechecked_expr))
         }
         None => Ok(None),
+    }
+}
+
+fn is_lvalue(e: &Expression) -> bool {
+    match e {
+        Expression::Variable(_)
+        | Expression::Deref(_)
+        | Expression::Subscript(_)
+        | Expression::String(_)
+        | Expression::Arrow(_) => true,
+        Expression::Dot(dot) => is_lvalue(&dot.structure),
+        _ => false,
     }
 }

@@ -175,7 +175,7 @@ impl LoopLabel for Declaration {
                 f.loop_label(current_label)?;
                 Ok(self)
             }
-            _ => todo!(),
+            Declaration::Struct(_) => Ok(self),
         }
     }
 }
