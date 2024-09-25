@@ -166,6 +166,7 @@ impl Parser {
                 | Token::Signed
                 | Token::Double
                 | Token::Void
+                | Token::Struct
         )
     }
 
@@ -371,8 +372,18 @@ impl Parser {
     fn consume_while_specifier(&mut self) -> Vec<Token> {
         let mut specifier_list = vec![];
         while self.is_specifier(self.current.as_ref().unwrap()) {
-            specifier_list.push(self.current.clone().unwrap());
-            self.advance();
+            match self.current {
+                Some(Token::Struct) => {
+                    specifier_list.push(self.current.clone().unwrap());
+                    self.advance();
+                    specifier_list.push(self.current.clone().unwrap());
+                    self.advance();
+                }
+                _ => {
+                    specifier_list.push(self.current.clone().unwrap());
+                    self.advance();        
+                }
+            }
         }
         specifier_list
     }
@@ -469,6 +480,8 @@ impl Parser {
         let mut sorted_specifiers = specifier_list.clone();
         sorted_specifiers.sort();
 
+        println!("sorted specifiers: {:?}", sorted_specifiers);
+
         match &sorted_specifiers[..] {
             [Token::Void] => Ok(Type::Void),
             [Token::Double] => Ok(Type::Double),
@@ -502,6 +515,10 @@ impl Parser {
         }
     }
 
+    fn is_ident(&self, token: &Token) -> bool {
+        matches!(token, Token::Identifier(_))
+    }
+
     fn parse_type_and_storage_specifiers(
         &mut self,
         specifier_list: &[Token],
@@ -510,14 +527,7 @@ impl Parser {
         let mut storage_classes = vec![];
 
         for specifier in specifier_list {
-            if specifier == &Token::Int
-                || specifier == &Token::Long
-                || specifier == &Token::Double
-                || specifier == &Token::Unsigned
-                || specifier == &Token::Signed
-                || specifier == &Token::Void
-                || specifier == &Token::Char
-            {
+            if self.is_type_specifier(specifier) || self.is_ident(specifier) {
                 types.push(specifier.clone());
             } else {
                 storage_classes.push(specifier.clone());
