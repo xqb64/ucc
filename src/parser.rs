@@ -62,11 +62,20 @@ impl Parser {
         false
     }
 
+    fn check_many(&self, tokens: &[Token]) -> bool {
+        for token in tokens {
+            if self.check(token) {
+                return true;
+            }
+        }
+        false
+    }
+
     fn parse_statement(&mut self) -> Result<BlockItem> {
-        if self.is_next(&[
+        if self.check_many(&[
+            Token::Char,
             Token::Int,
             Token::Long,
-            Token::Char,
             Token::Double,
             Token::Signed,
             Token::Unsigned,
@@ -74,10 +83,7 @@ impl Parser {
             Token::Static,
             Token::Extern,
         ]) {
-            let mut specifier_list = vec![];
-            specifier_list.push(self.previous.clone().unwrap());
-            self.parse_specifier_list(&mut specifier_list)?;
-            self.parse_declaration(&specifier_list)
+            self.parse_var_or_fn_decl()
         } else if self.is_next(&[Token::Return]) {
             self.parse_return_statement()
         } else if self.is_next(&[Token::If]) {
@@ -122,16 +128,12 @@ impl Parser {
         self.is_type_specifier(token) || self.is_storage_class_specifier(token)
     }
 
-    fn parse_specifier_list(&mut self, specifier_list: &mut Vec<Token>) -> Result<Vec<Token>> {
-        while self.is_specifier(self.current.as_ref().unwrap()) {
-            specifier_list.push(self.current.clone().unwrap());
-            self.advance();
-        }
-        Ok(specifier_list.to_vec())
-    }
+    fn parse_var_or_fn_decl(&mut self) -> Result<BlockItem> {
+        let specifier_list = self.consume_while_specifier();
 
-    fn parse_declaration(&mut self, specifier_list: &[Token]) -> Result<BlockItem> {
-        let (base_type, storage_class) = self.parse_type_and_storage_specifiers(specifier_list)?;
+        let (base_type, storage_class) = self.parse_type_and_storage_specifiers(&specifier_list)?;
+
+        println!("base_type: {:?}, storage_class: {:?}", base_type, storage_class);
 
         let declarator = self.parse_declarator()?;
 
@@ -578,10 +580,7 @@ impl Parser {
         let init = if self.is_next(&[Token::Semicolon]) {
             ForInit::Expression(None)
         } else if self.is_specifier(self.current.as_ref().unwrap()) {
-            let specifier_list = self.consume_while_specifier();
-            let (_type, _storage_class) =
-                self.parse_type_and_storage_specifiers(&specifier_list)?;
-            let decl = self.parse_declaration(&specifier_list)?;
+            let decl = self.parse_var_or_fn_decl()?;
             ForInit::Declaration(match decl {
                 BlockItem::Declaration(Declaration::Variable(var)) => var,
                 _ => unreachable!(),
