@@ -54,9 +54,10 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let mut variable_map = HashMap::new();
+    let mut struct_map = HashMap::new();
 
     let cooked_ast = raw_ast
-        .resolve(&mut variable_map)?
+        .resolve(&mut variable_map, &mut struct_map)?
         .loop_label("")?
         .typecheck()?;
 
