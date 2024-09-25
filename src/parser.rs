@@ -133,8 +133,6 @@ impl Parser {
 
         let (base_type, storage_class) = self.parse_type_and_storage_specifiers(&specifier_list)?;
 
-        println!("base_type: {:?}, storage_class: {:?}", base_type, storage_class);
-
         let declarator = self.parse_declarator()?;
 
         let (name, decl_type, params) = self.process_declarator(&declarator, &base_type)?;
@@ -1115,6 +1113,19 @@ pub enum BlockItem {
 pub enum Declaration {
     Variable(VariableDeclaration),
     Function(FunctionDeclaration),
+    Struct(StructDeclaration),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructDeclaration {
+    pub tag: String,
+    pub members: Vec<MemberDeclaration>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MemberDeclaration {
+    pub name: String,
+    pub _type: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]

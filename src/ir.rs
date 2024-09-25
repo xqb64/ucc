@@ -841,6 +841,7 @@ impl Irfy for ProgramStatement {
                             continue;
                         }
                     }
+                    _ => todo!(),
                 },
                 BlockItem::Statement(stmt) => {
                     if let Some(ir_stmt) = stmt.irfy() {
@@ -873,6 +874,7 @@ impl Irfy for BlockStatement {
                         }
                     }
                     Declaration::Function(_func_decl) => {}
+                    _ => todo!(),
                 },
                 BlockItem::Statement(stmt) => {
                     if let Some(ir_stmt) = stmt.irfy() {
@@ -1070,6 +1072,7 @@ impl Irfy for BlockItem {
             BlockItem::Declaration(decl) => match decl {
                 Declaration::Function(func) => func.irfy(),
                 Declaration::Variable(var) => var.irfy(),
+                _ => todo!(),
             },
             BlockItem::Statement(stmt) => stmt.irfy(),
         }

@@ -55,6 +55,7 @@ impl Typecheck for Declaration {
                 func_decl.typecheck()?;
                 Ok(self)
             }
+            _ => todo!(),
         }
     }
 }

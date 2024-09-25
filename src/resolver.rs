@@ -38,6 +38,7 @@ impl Resolve for Declaration {
                 func_decl.resolve(variable_map)?;
                 Ok(self)
             }
+            _ => todo!(),
         }
     }
 }
