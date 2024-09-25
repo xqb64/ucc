@@ -497,6 +497,7 @@ impl Parser {
                     || sorted_specifiers.contains(&Token::Double)
                     || sorted_specifiers.contains(&Token::Char)
                     || sorted_specifiers.contains(&Token::Void)
+                    || sorted_specifiers.iter().any(|s| matches!(s, Token::Identifier(_)))
                     || (sorted_specifiers.contains(&Token::Signed)
                         && sorted_specifiers.contains(&Token::Unsigned))
                 {
