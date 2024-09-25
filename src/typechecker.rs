@@ -1539,6 +1539,8 @@ pub fn get_type(e: &Expression) -> &Type {
         Expression::String(string) => &string._type,
         Expression::Sizeof(sizeof) => &sizeof._type,
         Expression::SizeofT(sizeof_t) => &sizeof_t._type,
+        Expression::Arrow(arrow) => &arrow._type,
+        Expression::Dot(dot) => &dot._type,
     }
 }
 

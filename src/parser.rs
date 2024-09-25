@@ -998,6 +998,20 @@ impl Parser {
                     index: index.into(),
                     _type: Type::Dummy,
                 });
+            } else if self.is_next(&[Token::Dot]) {
+                let member = self.consume(&Token::Identifier("".to_owned()))?.unwrap().as_string();
+                expr = Expression::Dot(DotExpression {
+                    structure: expr.into(),
+                    member,
+                    _type: Type::Dummy,
+                });
+            } else if self.is_next(&[Token::Arrow]) {
+                let member = self.consume(&Token::Identifier("".to_owned()))?.unwrap().as_string();
+                expr = Expression::Arrow(ArrowExpression {
+                    pointer: expr.into(),
+                    member,
+                    _type: Type::Dummy,
+                });
             } else {
                 break;
             }
@@ -1330,6 +1344,22 @@ pub enum Expression {
     Subscript(SubscriptExpression),
     Sizeof(SizeofExpression),
     SizeofT(SizeofTExpression),
+    Dot(DotExpression),
+    Arrow(ArrowExpression),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArrowExpression {
+    pub pointer: Box<Expression>,
+    pub member: String,
+    pub _type: Type,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DotExpression {
+    pub structure: Box<Expression>,
+    pub member: String,
+    pub _type: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]

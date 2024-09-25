@@ -616,6 +616,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
         Expression::SizeofT(SizeofTExpression { t, _type }) => {
             ExpResult::PlainOperand(IRValue::Constant(Const::ULong(get_size_of_type(t) as u64)))
         }
+        _ => todo!(),
     }
 }
 
