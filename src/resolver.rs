@@ -29,7 +29,6 @@ pub trait Resolve {
 
 impl Resolve for Declaration {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
-        println!("variable_map: {:?}", variable_map);
         match self {
             Declaration::Variable(var_decl) => {
                 var_decl.resolve(variable_map, struct_map)?;
@@ -53,6 +52,7 @@ fn resolve_structure_declaration<'a>(decl: &'a mut StructDeclaration, struct_map
     let unique_tag;
     if prev_entry.is_none() || !prev_entry.clone().unwrap().from_current_scope {
         unique_tag = format!("struct.{}.{}", decl.tag.clone(), make_temporary());
+        println!("inserting unique tag: {}", unique_tag);
         struct_map.insert(
             decl.tag.clone(),
             StructTableEntry {
@@ -75,6 +75,11 @@ fn resolve_structure_declaration<'a>(decl: &'a mut StructDeclaration, struct_map
 
         processed_members.push(processed_member);
     }
+
+    *decl = StructDeclaration {
+        tag: unique_tag.clone(),
+        members: processed_members.clone(),
+    };
 
     Ok(StructDeclaration {
         tag: unique_tag.clone(),
@@ -108,6 +113,7 @@ impl Resolve for VariableDeclaration {
                 );
 
                 self.init = optionally_resolve_init(&self.init, variable_map)?;
+                self._type = resolve_type(&self._type, _struct_map)?;
 
                 Ok(self)
             }
@@ -138,6 +144,7 @@ impl Resolve for VariableDeclaration {
                     );
 
                     self.init = optionally_resolve_init(&self.init, variable_map)?;
+                    self._type = resolve_type(&self._type, _struct_map)?;
 
                     Ok(self)
                 } else {
@@ -154,6 +161,7 @@ impl Resolve for VariableDeclaration {
 
                     self.name = unique_name;
                     self.init = optionally_resolve_init(&self.init, variable_map)?;
+                    self._type = resolve_type(&self._type, _struct_map)?;
 
                     Ok(self)
                 }
@@ -187,6 +195,8 @@ fn resolve_init(
 
 impl Resolve for FunctionDeclaration {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+        self._type = resolve_type(&self._type, struct_map)?;
+        
         if self.body.is_some() && !self.is_global {
             bail!("function definition in non-global scope");
         }
@@ -361,7 +371,7 @@ impl Resolve for ForStatement {
         self.init = resolve_for_init(&mut self.init, &mut new_variable_map, &mut new_struct_map)?;
         self.condition = resolve_optional_expr(&self.condition, &mut new_variable_map)?;
         self.post = resolve_optional_expr(&self.post, &mut new_variable_map)?;
-        self.body = self.body.resolve(&mut new_variable_map, struct_map)?.to_owned().into();
+        self.body = self.body.resolve(&mut new_variable_map, &mut new_struct_map)?.to_owned().into();
         Ok(self)
     }
 }

@@ -179,6 +179,11 @@ impl Typecheck for VariableDeclaration {
         } else {
             validate_type_specifier(&self._type)?;
         }
+ 
+        if !is_complete(&self._type) {
+            bail!("Variable declared with incomplete type");
+        }
+ 
         match self.is_global {
             true => {
                 let default_init = if self.storage_class == Some(StorageClass::Extern) {
@@ -797,7 +802,6 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             ))
         }
         (Type::Struct { tag }, Initializer::Compound(name, _type, compound_init)) => {
-            println!("searching for {} in {:?}", tag, TYPE_TABLE.lock().unwrap());
             let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
             if compound_init.len() > struct_def.members.len() {
                 bail!("Too many initializers");
@@ -1587,7 +1591,9 @@ fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
             _type: Type::Pointer(element.to_owned()),
         })),
         Type::Struct { tag } => {
-            if !TYPE_TABLE.lock().unwrap().contains_key(tag) {
+            println!("tag: {:?}", tag);
+            println!("type of expr: {:?}", type_of_expr);
+            if !is_complete(type_of_expr) {
                 bail!("Unknown struct type");
             }
             Ok(typed_expr)
