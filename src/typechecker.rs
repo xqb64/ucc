@@ -1559,6 +1559,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             match get_type(&typed_pointer) {
                 Type::Pointer(referenced) => {
                     if let Type::Struct { tag } = &**referenced {
+                        println!("getting tag: {:?}", tag);
                         let struct_def = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
                         
                         if !struct_def.members.to_vec().into_iter().any(|m| m.name == *member) {

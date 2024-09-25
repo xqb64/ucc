@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression, MemberDeclaration, ProgramStatement, ReturnStatement, SizeofExpression, Statement, StorageClass, StringExpression, StructDeclaration, SubscriptExpression, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
+        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression, MemberDeclaration, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration, SubscriptExpression, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
     },
 };
 
@@ -90,9 +90,10 @@ fn resolve_structure_declaration<'a>(decl: &'a mut StructDeclaration, struct_map
 fn optionally_resolve_init(
     init: &Option<Initializer>,
     variable_map: &mut HashMap<String, Variable>,
+    struct_map: &mut HashMap<String, StructTableEntry>,
 ) -> Result<Option<Initializer>> {
     if init.is_some() {
-        let resolved_init = resolve_init(init.as_ref().unwrap(), variable_map)?;
+        let resolved_init = resolve_init(init.as_ref().unwrap(), variable_map, struct_map)?;
         Ok(Some(resolved_init))
     } else {
         Ok(None)
@@ -100,7 +101,7 @@ fn optionally_resolve_init(
 }
 
 impl Resolve for VariableDeclaration {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, _struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
         match self.is_global {
             true => {
                 variable_map.insert(
@@ -112,8 +113,8 @@ impl Resolve for VariableDeclaration {
                     },
                 );
 
-                self.init = optionally_resolve_init(&self.init, variable_map)?;
-                self._type = resolve_type(&self._type, _struct_map)?;
+                self.init = optionally_resolve_init(&self.init, variable_map, struct_map)?;
+                self._type = resolve_type(&self._type, struct_map)?;
 
                 Ok(self)
             }
@@ -143,8 +144,8 @@ impl Resolve for VariableDeclaration {
                         },
                     );
 
-                    self.init = optionally_resolve_init(&self.init, variable_map)?;
-                    self._type = resolve_type(&self._type, _struct_map)?;
+                    self.init = optionally_resolve_init(&self.init, variable_map, struct_map)?;
+                    self._type = resolve_type(&self._type, struct_map)?;
 
                     Ok(self)
                 } else {
@@ -160,8 +161,8 @@ impl Resolve for VariableDeclaration {
                     );
 
                     self.name = unique_name;
-                    self.init = optionally_resolve_init(&self.init, variable_map)?;
-                    self._type = resolve_type(&self._type, _struct_map)?;
+                    self.init = optionally_resolve_init(&self.init, variable_map, struct_map)?;
+                    self._type = resolve_type(&self._type, struct_map)?;
 
                     Ok(self)
                 }
@@ -173,16 +174,17 @@ impl Resolve for VariableDeclaration {
 fn resolve_init(
     init: &Initializer,
     variable_map: &mut HashMap<String, Variable>,
+    struct_map: &mut HashMap<String, StructTableEntry>,
 ) -> Result<Initializer> {
     match init {
         Initializer::Single(name, single_init) => {
-            let resolved_expr = resolve_exp(single_init, variable_map)?;
+            let resolved_expr = resolve_exp(single_init, variable_map, struct_map)?;
             Ok(Initializer::Single(name.clone(), resolved_expr))
         }
         Initializer::Compound(name, _type, compound_init) => {
             let mut resolved_inits = vec![];
             for init in compound_init {
-                resolved_inits.push(resolve_init(init, variable_map)?);
+                resolved_inits.push(resolve_init(init, variable_map, struct_map)?);
             }
             Ok(Initializer::Compound(
                 name.clone(),
@@ -320,16 +322,16 @@ impl Resolve for Statement {
 }
 
 impl Resolve for ExpressionStatement {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, _struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
-        self.expr = resolve_exp(&self.expr, variable_map)?;
+    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+        self.expr = resolve_exp(&self.expr, variable_map, struct_map)?;
         Ok(self)
     }
 }
 
 impl Resolve for ReturnStatement {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, _struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
-        self.expr = resolve_optional_expr(&self.expr, variable_map)?;
-        self.target_type = optionally_resolve_type(&self.target_type, _struct_map)?;
+    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+        self.expr = resolve_optional_expr(&self.expr, variable_map, struct_map)?;
+        self.target_type = optionally_resolve_type(&self.target_type, struct_map)?;
         Ok(self)
     }
 }
@@ -357,7 +359,7 @@ impl Resolve for ProgramStatement {
 
 impl Resolve for IfStatement {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
-        self.condition = resolve_exp(&self.condition, variable_map)?;
+        self.condition = resolve_exp(&self.condition, variable_map, struct_map)?;
         self.then_branch = self.then_branch.resolve(variable_map, struct_map)?.to_owned().into();
         self.else_branch = resolve_optional_block_item(&mut self.else_branch, variable_map, struct_map)?.into();
 
@@ -381,8 +383,8 @@ impl Resolve for ForStatement {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
         self.init = resolve_for_init(&mut self.init, &mut new_variable_map, &mut new_struct_map)?;
-        self.condition = resolve_optional_expr(&self.condition, &mut new_variable_map)?;
-        self.post = resolve_optional_expr(&self.post, &mut new_variable_map)?;
+        self.condition = resolve_optional_expr(&self.condition, &mut new_variable_map, struct_map)?;
+        self.post = resolve_optional_expr(&self.post, &mut new_variable_map, struct_map)?;
         self.body = self.body.resolve(&mut new_variable_map, &mut new_struct_map)?.to_owned().into();
         Ok(self)
     }
@@ -393,7 +395,7 @@ impl Resolve for DoWhileStatement {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
         self.body = self.body.resolve(&mut new_variable_map, &mut new_struct_map)?.to_owned().into();
-        self.condition = resolve_exp(&self.condition, &mut new_variable_map)?;
+        self.condition = resolve_exp(&self.condition, &mut new_variable_map, struct_map)?;
         Ok(self)
     }
 }
@@ -402,7 +404,7 @@ impl Resolve for WhileStatement {
     fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
-        self.condition = resolve_exp(&self.condition, &mut new_variable_map)?;
+        self.condition = resolve_exp(&self.condition, &mut new_variable_map, struct_map)?;
         self.body = self.body.resolve(&mut new_variable_map, &mut new_struct_map)?.to_owned().into();
         Ok(self)
     }
@@ -423,6 +425,7 @@ impl Resolve for ContinueStatement {
 fn resolve_exp(
     exp: &Expression,
     variable_map: &mut HashMap<String, Variable>,
+    struct_map: &mut HashMap<String, StructTableEntry>,
 ) -> Result<Expression> {
     match exp.to_owned() {
         Expression::Assign(AssignExpression {
@@ -431,8 +434,8 @@ fn resolve_exp(
             rhs,
             _type,
         }) => {
-            let resolved_lhs = resolve_exp(lhs, variable_map)?;
-            let resolved_rhs = resolve_exp(&rhs, variable_map)?;
+            let resolved_lhs = resolve_exp(lhs, variable_map, struct_map)?;
+            let resolved_rhs = resolve_exp(&rhs, variable_map, struct_map)?;
 
             Ok(Expression::Assign(AssignExpression {
                 op,
@@ -452,7 +455,7 @@ fn resolve_exp(
         }
         Expression::Constant(konst) => Ok(Expression::Constant(konst)),
         Expression::Unary(UnaryExpression { kind, expr, _type }) => {
-            let resolved_expr = resolve_exp(&expr, variable_map)?;
+            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
 
             Ok(Expression::Unary(UnaryExpression {
                 kind,
@@ -466,8 +469,8 @@ fn resolve_exp(
             rhs,
             _type,
         }) => {
-            let resolved_lhs = resolve_exp(&lhs, variable_map)?;
-            let resolved_rhs = resolve_exp(&rhs, variable_map)?;
+            let resolved_lhs = resolve_exp(&lhs, variable_map, struct_map)?;
+            let resolved_rhs = resolve_exp(&rhs, variable_map, struct_map)?;
 
             Ok(Expression::Binary(BinaryExpression {
                 kind,
@@ -482,9 +485,9 @@ fn resolve_exp(
             else_expr,
             _type,
         }) => {
-            let resolved_condition = resolve_exp(&condition, variable_map)?;
-            let resolved_then_expr = resolve_exp(&then_expr, variable_map)?;
-            let resolved_else_expr = resolve_exp(&else_expr, variable_map)?;
+            let resolved_condition = resolve_exp(&condition, variable_map, struct_map)?;
+            let resolved_then_expr = resolve_exp(&then_expr, variable_map, struct_map)?;
+            let resolved_else_expr = resolve_exp(&else_expr, variable_map, struct_map)?;
 
             if let (Expression::Binary(_), Expression::Assign(_), Expression::Assign(_)) = (
                 &resolved_condition,
@@ -506,7 +509,7 @@ fn resolve_exp(
                 let new_func_name = variable_map.get(&name).unwrap().name.clone();
                 let resolved_args = args
                     .iter()
-                    .map(|arg| resolve_exp(arg, variable_map))
+                    .map(|arg| resolve_exp(arg, variable_map, struct_map))
                     .collect::<Result<Vec<_>>>()?;
 
                 Ok(Expression::Call(CallExpression {
@@ -523,16 +526,17 @@ fn resolve_exp(
             expr,
             _type,
         }) => {
-            let resolved_expr = resolve_exp(&expr, variable_map)?;
+            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
+            let resolved_type = resolve_type(&target_type, struct_map)?;
 
             Ok(Expression::Cast(CastExpression {
-                target_type,
+                target_type: resolved_type,
                 expr: resolved_expr.into(),
                 _type,
             }))
         }
         Expression::AddrOf(AddrOfExpression { expr, _type }) => {
-            let resolved_expr = resolve_exp(&expr, variable_map)?;
+            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
 
             Ok(Expression::AddrOf(AddrOfExpression {
                 expr: resolved_expr.into(),
@@ -540,7 +544,7 @@ fn resolve_exp(
             }))
         }
         Expression::Deref(DerefExpression { expr, _type }) => {
-            let resolved_expr = resolve_exp(&expr, variable_map)?;
+            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
 
             Ok(Expression::Deref(DerefExpression {
                 expr: resolved_expr.into(),
@@ -548,8 +552,8 @@ fn resolve_exp(
             }))
         }
         Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
-            let resolved_expr = resolve_exp(&expr, variable_map)?;
-            let resolved_index = resolve_exp(&index, variable_map)?;
+            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
+            let resolved_index = resolve_exp(&index, variable_map, struct_map)?;
 
             Ok(Expression::Subscript(SubscriptExpression {
                 expr: resolved_expr.into(),
@@ -558,7 +562,7 @@ fn resolve_exp(
             }))
         }
         Expression::Literal(LiteralExpression { name, value, _type }) => {
-            let resolved_init = resolve_init(&value, variable_map)?;
+            let resolved_init = resolve_init(&value, variable_map, struct_map)?;
             Ok(Expression::Literal(LiteralExpression {
                 name,
                 value: resolved_init.into(),
@@ -569,14 +573,15 @@ fn resolve_exp(
             Ok(Expression::String(StringExpression { value, _type }))
         }
         Expression::Sizeof(SizeofExpression { expr, _type }) => {
-            let resolved_expr = resolve_exp(&expr, variable_map)?;
+            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
+            let resolved_type = resolve_type(&_type, struct_map)?;
             Ok(Expression::Sizeof(SizeofExpression {
                 expr: resolved_expr.into(),
-                _type,
+                _type: resolved_type,
             }))
         }
         Expression::Dot(DotExpression { structure, member, _type }) => {
-            let resolved_structure = resolve_exp(&structure, variable_map)?;
+            let resolved_structure = resolve_exp(&structure, variable_map, struct_map)?;
             Ok(Expression::Dot(DotExpression {
                 structure: resolved_structure.into(),
                 member,
@@ -584,14 +589,20 @@ fn resolve_exp(
             }))
         }
         Expression::Arrow(ArrowExpression { pointer, member, _type }) => {
-            let resolved_pointer = resolve_exp(&pointer, variable_map)?;
+            let resolved_pointer = resolve_exp(&pointer, variable_map, struct_map)?;
             Ok(Expression::Arrow(ArrowExpression {
                 pointer: resolved_pointer.into(),
                 member,
                 _type,
             }))
         }
-        _ => Ok(exp.to_owned()),
+        Expression::SizeofT(SizeofTExpression { t, _type }) => {
+            let resolved_type = resolve_type(&t, struct_map)?;
+            Ok(Expression::SizeofT(SizeofTExpression {
+                t: resolved_type,
+                _type,
+            }))
+        }
     }
 }
 
@@ -635,7 +646,7 @@ fn resolve_for_init<'a>(
 ) -> Result<ForInit> {
     match init {
         ForInit::Expression(expr) => {
-            let resolved_expr = resolve_optional_expr(expr, variable_map)?;
+            let resolved_expr = resolve_optional_expr(expr, variable_map, struct_map)?;
             Ok(ForInit::Expression(resolved_expr))
         }
         ForInit::Declaration(ref mut decl) => {
@@ -648,9 +659,10 @@ fn resolve_for_init<'a>(
 fn resolve_optional_expr(
     expr: &Option<Expression>,
     variable_map: &mut HashMap<String, Variable>,
+    struct_map: &mut HashMap<String, StructTableEntry>,
 ) -> Result<Option<Expression>> {
     if expr.is_some() {
-        let resolved_expr = resolve_exp(expr.as_ref().unwrap(), variable_map)?;
+        let resolved_expr = resolve_exp(expr.as_ref().unwrap(), variable_map, struct_map)?;
         Ok(Some(resolved_expr))
     } else {
         Ok(None)
