@@ -82,8 +82,9 @@ impl Parser {
             Token::Void,
             Token::Static,
             Token::Extern,
+            Token::Struct,
         ]) {
-            self.parse_var_or_fn_decl()
+            self.parse_declaration()
         } else if self.is_next(&[Token::Return]) {
             self.parse_return_statement()
         } else if self.is_next(&[Token::If]) {
@@ -104,6 +105,54 @@ impl Parser {
             Ok(BlockItem::Statement(Statement::Null))
         } else {
             self.parse_expression_statement()
+        }
+    }
+
+    fn parse_declaration(&mut self) -> Result<BlockItem> {
+        match self.peek(3).as_slice() {
+            [Token::Struct, Token::Identifier(_), Token::LBrace | Token::Semicolon] => self.parse_struct_decl(),
+            _ => self.parse_var_or_fn_decl(),
+        }
+    }
+
+    fn parse_struct_decl(&mut self) -> Result<BlockItem> {
+        self.consume(&Token::Struct)?;
+        let tag = self.consume(&Token::Identifier("".to_owned()))?.unwrap().as_string();
+        let members = if self.is_next(&[Token::LBrace]) {
+            let mut members = vec![];
+            loop {
+                let next_member = self.parse_member_decl()?;
+                if self.is_next(&[Token::RBrace]) {
+                    members.push(next_member);
+                    break members;
+                } else {
+                    members.push(next_member);
+                }
+            }
+        } else {
+            vec![]
+        };
+        self.consume(&Token::Semicolon)?;
+        Ok(BlockItem::Declaration(Declaration::Struct(StructDeclaration {
+            tag,
+            members,
+        })))
+    }
+
+    fn parse_member_decl(&mut self) -> Result<MemberDeclaration> {
+        let specifier_list = self.consume_while_type_specifier();
+        let base_type = self.parse_type(specifier_list)?;
+        let declarator = self.parse_declarator()?;
+        match declarator {
+            Declarator::Func(_, _) => bail!("function declarations not allowed in struct"),
+            _ => {
+                self.consume(&Token::Semicolon)?;
+                let (name, decl_type, _) = self.process_declarator(&declarator, &base_type)?;
+                Ok(MemberDeclaration {
+                    name,
+                    _type: decl_type,
+                })
+            }
         }
     }
 
