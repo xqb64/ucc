@@ -182,7 +182,8 @@ impl Typecheck for VariableDeclaration {
   
         match self.is_global {
             true => {
-                if !is_complete(&self._type) {
+                if !is_complete(&self._type) && self.storage_class != Some(StorageClass::Extern) {
+                    println!("variable name: {:?}", self.name);
                     bail!("Variable declared with incomplete type");
                 }
 
