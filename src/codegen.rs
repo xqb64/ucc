@@ -157,7 +157,7 @@ pub enum AsmOperand {
     Pseudo(String),
     Memory(AsmRegister, isize),
     Register(AsmRegister),
-    Data(String),
+    Data(String, isize),
     PseudoMem(String, isize),
     Indexed(AsmRegister, AsmRegister, isize),
 }
@@ -203,6 +203,8 @@ pub enum AsmBinaryOp {
     And,
     Or,
     Xor,
+    Shl,
+    ShrTwoOp,
 }
 
 pub trait Codegen {
@@ -402,7 +404,7 @@ impl Codegen for IRValue {
                         alignment: 8,
                     };
                     STATIC_CONSTANTS.lock().unwrap().push(static_const.clone());
-                    AsmNode::Operand(AsmOperand::Data(static_const.name))
+                    AsmNode::Operand(AsmOperand::Data(static_const.name, 0))
                 }
                 Const::Char(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
                 Const::UChar(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
@@ -460,7 +462,7 @@ impl Codegen for IRInstruction {
                                 AsmInstruction::Binary {
                                     asm_type: AsmType::Double,
                                     op: AsmBinaryOp::Xor,
-                                    lhs: AsmOperand::Data(static_const.name),
+                                    lhs: AsmOperand::Data(static_const.name, 0),
                                     rhs: dst.codegen().into(),
                                 },
                             ])
@@ -1314,7 +1316,7 @@ impl Codegen for IRInstruction {
                         AsmNode::Instructions(vec![
                             AsmInstruction::Cmp {
                                 asm_type: AsmType::Double,
-                                lhs: AsmOperand::Data(static_constant.name.clone()),
+                                lhs: AsmOperand::Data(static_constant.name.clone(), 0),
                                 rhs: src.codegen().into(),
                             },
                             AsmInstruction::JmpCC {
@@ -1340,7 +1342,7 @@ impl Codegen for IRInstruction {
                             AsmInstruction::Binary {
                                 op: AsmBinaryOp::Sub,
                                 asm_type: AsmType::Double,
-                                lhs: AsmOperand::Data(static_constant.name),
+                                lhs: AsmOperand::Data(static_constant.name, 0),
                                 rhs: AsmOperand::Register(AsmRegister::XMM0),
                             }, // src f64 - (1<<63)f64
                             AsmInstruction::Cvttsd2si {
@@ -1619,7 +1621,7 @@ impl ReplacePseudo for AsmOperand {
                         IdentifierAttrs::StaticAttr {
                             initial_value: _,
                             global: _,
-                        } => AsmOperand::Data(name.clone()),
+                        } => AsmOperand::Data(name.clone(), 0),
                         _ => {
                             let _type = match ASM_SYMBOL_TABLE
                                 .lock()
@@ -1672,7 +1674,7 @@ impl ReplacePseudo for AsmOperand {
             }
             AsmOperand::Memory(AsmRegister::BP, _) => self.clone(),
             AsmOperand::Register(_) => self.clone(),
-            AsmOperand::Data(_) => self.clone(),
+            AsmOperand::Data(_, _) => self.clone(),
             AsmOperand::PseudoMem(name, offset) => {
                 let (is_static, is_constant, _type) =
                     match ASM_SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap() {
@@ -1694,7 +1696,7 @@ impl ReplacePseudo for AsmOperand {
                         .unwrap();
                     AsmOperand::Memory(AsmRegister::BP, previously_assigned + *offset)
                 } else {
-                    AsmOperand::Data(name.clone())
+                    AsmOperand::Data(name.clone(), 0)
                 }
             }
             _ => self.clone(),
@@ -1787,7 +1789,7 @@ impl Fixup for AsmFunction {
                     match dst {
                         AsmOperand::Memory(AsmRegister::BP, _)
                         | AsmOperand::Memory(_, _)
-                        | AsmOperand::Data(_) => {
+                        | AsmOperand::Data(_, _) => {
                             instructions.extend(vec![
                                 AsmInstruction::Lea {
                                     src: src.clone(),
@@ -1808,7 +1810,7 @@ impl Fixup for AsmFunction {
                     src,
                     dst,
                 } => match (&src, &dst) {
-                    (AsmOperand::Memory(_, _), AsmOperand::Data(_)) => {
+                    (AsmOperand::Memory(_, _), AsmOperand::Data(_, _)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Double,
@@ -1822,7 +1824,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Data(_), AsmOperand::Memory(_, _)) => {
+                    (AsmOperand::Data(_, _), AsmOperand::Memory(_, _)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Double,
@@ -1871,7 +1873,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Imm(_), AsmOperand::Data(_)) => {
+                    (AsmOperand::Imm(_), AsmOperand::Data(_, _)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Quadword,
@@ -1901,7 +1903,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Data(_), AsmOperand::Memory(_, _)) => {
+                    (AsmOperand::Data(_, _), AsmOperand::Memory(_, _)) => {
                         let scratch = AsmOperand::Register(AsmRegister::R10);
 
                         instructions.extend(vec![
@@ -1917,7 +1919,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Memory(_, _), AsmOperand::Data(_)) => {
+                    (AsmOperand::Memory(_, _), AsmOperand::Data(_, _)) => {
                         let scratch = AsmOperand::Register(AsmRegister::R10);
 
                         instructions.extend(vec![
@@ -1933,7 +1935,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Data(_), AsmOperand::Data(_)) => {
+                    (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
                         let scratch = AsmOperand::Register(AsmRegister::R10);
 
                         instructions.extend(vec![
@@ -1985,7 +1987,7 @@ impl Fixup for AsmFunction {
                             ]);
                         }
                     }
-                    (AsmOperand::Imm(_), AsmOperand::Data(_)) => {
+                    (AsmOperand::Imm(_), AsmOperand::Data(_, _)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Longword,
@@ -2015,7 +2017,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Data(_), AsmOperand::Memory(_, _)) => {
+                    (AsmOperand::Data(_, _), AsmOperand::Memory(_, _)) => {
                         let scratch = AsmOperand::Register(AsmRegister::R10);
 
                         instructions.extend(vec![
@@ -2031,7 +2033,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Memory(_, _), AsmOperand::Data(_)) => {
+                    (AsmOperand::Memory(_, _), AsmOperand::Data(_, _)) => {
                         let scratch = AsmOperand::Register(AsmRegister::R10);
 
                         instructions.extend(vec![
@@ -2047,7 +2049,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Data(_), AsmOperand::Data(_)) => {
+                    (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
                         let scratch = AsmOperand::Register(AsmRegister::R10);
 
                         instructions.extend(vec![
@@ -2099,7 +2101,7 @@ impl Fixup for AsmFunction {
                             ]);
                         }
                     }
-                    (AsmOperand::Imm(_), AsmOperand::Data(_)) => {
+                    (AsmOperand::Imm(_), AsmOperand::Data(_, _)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Byte,
@@ -2129,7 +2131,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Data(_), AsmOperand::Memory(_, _)) => {
+                    (AsmOperand::Data(_, _), AsmOperand::Memory(_, _)) => {
                         let scratch = AsmOperand::Register(AsmRegister::R10);
 
                         instructions.extend(vec![
@@ -2145,7 +2147,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Memory(_, _), AsmOperand::Data(_)) => {
+                    (AsmOperand::Memory(_, _), AsmOperand::Data(_, _)) => {
                         let scratch = AsmOperand::Register(AsmRegister::R10);
 
                         instructions.extend(vec![
@@ -2161,7 +2163,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Data(_), AsmOperand::Data(_)) => {
+                    (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
                         let scratch = AsmOperand::Register(AsmRegister::R10);
 
                         instructions.extend(vec![
@@ -2180,7 +2182,7 @@ impl Fixup for AsmFunction {
                     _ => instructions.push(instr.clone()),
                 },
                 AsmInstruction::Mov { asm_type, src, dst } => match (&src, &dst) {
-                    (AsmOperand::Data(_), AsmOperand::Data(_)) => {
+                    (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
                         let scratch = if asm_type == &AsmType::Double {
                             AsmOperand::Register(AsmRegister::XMM14)
                         } else {
@@ -2200,7 +2202,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Data(_), AsmOperand::Memory(_, _)) => {
+                    (AsmOperand::Data(_, _), AsmOperand::Memory(_, _)) => {
                         let scratch = if asm_type == &AsmType::Double {
                             AsmOperand::Register(AsmRegister::XMM14)
                         } else {
@@ -2290,7 +2292,7 @@ impl Fixup for AsmFunction {
                             }
                             _ => instructions.push(instr.clone()),
                         },
-                        (AsmOperand::Data(src), AsmOperand::Memory(AsmRegister::BP, dst_n)) => {
+                        (AsmOperand::Data(src, offset), AsmOperand::Memory(AsmRegister::BP, dst_n)) => {
                             if asm_type == &AsmType::Double {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
@@ -2314,7 +2316,7 @@ impl Fixup for AsmFunction {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
                                         asm_type: *asm_type,
-                                        src: AsmOperand::Data(src.clone()),
+                                        src: AsmOperand::Data(src.clone(), 0),
                                         dst: AsmOperand::Register(AsmRegister::R10),
                                     },
                                     AsmInstruction::Binary {
@@ -2326,18 +2328,18 @@ impl Fixup for AsmFunction {
                                 ]);
                             }
                         }
-                        (AsmOperand::Data(src), AsmOperand::Data(dst)) => {
+                        (AsmOperand::Data(src, offset1), AsmOperand::Data(dst, offset2)) => {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
                                     asm_type: *asm_type,
-                                    src: AsmOperand::Data(src.clone()),
+                                    src: AsmOperand::Data(src.clone(), *offset1),
                                     dst: AsmOperand::Register(AsmRegister::R10),
                                 },
                                 AsmInstruction::Binary {
                                     asm_type: *asm_type,
                                     op: *op,
                                     lhs: AsmOperand::Register(AsmRegister::R10),
-                                    rhs: AsmOperand::Data(dst.clone()),
+                                    rhs: AsmOperand::Data(dst.clone(), *offset2),
                                 },
                             ]);
                         }
@@ -2432,7 +2434,7 @@ impl Fixup for AsmFunction {
                                 }
                                 _ => todo!(),
                             },
-                            (AsmOperand::Data(_), AsmOperand::Memory(AsmRegister::BP, _)) => {
+                            (AsmOperand::Data(_, _), AsmOperand::Memory(AsmRegister::BP, _)) => {
                                 if asm_type == &AsmType::Double {
                                     instructions.extend(vec![
                                         AsmInstruction::Mov {
@@ -2526,7 +2528,7 @@ impl Fixup for AsmFunction {
                         }
                     }
                     AsmBinaryOp::Xor => match (&lhs, &rhs) {
-                        (AsmOperand::Data(_), AsmOperand::Memory(AsmRegister::BP, _)) => {
+                        (AsmOperand::Data(_, _), AsmOperand::Memory(AsmRegister::BP, _)) => {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
                                     asm_type: *asm_type,
@@ -2572,7 +2574,7 @@ impl Fixup for AsmFunction {
                                 },
                             ]);
                         }
-                        (AsmOperand::Data(_), AsmOperand::Memory(AsmRegister::BP, _)) => {
+                        (AsmOperand::Data(_, _), AsmOperand::Memory(AsmRegister::BP, _)) => {
                             instructions.extend(vec![
                                 AsmInstruction::Mov {
                                     asm_type: *asm_type,
@@ -2642,7 +2644,7 @@ impl Fixup for AsmFunction {
                     dst,
                 } => match dst {
                     AsmOperand::Memory(_, _)
-                    | AsmOperand::Data(_)
+                    | AsmOperand::Data(_, _)
                     | AsmOperand::Indexed(_, _, _) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
@@ -2686,7 +2688,7 @@ impl Fixup for AsmFunction {
                     dst,
                 } => match dst {
                     AsmOperand::Memory(_, _)
-                    | AsmOperand::Data(_)
+                    | AsmOperand::Data(_, _)
                     | AsmOperand::Indexed(_, _, _) => {
                         instructions.extend(vec![
                             AsmInstruction::MovZeroExtend {
@@ -2713,7 +2715,7 @@ impl Fixup for AsmFunction {
                     dst,
                 } => match dst {
                     AsmOperand::Memory(_, _)
-                    | AsmOperand::Data(_)
+                    | AsmOperand::Data(_, _)
                     | AsmOperand::Indexed(_, _, _) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
@@ -2789,7 +2791,7 @@ impl Fixup for AsmFunction {
                                 ]);
                             }
                         }
-                        (AsmOperand::Data(src), AsmOperand::Memory(AsmRegister::BP, dst_n)) => {
+                        (AsmOperand::Data(src, offset), AsmOperand::Memory(AsmRegister::BP, dst_n)) => {
                             if asm_type == &AsmType::Double {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
@@ -2807,7 +2809,7 @@ impl Fixup for AsmFunction {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
                                         asm_type: *asm_type,
-                                        src: AsmOperand::Data(src.clone()),
+                                        src: AsmOperand::Data(src.clone(), *offset),
                                         dst: AsmOperand::Register(AsmRegister::R10),
                                     },
                                     AsmInstruction::Cmp {
@@ -2818,7 +2820,7 @@ impl Fixup for AsmFunction {
                                 ]);
                             }
                         }
-                        (AsmOperand::Memory(AsmRegister::BP, src_n), AsmOperand::Data(dst)) => {
+                        (AsmOperand::Memory(AsmRegister::BP, src_n), AsmOperand::Data(dst, offset)) => {
                             if asm_type == &AsmType::Double {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
@@ -2842,23 +2844,23 @@ impl Fixup for AsmFunction {
                                     AsmInstruction::Cmp {
                                         asm_type: *asm_type,
                                         lhs: AsmOperand::Register(AsmRegister::R10),
-                                        rhs: AsmOperand::Data(dst.clone()),
+                                        rhs: AsmOperand::Data(dst.clone(), *offset),
                                     },
                                 ]);
                             }
                         }
-                        (AsmOperand::Data(src), AsmOperand::Data(dst)) => match asm_type {
+                        (AsmOperand::Data(src, offset1), AsmOperand::Data(dst, offset2)) => match asm_type {
                             AsmType::Longword | AsmType::Quadword => {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
                                         asm_type: *asm_type,
-                                        src: AsmOperand::Data(src.clone()),
+                                        src: AsmOperand::Data(src.clone(), *offset1),
                                         dst: AsmOperand::Register(AsmRegister::R10),
                                     },
                                     AsmInstruction::Cmp {
                                         asm_type: *asm_type,
                                         lhs: AsmOperand::Register(AsmRegister::R10),
-                                        rhs: AsmOperand::Data(dst.clone()),
+                                        rhs: AsmOperand::Data(dst.clone(), *offset2),
                                     },
                                 ]);
                             }
@@ -3045,7 +3047,7 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    (AsmOperand::Data(_), AsmOperand::Memory(AsmRegister::BP, _), _) => {
+                    (AsmOperand::Data(_, _), AsmOperand::Memory(AsmRegister::BP, _), _) => {
                         instructions.extend(vec![
                             AsmInstruction::Cvttsd2si {
                                 asm_type: *asm_type,

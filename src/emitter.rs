@@ -275,6 +275,8 @@ impl Emit for AsmInstruction {
                     AsmBinaryOp::And => "and",
                     AsmBinaryOp::Or => "or",
                     AsmBinaryOp::DivDouble => "div",
+                    AsmBinaryOp::ShrTwoOp => "shr",
+                    AsmBinaryOp::Shl => "shl",
                 };
 
                 let suffix = match asm_type {
@@ -479,7 +481,7 @@ impl Emit for AsmOperand {
             AsmOperand::Imm(n) => write!(f, "${}", *n as u64)?,
             AsmOperand::Register(reg) => reg.emit(f, asm_type)?,
             AsmOperand::Pseudo(_) => unreachable!(),
-            AsmOperand::Data(identifier) => write!(f, "{}(%rip)", identifier)?,
+            AsmOperand::Data(identifier, offset) => write!(f, "{}{}{}(%rip)", identifier, if *offset >= 0 { "+" } else { "-" }, offset)?,
             AsmOperand::Memory(reg, n) => write!(f, "{}({})", n, reg)?,
             AsmOperand::Indexed(reg1, reg2, n) => write!(f, "({}, {}, {})", reg1, reg2, n)?,
             AsmOperand::PseudoMem(_, _) => unreachable!(),
