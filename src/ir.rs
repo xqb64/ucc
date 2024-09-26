@@ -1,7 +1,7 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
+        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
     },
     typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
@@ -432,7 +432,6 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                     });
                     ExpResult::PlainOperand(rval)
                 }
-                _ => todo!(),
             }
         }
         Expression::Conditional(ConditionalExpression {
@@ -593,7 +592,12 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                     ExpResult::PlainOperand(dst)
                 }
                 ExpResult::DereferencedPointer(ptr) => ExpResult::PlainOperand(ptr),
-                _ => todo!(),
+                ExpResult::SubObject { base, offset } => {
+                    let dst = make_tacky_variable(get_type(e));
+                    instructions.push(IRInstruction::GetAddress { src: IRValue::Var(base.clone()), dst: dst.clone() });
+                    instructions.push(IRInstruction::AddPtr { ptr: dst.clone(), index: IRValue::Constant(Const::Long(offset as i64)), scale: 1, dst: dst.clone() });
+                    ExpResult::PlainOperand(dst)
+                }
             }
         }
         Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
@@ -628,20 +632,13 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             ExpResult::PlainOperand(IRValue::Constant(Const::ULong(get_size_of_type(t) as u64)))
         }
         Expression::Dot(DotExpression { structure, member, _type }) => {
-            let member_offset = if let Expression::Variable(var_expr) = &**structure {
-                let struct_type = var_expr._type.clone();
-                let struct_tag = match struct_type {
-                    Type::Struct { tag } => tag,
-                    _ => unreachable!(),
-                };
-                let struct_def = TYPE_TABLE.lock().unwrap().get(&struct_tag).cloned().unwrap();
-                let member_offset = struct_def.members.iter().find(|m| m.name == *member).unwrap().offset;
-                
-                member_offset
-            } else {
-                unreachable!()
+            let struct_tag = match get_type(structure) {
+                Type::Struct { tag } => tag,
+                _ => unreachable!(),
             };
-
+            let struct_def = TYPE_TABLE.lock().unwrap().get(struct_tag).cloned().unwrap();
+            let member_offset = struct_def.members.iter().find(|m| m.name == *member).unwrap().offset;
+            
             let inner_object = emit_tacky(structure, instructions);
 
             match inner_object {
@@ -661,6 +658,38 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                 }
                 _ => unreachable!(),
             }
+        }
+        Expression::Arrow(ArrowExpression { pointer, member, _type }) => {
+            let struct_tag = match get_type(pointer) {
+                Type::Pointer(referenced) => match &**referenced {
+                    Type::Struct { tag } => tag,
+                    _ => unreachable!(),
+                }
+                _ => unreachable!(),
+            };
+            let struct_def = TYPE_TABLE.lock().unwrap().get(struct_tag).cloned().unwrap();
+            let member_offset = struct_def.members.iter().find(|m| m.name == *member).unwrap().offset;
+
+            let ptr = emit_tacky_and_convert(pointer, instructions);
+
+            if member_offset == 0 {
+                return ExpResult::DereferencedPointer(ptr);
+            }
+
+            let dst = make_tacky_variable(&Type::Pointer(_type.to_owned().into()));
+
+            let index = IRValue::Constant(Const::Long(member_offset as i64));
+
+            let add_ptr_instr = IRInstruction::AddPtr {
+                ptr,
+                index,
+                scale: 1,
+                dst: dst.clone(),
+            };
+
+            instructions.push(add_ptr_instr);
+
+            ExpResult::DereferencedPointer(dst)
         }
         _ => todo!(),
     }
@@ -743,6 +772,14 @@ fn emit_compound_init(
                 for (idx, elem_init) in compound_init.iter().enumerate() {
                     let new_offset = offset + idx * get_size_of_type(_type);
                     emit_compound_init(name, elem_init, instructions, new_offset, element);
+                }
+            }
+            if let Type::Struct { tag } = inited_type {
+                let members = TYPE_TABLE.lock().unwrap().get(tag).unwrap().members.clone();
+
+                for (member, mem_init) in members.iter().zip(compound_init) {
+                    let mem_offset = offset + member.offset;
+                    emit_compound_init(name, mem_init, instructions, mem_offset, inited_type);
                 }
             }
         }
@@ -1242,6 +1279,9 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                             Type::Pointer(_) => StaticInit::ULong(0),
                             Type::Array { element, size } => {
                                 StaticInit::Zero(get_size_of_type(element) * size)
+                            }
+                            Type::Struct { tag } => {
+                                StaticInit::Zero(TYPE_TABLE.lock().unwrap().get(tag).unwrap().size)
                             }
                             _ => unimplemented!(),
                         }],
