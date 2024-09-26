@@ -958,7 +958,7 @@ impl Irfy for BlockStatement {
                         }
                     }
                     Declaration::Function(_func_decl) => {}
-                    _ => todo!(),
+                    Declaration::Struct(_) => {}
                 },
                 BlockItem::Statement(stmt) => {
                     if let Some(ir_stmt) = stmt.irfy() {
