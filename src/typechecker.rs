@@ -182,6 +182,9 @@ impl Typecheck for VariableDeclaration {
   
         match self.is_global {
             true => {
+                if !is_complete(&self._type) {
+                    bail!("Variable declared with incomplete type");
+                }
 
                 let default_init = if self.storage_class == Some(StorageClass::Extern) {
                     InitialValue::NoInitializer
@@ -1196,7 +1199,7 @@ fn typecheck_complement(expr: &Expression) -> Result<Expression> {
 
     let t = get_type(&typed_expr);
 
-    if t == &Type::Double || is_pointer_type(t) {
+    if !is_integer_type(t) {
         bail!("Invalid operand for bitwise complement");
     }
 
