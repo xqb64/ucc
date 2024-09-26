@@ -503,13 +503,13 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 .unwrap()
                 .insert(string_name.clone(), string_symbol);
 
-            let ptr_symbol = Symbol {
-                _type: Type::Pointer(Box::new(Type::Char)),
-                attrs: IdentifierAttrs::StaticAttr {
-                    initial_value: InitialValue::Initial(vec![StaticInit::Pointer(string_name)]),
-                    global: false,
-                },
-            };
+            // let ptr_symbol = Symbol {
+            //     _type: Type::Pointer(Box::new(Type::Char)),
+            //     attrs: IdentifierAttrs::StaticAttr {
+            //         initial_value: InitialValue::Initial(vec![StaticInit::Pointer(string_name)]),
+            //         global: false,
+            //     },
+            // };
 
             // SYMBOL_TABLE
             //     .lock()
@@ -785,7 +785,7 @@ impl Typecheck for Statement {
             Statement::Return(ReturnStatement {
                 expr: None,
                 target_type,
-                belongs_to,
+                belongs_to: _,
             }) => {
                 if target_type == &Some(Type::Void) {
                     Ok(self)
@@ -1857,7 +1857,7 @@ pub enum StaticInit {
     Zero(usize),
 }
 
-fn is_scalar(t: &Type) -> bool {
+pub fn is_scalar(t: &Type) -> bool {
     !matches!(t, Type::Void | Type::Array { .. } | Type::Func { .. } | Type::Struct { .. })
 }
 

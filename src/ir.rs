@@ -691,7 +691,6 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
 
             ExpResult::DereferencedPointer(dst)
         }
-        _ => todo!(),
     }
 }
 

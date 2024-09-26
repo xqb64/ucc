@@ -8,8 +8,7 @@ use crate::{
     lexer::Const,
     parser::Type,
     typechecker::{
-        get_common_type, get_signedness, get_size_of_type, IdentifierAttrs, StaticInit,
-        SYMBOL_TABLE,
+        get_common_type, get_signedness, get_size_of_type, is_scalar, IdentifierAttrs, StaticInit, SYMBOL_TABLE
     },
 };
 
@@ -1012,13 +1011,20 @@ impl Codegen for IRInstruction {
                 AsmNode::Instructions(vec![AsmInstruction::Label(label.to_owned())])
             }
             IRInstruction::Copy { src, dst } => {
+                let t = tacky_type(src);
                 let asm_type = get_asm_type(src);
 
-                AsmNode::Instructions(vec![AsmInstruction::Mov {
-                    asm_type,
-                    src: src.codegen().into(),
-                    dst: dst.codegen().into(),
-                }])
+                if is_scalar(&t) {
+                    AsmNode::Instructions(vec![AsmInstruction::Mov {
+                        asm_type,
+                        src: src.codegen().into(),
+                        dst: dst.codegen().into(),
+                    }])
+                } else {
+                    let byte_count = get_size_of_type(&t);
+
+                    AsmNode::Instructions(copy_bytes(&src.codegen().into(), &dst.codegen().into(), byte_count))
+                }
             }
             IRInstruction::Call { target, args, dst } => {
                 let int_registers = [
@@ -1385,30 +1391,65 @@ impl Codegen for IRInstruction {
                     }]),
                 }
             }
-            IRInstruction::Load { src_ptr, dst } => AsmNode::Instructions(vec![
-                AsmInstruction::Mov {
-                    asm_type: AsmType::Quadword,
-                    src: src_ptr.codegen().into(),
-                    dst: AsmOperand::Register(AsmRegister::R9),
-                },
-                AsmInstruction::Mov {
-                    asm_type: get_asm_type(dst),
-                    src: AsmOperand::Memory(AsmRegister::R9, 0),
-                    dst: dst.codegen().into(),
-                },
-            ]),
-            IRInstruction::Store { src, dst_ptr } => AsmNode::Instructions(vec![
-                AsmInstruction::Mov {
-                    asm_type: AsmType::Quadword,
-                    src: dst_ptr.codegen().into(),
-                    dst: AsmOperand::Register(AsmRegister::R9),
-                },
-                AsmInstruction::Mov {
-                    asm_type: get_asm_type(src),
-                    src: src.codegen().into(),
-                    dst: AsmOperand::Memory(AsmRegister::R9, 0),
-                },
-            ]),
+            IRInstruction::Load { src_ptr, dst } => {
+                let t = tacky_type(&dst);
+                if is_scalar(&t) {
+                    AsmNode::Instructions(vec![                
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Quadword,
+                            src: src_ptr.codegen().into(),
+                            dst: AsmOperand::Register(AsmRegister::R9),
+                        },
+                        AsmInstruction::Mov {
+                            asm_type: get_asm_type(dst),
+                            src: AsmOperand::Memory(AsmRegister::R9, 0),
+                            dst: dst.codegen().into(),
+                        },
+                    ])  
+                } else {
+                    let byte_count = get_size_of_type(&t);
+ 
+                    let mut initial_instr = vec![AsmInstruction::Mov {
+                        asm_type: AsmType::Quadword,
+                        src: src_ptr.codegen().into(),
+                        dst: AsmOperand::Register(AsmRegister::R9),
+                    }];
+
+                    initial_instr.extend(copy_bytes(&AsmOperand::Memory(AsmRegister::R9, 0), &dst.codegen().into(), byte_count));
+
+                    AsmNode::Instructions(initial_instr)
+                }
+            }
+            IRInstruction::Store { src, dst_ptr } => {
+                let t = tacky_type(&src);
+
+                if is_scalar(&t) {
+                    AsmNode::Instructions(vec![
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Quadword,
+                            src: dst_ptr.codegen().into(),
+                            dst: AsmOperand::Register(AsmRegister::R9),
+                        },
+                        AsmInstruction::Mov {
+                            asm_type: get_asm_type(src),
+                            src: src.codegen().into(),
+                            dst: AsmOperand::Memory(AsmRegister::R9, 0),
+                        },
+                    ])
+                } else {
+                    let byte_count = get_size_of_type(&t);
+
+                    let mut initial_instr = vec![AsmInstruction::Mov {
+                        asm_type: AsmType::Quadword,
+                        src: dst_ptr.codegen().into(),
+                        dst: AsmOperand::Register(AsmRegister::R9),
+                    }];
+
+                    initial_instr.extend(copy_bytes(&src.codegen().into(), &AsmOperand::Memory(AsmRegister::R9, 0), byte_count));
+
+                    AsmNode::Instructions(initial_instr)
+                }
+            }
             IRInstruction::GetAddress { src, dst } => {
                 AsmNode::Instructions(vec![AsmInstruction::Lea {
                     src: src.codegen().into(),
@@ -1462,13 +1503,36 @@ impl Codegen for IRInstruction {
             },
             IRInstruction::CopyToOffset { src, dst, offset } => {
                 let type_of_src = get_asm_type(src);
-                AsmNode::Instructions(vec![AsmInstruction::Mov {
-                    asm_type: type_of_src,
-                    src: src.codegen().into(),
-                    dst: AsmOperand::PseudoMem(dst.to_owned(), *offset as isize),
-                }])
+                
+                let t = tacky_type(&src);
+
+                if is_scalar(&t) {
+                    AsmNode::Instructions(vec![AsmInstruction::Mov {
+                        asm_type: type_of_src,
+                        src: src.codegen().into(),
+                        dst: AsmOperand::PseudoMem(dst.to_owned(), *offset as isize),
+                    }])    
+                } else {
+                    let byte_count = get_size_of_type(&t);
+                    AsmNode::Instructions(copy_bytes(&src.codegen().into(), &AsmOperand::PseudoMem(dst.to_owned(), *offset as isize), byte_count))
+                }
             }
-            _ => todo!(),
+            IRInstruction::CopyFromOffset { src, offset, dst } => {
+                let type_of_dst = get_asm_type(dst);
+
+                let t = tacky_type(&dst);
+
+                if is_scalar(&t) {
+                    AsmNode::Instructions(vec![AsmInstruction::Mov {
+                        asm_type: type_of_dst,
+                        src: AsmOperand::PseudoMem(src.to_owned(), *offset as isize),
+                        dst: dst.codegen().into(),
+                    }])
+                } else {
+                    let byte_count = get_size_of_type(&t);
+                    AsmNode::Instructions(copy_bytes(&AsmOperand::PseudoMem(src.to_owned(), *offset as isize), &dst.codegen().into(), byte_count))
+                }
+            }
         }
     }
 }
@@ -2292,7 +2356,7 @@ impl Fixup for AsmFunction {
                             }
                             _ => instructions.push(instr.clone()),
                         },
-                        (AsmOperand::Data(src, offset), AsmOperand::Memory(AsmRegister::BP, dst_n)) => {
+                        (AsmOperand::Data(src, _), AsmOperand::Memory(AsmRegister::BP, dst_n)) => {
                             if asm_type == &AsmType::Double {
                                 instructions.extend(vec![
                                     AsmInstruction::Mov {
@@ -3573,4 +3637,56 @@ impl Alignment {
 lazy_static::lazy_static! {
     pub static ref ASM_SYMBOL_TABLE: Mutex<HashMap<String, AsmSymtabEntry>> = Mutex::new(HashMap::new());
     static ref VAR_TO_STACK_POS: Mutex<VarToStackPos> = Mutex::new(VarToStackPos::default());
+}
+
+fn tacky_type(value: &IRValue) -> Type {
+    match value {
+        IRValue::Constant(konst) => match konst {
+            Const::Char(_) => Type::Char,
+            Const::UChar(_) => Type::UChar,
+            Const::Int(_) => Type::Int,
+            Const::Long(_) => Type::Long,
+            Const::UInt(_) => Type::Uint,
+            Const::ULong(_) => Type::Ulong,
+            Const::Double(_) => Type::Double,
+        },
+        IRValue::Var(var_name) => {
+            let symbol = SYMBOL_TABLE.lock().unwrap().get(var_name).cloned().unwrap();
+            symbol._type
+        }
+    }
+}
+
+fn add_offset(byte_count: usize, operand: &AsmOperand) -> AsmOperand {
+    match operand {
+        AsmOperand::Memory(base, offset) => AsmOperand::Memory(*base, *offset + byte_count as isize),
+        AsmOperand::Indexed(base, index, offset) => {
+            AsmOperand::Indexed(*base, *index, *offset + byte_count as isize)
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn copy_bytes(src: &AsmOperand, dst: &AsmOperand, byte_count: usize) -> Vec<AsmInstruction> {
+    if byte_count == 0 {
+        return vec![];
+    }
+
+    let (operand_type, operand_size) = if byte_count < 4 {
+        (AsmType::Byte, 1)
+    } else if byte_count < 8 {
+        (AsmType::Longword, 4)
+    } else {
+        (AsmType::Quadword, 8)
+    };
+    
+    let next_src = add_offset(operand_size, src);
+    let next_dst = add_offset(operand_size, dst);
+
+    let bytes_left = byte_count - operand_size;
+
+    let mut instructions = vec![AsmInstruction::Mov { asm_type: operand_type, src: src.clone(), dst: dst.clone() }];
+    instructions.extend(copy_bytes(&next_src, &next_dst, bytes_left));
+
+    instructions
 }
