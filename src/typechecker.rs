@@ -603,6 +603,20 @@ impl Typecheck for FunctionDeclaration {
                     bail!("Function parameter has incomplete type");
                 }
             }
+
+            let ret_type = match &self._type {
+                Type::Func { ret, .. } => ret,
+                _ => unreachable!(),
+            };
+
+            match &**ret_type {
+                Type::Struct { tag } => {
+                    if !TYPE_TABLE.lock().unwrap().contains_key(tag) {
+                        bail!("Function return type is incomplete");
+                    }
+                }
+                _ => {}
+            }
         }
 
         let global = self.storage_class != Some(StorageClass::Static);
