@@ -1466,6 +1466,7 @@ impl Codegen for IRInstruction {
                     dst: AsmOperand::PseudoMem(dst.to_owned(), *offset as isize),
                 }])
             }
+            _ => todo!(),
         }
     }
 }

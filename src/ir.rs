@@ -1,17 +1,11 @@
 use crate::{
     lexer::Const,
     parser::{
-        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem,
-        BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression,
-        ContinueStatement, Declaration, DerefExpression, DoWhileStatement, Expression,
-        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer,
-        ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement,
-        StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind,
-        VariableDeclaration, WhileStatement,
+        AddrOfExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
     },
     typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
-        IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE,
+        IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE, TYPE_TABLE,
     },
 };
 
@@ -119,6 +113,11 @@ pub enum IRInstruction {
         dst: String,
         offset: usize,
     },
+    CopyFromOffset {
+        src: String,
+        offset: usize,
+        dst: IRValue,
+    },
     Ret(Option<IRValue>),
 }
 
@@ -154,11 +153,17 @@ pub enum BinaryOp {
 enum ExpResult {
     PlainOperand(IRValue),
     DereferencedPointer(IRValue),
+    SubObject { base: String, offset: usize },
 }
 
 fn emit_tacky_and_convert(e: &Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
     let result = emit_tacky(e, instructions);
     match result {
+        ExpResult::SubObject { base, offset } => {
+            let dst = make_tacky_variable(get_type(e));
+            instructions.push(IRInstruction::CopyFromOffset { src: base, offset, dst: dst.clone() });
+            dst
+        }
         ExpResult::PlainOperand(val) => val,
         ExpResult::DereferencedPointer(ptr) => {
             let dst = make_tacky_variable(get_type(e));
@@ -409,6 +414,10 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             let rval = emit_tacky_and_convert(rhs, instructions);
 
             match &lval {
+                ExpResult::SubObject { base, offset } => {
+                    instructions.push(IRInstruction::CopyToOffset { src: rval.clone(), dst: base.to_owned(), offset: *offset });
+                    ExpResult::PlainOperand(rval)
+                }
                 ExpResult::PlainOperand(val) => {
                     instructions.push(IRInstruction::Copy {
                         src: rval,
@@ -423,6 +432,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                     });
                     ExpResult::PlainOperand(rval)
                 }
+                _ => todo!(),
             }
         }
         Expression::Conditional(ConditionalExpression {
@@ -583,6 +593,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                     ExpResult::PlainOperand(dst)
                 }
                 ExpResult::DereferencedPointer(ptr) => ExpResult::PlainOperand(ptr),
+                _ => todo!(),
             }
         }
         Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
@@ -615,6 +626,41 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
         ),
         Expression::SizeofT(SizeofTExpression { t, _type }) => {
             ExpResult::PlainOperand(IRValue::Constant(Const::ULong(get_size_of_type(t) as u64)))
+        }
+        Expression::Dot(DotExpression { structure, member, _type }) => {
+            let member_offset = if let Expression::Variable(var_expr) = &**structure {
+                let struct_type = var_expr._type.clone();
+                let struct_tag = match struct_type {
+                    Type::Struct { tag } => tag,
+                    _ => unreachable!(),
+                };
+                let struct_def = TYPE_TABLE.lock().unwrap().get(&struct_tag).cloned().unwrap();
+                let member_offset = struct_def.members.iter().find(|m| m.name == *member).unwrap().offset;
+                
+                member_offset
+            } else {
+                unreachable!()
+            };
+
+            let inner_object = emit_tacky(structure, instructions);
+
+            match inner_object {
+                ExpResult::PlainOperand(IRValue::Var(v)) => return ExpResult::SubObject { base: v, offset: member_offset },
+                ExpResult::SubObject { base, offset } => return ExpResult::SubObject { base: base, offset: offset + member_offset },
+                ExpResult::DereferencedPointer(ptr) => {
+                    let type_of_e = get_type(e);
+                    let dst_ptr = make_tacky_variable(&Type::Pointer(type_of_e.to_owned().into()));
+                    let instr = IRInstruction::AddPtr {
+                        ptr,
+                        index: IRValue::Constant(Const::Long(member_offset as i64)),
+                        scale: 1,
+                        dst: dst_ptr.clone(),
+                    };
+                    instructions.push(instr);
+                    return ExpResult::DereferencedPointer(dst_ptr);
+                }
+                _ => unreachable!(),
+            }
         }
         _ => todo!(),
     }
@@ -842,7 +888,7 @@ impl Irfy for ProgramStatement {
                             continue;
                         }
                     }
-                    _ => todo!(),
+                    _ => {},
                 },
                 BlockItem::Statement(stmt) => {
                     if let Some(ir_stmt) = stmt.irfy() {
