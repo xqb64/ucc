@@ -265,6 +265,10 @@ impl Typecheck for VariableDeclaration {
                 Ok(self)
             }
             false => {
+                if !is_complete(&self._type) {
+                    bail!("Variable declared with incomplete type");
+                }
+                
                 match self.storage_class {
                     Some(StorageClass::Extern) => {
                         if self.init.is_some() {
@@ -335,7 +339,6 @@ impl Typecheck for VariableDeclaration {
                             .unwrap()
                             .insert(self.name.clone(), symbol);
 
-                        println!("called from where I think it's called");
                         self.init = optionally_typecheck_init(&self.init, &self._type)?;
 
                         Ok(self)
