@@ -761,15 +761,21 @@ impl Typecheck for Statement {
             Statement::Return(ReturnStatement {
                 expr: Some(expression),
                 target_type,
+                belongs_to,
             }) => {
                 if target_type == &Some(Type::Void) {
                     bail!("Return statement with expression in void function");
                 } else {
+                    let ret_type = SYMBOL_TABLE.lock().unwrap().get(belongs_to).cloned().unwrap()._type;
+                    let target_type = match ret_type {
+                        Type::Func { ret, .. } => ret,
+                        _ => unreachable!(),
+                    };
                     println!("target_type in return: {:?}", target_type);
                     let typechecked_expr = typecheck_and_convert(expression)?;
                     let converted_expr = convert_by_assignment(
                         &typechecked_expr,
-                        target_type.as_ref().unwrap_or(&Type::Int),
+                        &target_type,
                     )?;
                     println!("survived in return: {:?}", target_type);
                     *expression = converted_expr;
@@ -779,6 +785,7 @@ impl Typecheck for Statement {
             Statement::Return(ReturnStatement {
                 expr: None,
                 target_type,
+                belongs_to,
             }) => {
                 if target_type == &Some(Type::Void) {
                     Ok(self)

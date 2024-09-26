@@ -8,6 +8,7 @@ pub struct Parser {
     pub previous: Option<Token>,
     pub depth: usize,
     pub current_target_type: Option<Type>,
+    pub current_fn: Option<String>,
 }
 
 impl Parser {
@@ -18,6 +19,7 @@ impl Parser {
             previous: None,
             depth: 0,
             current_target_type: None,
+            current_fn: None,
         }
     }
 
@@ -465,14 +467,20 @@ impl Parser {
             None
         } else if self.check(&Token::LBrace) {
             self.consume(&Token::LBrace)?;
-            Some(self.parse_block_statement()?)
+            self.current_fn = Some(name.to_string());
+            let block = Some(self.parse_block_statement()?);
+            self.current_fn = None;
+
+            block
         } else {
             bail!(
                 "Expected block statement or semicolon, got: {:?}",
                 self.current
             );
         };
+        
         self.current_target_type = None;
+
         Ok(BlockItem::Declaration(Declaration::Function(
             FunctionDeclaration {
                 name: name.to_owned(),
@@ -714,6 +722,7 @@ impl Parser {
         Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
             expr,
             target_type: self.current_target_type.clone(),
+            belongs_to: self.current_fn.clone().unwrap(),
         })))
     }
 
@@ -1280,6 +1289,7 @@ pub enum StorageClass {
 pub struct ReturnStatement {
     pub expr: Option<Expression>,
     pub target_type: Option<Type>,
+    pub belongs_to: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
