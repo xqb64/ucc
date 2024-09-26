@@ -18,7 +18,7 @@ pub struct IRProgram {
 #[derive(Debug, Clone, PartialEq)]
 pub struct IRFunction {
     pub name: String,
-    pub params: Vec<String>,
+    pub params: Vec<IRValue>,
     pub body: Vec<IRInstruction>,
     pub global: bool,
 }
@@ -1178,7 +1178,7 @@ impl Irfy for FunctionDeclaration {
 
         Some(IRNode::Function(IRFunction {
             name: self.name.clone(),
-            params: self.params.clone(),
+            params: self.params.iter().map(|x| IRValue::Var(x.to_owned())).collect(),
             body: instructions,
             global: self.is_global,
         }))
