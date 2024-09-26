@@ -252,7 +252,7 @@ impl Resolve for FunctionDeclaration {
 
         self.body = resolve_optional_block_item(&mut self.body, &mut inner_map, &mut new_struct_map)?.into();
         self.params = new_params;
-        self._type = resolve_type(&self._type, struct_map)?;
+        self._type = resolve_type(&self._type, &mut new_struct_map)?;
 
         Ok(self)
     }
@@ -686,6 +686,9 @@ fn resolve_param(param: &str, variable_map: &mut HashMap<String, Variable>) -> R
     if variable_map.contains_key(param) && variable_map.get(param).unwrap().from_current_scope {
         bail!("redeclaration of parameter: {}", param);
     }
+
+    println!("resolving param: {}", param);
+    println!("variable_map: {:?}", variable_map);
 
     let unique_name = format!("var.{}.{}", param, make_temporary());
 

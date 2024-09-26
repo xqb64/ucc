@@ -594,7 +594,17 @@ impl Typecheck for FunctionDeclaration {
             _ => bail!("Function has non-function type"),
         };
 
+
         let has_body = self.body.is_some();
+
+        if has_body {
+            for param in param_ts.iter() {
+                if !is_complete(param) {
+                    bail!("Function parameter has incomplete type");
+                }
+            }
+        }
+
         let global = self.storage_class != Some(StorageClass::Static);
 
         // Helper function to reconcile current and previous declarations
