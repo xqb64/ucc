@@ -293,6 +293,10 @@ fn get_alignment_of_type(t: &Type) -> usize {
                 get_alignment_of_type(element)
             }
         }
+        Type::Struct { tag } => {
+            let struct_type = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
+            struct_type.alignment
+        }
         _ => unreachable!(),
     }
 }

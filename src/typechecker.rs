@@ -451,7 +451,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                     static_inits.push(StaticInit::Zero(member.offset - current_offset));
                 }
 
-                let more_static_inits = static_init_helper(dbg!(init_elem), dbg!(&member._type))?;
+                let more_static_inits = static_init_helper(init_elem, &member._type)?;
                 static_inits.extend(more_static_inits);
 
                 current_offset = member.offset + get_size_of_type(&member._type);
@@ -463,7 +463,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 static_inits.push(StaticInit::Zero(struct_def.size - current_offset));
             }
 
-            Ok(dbg!(static_inits))
+            Ok(static_inits)
         }
         (Type::Struct { .. }, Initializer::Single(_, _)) => {
             bail!("Single initializer for struct type");

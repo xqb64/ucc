@@ -1267,9 +1267,9 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
             match initial_value {
                 InitialValue::Initial(init) => {
                     tacky_defs.push(IRNode::StaticVariable(IRStaticVariable {
-                        name: dbg!(name.clone()),
+                        name: name.clone(),
                         global,
-                        init: dbg!(init.clone()),
+                        init: init.clone(),
                         _type: entry._type.clone(),
                     }))
                 }
