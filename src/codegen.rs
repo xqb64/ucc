@@ -1189,6 +1189,8 @@ impl Codegen for IRInstruction {
                             });        
                         }
                     }
+
+                    reg_index += 1;
                 }
 
                 for (reg_index, (_reg_type, reg_arg)) in double_args.into_iter().enumerate() {
@@ -1241,26 +1243,6 @@ impl Codegen for IRInstruction {
                 if bytes_to_remove != 0 {
                     instructions.push(AsmInstruction::DeallocateStack(bytes_to_remove));
                 }
-
-                // if dst.is_some() {
-                //     let dst = dst.clone().unwrap();
-                //     let assembly_dst = dst.codegen().into();
-                //     let return_type = get_asm_type(&dst);
-
-                //     if return_type == AsmType::Double {
-                //         instructions.push(AsmInstruction::Mov {
-                //             asm_type: AsmType::Double,
-                //             src: AsmOperand::Register(AsmRegister::XMM0),
-                //             dst: assembly_dst,
-                //         });
-                //     } else {
-                //         instructions.push(AsmInstruction::Mov {
-                //             asm_type: return_type,
-                //             src: AsmOperand::Register(AsmRegister::AX),
-                //             dst: assembly_dst,
-                //         });
-                //     }
-                // }
 
                 if dst.is_some() && !return_in_memory {
                     let int_return_registers = [
