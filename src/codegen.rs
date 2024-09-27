@@ -2038,6 +2038,20 @@ impl Fixup for AsmFunction {
                     src,
                     dst,
                 } => match (&src, &dst) {
+                    (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
+                        instructions.extend(vec![
+                            AsmInstruction::Mov {
+                                asm_type: AsmType::Double,
+                                src: src.clone(),
+                                dst: AsmOperand::Register(AsmRegister::XMM14),
+                            },
+                            AsmInstruction::Mov {
+                                asm_type: AsmType::Double,
+                                src: AsmOperand::Register(AsmRegister::XMM14),
+                                dst: dst.clone(),
+                            },
+                        ]);
+                    }
                     (AsmOperand::Memory(_, _), AsmOperand::Data(_, _)) => {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
@@ -2411,6 +2425,8 @@ impl Fixup for AsmFunction {
                 },
                 AsmInstruction::Mov { asm_type, src, dst } => match (&src, &dst) {
                     (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
+                        println!("here");
+                        
                         let scratch = if asm_type == &AsmType::Double {
                             AsmOperand::Register(AsmRegister::XMM14)
                         } else {
