@@ -561,7 +561,7 @@ impl Codegen for IRInstruction {
                                     rhs: src.codegen().into(),
                                 },
                                 AsmInstruction::Mov {
-                                    asm_type: get_asm_type(src),
+                                    asm_type: get_asm_type(dst),
                                     src: AsmOperand::Imm(0),
                                     dst: dst.codegen().into(),
                                 },
