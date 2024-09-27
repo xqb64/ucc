@@ -420,6 +420,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
     match (t, init) {
         (Type::Struct { tag }, Initializer::Compound(_name, _type, compound_init)) => {
             let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+            
             if compound_init.len() > struct_def.members.len() {
                 bail!("Too many initializers");
             }
@@ -835,6 +836,7 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
         }
         (Type::Struct { tag }, Initializer::Compound(name, _type, compound_init)) => {
             let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+   
             if compound_init.len() > struct_def.members.len() {
                 bail!("Too many initializers");
             }

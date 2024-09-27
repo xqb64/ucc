@@ -772,13 +772,17 @@ fn emit_compound_init(
                     let new_offset = offset + idx * get_size_of_type(_type);
                     emit_compound_init(name, elem_init, instructions, new_offset, element);
                 }
-            }
-            if let Type::Struct { tag } = inited_type {
+            } else if let Type::Struct { tag } = inited_type {
+                println!("inited_type: {:?}", inited_type);
+                
                 let members = TYPE_TABLE.lock().unwrap().get(tag).unwrap().members.clone();
+
+                println!("members: {:?}", members);
 
                 for (member, mem_init) in members.iter().zip(compound_init) {
                     let mem_offset = offset + member.offset;
-                    emit_compound_init(name, mem_init, instructions, mem_offset, inited_type);
+                    println!("mem_offset for member {}: {}", member.name, mem_offset);
+                    emit_compound_init(name, mem_init, instructions, mem_offset, &member._type);
                 }
             }
         }

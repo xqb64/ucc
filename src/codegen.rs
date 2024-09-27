@@ -1686,8 +1686,6 @@ impl Codegen for IRInstruction {
 
                 let t = tacky_type(&dst);
 
-                dbg!(offset);
-
                 if is_scalar(&t) {
                     AsmNode::Instructions(vec![AsmInstruction::Mov {
                         asm_type: type_of_dst,
