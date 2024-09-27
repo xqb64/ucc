@@ -299,13 +299,14 @@ fn get_alignment_of_type(t: &Type) -> usize {
 
 impl Codegen for IRFunction {
     fn codegen(&self) -> AsmNode {
+        let return_on_stack = returns_on_stack(&self.name);
+        let params_as_tacky = self.params.iter().map(|x| IRValue::Var(x.clone())).collect::<Vec<IRValue>>();
+        
         let mut instructions = vec![];
 
         instructions.push(AsmInstruction::AllocateStack(0));
 
-        let mut return_in_memory = false;
-
-        let (int_reg_params, double_reg_params, stack_params) = classify_parameters_from_irvalue(&self.params, return_in_memory);
+        let (int_reg_params, double_reg_params, stack_params) = classify_parameters_from_irvalue(&&params_as_tacky, return_on_stack);
 
         let int_regs = [
             AsmRegister::DI,
@@ -318,7 +319,7 @@ impl Codegen for IRFunction {
 
         let mut reg_index = 0;
 
-        if return_in_memory {
+        if return_on_stack {
             instructions.push(AsmInstruction::Mov {
                 asm_type: AsmType::Quadword,
                 src: AsmOperand::Register(AsmRegister::DI),
@@ -3648,13 +3649,44 @@ fn get_asm_type(value: &IRValue) -> AsmType {
     }
 }
 
+fn returns_on_stack(name: &str) -> bool {
+    match SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap()._type {
+        Type::Func { params: _, ret } => {
+            match &*ret {
+                Type::Struct { tag } => {
+                    let struct_entry = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap().clone();
+                    match classify_structure(&struct_entry).as_slice() {
+                        [Class::Memory, ..] => true,
+                        _ => false,
+                    }
+                },
+                _ => false,
+            }
+        }
+        _ => unreachable!(),
+
+    }
+}
+
 pub fn build_asm_symbol_table() {
-    let frontend_symtab = SYMBOL_TABLE.lock().unwrap();
+    use crate::typechecker::is_complete;
+
+    let frontend_symtab = SYMBOL_TABLE.lock().unwrap().clone();
     let mut asm_symbol_table = ASM_SYMBOL_TABLE.lock().unwrap();
 
     for (identifier, symbol) in frontend_symtab.iter() {
         let entry = match symbol.attrs {
-            IdentifierAttrs::FuncAttr { defined, .. } => AsmSymtabEntry::Function { defined },
+            IdentifierAttrs::FuncAttr { defined, .. } => {
+                let returns_on_stack = match &symbol._type {
+                    Type::Func { params: _, ret } => if is_complete(&ret) || ret == &Type::Void.into() {
+                        returns_on_stack(identifier)
+                    } else {
+                        false
+                    }
+                    _ => unreachable!(),
+                };
+                AsmSymtabEntry::Function { defined, returns_on_stack }
+            }
             IdentifierAttrs::StaticAttr {
                 initial_value: _, ..
             } => {
@@ -3744,6 +3776,7 @@ pub fn build_asm_symbol_table() {
 pub enum AsmSymtabEntry {
     Function {
         defined: bool,
+        returns_on_stack: bool,
     },
     Object {
         _type: AsmType,

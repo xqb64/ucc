@@ -1846,7 +1846,7 @@ pub fn is_scalar(t: &Type) -> bool {
     !matches!(t, Type::Void | Type::Array { .. } | Type::Func { .. } | Type::Struct { .. })
 }
 
-fn is_complete(t: &Type) -> bool {
+pub fn is_complete(t: &Type) -> bool {
     match t {
         Type::Void => false,
         Type::Struct { tag } => {

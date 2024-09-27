@@ -408,7 +408,7 @@ impl Emit for AsmInstruction {
             AsmInstruction::Call(target) => {
                 // if function is not defined in symbol table, add @PLT
                 if let Some(symbol) = ASM_SYMBOL_TABLE.lock().unwrap().get(target).cloned() {
-                    if let AsmSymtabEntry::Function { defined } = symbol {
+                    if let AsmSymtabEntry::Function { defined, .. } = symbol {
                         if !defined {
                             writeln!(f, "call {}@PLT", target)?;
                         } else {
