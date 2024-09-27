@@ -3880,7 +3880,6 @@ fn add_offset(byte_count: usize, operand: &AsmOperand) -> AsmOperand {
         AsmOperand::PseudoMem(name, offset) => AsmOperand::PseudoMem(name.clone(), *offset + byte_count as isize),
         AsmOperand::Memory(base, offset) => AsmOperand::Memory(*base, *offset + byte_count as isize),
         _ => {
-            dbg!(operand);
             unreachable!()
         }
     }
@@ -3899,7 +3898,6 @@ fn copy_bytes(src: &AsmOperand, dst: &AsmOperand, byte_count: usize) -> Vec<AsmI
         (AsmType::Quadword, 8)
     };
     
-    dbg!(&src, &dst);
     let next_src = add_offset(operand_size, src);
     let next_dst = add_offset(operand_size, dst);
 

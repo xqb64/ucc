@@ -52,7 +52,6 @@ fn resolve_structure_declaration<'a>(decl: &'a mut StructDeclaration, struct_map
     let unique_tag;
     if prev_entry.is_none() || !prev_entry.clone().unwrap().from_current_scope {
         unique_tag = format!("struct.{}.{}", decl.tag.clone(), make_temporary());
-        println!("inserting unique tag: {}", unique_tag);
         struct_map.insert(
             decl.tag.clone(),
             StructTableEntry {
@@ -686,9 +685,6 @@ fn resolve_param(param: &str, variable_map: &mut HashMap<String, Variable>) -> R
     if variable_map.contains_key(param) && variable_map.get(param).unwrap().from_current_scope {
         bail!("redeclaration of parameter: {}", param);
     }
-
-    println!("resolving param: {}", param);
-    println!("variable_map: {:?}", variable_map);
 
     let unique_name = format!("var.{}.{}", param, make_temporary());
 

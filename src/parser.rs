@@ -498,8 +498,6 @@ impl Parser {
         let mut sorted_specifiers = specifier_list.clone();
         sorted_specifiers.sort();
 
-        println!("sorted specifiers: {:?}", sorted_specifiers);
-
         match &sorted_specifiers[..] {
             [Token::Struct, Token::Identifier(tag)] => Ok(Type::Struct { tag: tag.clone() }),
             [Token::Void] => Ok(Type::Void),

@@ -144,8 +144,6 @@ impl Typecheck for StructDeclaration {
 
         for member in &self.members {
             let member_alignment = alignment(&member._type);
-            println!("member_alignment: {}", member_alignment);
-
             let member_offset = round_up(struct_size, member_alignment);
             let m = MemberEntry {
                 name: member.name.clone(),
@@ -183,7 +181,6 @@ impl Typecheck for VariableDeclaration {
         match self.is_global {
             true => {
                 if !is_complete(&self._type) && self.storage_class != Some(StorageClass::Extern) {
-                    println!("variable name: {:?}", self.name);
                     bail!("Variable declared with incomplete type");
                 }
 
@@ -200,14 +197,10 @@ impl Typecheck for VariableDeclaration {
 
                 let is_global = self.storage_class != Some(StorageClass::Static);
 
-                println!("self.name: {:?}", self.name);
                 let old_decl = SYMBOL_TABLE.lock().unwrap().get(&self.name).cloned();
-                println!("old_decl: {:?}", old_decl);
 
                 let check_against_previous = |old_d: &Symbol| -> Result<(bool, InitialValue)> {
                     if old_d._type != self._type {
-                        println!("old_d: {:?}", old_d);
-                        println!("self._type: {:?}", self._type);
                         bail!("Variable redeclaration with different type");
                     }
 
@@ -258,7 +251,6 @@ impl Typecheck for VariableDeclaration {
                     },
                 };
 
-                println!("inserting symbol under name {}: {:?}", self.name, symbol);
                 SYMBOL_TABLE
                     .lock()
                     .unwrap()
@@ -771,13 +763,11 @@ impl Typecheck for Statement {
                         Type::Func { ret, .. } => ret,
                         _ => unreachable!(),
                     };
-                    println!("target_type in return: {:?}", target_type);
                     let typechecked_expr = typecheck_and_convert(expression)?;
                     let converted_expr = convert_by_assignment(
                         &typechecked_expr,
                         &target_type,
                     )?;
-                    println!("survived in return: {:?}", target_type);
                     *expression = converted_expr;
                 }
                 Ok(self)
@@ -1599,7 +1589,6 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             match get_type(&typed_pointer) {
                 Type::Pointer(referenced) => {
                     if let Type::Struct { tag } = &**referenced {
-                        println!("getting tag: {:?}", tag);
                         let struct_def = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
                         
                         if !struct_def.members.to_vec().into_iter().any(|m| m.name == *member) {
@@ -1634,8 +1623,6 @@ fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
             _type: Type::Pointer(element.to_owned()),
         })),
         Type::Struct { tag } => {
-            println!("tag: {:?}", tag);
-            println!("type of expr: {:?}", type_of_expr);
             if !is_complete(type_of_expr) {
                 bail!("Unknown struct type");
             }
@@ -1655,8 +1642,6 @@ fn convert_by_assignment(e: &Expression, target_type: &Type) -> Result<Expressio
     {
         Ok(convert_to(e, target_type))
     } else {
-        println!("expression: {:?}", e);
-        println!("target_type: {:?}", target_type);
         bail!("cannot convert");
     }
 }

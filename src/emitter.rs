@@ -191,7 +191,6 @@ impl Emit for AsmInstruction {
                     AsmType::Quadword => "q",
                     AsmType::Double => "sd",
                     _ => {
-                        dbg!(&asm_type);
                         todo!()
                     }
                 };
