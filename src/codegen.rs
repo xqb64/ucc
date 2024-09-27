@@ -1120,8 +1120,6 @@ impl Codegen for IRInstruction {
                 }
             }
             IRInstruction::Call { target, args, dst } => {
-                let mut instructions = vec![];
-
                 let int_registers = [
                     AsmRegister::DI,
                     AsmRegister::SI,
@@ -1142,15 +1140,17 @@ impl Codegen for IRInstruction {
                     AsmRegister::XMM7,
                 ];
 
+                let mut instructions = vec![];
+
                 let mut return_in_memory = false;
                 let mut int_dests = vec![];
                 let mut double_dests = vec![];
 
+                let mut reg_index = 0;
+
                 if dst.is_some() {
                     (int_dests, double_dests, return_in_memory) = classify_return_value(&dst.clone().unwrap());
                 }
-
-                let mut reg_index = 0;
 
                 if return_in_memory {
                     let dst_operand = dst.clone().unwrap().codegen().into();
@@ -1160,8 +1160,7 @@ impl Codegen for IRInstruction {
                     reg_index = 1;
                 }
 
-
-                let (int_args, double_args, stack_args) = classify_parameters_from_irvalue(args, false);
+                let (int_args, double_args, stack_args) = classify_parameters_from_irvalue(args, return_in_memory);
 
                 let stack_padding = if stack_args.len() % 2 != 0 { 8 } else { 0 };
 
@@ -3537,8 +3536,6 @@ fn classify_parameters_from_irvalue(parameters: &[IRValue], return_in_memory: bo
                 stack_args.push(typed_operand);
             }
         } else {
-            // get type of param
-            // if it's a struct, classify it
             let t = tacky_type(parameter);
 
             let struct_entry = match t {
