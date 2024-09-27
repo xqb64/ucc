@@ -258,6 +258,9 @@ impl Codegen for IRStaticVariable {
                 Type::Pointer(_) => 8,
                 Type::Array { .. } => get_alignment_of_type(&self._type),
                 Type::Char | Type::UChar | Type::SChar => 1,
+                Type::Struct { ref tag } => {
+                    TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap().alignment
+                }
                 _ => unreachable!(),
             },
         })
