@@ -1,3 +1,5 @@
+use std::env::var;
+
 use crate::{
     lexer::Const,
     parser::{
@@ -409,31 +411,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             lhs,
             rhs,
             _type,
-        }) => {
-            let lval = emit_tacky(lhs, instructions);
-            let rval = emit_tacky_and_convert(rhs, instructions);
-
-            match &lval {
-                ExpResult::SubObject { base, offset } => {
-                    instructions.push(IRInstruction::CopyToOffset { src: rval.clone(), dst: base.to_owned(), offset: *offset });
-                    ExpResult::PlainOperand(rval)
-                }
-                ExpResult::PlainOperand(val) => {
-                    instructions.push(IRInstruction::Copy {
-                        src: rval,
-                        dst: val.to_owned(),
-                    });
-                    lval
-                }
-                ExpResult::DereferencedPointer(ptr) => {
-                    instructions.push(IRInstruction::Store {
-                        src: rval.clone(),
-                        dst_ptr: ptr.to_owned(),
-                    });
-                    ExpResult::PlainOperand(rval)
-                }
-            }
-        }
+        }) => emit_assignment(lhs, rhs, instructions),
         Expression::Conditional(ConditionalExpression {
             condition,
             then_expr,
@@ -694,6 +672,32 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
     }
 }
 
+fn emit_assignment(lhs: &Expression, rhs: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult {
+    let lval = emit_tacky(lhs, instructions);
+    let rval = emit_tacky_and_convert(rhs, instructions);
+
+    match &lval {
+        ExpResult::SubObject { base, offset } => {
+            instructions.push(IRInstruction::CopyToOffset { src: rval.clone(), dst: base.to_owned(), offset: *offset });
+            ExpResult::PlainOperand(rval)
+        }
+        ExpResult::PlainOperand(val) => {
+            instructions.push(IRInstruction::Copy {
+                src: rval,
+                dst: val.to_owned(),
+            });
+            lval
+        }
+        ExpResult::DereferencedPointer(ptr) => {
+            instructions.push(IRInstruction::Store {
+                src: rval.clone(),
+                dst_ptr: ptr.to_owned(),
+            });
+            ExpResult::PlainOperand(rval)
+        }
+    }
+}
+
 fn emit_string_init(dst: String, offset: usize, s: &[u8]) -> Vec<IRInstruction> {
     let len = s.len();
 
@@ -774,7 +778,8 @@ fn emit_compound_init(
                 }
             } else if let Type::Struct { tag } = inited_type {
                 println!("inited_type: {:?}", inited_type);
-                
+                println!("value: {:?}", value);
+
                 let members = TYPE_TABLE.lock().unwrap().get(tag).unwrap().members.clone();
 
                 println!("members: {:?}", members);
@@ -1214,7 +1219,7 @@ impl Irfy for VariableDeclaration {
                 &mut instructions,
                 0,
                 &self._type,
-            );
+            ); 
         }
 
         Some(IRNode::Instructions(instructions))
@@ -1262,9 +1267,9 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
             match initial_value {
                 InitialValue::Initial(init) => {
                     tacky_defs.push(IRNode::StaticVariable(IRStaticVariable {
-                        name: name.clone(),
+                        name: dbg!(name.clone()),
                         global,
-                        init: init.clone(),
+                        init: dbg!(init.clone()),
                         _type: entry._type.clone(),
                     }))
                 }

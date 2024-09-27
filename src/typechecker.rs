@@ -1,8 +1,7 @@
 use crate::{
-    lexer::Const,
-    parser::{
+    ir::make_temporary, lexer::Const, parser::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement
-    },
+    }
 };
 use anyhow::{bail, Result};
 use std::{cmp::max, collections::HashMap, sync::Mutex};
@@ -418,6 +417,21 @@ fn optionally_typecheck_init(init: &Option<Initializer>, t: &Type) -> Result<Opt
 
 fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
     match (t, init) {
+        (Type::Pointer(ptr_type), Initializer::Single(_, Expression::String(string_expr))) => {
+            let str_id = format!("string.{}", make_temporary());
+            let symbol = Symbol {
+                _type: Type::Array {
+                    element: Box::new(Type::Char),
+                    size: string_expr.value.len() + 1,
+                },
+                attrs: IdentifierAttrs::ConstantAttr(StaticInit::String(
+                    string_expr.value.to_owned(),
+                    true,
+                )),
+            };
+            SYMBOL_TABLE.lock().unwrap().insert(str_id.clone(), symbol);
+            Ok(vec![StaticInit::Pointer(str_id)])
+        }
         (Type::Struct { tag }, Initializer::Compound(_name, _type, compound_init)) => {
             let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
             
@@ -431,12 +445,13 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             let mut static_inits = vec![];
 
             for init_elem in compound_init {
+                println!("current init_elem: {:?}", init_elem);
                 let member = struct_def.members[i].clone();
                 if member.offset != current_offset {
                     static_inits.push(StaticInit::Zero(member.offset - current_offset));
                 }
 
-                let more_static_inits = static_init_helper(init_elem, &member._type)?;
+                let more_static_inits = static_init_helper(dbg!(init_elem), dbg!(&member._type))?;
                 static_inits.extend(more_static_inits);
 
                 current_offset = member.offset + get_size_of_type(&member._type);
@@ -448,7 +463,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 static_inits.push(StaticInit::Zero(struct_def.size - current_offset));
             }
 
-            Ok(static_inits)
+            Ok(dbg!(static_inits))
         }
         (Type::Struct { .. }, Initializer::Single(_, _)) => {
             bail!("Single initializer for struct type");

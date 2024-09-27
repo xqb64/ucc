@@ -103,6 +103,7 @@ impl Emit for AsmStaticVariable {
                         writeln!(f, "\t.ascii \"{}\"", escape(value))?;
                     }
                 }
+                StaticInit::Pointer(lbl) => writeln!(f, "\t.quad {}", lbl)?,
                 _ => todo!(),
             }
         }
