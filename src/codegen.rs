@@ -3606,12 +3606,6 @@ fn get_eightbyte_type(offset: isize, struct_size: usize) -> AsmType {
     }
 }
 
-type ParameterString = (AsmType, String);
-type ParametersString = (
-    Vec<ParameterString>,
-    Vec<ParameterString>,
-    Vec<ParameterString>,
-);
 fn get_asm_type(value: &IRValue) -> AsmType {
     match value {
         IRValue::Constant(konst) => match konst {
@@ -3642,6 +3636,11 @@ fn get_asm_type(value: &IRValue) -> AsmType {
                     size: get_size_of_type(element) * size,
                     alignment: get_alignment_of_type(&_type),
                 },
+                Type::Struct { ref tag } => {
+                    let struct_size = TYPE_TABLE.lock().unwrap().get(tag).unwrap().size;
+                    let struct_alignment = TYPE_TABLE.lock().unwrap().get(tag).unwrap().alignment;
+                    AsmType::Bytearray { size: struct_size, alignment: struct_alignment }
+                }
                 _ => unreachable!(),
             }
         }
@@ -3670,6 +3669,11 @@ pub fn build_asm_symbol_table() {
                         size: get_size_of_type(element) * size,
                         alignment: get_alignment_of_type(&symbol._type),
                     },
+                    Type::Struct { ref tag } => {
+                        let struct_size = TYPE_TABLE.lock().unwrap().get(tag).unwrap().size;
+                        let struct_alignment = TYPE_TABLE.lock().unwrap().get(tag).unwrap().alignment;
+                        AsmType::Bytearray { size: struct_size, alignment: struct_alignment }
+                    }
                     _ => panic!("Unsupported type for static variable"),
                 };
                 AsmSymtabEntry::Object {
@@ -3691,6 +3695,11 @@ pub fn build_asm_symbol_table() {
                         size: get_size_of_type(element) * size,
                         alignment: get_alignment_of_type(&symbol._type),
                     },
+                    Type::Struct { ref tag } => {
+                        let struct_size = TYPE_TABLE.lock().unwrap().get(tag).unwrap().size;
+                        let struct_alignment = TYPE_TABLE.lock().unwrap().get(tag).unwrap().alignment;
+                        AsmType::Bytearray { size: struct_size, alignment: struct_alignment }
+                    }
                     _ => {
                         panic!("Unsupported type for static backend_symtab: {}", identifier);
                     }
@@ -3874,7 +3883,10 @@ fn add_offset(byte_count: usize, operand: &AsmOperand) -> AsmOperand {
         AsmOperand::Indexed(base, index, offset) => {
             AsmOperand::Indexed(*base, *index, *offset + byte_count as isize)
         }
-        _ => unreachable!(),
+        _ => {
+            dbg!(operand);
+            unreachable!()
+        }
     }
 }
 
@@ -3969,9 +3981,9 @@ fn flatten_member_types(members: &Vec<MemberEntry>) -> Vec<Type> {
 }
 
 fn copy_bytes_to_reg(src_op: AsmOperand, dst_reg: AsmRegister, byte_count: usize, instructions: &mut Vec<AsmInstruction>) {
-    let mut offset = byte_count - 1;
+    let mut offset = byte_count as isize - 1;
     while offset >= 0 {
-        let src_byte = add_offset(offset, &src_op);
+        let src_byte = add_offset(offset as usize, &src_op);
         instructions.push(AsmInstruction::Mov { asm_type: AsmType::Byte, src: src_byte, dst: AsmOperand::Register(dst_reg) });
         if offset > 0 {
             instructions.push(AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Shl, lhs: AsmOperand::Imm(8), rhs: AsmOperand::Register(dst_reg.clone()) });
