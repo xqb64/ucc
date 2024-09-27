@@ -460,10 +460,8 @@ impl Codegen for IRValue {
                 let type_of_symbol = symbol._type.clone();
 
                 match type_of_symbol {
-                    Type::Array { .. } => {
-                        AsmNode::Operand(AsmOperand::PseudoMem(name.to_owned(), 0))
-                    }
-                    _ => AsmNode::Operand(AsmOperand::Pseudo(name.to_owned())),
+                    _ if is_scalar(&type_of_symbol) => AsmNode::Operand(AsmOperand::Pseudo(name.to_owned())),
+                    _ => AsmNode::Operand(AsmOperand::PseudoMem(name.to_owned(), 0))
                 }
             }
         }
@@ -1241,25 +1239,25 @@ impl Codegen for IRInstruction {
                     instructions.push(AsmInstruction::DeallocateStack(bytes_to_remove));
                 }
 
-                if dst.is_some() {
-                    let dst = dst.clone().unwrap();
-                    let assembly_dst = dst.codegen().into();
-                    let return_type = get_asm_type(&dst);
+                // if dst.is_some() {
+                //     let dst = dst.clone().unwrap();
+                //     let assembly_dst = dst.codegen().into();
+                //     let return_type = get_asm_type(&dst);
 
-                    if return_type == AsmType::Double {
-                        instructions.push(AsmInstruction::Mov {
-                            asm_type: AsmType::Double,
-                            src: AsmOperand::Register(AsmRegister::XMM0),
-                            dst: assembly_dst,
-                        });
-                    } else {
-                        instructions.push(AsmInstruction::Mov {
-                            asm_type: return_type,
-                            src: AsmOperand::Register(AsmRegister::AX),
-                            dst: assembly_dst,
-                        });
-                    }
-                }
+                //     if return_type == AsmType::Double {
+                //         instructions.push(AsmInstruction::Mov {
+                //             asm_type: AsmType::Double,
+                //             src: AsmOperand::Register(AsmRegister::XMM0),
+                //             dst: assembly_dst,
+                //         });
+                //     } else {
+                //         instructions.push(AsmInstruction::Mov {
+                //             asm_type: return_type,
+                //             src: AsmOperand::Register(AsmRegister::AX),
+                //             dst: assembly_dst,
+                //         });
+                //     }
+                // }
 
                 if dst.is_some() && !return_in_memory {
                     let int_return_registers = [
@@ -3879,10 +3877,8 @@ fn tacky_type(value: &IRValue) -> Type {
 
 fn add_offset(byte_count: usize, operand: &AsmOperand) -> AsmOperand {
     match operand {
+        AsmOperand::PseudoMem(name, offset) => AsmOperand::PseudoMem(name.clone(), *offset + byte_count as isize),
         AsmOperand::Memory(base, offset) => AsmOperand::Memory(*base, *offset + byte_count as isize),
-        AsmOperand::Indexed(base, index, offset) => {
-            AsmOperand::Indexed(*base, *index, *offset + byte_count as isize)
-        }
         _ => {
             dbg!(operand);
             unreachable!()
@@ -3903,6 +3899,7 @@ fn copy_bytes(src: &AsmOperand, dst: &AsmOperand, byte_count: usize) -> Vec<AsmI
         (AsmType::Quadword, 8)
     };
     
+    dbg!(&src, &dst);
     let next_src = add_offset(operand_size, src);
     let next_dst = add_offset(operand_size, dst);
 

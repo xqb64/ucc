@@ -190,7 +190,10 @@ impl Emit for AsmInstruction {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     AsmType::Double => "sd",
-                    _ => todo!(),
+                    _ => {
+                        dbg!(&asm_type);
+                        todo!()
+                    }
                 };
                 write!(f, "mov{} ", suffix)?;
                 src.emit(f, asm_type)?;
