@@ -643,7 +643,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
 
             match inner_object {
                 ExpResult::PlainOperand(IRValue::Var(v)) => return ExpResult::SubObject { base: v, offset: member_offset },
-                ExpResult::SubObject { base, offset } => return ExpResult::SubObject { base: base, offset: offset + member_offset },
+                ExpResult::SubObject { base, offset } => return ExpResult::SubObject { base, offset: offset + member_offset },
                 ExpResult::DereferencedPointer(ptr) => {
                     let type_of_e = get_type(e);
                     let dst_ptr = make_tacky_variable(&Type::Pointer(type_of_e.to_owned().into()));

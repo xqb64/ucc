@@ -1614,6 +1614,12 @@ impl Codegen for IRInstruction {
                     dst: dst.codegen().into(),
                 }])
             }
+            IRInstruction::AddPtr { ptr, index: IRValue::Constant(Const::Long(konst)), scale, dst } => {
+                AsmNode::Instructions(vec!{
+                    AsmInstruction::Mov { asm_type: AsmType::Quadword, src: ptr.codegen().into(), dst: AsmOperand::Register(AsmRegister::R9) },
+                    AsmInstruction::Lea { src: AsmOperand::Memory(AsmRegister::R9, *konst as isize * *scale as isize), dst: dst.codegen().into() },
+                })
+            }
             IRInstruction::AddPtr {
                 ptr,
                 index,
@@ -1679,6 +1685,8 @@ impl Codegen for IRInstruction {
                 let type_of_dst = get_asm_type(dst);
 
                 let t = tacky_type(&dst);
+
+                dbg!(offset);
 
                 if is_scalar(&t) {
                     AsmNode::Instructions(vec![AsmInstruction::Mov {
@@ -1918,7 +1926,7 @@ impl ReplacePseudo for AsmOperand {
                         .unwrap();
                     AsmOperand::Memory(AsmRegister::BP, previously_assigned + *offset)
                 } else {
-                    AsmOperand::Data(name.clone(), 0)
+                    AsmOperand::Data(name.clone(), *offset)
                 }
             }
             _ => self.clone(),
