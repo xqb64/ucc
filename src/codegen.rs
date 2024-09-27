@@ -3597,12 +3597,18 @@ fn get_eightbyte_type(offset: isize, struct_size: usize) -> AsmType {
     let bytes_from_end = struct_size as isize - offset;
 
     if bytes_from_end >= 8 {
-        AsmType::Quadword
-    } else if bytes_from_end >= 4 {
-        AsmType::Longword
-    } else {
-        AsmType::Byte
+        return AsmType::Quadword;
     }
+    
+    if bytes_from_end == 4 {
+        return AsmType::Longword;
+    }
+
+    if bytes_from_end == 1 {
+        return AsmType::Byte;
+    }
+
+    AsmType::Bytearray { size: bytes_from_end as usize, alignment: 8 }
 }
 
 fn get_asm_type(value: &IRValue) -> AsmType {
@@ -3965,8 +3971,8 @@ fn classify_structure(struct_entry: &StructEntry) -> Vec<Class>{
 
     let scalar_types = flatten_member_types(&struct_entry.members);
 
-    let first = scalar_types.get(0).unwrap();
-    let last = scalar_types.get(scalar_types.len() - 1).unwrap();
+    let first = scalar_types.first().unwrap();
+    let last = scalar_types.last().unwrap();
 
     if size > 8 {
         if first == &Type::Double && last == &Type::Double {
