@@ -980,7 +980,7 @@ fn zero_initializer(t: &Type) -> Initializer {
         Type::Pointer(_) => Initializer::Single(
             String::new(),
             Expression::Constant(ConstantExpression {
-                value: Const::Int(0),
+                value: Const::ULong(0),
                 _type: Type::Int,
             }),
         ),

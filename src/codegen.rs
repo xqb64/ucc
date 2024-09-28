@@ -2223,18 +2223,7 @@ impl Fixup for AsmFunction {
                                 },
                             ]);
                         } else {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: AsmType::Longword,
-                                    src: src.clone(),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: AsmType::Longword,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: dst.clone(),
-                                },
-                            ]);
+                            instructions.push(instr.clone());
                         }
                     }
                     (AsmOperand::Imm(_), AsmOperand::Data(_, _)) => {
