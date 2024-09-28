@@ -418,7 +418,7 @@ fn optionally_typecheck_init(init: &Option<Initializer>, t: &Type) -> Result<Opt
 
 fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
     match (t, init) {
-        (Type::Pointer(ptr_type), Initializer::Single(_, Expression::String(string_expr))) => {
+        (Type::Pointer(_), Initializer::Single(_, Expression::String(string_expr))) => {
             let str_id = format!("string.{}", make_temporary());
             let symbol = Symbol {
                 _type: Type::Array {
@@ -493,39 +493,6 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             } else {
                 bail!("Can't initialize array with non-string");
             }
-        }
-        (Type::Pointer(_), Initializer::Single(name, Expression::String(string_expr))) => {
-            let string_name = format!("__string_literal_{}", name);
-            let string_symbol = Symbol {
-                _type: Type::Array {
-                    element: Box::new(Type::Char),
-                    size: string_expr.value.len() + 1,
-                },
-                attrs: IdentifierAttrs::ConstantAttr(StaticInit::String(
-                    string_expr.value.to_owned(),
-                    true,
-                )),
-            };
-
-            SYMBOL_TABLE
-                .lock()
-                .unwrap()
-                .insert(string_name.clone(), string_symbol);
-
-            // let ptr_symbol = Symbol {
-            //     _type: Type::Pointer(Box::new(Type::Char)),
-            //     attrs: IdentifierAttrs::StaticAttr {
-            //         initial_value: InitialValue::Initial(vec![StaticInit::Pointer(string_name)]),
-            //         global: false,
-            //     },
-            // };
-
-            // SYMBOL_TABLE
-            //     .lock()
-            //     .unwrap()
-            //     .insert(name.clone(), ptr_symbol);
-
-            Ok(vec![])
         }
         (_, Initializer::Single(_, Expression::Constant(ConstantExpression { value, _type }))) => {
             if matches!(
@@ -1640,7 +1607,7 @@ fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
             expr: typed_expr.to_owned().into(),
             _type: Type::Pointer(element.to_owned()),
         })),
-        Type::Struct { tag } => {
+        Type::Struct { .. } => {
             if !is_complete(type_of_expr) {
                 bail!("Unknown struct type");
             }

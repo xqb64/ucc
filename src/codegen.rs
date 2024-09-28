@@ -336,7 +336,7 @@ impl Codegen for IRFunction {
             let reg = int_regs[reg_index];
             
             match param_type {
-                AsmType::Bytearray { size, alignment } => {
+                AsmType::Bytearray { size, alignment: _ } => {
                     let operand = match param {
                         AsmNode::Operand(operand) => operand.clone(),
                         _ => unreachable!(),
@@ -386,7 +386,7 @@ impl Codegen for IRFunction {
         let mut offset = 16;
         for (param_type, param) in stack_params {
             match param_type {
-                AsmType::Bytearray { size, alignment } => {
+                AsmType::Bytearray { size, alignment: _ } => {
                     let operand = match param {
                         AsmNode::Operand(operand) => operand.clone(),
                         _ => unreachable!(),
@@ -609,7 +609,7 @@ impl Codegen for IRInstruction {
                     for (t, op) in int_retvals {
                         let r = int_return_registers[reg_index];
                         match t {
-                            AsmType::Bytearray { size, alignment } => {
+                            AsmType::Bytearray { size, alignment: _ } => {
                                 let operand = match op {
                                     AsmNode::Operand(operand) => operand.clone(),
                                     _ => unreachable!(),

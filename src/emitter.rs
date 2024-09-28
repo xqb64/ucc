@@ -104,7 +104,6 @@ impl Emit for AsmStaticVariable {
                     }
                 }
                 StaticInit::Pointer(lbl) => writeln!(f, "\t.quad {}", lbl)?,
-                _ => todo!(),
             }
         }
 
