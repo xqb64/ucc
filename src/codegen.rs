@@ -3694,29 +3694,37 @@ pub fn build_asm_symbol_table() {
             IdentifierAttrs::StaticAttr {
                 initial_value: _, ..
             } => {
-                let asm_type = match symbol._type {
-                    Type::Char | Type::UChar | Type::SChar => AsmType::Byte,
-                    Type::Int => AsmType::Longword,
-                    Type::Long => AsmType::Quadword,
-                    Type::Uint => AsmType::Longword,
-                    Type::Ulong => AsmType::Quadword,
-                    Type::Double => AsmType::Double,
-                    Type::Pointer(_) => AsmType::Quadword,
-                    Type::Array { ref element, size } => AsmType::Bytearray {
-                        size: get_size_of_type(element) * size,
-                        alignment: get_alignment_of_type(&symbol._type),
-                    },
-                    Type::Struct { ref tag } => {
-                        let struct_size = TYPE_TABLE.lock().unwrap().get(tag).unwrap().size;
-                        let struct_alignment = TYPE_TABLE.lock().unwrap().get(tag).unwrap().alignment;
-                        AsmType::Bytearray { size: struct_size, alignment: struct_alignment }
-                    }
-                    _ => panic!("Unsupported type for static variable"),
-                };
-                AsmSymtabEntry::Object {
-                    _type: asm_type,
-                    is_static: true,
-                    is_constant: false,
+                if is_complete(&symbol._type) {
+                    let asm_type = match symbol._type {
+                        Type::Char | Type::UChar | Type::SChar => AsmType::Byte,
+                        Type::Int => AsmType::Longword,
+                        Type::Long => AsmType::Quadword,
+                        Type::Uint => AsmType::Longword,
+                        Type::Ulong => AsmType::Quadword,
+                        Type::Double => AsmType::Double,
+                        Type::Pointer(_) => AsmType::Quadword,
+                        Type::Array { ref element, size } => AsmType::Bytearray {
+                            size: get_size_of_type(element) * size,
+                            alignment: get_alignment_of_type(&symbol._type),
+                        },
+                        Type::Struct { ref tag } => {
+                            let struct_size = TYPE_TABLE.lock().unwrap().get(tag).unwrap().size;
+                            let struct_alignment = TYPE_TABLE.lock().unwrap().get(tag).unwrap().alignment;
+                            AsmType::Bytearray { size: struct_size, alignment: struct_alignment }
+                        }
+                        _ => panic!("Unsupported type for static variable"),
+                    };
+                    AsmSymtabEntry::Object {
+                        _type: asm_type,
+                        is_static: true,
+                        is_constant: false,
+                    }    
+                } else {
+                    AsmSymtabEntry::Object {
+                        _type: AsmType::Byte,
+                        is_static: true,
+                        is_constant: false,
+                    }    
                 }
             }
             IdentifierAttrs::LocalAttr => {
