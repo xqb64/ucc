@@ -8,7 +8,7 @@ use crate::{
     lexer::Const,
     parser::Type,
     typechecker::{
-        get_common_type, get_signedness, get_size_of_type, is_scalar, IdentifierAttrs, MemberEntry, StaticInit, SYMBOL_TABLE, TYPE_TABLE
+        get_common_type, get_signedness, get_size_of_type, is_scalar, IdentifierAttrs, MemberEntry, StaticInit, CURRENT_FN_RETURNS_ON_STACK, SYMBOL_TABLE, TYPE_TABLE
     },
 };
 
@@ -329,8 +329,6 @@ impl Codegen for IRFunction {
                 src: AsmOperand::Register(AsmRegister::DI),
                 dst: AsmOperand::Memory(AsmRegister::BP, -8),
             });
-            VAR_TO_STACK_POS.lock().unwrap().var_to_stack_pos("DUMMY", AsmType::Quadword);
-            println!("{:?}", VAR_TO_STACK_POS.lock().unwrap());
             reg_index = 1;
         }
 
@@ -393,7 +391,7 @@ impl Codegen for IRFunction {
                         AsmNode::Operand(operand) => operand.clone(),
                         _ => unreachable!(),
                     };
-                    copy_bytes(&AsmOperand::Memory(AsmRegister::BP, offset), &operand, size);
+                    instructions.extend(copy_bytes(&AsmOperand::Memory(AsmRegister::BP, offset), &operand, size));
                 }
                 _ => {
                     let instr = AsmInstruction::Mov {
@@ -423,6 +421,8 @@ impl Codegen for IRFunction {
             IdentifierAttrs::FuncAttr { defined: _, global } => global,
             _ => unreachable!(),
         };
+
+        *CURRENT_FN_RETURNS_ON_STACK.lock().unwrap() = 0;
 
         AsmNode::Function(AsmFunction {
             name: self.name.clone(),
@@ -598,7 +598,6 @@ impl Codegen for IRInstruction {
 
                     let return_storage = AsmOperand::Memory(AsmRegister::AX, 0);
                     let ret_operand = value.clone().unwrap().codegen().into();
-                    let asm_t = get_asm_type(&value.clone().unwrap());
                     let t = tacky_type(&value.clone().unwrap());
 
                     copy_bytes(&ret_operand, &return_storage, get_size_of_type(&t));
@@ -1924,7 +1923,7 @@ impl ReplacePseudo for AsmOperand {
                         .0
                         .try_into()
                         .unwrap();
-                    dbg!(AsmOperand::Memory(AsmRegister::BP, previously_assigned + *offset))
+                    AsmOperand::Memory(AsmRegister::BP, previously_assigned + *offset)
                 } else {
                     AsmOperand::Data(name.clone(), *offset)
                 }
@@ -1950,7 +1949,15 @@ impl ReplacePseudo for AsmProgram {
 
 impl ReplacePseudo for AsmFunction {
     fn replace_pseudo(&self) -> Self {
-        VAR_TO_STACK_POS.lock().unwrap().clear();
+        if ASM_SYMBOL_TABLE.lock().unwrap().get(&self.name).is_some_and(|f| match f {
+            AsmSymtabEntry::Function { defined: _, returns_on_stack } => *returns_on_stack,
+            _ => false,
+        }) {
+            VAR_TO_STACK_POS.lock().unwrap().last_used_stack_pos.0 = -8;
+        } else {
+            VAR_TO_STACK_POS.lock().unwrap().clear();
+        }
+        
         let mut instructions = vec![];
         for instr in &self.instructions {
             instructions.push(instr.replace_pseudo());

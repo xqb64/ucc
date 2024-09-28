@@ -29,6 +29,7 @@ pub struct MemberEntry {
 lazy_static::lazy_static! {
     pub static ref SYMBOL_TABLE: Mutex<HashMap<String, Symbol>> = Mutex::new(HashMap::new());
     pub static ref TYPE_TABLE: Mutex<HashMap<String, StructEntry>> = Mutex::new(HashMap::new());
+    pub static ref CURRENT_FN_RETURNS_ON_STACK: Mutex<isize> = Mutex::new(0);
 }
 
 pub trait Typecheck {
