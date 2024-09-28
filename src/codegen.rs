@@ -1212,10 +1212,10 @@ impl Codegen for IRInstruction {
                     match arg_type {
                         AsmType::Bytearray { size, alignment: _ } => {
                             instructions.push(AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Sub, lhs: AsmOperand::Imm(8), rhs: AsmOperand::Register(AsmRegister::SP) });
-                            copy_bytes(match stack_arg {
+                            instructions.extend(copy_bytes(match stack_arg {
                                 AsmNode::Operand(operand) => operand,
                                 _ => unreachable!()
-                            }, &AsmOperand::Memory(AsmRegister::SP, 0), *size);
+                            }, &AsmOperand::Memory(AsmRegister::SP, 0), *size));
                         }
                         _ => {
                             match stack_arg {
