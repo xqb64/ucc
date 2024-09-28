@@ -310,7 +310,7 @@ impl Codegen for IRFunction {
 
         instructions.push(AsmInstruction::AllocateStack(0));
 
-        let (int_reg_params, double_reg_params, stack_params) = classify_parameters_from_irvalue(&&params_as_tacky, return_on_stack);
+        let (int_reg_params, double_reg_params, stack_params) = classify_parameters_from_irvalue(&params_as_tacky, return_on_stack);
 
         let int_regs = [
             AsmRegister::DI,
@@ -329,6 +329,8 @@ impl Codegen for IRFunction {
                 src: AsmOperand::Register(AsmRegister::DI),
                 dst: AsmOperand::Memory(AsmRegister::BP, -8),
             });
+            VAR_TO_STACK_POS.lock().unwrap().var_to_stack_pos("DUMMY", AsmType::Quadword);
+            println!("{:?}", VAR_TO_STACK_POS.lock().unwrap());
             reg_index = 1;
         }
 
@@ -1904,9 +1906,6 @@ impl ReplacePseudo for AsmOperand {
                     )
                 }
             }
-            AsmOperand::Memory(AsmRegister::BP, _) => self.clone(),
-            AsmOperand::Register(_) => self.clone(),
-            AsmOperand::Data(_, _) => self.clone(),
             AsmOperand::PseudoMem(name, offset) => {
                 let (is_static, is_constant, _type) =
                     match ASM_SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap() {
@@ -2013,11 +2012,10 @@ impl Fixup for AsmProgram {
 impl Fixup for AsmFunction {
     fn fixup(&mut self) -> AsmFunction {
         let mut instructions = vec![];
-
+        
         for instr in &mut self.instructions {
             match instr {
                 AsmInstruction::Lea { src, dst } => {
-                    // destination of Lea must be a register
                     match dst {
                         AsmOperand::Memory(AsmRegister::BP, _)
                         | AsmOperand::Memory(_, _)
@@ -2333,18 +2331,7 @@ impl Fixup for AsmFunction {
                                 },
                             ]);
                         } else {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: AsmType::Byte,
-                                    src: src.clone(),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: AsmType::Byte,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: dst.clone(),
-                                },
-                            ]);
+                            instructions.push(instr.clone());
                         }
                     }
                     (AsmOperand::Imm(_), AsmOperand::Data(_, _)) => {
@@ -3799,6 +3786,7 @@ pub enum AsmSymtabEntry {
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub struct StackPosition(pub i64);
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct VarToStackPos {
     last_used_stack_pos: StackPosition,
     var_to_stack_pos: HashMap<String, StackPosition>,
