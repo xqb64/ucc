@@ -1848,7 +1848,6 @@ lazy_static::lazy_static! {
 impl ReplacePseudo for AsmOperand {
     fn replace_pseudo(&self) -> Self {
         match self {
-            AsmOperand::Imm(_) => self.clone(),
             AsmOperand::Pseudo(name) => {
                 if let Some(symbol) = SYMBOL_TABLE.lock().unwrap().get(name).cloned() {
                     match symbol.attrs {
@@ -1925,7 +1924,7 @@ impl ReplacePseudo for AsmOperand {
                         .0
                         .try_into()
                         .unwrap();
-                    AsmOperand::Memory(AsmRegister::BP, previously_assigned + *offset)
+                    dbg!(AsmOperand::Memory(AsmRegister::BP, previously_assigned + *offset))
                 } else {
                     AsmOperand::Data(name.clone(), *offset)
                 }
