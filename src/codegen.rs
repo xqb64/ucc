@@ -3966,7 +3966,7 @@ pub enum Class {
 use crate::typechecker::StructEntry;
 
 fn classify_structure(struct_entry: &StructEntry) -> Vec<Class>{
-    let mut size = struct_entry.size;
+    let mut size: isize = struct_entry.size as isize;
     
     if size > 16 {
         let mut result = vec![];
