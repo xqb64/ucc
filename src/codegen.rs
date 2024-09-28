@@ -600,7 +600,7 @@ impl Codegen for IRInstruction {
                     let ret_operand = value.clone().unwrap().codegen().into();
                     let t = tacky_type(&value.clone().unwrap());
 
-                    copy_bytes(&ret_operand, &return_storage, get_size_of_type(&t));
+                    instructions.extend(copy_bytes(&ret_operand, &return_storage, get_size_of_type(&t)));
                 } else {
                     let int_return_registers = [AsmRegister::AX, AsmRegister::DX];
                     let double_return_registers = [AsmRegister::XMM0, AsmRegister::XMM1];
