@@ -3895,7 +3895,7 @@ lazy_static::lazy_static! {
     static ref VAR_TO_STACK_POS: Mutex<VarToStackPos> = Mutex::new(VarToStackPos::default());
 }
 
-fn tacky_type(value: &IRValue) -> Type {
+pub fn tacky_type(value: &IRValue) -> Type {
     match value {
         IRValue::Constant(konst) => match konst {
             Const::Char(_) => Type::Char,

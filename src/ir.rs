@@ -1,3 +1,4 @@
+use anyhow::Result;
 use crate::{
     lexer::Const,
     parser::{
@@ -1505,6 +1506,30 @@ fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
                     optimized_instructions.push(instr.clone());
                 }
             }
+            IRInstruction::Truncate { src: IRValue::Constant(konst), dst } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
+            IRInstruction::SignExtend { src: IRValue::Constant(konst), dst } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
+            IRInstruction::ZeroExtend { src: IRValue::Constant(konst), dst } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
+            IRInstruction::DoubleToInt { src: IRValue::Constant(konst), dst } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
+            IRInstruction::DoubletoUInt { src: IRValue::Constant(konst), dst } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
+            IRInstruction::IntToDouble { src: IRValue::Constant(konst), dst } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
+            IRInstruction::UIntToDouble { src: IRValue::Constant(konst), dst } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
+            IRInstruction::Copy { src: IRValue::Constant(konst), dst } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
             _ => {
                 optimized_instructions.push(instr.clone());
             }
@@ -1514,13 +1539,117 @@ fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
     optimized_instructions
 }
 
+fn evaluate_cast(konst: &Const, dst: &IRValue) -> Vec<IRInstruction> {
+    use crate::codegen::tacky_type;
+    
+    let dst_type = tacky_type(dst);
+    let converted_src = match const_convert(konst, &dst_type) {
+        Ok(result) => result,
+        Err(_) => const_convert(&Const::Int(0), &dst_type).unwrap(),
+    };
+
+    vec![IRInstruction::Copy {
+        src: IRValue::Constant(converted_src),
+        dst: dst.clone(),
+    }]
+}
+
+fn const_convert(konst: &Const, dst_type: &Type) -> Result<Const> {
+    match dst_type {
+        Type::Int => match konst {
+            Const::Int(val) => Ok(Const::Int(*val)),
+            Const::Long(val) => Ok(Const::Int(*val as i32)),
+            Const::UInt(val) => Ok(Const::Int(*val as i32)),
+            Const::ULong(val) => Ok(Const::Int(*val as i32)),
+            Const::Double(val) => Ok(Const::Int(*val as i32)),
+            Const::Char(val) => Ok(Const::Int(*val as i32)),
+            Const::UChar(val) => Ok(Const::Int(*val as i32)),
+        },
+        Type::Long => match konst {
+            Const::Int(val) => Ok(Const::Long(*val as i64)),
+            Const::Long(val) => Ok(Const::Long(*val)),
+            Const::UInt(val) => Ok(Const::Long(*val as i64)),
+            Const::ULong(val) => Ok(Const::Long(*val as i64)),
+            Const::Double(val) => Ok(Const::Long(*val as i64)),
+            Const::Char(val) => Ok(Const::Long(*val as i64)),
+            Const::UChar(val) => Ok(Const::Long(*val as i64)),
+        },
+        Type::Uint => match konst {
+            Const::Int(val) => Ok(Const::UInt(*val as u32)),
+            Const::Long(val) => Ok(Const::UInt(*val as u32)),
+            Const::UInt(val) => Ok(Const::UInt(*val)),
+            Const::ULong(val) => Ok(Const::UInt(*val as u32)),
+            Const::Double(val) => Ok(Const::UInt(*val as u32)),
+            Const::Char(val) => Ok(Const::UInt(*val as u32)),
+            Const::UChar(val) => Ok(Const::UInt(*val as u32)),
+        },
+        Type::Ulong => match konst {
+            Const::Int(val) => Ok(Const::ULong(*val as u64)),
+            Const::Long(val) => Ok(Const::ULong(*val as u64)),
+            Const::UInt(val) => Ok(Const::ULong(*val as u64)),
+            Const::ULong(val) => Ok(Const::ULong(*val)),
+            Const::Double(val) => Ok(Const::ULong(*val as u64)),
+            Const::Char(val) => Ok(Const::ULong(*val as u64)),
+            Const::UChar(val) => Ok(Const::ULong(*val as u64)),
+        },
+        Type::Double => match konst {
+            Const::Int(val) => Ok(Const::Double(*val as f64)),
+            Const::Long(val) => Ok(Const::Double(*val as f64)),
+            Const::UInt(val) => Ok(Const::Double(*val as f64)),
+            Const::ULong(val) => Ok(Const::Double(*val as f64)),
+            Const::Double(val) => Ok(Const::Double(*val)),
+            Const::Char(val) => Ok(Const::Double(*val as f64)),
+            Const::UChar(val) => Ok(Const::Double(*val as f64)),
+        },
+        Type::Char => match konst {
+            Const::Int(val) => Ok(Const::Char(*val as i8)),
+            Const::Long(val) => Ok(Const::Char(*val as i8)),
+            Const::UInt(val) => Ok(Const::Char(*val as i8)),
+            Const::ULong(val) => Ok(Const::Char(*val as i8)),
+            Const::Double(val) => Ok(Const::Char(*val as i8)),
+            Const::Char(val) => Ok(Const::Char(*val)),
+            Const::UChar(val) => Ok(Const::Char(*val as i8)),
+        },
+        Type::UChar => match konst {
+            Const::Int(val) => Ok(Const::UChar(*val as u8)),
+            Const::Long(val) => Ok(Const::UChar(*val as u8)),
+            Const::UInt(val) => Ok(Const::UChar(*val as u8)),
+            Const::ULong(val) => Ok(Const::UChar(*val as u8)),
+            Const::Char(val) => Ok(Const::UChar(*val as u8)),
+            Const::UChar(val) => Ok(Const::UChar(*val)),
+            Const::Double(val) => Ok(Const::UChar(*val as u8)),
+        },
+        Type::SChar => match konst {
+            Const::Int(val) => Ok(Const::Char(*val as i8)),
+            Const::Long(val) => Ok(Const::Char(*val as i8)),
+            Const::UInt(val) => Ok(Const::Char(*val as i8)),
+            Const::ULong(val) => Ok(Const::Char(*val as i8)),
+            Const::Char(val) => Ok(Const::Char(*val as i8)),
+            Const::UChar(val) => Ok(Const::Char(*val as i8)),
+            Const::Double(val) => Ok(Const::Char(*val as i8)),
+        },
+        Type::Pointer(_) => match konst {
+            Const::Int(val) => Ok(Const::ULong(*val as u64)),
+            Const::Long(val) => Ok(Const::ULong(*val as u64)),
+            Const::UInt(val) => Ok(Const::ULong(*val as u64)),
+            Const::ULong(val) => Ok(Const::ULong(*val as u64)),
+            Const::Double(val) => Ok(Const::ULong(*val as u64)),
+            Const::Char(val) => Ok(Const::ULong(*val as u64)),
+            Const::UChar(val) => Ok(Const::ULong(*val as u64)),
+        },
+        _ => unreachable!(),
+    }
+}
+
 fn is_zero(konst: &Const) -> bool {
     match konst {
         Const::Int(val) => *val == 0,
         Const::Long(val) => *val == 0,
         Const::UInt(val) => *val == 0,
         Const::ULong(val) => *val == 0,
-        _ => unreachable!(),
+        Const::Double(val) => *val == 0.0,
+        Const::Char(val) => *val == 0,
+        Const::UChar(val) => *val == 0,
     }
 }
 
@@ -1540,6 +1669,9 @@ impl std::ops::Add for Const {
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs + rhs),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs + rhs),
             (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs + rhs),
+            (Const::Double(lhs), Const::Double(rhs)) => Const::Double(lhs + rhs),
+            (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs + rhs),
+            (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs + rhs),
             _ => unreachable!(),
         }
     }
@@ -1554,6 +1686,9 @@ impl std::ops::Sub for Const {
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs - rhs),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs - rhs),
             (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs - rhs),
+            (Const::Double(lhs), Const::Double(rhs)) => Const::Double(lhs - rhs),
+            (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs - rhs),
+            (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs - rhs),
             _ => unreachable!(),
         }
     }
@@ -1568,6 +1703,9 @@ impl std::ops::Mul for Const {
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs * rhs),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs * rhs),
             (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs * rhs),
+            (Const::Double(lhs), Const::Double(rhs)) => Const::Double(lhs * rhs),
+            (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs * rhs),
+            (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs * rhs),
             _ => unreachable!(),
         }
     }
@@ -1582,7 +1720,12 @@ impl std::ops::Div for Const {
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs.checked_div(rhs).unwrap_or(0)),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs.checked_div(rhs).unwrap_or(0)),
             (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs.checked_div(rhs).unwrap_or(0)),
-            _ => unreachable!(),
+            (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs.checked_div(rhs).unwrap_or(0)),
+            (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs.checked_div(rhs).unwrap_or(0)),
+            (Const::Double(lhs), Const::Double(rhs)) => Const::Double(lhs / rhs),
+            _ => {
+                unreachable!()
+            }
         }
     }
 }
@@ -1596,6 +1739,8 @@ impl std::ops::Rem for Const {
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs.checked_rem(rhs).unwrap_or(0)),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs.checked_rem(rhs).unwrap_or(0)),
             (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs.checked_rem(rhs).unwrap_or(0)),
+            (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs.checked_rem(rhs).unwrap_or(0)),
+            (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs.checked_rem(rhs).unwrap_or(0)),
             _ => unreachable!(),
         }
     }
@@ -1608,6 +1753,9 @@ impl std::ops::Neg for Const {
         match self {
             Const::Int(val) => Const::Int(-val),
             Const::Long(val) => Const::Long(-val),
+            Const::UInt(val) => Const::Int(-(val as i32)),
+            Const::ULong(val) => Const::Long(-(val as i64)),
+            Const::Double(val) => Const::Double(-val),
             _ => unreachable!(),
         }
     }
