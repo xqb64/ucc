@@ -1373,6 +1373,7 @@ impl Optimize for IRFunction {
             let optimized_function_body = control_flow_graph_to_ir(&control_flow_graph);
 
             if optimized_function_body == self.body || optimized_function_body.is_empty() {
+                println!("optimized_function_body: {:?}", optimized_function_body);
                 return IRFunction {
                     name: self.name.clone(),
                     params: self.params.clone(),
@@ -1567,10 +1568,10 @@ impl std::ops::Div for Const {
 
     fn div(self, rhs: Const) -> Self::Output {
         match (self, rhs) {
-            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs / rhs),
-            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs / rhs),
-            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs / rhs),
-            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs / rhs),
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs.checked_div(rhs).unwrap_or(0)),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs.checked_div(rhs).unwrap_or(0)),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs.checked_div(rhs).unwrap_or(0)),
+            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs.checked_div(rhs).unwrap_or(0)),
             _ => unreachable!(),
         }
     }
@@ -1581,10 +1582,10 @@ impl std::ops::Rem for Const {
 
     fn rem(self, rhs: Const) -> Self::Output {
         match (self, rhs) {
-            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs % rhs),
-            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs % rhs),
-            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs % rhs),
-            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs % rhs),
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs.checked_rem(rhs).unwrap_or(0)),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs.checked_rem(rhs).unwrap_or(0)),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs.checked_rem(rhs).unwrap_or(0)),
+            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs.checked_rem(rhs).unwrap_or(0)),
             _ => unreachable!(),
         }
     }
