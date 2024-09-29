@@ -1349,23 +1349,14 @@ impl Optimize for IRFunction {
         }
 
         loop {  
-            println!("looping");
-                     
             let post_constant_folding;
             if enabled_optimizations.contains(&Optimization::ConstantFolding) {
-                println!("self.body before constant_folding: {:?}", self.body);
                 post_constant_folding = constant_folding(&self.body);
-                println!("post_constant_folding: {:?}", post_constant_folding);
             } else {
-                println!("else branch, cloning");
                 post_constant_folding = self.body.clone();
             }
 
-            println!("survived");
-
             let mut control_flow_graph = make_control_flow_graph(&post_constant_folding);
-
-            println!("also survived");
 
             if enabled_optimizations.contains(&Optimization::UnreachableCodeElimination) {
                 control_flow_graph = unreachable_code_elimination(&control_flow_graph);
@@ -1379,16 +1370,9 @@ impl Optimize for IRFunction {
                 control_flow_graph = dead_store_elimination(&control_flow_graph);
             }
 
-            println!("also also survived");
-
             let optimized_function_body = control_flow_graph_to_ir(&control_flow_graph);
 
-            println!("also also also survived");
-
-            println!("about to compare optimized with self.body: {:?} {:?}, equal: {:?}", optimized_function_body, self.body, optimized_function_body == self.body);
-
             if optimized_function_body == self.body || optimized_function_body.is_empty() {
-                println!("breaking out of loop");
                 return IRFunction {
                     name: self.name.clone(),
                     params: self.params.clone(),
@@ -1398,7 +1382,6 @@ impl Optimize for IRFunction {
             }
 
             self.body = optimized_function_body;
-            println!("changed body at the end of loop: {:?}", self.body);
         }
     }
 }
