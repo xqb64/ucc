@@ -298,18 +298,34 @@ pub enum Const {
 
 impl Ord for Const {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use Const::*;
+        use std::any::Any;
         match (self, other) {
-            (Const::Double(d1), Const::Double(d2)) => d1.partial_cmp(d2).unwrap(),
-            _ => self.cmp(other),
+            (Double(d1), Double(d2)) => d1.partial_cmp(d2).unwrap_or(std::cmp::Ordering::Equal),
+            (Int(i1), Int(i2)) => i1.cmp(i2),
+            (Long(l1), Long(l2)) => l1.cmp(l2),
+            (UInt(u1), UInt(u2)) => u1.cmp(u2),
+            (ULong(ul1), ULong(ul2)) => ul1.cmp(ul2),
+            (Char(c1), Char(c2)) => c1.cmp(c2),
+            (UChar(uc1), UChar(uc2)) => uc1.cmp(uc2),
+            // Define a consistent order between different variants
+            (a, b) => a.type_id().cmp(&b.type_id()), // or some other logic
         }
     }
 }
 
 impl PartialEq for Const {
     fn eq(&self, other: &Self) -> bool {
+        use Const::*;
         match (self, other) {
-            (Const::Double(d1), Const::Double(d2)) => d1 == d2,
-            _ => self.eq(other),
+            (Double(d1), Double(d2)) => d1 == d2,
+            (Int(i1), Int(i2)) => i1 == i2,
+            (Long(l1), Long(l2)) => l1 == l2,
+            (UInt(u1), UInt(u2)) => u1 == u2,
+            (ULong(ul1), ULong(ul2)) => ul1 == ul2,
+            (Char(c1), Char(c2)) => c1 == c2,
+            (UChar(uc1), UChar(uc2)) => uc1 == uc2,
+            _ => false,
         }
     }
 }

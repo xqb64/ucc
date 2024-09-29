@@ -4,10 +4,11 @@ use std::{collections::VecDeque, fs::File, path::PathBuf};
 use anyhow::{bail, Result};
 use structopt::StructOpt;
 
+use ucc::ir::Optimization;
 use ucc::{
     codegen::{build_asm_symbol_table, AsmType, Codegen, Fixup, ReplacePseudo},
     emitter::Emit,
-    ir::{convert_symbols_to_tacky, IRNode, Irfy},
+    ir::{convert_symbols_to_tacky, IRNode, Irfy, Optimize},
     lexer::{Lexer, Token},
     loop_label::LoopLabel,
     parser::Parser,
@@ -69,18 +70,30 @@ fn run(opts: &Opt) -> Result<()> {
     let mut tac = cooked_ast.irfy().unwrap();
     let tacky_defs = convert_symbols_to_tacky();
 
-    if let IRNode::Program(prog) = &mut tac {
+    let ir_prog = if let IRNode::Program(prog) = &mut tac {
         prog.static_vars = tacky_defs;
+    
+        prog
+    } else {
+        unreachable!()
+    };
+
+    let mut optimizations = vec![];
+
+    if opts.fold_constants {
+        optimizations.push(Optimization::ConstantFolding);
     }
 
+    let optimized_prog = ir_prog.optimize(optimizations);
+
     if opts.tacky {
-        println!("tac: {:#?}", tac);
+        println!("tac: {:#?}", optimized_prog);
         std::process::exit(0);
     }
 
     build_asm_symbol_table();
 
-    let mut asm_prog = tac.codegen().replace_pseudo().fixup();
+    let mut asm_prog = optimized_prog.codegen().replace_pseudo().fixup();
 
     if opts.codegen {
         println!("{:#?}", asm_prog);
@@ -88,8 +101,11 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let mut f = File::create(opts.path.with_extension("s"))?;
-
     asm_prog.emit(&mut f, &mut AsmType::Longword)?;
+
+    if opts.s {
+        std::process::exit(0);
+    }
 
     if opts.c {
         std::process::Command::new("gcc")
@@ -155,4 +171,10 @@ struct Opt {
 
     #[structopt(name = "l", short)]
     l: Option<String>,
+
+    #[structopt(name = "s", short)]
+    s: bool,
+
+    #[structopt(name = "fold-constants", long)]
+    fold_constants: bool,
 }

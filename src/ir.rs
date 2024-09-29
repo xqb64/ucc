@@ -1313,3 +1313,322 @@ fn optionally_emit_tacky_and_convert(
 ) -> Option<IRValue> {
     e.as_ref().map(|e| emit_tacky_and_convert(e, instructions))
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Optimization {
+    ConstantFolding,
+    UnreachableCodeElimination,
+    CopyPropagation,
+    DeadStoreElimination,
+}
+
+pub trait Optimize {
+    fn optimize(&mut self, enabled_optimizations: Vec<Optimization>) -> Self;
+}
+
+impl Optimize for IRProgram {
+    fn optimize(&mut self, enabled_optimizations: Vec<Optimization>) -> Self {
+        let mut functions = vec![];
+        for func in &mut self.functions {
+            functions.push(match func {
+                IRNode::Function(f) => IRNode::Function(f.optimize(enabled_optimizations.clone())),
+                _ => unreachable!(),
+            });
+        }
+        IRProgram {
+            functions,
+            static_vars: self.static_vars.clone(),
+        }
+    }
+}
+
+impl Optimize for IRFunction {
+    fn optimize(&mut self, enabled_optimizations: Vec<Optimization>) -> Self {
+        if self.body.is_empty() {
+            return self.clone();
+        }
+
+        loop {  
+            println!("looping");
+                     
+            let post_constant_folding;
+            if enabled_optimizations.contains(&Optimization::ConstantFolding) {
+                println!("self.body before constant_folding: {:?}", self.body);
+                post_constant_folding = constant_folding(&self.body);
+                println!("post_constant_folding: {:?}", post_constant_folding);
+            } else {
+                println!("else branch, cloning");
+                post_constant_folding = self.body.clone();
+            }
+
+            println!("survived");
+
+            let mut control_flow_graph = make_control_flow_graph(&post_constant_folding);
+
+            println!("also survived");
+
+            if enabled_optimizations.contains(&Optimization::UnreachableCodeElimination) {
+                control_flow_graph = unreachable_code_elimination(&control_flow_graph);
+            }
+
+            if enabled_optimizations.contains(&Optimization::CopyPropagation) {
+                control_flow_graph = copy_propagation(&control_flow_graph);
+            }
+
+            if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
+                control_flow_graph = dead_store_elimination(&control_flow_graph);
+            }
+
+            println!("also also survived");
+
+            let optimized_function_body = control_flow_graph_to_ir(&control_flow_graph);
+
+            println!("also also also survived");
+
+            println!("about to compare optimized with self.body: {:?} {:?}, equal: {:?}", optimized_function_body, self.body, optimized_function_body == self.body);
+
+            if optimized_function_body == self.body || optimized_function_body.is_empty() {
+                println!("breaking out of loop");
+                return IRFunction {
+                    name: self.name.clone(),
+                    params: self.params.clone(),
+                    body: optimized_function_body,
+                    global: self.global,
+                };
+            }
+
+            self.body = optimized_function_body;
+            println!("changed body at the end of loop: {:?}", self.body);
+        }
+    }
+}
+
+fn make_control_flow_graph(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
+    instructions.to_owned()
+}
+
+fn unreachable_code_elimination(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
+    instructions.to_owned()
+}
+
+fn copy_propagation(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
+    instructions.to_owned()
+}
+
+fn dead_store_elimination(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
+    instructions.to_owned()
+}
+
+fn control_flow_graph_to_ir(control_flow_graph: &Vec<IRInstruction>) -> Vec<IRInstruction> {
+    control_flow_graph.to_owned()
+}
+
+fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
+    let mut optimized_instructions = vec![];
+
+    for instr in instructions {
+        match instr {
+            IRInstruction::Binary { op, lhs, rhs, dst } => {
+                let lhs_val = get_constant_value(lhs);
+                let rhs_val = get_constant_value(rhs);
+
+                if let (Some(lhs_val), Some(rhs_val)) = (lhs_val, rhs_val) {
+                    let result = match op {
+                        BinaryOp::Add => lhs_val + rhs_val,
+                        BinaryOp::Sub => lhs_val - rhs_val,
+                        BinaryOp::Mul => lhs_val * rhs_val,
+                        BinaryOp::Div => lhs_val / rhs_val,
+                        BinaryOp::Rem => lhs_val % rhs_val,
+                        BinaryOp::Less => match lhs_val < rhs_val {
+                            true => Const::Int(1),
+                            false => Const::Int(0),
+                        },
+                        BinaryOp::Greater => match lhs_val > rhs_val {
+                            true => Const::Int(1),
+                            false => Const::Int(0),
+                        },
+                        BinaryOp::Equal => match lhs_val == rhs_val {
+                            true => Const::Int(1),
+                            false => Const::Int(0),
+                        },
+                        BinaryOp::NotEqual => match lhs_val != rhs_val {
+                            true => Const::Int(1),
+                            false => Const::Int(0),
+                        },
+                        BinaryOp::GreaterEqual => match lhs_val >= rhs_val {
+                            true => Const::Int(1),
+                            false => Const::Int(0),
+                        },
+                        BinaryOp::LessEqual => match lhs_val <= rhs_val {
+                            true => Const::Int(1),
+                            false => Const::Int(0),
+                        },
+                    };
+                    optimized_instructions.push(IRInstruction::Copy {
+                        src: IRValue::Constant(result),
+                        dst: dst.clone(),
+                    });
+                } else {
+                    optimized_instructions.push(instr.clone());
+                }
+            }
+            IRInstruction::Unary { op, src, dst } => {
+                let src_val = get_constant_value(src);
+
+                if let Some(src_val) = src_val {
+                    let result = match op {
+                        UnaryOp::Negate => -src_val,
+                        UnaryOp::Complement => !src_val,
+                        UnaryOp::Not => !src_val,
+                    };
+                    optimized_instructions.push(IRInstruction::Copy {
+                        src: IRValue::Constant(result),
+                        dst: dst.clone(),
+                    });
+                } else {
+                    optimized_instructions.push(instr.clone());
+                }
+            }
+            IRInstruction::JumpIfNotZero { condition, target } => {
+                let condition_val = get_constant_value(condition);
+
+                if let Some(condition_val) = condition_val {
+                    if !is_zero(&condition_val) {
+                        optimized_instructions.push(IRInstruction::Jump(target.clone()));
+                    }
+                } else {
+                    optimized_instructions.push(instr.clone());
+                }
+            }
+            IRInstruction::JumpIfZero { condition, target } => {
+                let condition_val = get_constant_value(condition);
+
+                if let Some(condition_val) = condition_val {
+                    if is_zero(&condition_val) {
+                        optimized_instructions.push(IRInstruction::Jump(target.clone()));
+                    }
+                } else {
+                    optimized_instructions.push(instr.clone());
+                }
+            }
+            _ => {
+                optimized_instructions.push(instr.clone());
+            }
+        }
+    }
+
+    optimized_instructions
+}
+
+fn is_zero(konst: &Const) -> bool {
+    match konst {
+        Const::Int(val) => *val == 0,
+        Const::Long(val) => *val == 0,
+        Const::UInt(val) => *val == 0,
+        Const::ULong(val) => *val == 0,
+        _ => unreachable!(),
+    }
+}
+
+fn get_constant_value(value: &IRValue) -> Option<Const> {
+    match value {
+        IRValue::Constant(konst) => Some(konst.to_owned()),
+        _ => None,
+    }
+}
+
+impl std::ops::Add for Const {
+    type Output = Const;
+
+    fn add(self, rhs: Const) -> Self::Output {
+        match (self, rhs) {
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs + rhs),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs + rhs),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs + rhs),
+            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs + rhs),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl std::ops::Sub for Const {
+    type Output = Const;
+
+    fn sub(self, rhs: Const) -> Self::Output {
+        match (self, rhs) {
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs - rhs),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs - rhs),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs - rhs),
+            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs - rhs),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl std::ops::Mul for Const {
+    type Output = Const;
+
+    fn mul(self, rhs: Const) -> Self::Output {
+        match (self, rhs) {
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs * rhs),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs * rhs),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs * rhs),
+            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs * rhs),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl std::ops::Div for Const {
+    type Output = Const;
+
+    fn div(self, rhs: Const) -> Self::Output {
+        match (self, rhs) {
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs / rhs),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs / rhs),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs / rhs),
+            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs / rhs),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl std::ops::Rem for Const {
+    type Output = Const;
+
+    fn rem(self, rhs: Const) -> Self::Output {
+        match (self, rhs) {
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs % rhs),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs % rhs),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs % rhs),
+            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs % rhs),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl std::ops::Neg for Const {
+    type Output = Const;
+
+    fn neg(self) -> Self::Output {
+        match self {
+            Const::Int(val) => Const::Int(-val),
+            Const::Long(val) => Const::Long(-val),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl std::ops::Not for Const {
+    type Output = Const;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Const::Int(val) => Const::Int(!val),
+            Const::Long(val) => Const::Long(!val),
+            Const::UInt(val) => Const::UInt(!val),
+            Const::ULong(val) => Const::ULong(!val),
+            _ => unreachable!(),
+        }
+    }
+}
