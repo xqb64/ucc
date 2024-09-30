@@ -159,7 +159,7 @@ pub fn remove_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
 
     // Update the predecessors of the successor
     if let Some(Node::Block { id, predecessors, .. }) = graph.iter_mut().find(|n| matches!(n, Node::Block { id, .. } if *id == succ)) {
-        remove_id(pred, predecessors);
+        remove_id(pred.clone(), predecessors);
     }
 }
 
@@ -200,7 +200,7 @@ fn max_block_id(graph: &Vec<Node>) -> NodeId {
 
 pub fn instructions_to_cfg(instructions: &[IRInstruction]) -> Vec<Node> {
     let basic_blocks = create_basic_blocks(partition_into_basic_blocks(instructions));
-    
+
     let mut graph = vec![Node::Entry { successors: vec![] }];
     graph.extend(basic_blocks);
     graph.push(Node::Exit { predecessors: vec![] });

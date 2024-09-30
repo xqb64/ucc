@@ -1352,11 +1352,13 @@ impl Optimize for IRFunction {
             }
 
             let mut cfg = instructions_to_cfg(&post_constant_folding);
-            pretty_print_graph_as_graphviz(&cfg);
+            // pretty_print_graph_as_graphviz(&cfg);
 
             if enabled_optimizations.contains(&Optimization::UnreachableCodeElimination) {
                 cfg = unreachable_code_elimination(&mut cfg);
             }
+
+            // pretty_print_graph_as_graphviz(&cfg);
 
             // if enabled_optimizations.contains(&Optimization::CopyPropagation) {
             //     cfg = copy_propagation(&cfg);
@@ -1367,8 +1369,6 @@ impl Optimize for IRFunction {
             // }
 
             let optimized_function_body = control_flow_graph_to_ir(&mut cfg);
-
-            dbg!(&optimized_function_body);
 
             if optimized_function_body == self.body || optimized_function_body.is_empty() {
                 println!("optimized_function_body: {:?}", optimized_function_body);
@@ -1391,14 +1391,11 @@ fn unreachable_code_elimination(cfg: &mut Vec<Node>) -> Vec<Node> {
     let mut without_useless_labels = eliminate_useless_labels(&mut without_useless_jumps);
     let without_empty_blocks = eliminate_empty_blocks(&mut without_useless_labels);
 
-    pretty_print_graph_as_graphviz(&without_empty_blocks);
-
     without_empty_blocks
 }
 
 pub fn eliminate_empty_blocks(cfg: &mut Vec<Node>) -> Vec<Node> {
     cfg.clone().iter().filter(|blk| {
-        dbg!(blk);
         match blk {
             Node::Block { instructions, .. } => !instructions.is_empty(),
             _ => true,
@@ -1445,6 +1442,10 @@ pub fn eliminate_useless_labels(cfg: &mut Vec<Node>) -> Vec<Node> {
 
 pub fn eliminate_useless_jumps(cfg: &mut Vec<Node>) -> Vec<Node> {
     let sorted_blocks = sort_basic_blocks(cfg);
+
+    println!("sorted_blocks: {:?}", sorted_blocks);
+    println!();
+
     let mut i = 0;
     while i < sorted_blocks.len() - 1 {
         let block = sorted_blocks[i].clone();
@@ -1477,6 +1478,7 @@ pub fn eliminate_useless_jumps(cfg: &mut Vec<Node>) -> Vec<Node> {
         i += 1;
     }
 
+    println!("returning: {:?}", sorted_blocks);
     sorted_blocks
 }
 
@@ -1513,7 +1515,6 @@ fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> Vec<Node> {
             match node {
                 Node::Entry { successors } => {
                     for successor in successors {
-                        println!("{:?}", successor);
                         dfs(graph, successor.clone(), visited);
                     }
                 }
@@ -1531,7 +1532,7 @@ fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> Vec<Node> {
 
     dfs(&cfg, NodeId::Entry, &mut visited);
 
-    cfg.clone().iter().filter(|blk| {
+    let filtered = cfg.clone().iter().filter(|blk| {
         if visited.contains(match blk {
             Node::Block { id, .. } => id,
             Node::Entry { .. } => &NodeId::Entry,
@@ -1549,10 +1550,23 @@ fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> Vec<Node> {
                     }
                     false        
                 }
-                _ => false,
+                Node::Entry { successors } => {
+                    for succ in successors {
+                        remove_edge(NodeId::Entry, succ.clone(), cfg);
+                    }
+                    false
+                }
+                Node::Exit { predecessors } => {
+                    for pred in predecessors {
+                        remove_edge(pred.clone(), NodeId::Exit, cfg);
+                    }
+                    false
+                }
             }
         }
-    }).map(|x| x.to_owned()).collect::<Vec<_>>()
+    }).map(|x| x.to_owned()).collect::<Vec<_>>();
+
+    filtered
 }
 
 fn copy_propagation(instructions: &Vec<Node>) -> Vec<Node> {
@@ -1564,46 +1578,16 @@ fn dead_store_elimination(instructions: &Vec<Node>) -> Vec<Node> {
 }
 
 fn control_flow_graph_to_ir(cfg: &mut Vec<Node>) -> Vec<IRInstruction> {
-    let mut visited = HashSet::new();
-    
-    fn dfs(graph: &[Node], node_id: NodeId, visited: &mut HashSet<NodeId>, instructions: &mut Vec<IRInstruction>) {
-        // Check if the node has already been visited
-        if visited.contains(&node_id) {
-            return;
-        }
-        
-        // Mark the current node as visited
-        visited.insert(node_id.clone());
-        
-        // Find the current node in the graph
-        if let Some(node) = graph.iter().find(|n| match n {
-            Node::Entry { .. } => node_id == NodeId::Entry,
-            Node::Exit { .. } => node_id == NodeId::Exit,
-            Node::Block { id, .. } => id == &node_id,
-        }) {
-    
-            // Traverse successors
-            match node {
-                Node::Entry { successors } => {
-                    for successor in successors {
-                        dfs(graph, successor.clone(), visited, instructions);
-                    }
-                }
-                Node::Block { successors, instructions: instrs, .. } => {
-                    for successor in successors {
-                        dfs(graph, successor.clone(), visited, instructions);
-                    }
-                    instructions.extend(instrs.to_owned());
-                }
-                Node::Exit { .. } => {
-                    // Exit nodes do not have successors
-                }
+    let mut instructions = vec![];
+
+    for node in cfg {
+        match node {
+            Node::Block { instructions: instrs, .. } => {
+                instructions.extend(instrs.clone());
             }
+            _ => {}
         }
     }
-
-    let mut instructions = vec![];
-    dfs(&cfg, NodeId::Entry, &mut visited, &mut instructions);
 
     instructions
 }

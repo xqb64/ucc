@@ -84,7 +84,7 @@ fn run(opts: &Opt) -> Result<()> {
         optimizations.push(Optimization::ConstantFolding);
     }
 
-    if opts.unreachable_code_elimination {
+    if opts.eliminate_unreachable_code {
         optimizations.push(Optimization::UnreachableCodeElimination);
     }
 
@@ -182,6 +182,6 @@ struct Opt {
     #[structopt(name = "fold-constants", long)]
     fold_constants: bool,
 
-    #[structopt(name = "unreachable-code-elimination", long)]
-    unreachable_code_elimination: bool,
+    #[structopt(name = "eliminate-unreachable-code", long)]
+    eliminate_unreachable_code: bool,
 }
