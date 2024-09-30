@@ -1404,60 +1404,24 @@ pub fn eliminate_empty_blocks(cfg: &mut Vec<Node>) -> Vec<Node> {
 }
 
 pub fn eliminate_useless_labels(cfg: &mut Vec<Node>) -> Vec<Node> {
-    let sorted_blocks = sort_basic_blocks(cfg);
-    let mut i = 0;
-    while i < sorted_blocks.len() - 1 {
-        let block = sorted_blocks[i].clone();
-
-        if let Node::Block { mut instructions, successors, .. } = block {
-            match instructions.last().unwrap() {
-                IRInstruction::Label { .. } => {
-                    let mut keep_jump = false;
-                    let default_succ = sorted_blocks[i + 1].clone();
-
-                    for succ in successors {
-                        if succ != match default_succ {
-                            Node::Block { ref id, .. } => id.to_owned(),
-                            Node::Entry { .. } => NodeId::Entry,
-                            Node::Exit { .. } => NodeId::Exit,
-                        } {
-                            keep_jump = true;
-                            break;
-                        }
-                    }
-
-                    if !keep_jump {
-                        instructions.pop();
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        i += 1;
-    }
-
-    sorted_blocks
-}
-
-pub fn eliminate_useless_jumps(cfg: &mut Vec<Node>) -> Vec<Node> {
-    let sorted_blocks = sort_basic_blocks(cfg);
+    let mut sorted_blocks = sort_basic_blocks(cfg);
+    let copy = sorted_blocks.clone();
 
     println!("sorted_blocks: {:?}", sorted_blocks);
     println!();
 
     let mut i = 0;
     while i < sorted_blocks.len() - 1 {
-        let block = sorted_blocks[i].clone();
+        let block = sorted_blocks.get_mut(i).unwrap();
 
-        if let Node::Block { mut instructions, successors, .. } = block {
-            match instructions.last().unwrap() {
-                IRInstruction::Jump(_) | IRInstruction::JumpIfNotZero { .. } | IRInstruction::JumpIfZero { .. } => {
+        if let Node::Block { ref mut instructions, successors, .. } = block {
+            match instructions.first() {
+                Some(IRInstruction::Label(_)) => {
                     let mut keep_jump = false;
-                    let default_succ = sorted_blocks[i + 1].clone();
+                    let default_pred = copy.get(i - 1).unwrap();
 
                     for succ in successors {
-                        if succ != match default_succ {
+                        if *succ != match default_pred {
                             Node::Block { ref id, .. } => id.to_owned(),
                             Node::Entry { .. } => NodeId::Entry,
                             Node::Exit { .. } => NodeId::Exit,
@@ -1481,6 +1445,46 @@ pub fn eliminate_useless_jumps(cfg: &mut Vec<Node>) -> Vec<Node> {
     println!("returning: {:?}", sorted_blocks);
     sorted_blocks
 }
+
+pub fn eliminate_useless_jumps(cfg: &mut Vec<Node>) -> Vec<Node> {
+    let mut sorted_blocks = sort_basic_blocks(cfg);
+
+    println!("sorted_blocks: {:?}", sorted_blocks);
+    println!();
+
+    let mut iter = sorted_blocks.iter_mut().peekable();
+    while let Some(block) = iter.next() {
+        if let Node::Block { ref mut instructions, successors, .. } = block {
+            if let Some(last_instruction) = instructions.last() {
+                match last_instruction {
+                    IRInstruction::Jump(_) | IRInstruction::JumpIfNotZero { .. } | IRInstruction::JumpIfZero { .. } => {
+                        let default_succ = iter.peek();
+                        let keep_jump = successors.iter().any(|succ| {
+                            let succ_id = match default_succ {
+                                Some(next_block) => match next_block {
+                                    Node::Block { ref id, .. } => id.to_owned(),
+                                    Node::Entry { .. } => NodeId::Entry,
+                                    Node::Exit { .. } => NodeId::Exit,
+                                },
+                                None => NodeId::Exit, // Handle case if there's no next block
+                            };
+                            *succ != succ_id
+                        });
+
+                        if !keep_jump {
+                            instructions.pop();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    println!("returning: {:?}", sorted_blocks);
+    sorted_blocks
+}
+
 
 fn sort_basic_blocks(cfg: &mut Vec<Node>) -> Vec<Node> {
     cfg.sort_by_key(|k| match k {
