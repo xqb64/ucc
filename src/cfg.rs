@@ -14,11 +14,13 @@ impl Ord for NodeId {
             (NodeId::Exit, NodeId::Exit) => std::cmp::Ordering::Equal,
             (NodeId::BlockId(a), NodeId::BlockId(b)) => a.cmp(b),
             (NodeId::Entry, _) => std::cmp::Ordering::Less,
+            (_, NodeId::Entry) => std::cmp::Ordering::Greater,
             (NodeId::Exit, _) => std::cmp::Ordering::Greater,
-            (NodeId::BlockId(_), _) => std::cmp::Ordering::Greater,
+            (_, NodeId::Exit) => std::cmp::Ordering::Less,
         }
     }
 }
+
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub enum Node {
