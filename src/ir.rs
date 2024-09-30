@@ -1386,6 +1386,108 @@ impl Optimize for IRFunction {
 }
 
 fn unreachable_code_elimination(cfg: &mut Vec<Node>) -> Vec<Node> {
+    let mut without_unreachable_blocks = eliminate_unreachable_blocks(cfg);
+    let mut without_useless_jumps = eliminate_useless_jumps(&mut without_unreachable_blocks);
+    let mut without_useless_labels = eliminate_useless_labels(&mut without_useless_jumps);
+    let without_empty_blocks = eliminate_empty_blocks(&mut without_useless_labels);
+
+    without_empty_blocks
+}
+
+pub fn eliminate_empty_blocks(cfg: &mut Vec<Node>) -> Vec<Node> {
+    cfg.clone().iter().filter(|blk| {
+        match blk {
+            Node::Block { instructions, .. } => !instructions.is_empty(),
+            _ => true,
+        }
+    }).map(|x| x.to_owned()).collect::<Vec<_>>()
+}
+
+pub fn eliminate_useless_labels(cfg: &mut Vec<Node>) -> Vec<Node> {
+    let sorted_blocks = sort_basic_blocks(cfg);
+    let mut i = 0;
+    while i < sorted_blocks.len() - 1 {
+        let block = sorted_blocks[i].clone();
+
+        if let Node::Block { mut instructions, successors, .. } = block {
+            match instructions.last().unwrap() {
+                IRInstruction::Label { .. } => {
+                    let mut keep_jump = false;
+                    let default_succ = sorted_blocks[i + 1].clone();
+
+                    for succ in successors {
+                        if succ != match default_succ {
+                            Node::Block { ref id, .. } => id.to_owned(),
+                            Node::Entry { .. } => NodeId::Entry,
+                            Node::Exit { .. } => NodeId::Exit,
+                        } {
+                            keep_jump = true;
+                            break;
+                        }
+                    }
+
+                    if !keep_jump {
+                        instructions.pop();
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        i += 1;
+    }
+
+    sorted_blocks
+}
+
+pub fn eliminate_useless_jumps(cfg: &mut Vec<Node>) -> Vec<Node> {
+    let sorted_blocks = sort_basic_blocks(cfg);
+    let mut i = 0;
+    while i < sorted_blocks.len() - 1 {
+        let block = sorted_blocks[i].clone();
+
+        if let Node::Block { mut instructions, successors, .. } = block {
+            match instructions.last().unwrap() {
+                IRInstruction::Jump(_) | IRInstruction::JumpIfNotZero { .. } | IRInstruction::JumpIfZero { .. } => {
+                    let mut keep_jump = false;
+                    let default_succ = sorted_blocks[i + 1].clone();
+
+                    for succ in successors {
+                        if succ != match default_succ {
+                            Node::Block { ref id, .. } => id.to_owned(),
+                            Node::Entry { .. } => NodeId::Entry,
+                            Node::Exit { .. } => NodeId::Exit,
+                        } {
+                            keep_jump = true;
+                            break;
+                        }
+                    }
+
+                    if !keep_jump {
+                        instructions.pop();
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        i += 1;
+    }
+
+    sorted_blocks
+}
+
+fn sort_basic_blocks(cfg: &mut Vec<Node>) -> Vec<Node> {
+    cfg.sort_by_key(|k| match k {
+        Node::Block { id, .. } => id.to_owned(),
+        Node::Entry { .. } => NodeId::Entry,
+        Node::Exit { .. } => NodeId::Exit,
+    });
+ 
+    cfg.to_vec()
+}
+
+fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> Vec<Node> {
     let mut visited = HashSet::new();
     
     fn dfs(graph: &[Node], node_id: NodeId, visited: &mut HashSet<NodeId>) {
@@ -1403,8 +1505,6 @@ fn unreachable_code_elimination(cfg: &mut Vec<Node>) -> Vec<Node> {
             Node::Exit { .. } => node_id == NodeId::Exit,
             Node::Block { id, .. } => id == &node_id,
         }) {
-            // Perform your action with the node here (e.g., print)
-            println!("{:?}", node);
     
             // Traverse successors
             match node {
@@ -1434,7 +1534,7 @@ fn unreachable_code_elimination(cfg: &mut Vec<Node>) -> Vec<Node> {
             Node::Entry { successors, .. } => &NodeId::Entry,
             Node::Exit { .. } => &NodeId::Exit,
         }) {
-            true // Keep reachable blocks
+            true
         } else {
             match blk {
                 Node::Block { id, successors, predecessors, instructions } => {
@@ -1446,7 +1546,7 @@ fn unreachable_code_elimination(cfg: &mut Vec<Node>) -> Vec<Node> {
                     }
                     false        
                 }
-                _ => true,
+                _ => false,
             }
         }
     }).map(|x| x.to_owned()).collect::<Vec<_>>()

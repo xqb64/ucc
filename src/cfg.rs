@@ -1,10 +1,23 @@
 use crate::ir::{make_temporary, IRInstruction};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
 pub enum NodeId {
     Entry,
     Exit,
     BlockId(usize),
+}
+
+impl Ord for NodeId {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (NodeId::Entry, NodeId::Entry) => std::cmp::Ordering::Equal,
+            (NodeId::Exit, NodeId::Exit) => std::cmp::Ordering::Equal,
+            (NodeId::BlockId(a), NodeId::BlockId(b)) => a.cmp(b),
+            (NodeId::Entry, _) => std::cmp::Ordering::Less,
+            (NodeId::Exit, _) => std::cmp::Ordering::Greater,
+            (NodeId::BlockId(_), _) => std::cmp::Ordering::Less,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
