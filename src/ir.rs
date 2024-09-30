@@ -1567,6 +1567,8 @@ pub fn eliminate_useless_jumps(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
     sorted_blocks.insert(0, removed_entry);
     sorted_blocks.push(removed_exit);
 
+    dbg!(&sorted_blocks);
+
     sorted_blocks
 }
 
@@ -1583,7 +1585,6 @@ fn sort_basic_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
 pub fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
     let mut visited = HashSet::new();
 
-    // Depth-First Search (DFS) to mark reachable nodes
     fn dfs(graph: &[Node], node_id: NodeId, visited: &mut HashSet<NodeId>) {
         if visited.contains(&node_id) {
             return;
@@ -1612,7 +1613,6 @@ pub fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
         }
     }
 
-    // Start DFS from the entry node
     dfs(cfg, NodeId::Entry, &mut visited);
 
     // Collect nodes to remove
@@ -1630,10 +1630,8 @@ pub fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
         })
         .collect();
 
-    // Prepare edges to be removed
     let mut edges_to_remove = Vec::new();
 
-    // Record edges for removal
     for &index in &nodes_to_remove {
         match &cfg[index] {
             Node::Block { id, successors, predecessors, .. } => {
@@ -1657,12 +1655,10 @@ pub fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
         }
     }
 
-    // Remove edges first
     for (src, dest) in edges_to_remove {
         remove_edge(src, dest, cfg);
     }
 
-    // Remove marked nodes in reverse order to maintain correct indices
     for &index in nodes_to_remove.iter().rev() {
         if let Node::Exit { .. } = &cfg[index] {
             continue;
@@ -1670,9 +1666,6 @@ pub fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
         cfg.remove(index);
     }
 
-    dbg!(&cfg);
-
-    // Return a mutable reference to the remaining nodes
     cfg
 }
 
@@ -1791,6 +1784,7 @@ fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
 
                 if let Some(condition_val) = condition_val {
                     if is_zero(&condition_val) {
+                        println!("hereeeeeee jumping");
                         optimized_instructions.push(IRInstruction::Jump(target.clone()));
                     }
                 } else {
