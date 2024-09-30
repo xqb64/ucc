@@ -6,3 +6,4 @@ pub mod loop_label;
 pub mod parser;
 pub mod resolver;
 pub mod typechecker;
+pub mod cfg;

@@ -1,13 +1,11 @@
 use anyhow::Result;
 use crate::{
-    lexer::Const,
-    parser::{
+    cfg::{instructions_to_cfg, pretty_print_graph_as_graphviz}, lexer::Const, parser::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
-    },
-    typechecker::{
+    }, typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
         IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE, TYPE_TABLE,
-    },
+    }
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1356,6 +1354,9 @@ impl Optimize for IRFunction {
             } else {
                 post_constant_folding = self.body.clone();
             }
+
+            let cfg = instructions_to_cfg(&self.body);
+            pretty_print_graph_as_graphviz(&cfg);
 
             let mut control_flow_graph = make_control_flow_graph(&post_constant_folding);
 
