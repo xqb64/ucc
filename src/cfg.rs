@@ -15,7 +15,7 @@ impl Ord for NodeId {
             (NodeId::BlockId(a), NodeId::BlockId(b)) => a.cmp(b),
             (NodeId::Entry, _) => std::cmp::Ordering::Less,
             (NodeId::Exit, _) => std::cmp::Ordering::Greater,
-            (NodeId::BlockId(_), _) => std::cmp::Ordering::Less,
+            (NodeId::BlockId(_), _) => std::cmp::Ordering::Greater,
         }
     }
 }
@@ -25,6 +25,16 @@ pub enum Node {
     Entry { successors: Vec<NodeId> },
     Exit { predecessors: Vec<NodeId> },
     Block { id: NodeId, predecessors: Vec<NodeId>, instructions: Vec<IRInstruction>, successors: Vec<NodeId> },
+}
+
+impl Node {
+    pub fn id(&self) -> NodeId {
+        match self {
+            Node::Entry { .. } => NodeId::Entry,
+            Node::Exit { .. } => NodeId::Exit,
+            Node::Block { id, .. } => id.to_owned(),
+        }
+    }
 }
 
 impl Eq for Node {}
@@ -82,7 +92,7 @@ fn add_all_edges(graph: &mut Vec<Node>) {
     for node in graph.clone().iter() {
         match node {
             Node::Entry { .. } | Node::Exit { .. } => continue,
-            Node::Block { id, predecessors, instructions, successors } => {
+            Node::Block { id, instructions, .. } => {
                 let next_id;
                 
                 if *id == max_block_id(graph) {
@@ -99,12 +109,12 @@ fn add_all_edges(graph: &mut Vec<Node>) {
                         let target_id = get_block_by_label(target, graph);
                         add_edge(id.to_owned(), target_id, graph);
                     }
-                    IRInstruction::JumpIfZero { condition, target } => {
+                    IRInstruction::JumpIfZero { target, .. } => {
                         let target_id = get_block_by_label(target, graph);
                         add_edge(id.to_owned(), target_id, graph);
                         add_edge(id.to_owned(), next_id, graph);
                     }
-                    IRInstruction::JumpIfNotZero { condition, target } => {
+                    IRInstruction::JumpIfNotZero { target, .. } => {
                         let target_id = get_block_by_label(target, graph);
                         add_edge(id.to_owned(), target_id, graph);
                         add_edge(id.to_owned(), next_id, graph);
@@ -116,7 +126,7 @@ fn add_all_edges(graph: &mut Vec<Node>) {
     }
 }
 
-fn add_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
+pub fn add_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
     fn add_id(nd_id: NodeId, id_list: &mut Vec<NodeId>) {
         if !id_list.contains(&nd_id) {
             id_list.push(nd_id);
@@ -171,7 +181,7 @@ fn id_to_num(id: &NodeId) -> usize {
 }
 
 fn get_block_by_label(label: &str, graph: &Vec<Node>) -> NodeId {
-    graph.iter().find(|n| matches!(n, Node::Block { instructions, .. } if instructions[0] == IRInstruction::Label(label.to_owned())))
+    graph.iter().find(|n| matches!(n, Node::Block { instructions, .. } if instructions.iter().any(|x| x == &IRInstruction::Label(label.to_owned()))))
         .map(|n| match n {
             Node::Block { id, .. } => id.to_owned(),
             _ => unreachable!(),
