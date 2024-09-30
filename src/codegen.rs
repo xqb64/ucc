@@ -2411,8 +2411,6 @@ impl Fixup for AsmFunction {
                 },
                 AsmInstruction::Mov { asm_type, src, dst } => match (&src, &dst) {
                     (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
-                        println!("here");
-                        
                         let scratch = if asm_type == &AsmType::Double {
                             AsmOperand::Register(AsmRegister::XMM14)
                         } else {

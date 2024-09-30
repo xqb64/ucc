@@ -1,6 +1,8 @@
+use std::collections::HashSet;
+
 use anyhow::Result;
 use crate::{
-    cfg::{instructions_to_cfg, pretty_print_graph_as_graphviz}, lexer::Const, parser::{
+    cfg::{instructions_to_cfg, pretty_print_graph_as_graphviz, remove_edge, Node, NodeId}, lexer::Const, parser::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
     }, typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
@@ -29,7 +31,7 @@ pub struct IRStaticConstant {
     pub init: StaticInit,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub enum IRInstruction {
     Unary {
         op: UnaryOp,
@@ -120,20 +122,20 @@ pub enum IRInstruction {
     Ret(Option<IRValue>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub enum IRValue {
     Constant(Const),
     Var(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, PartialEq, Copy, Eq, Hash)]
 pub enum UnaryOp {
     Negate,
     Complement,
     Not,
 }
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, PartialEq, Copy, Hash)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -774,16 +776,10 @@ fn emit_compound_init(
                     emit_compound_init(name, elem_init, instructions, new_offset, element);
                 }
             } else if let Type::Struct { tag } = inited_type {
-                println!("inited_type: {:?}", inited_type);
-                println!("value: {:?}", value);
-
                 let members = TYPE_TABLE.lock().unwrap().get(tag).unwrap().members.clone();
-
-                println!("members: {:?}", members);
 
                 for (member, mem_init) in members.iter().zip(compound_init) {
                     let mem_offset = offset + member.offset;
-                    println!("mem_offset for member {}: {}", member.name, mem_offset);
                     emit_compound_init(name, mem_init, instructions, mem_offset, &member._type);
                 }
             }
@@ -1355,24 +1351,24 @@ impl Optimize for IRFunction {
                 post_constant_folding = self.body.clone();
             }
 
-            let cfg = instructions_to_cfg(&self.body);
+            let mut cfg = instructions_to_cfg(&post_constant_folding);
             pretty_print_graph_as_graphviz(&cfg);
 
-            let mut control_flow_graph = make_control_flow_graph(&post_constant_folding);
-
             if enabled_optimizations.contains(&Optimization::UnreachableCodeElimination) {
-                control_flow_graph = unreachable_code_elimination(&control_flow_graph);
+                cfg = unreachable_code_elimination(&mut cfg);
             }
 
+            pretty_print_graph_as_graphviz(&cfg);
+
             if enabled_optimizations.contains(&Optimization::CopyPropagation) {
-                control_flow_graph = copy_propagation(&control_flow_graph);
+                cfg = copy_propagation(&cfg);
             }
 
             if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
-                control_flow_graph = dead_store_elimination(&control_flow_graph);
+                cfg = dead_store_elimination(&cfg);
             }
 
-            let optimized_function_body = control_flow_graph_to_ir(&control_flow_graph);
+            let optimized_function_body = control_flow_graph_to_ir(&mut cfg);
 
             if optimized_function_body == self.body || optimized_function_body.is_empty() {
                 println!("optimized_function_body: {:?}", optimized_function_body);
@@ -1389,24 +1385,94 @@ impl Optimize for IRFunction {
     }
 }
 
-fn make_control_flow_graph(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
+fn unreachable_code_elimination(cfg: &mut Vec<Node>) -> Vec<Node> {
+    let mut visited = HashSet::new();
+    
+    fn dfs(graph: &[Node], node_id: NodeId, visited: &mut HashSet<NodeId>) {
+        // Check if the node has already been visited
+        if visited.contains(&node_id) {
+            return;
+        }
+        
+        // Mark the current node as visited
+        visited.insert(node_id.clone());
+        
+        // Find the current node in the graph
+        if let Some(node) = graph.iter().find(|n| match n {
+            Node::Entry { .. } => node_id == NodeId::Entry,
+            Node::Exit { .. } => node_id == NodeId::Exit,
+            Node::Block { id, .. } => id == &node_id,
+        }) {
+            // Perform your action with the node here (e.g., print)
+            println!("{:?}", node);
+    
+            // Traverse successors
+            match node {
+                Node::Entry { successors } => {
+                    for successor in successors {
+                        println!("{:?}", successor);
+                        dfs(graph, successor.clone(), visited);
+                    }
+                }
+                Node::Block { successors, .. } => {
+                    for successor in successors {
+                        dfs(graph, successor.clone(), visited);
+                    }
+                }
+                Node::Exit { .. } => {
+                    // Exit nodes do not have successors
+                }
+            }
+        }
+    }
+
+    dfs(&cfg, NodeId::Entry, &mut visited);
+
+    cfg.clone().iter().filter(|blk| {
+        if visited.contains(match blk {
+            Node::Block { id, .. } => id,
+            Node::Entry { successors, .. } => &NodeId::Entry,
+            Node::Exit { .. } => &NodeId::Exit,
+        }) {
+            true // Keep reachable blocks
+        } else {
+            match blk {
+                Node::Block { id, successors, predecessors, instructions } => {
+                    for pred in predecessors {
+                        remove_edge(pred.clone(), id.clone(), cfg);
+                    }
+                    for succ in successors {
+                        remove_edge(id.clone(), succ.clone(), cfg);
+                    }
+                    false        
+                }
+                _ => true,
+            }
+        }
+    }).map(|x| x.to_owned()).collect::<Vec<_>>()
+}
+
+fn copy_propagation(instructions: &Vec<Node>) -> Vec<Node> {
     instructions.to_owned()
 }
 
-fn unreachable_code_elimination(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
+fn dead_store_elimination(instructions: &Vec<Node>) -> Vec<Node> {
     instructions.to_owned()
 }
 
-fn copy_propagation(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
-    instructions.to_owned()
-}
+fn control_flow_graph_to_ir(control_flow_graph: &mut Vec<Node>) -> Vec<IRInstruction> {
+    let instructions = vec![];
 
-fn dead_store_elimination(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
-    instructions.to_owned()
-}
+    for node in control_flow_graph {
+        match node {
+            Node::Block { id, predecessors, instructions, successors } => {
+                instructions.extend(instructions.clone());
+            }
+            _ => {}
+        }
+    }
 
-fn control_flow_graph_to_ir(control_flow_graph: &Vec<IRInstruction>) -> Vec<IRInstruction> {
-    control_flow_graph.to_owned()
+    instructions
 }
 
 fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {

@@ -1,18 +1,20 @@
-use crate::ir::IRInstruction;
+use crate::ir::{make_temporary, IRInstruction};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NodeId {
     Entry,
     Exit,
     BlockId(usize),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub enum Node {
     Entry { successors: Vec<NodeId> },
     Exit { predecessors: Vec<NodeId> },
     Block { id: NodeId, predecessors: Vec<NodeId>, instructions: Vec<IRInstruction>, successors: Vec<NodeId> },
 }
+
+impl Eq for Node {}
 
 fn partition_into_basic_blocks(instructions: &[IRInstruction]) -> Vec<Vec<&IRInstruction>> {
     let mut finished_blocks = vec![];
@@ -115,11 +117,24 @@ fn add_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
 
     // Update the predecessors of the successor
     if let Some(Node::Block { id, predecessors, .. }) = graph.iter_mut().find(|n| matches!(n, Node::Block { id, .. } if *id == succ)) {
-        add_id(pred, predecessors);
+        add_id(pred.clone(), predecessors);
+    }
+
+    // Cover the entry and exit nodes
+    if pred == NodeId::Entry {
+        if let Some(Node::Entry { successors }) = graph.iter_mut().find(|n| matches!(n, Node::Entry { .. })) {
+            add_id(succ.clone(), successors);
+        }
+    }
+
+    if succ == NodeId::Exit {
+        if let Some(Node::Exit { predecessors }) = graph.iter_mut().find(|n| matches!(n, Node::Exit { .. })) {
+            add_id(pred.clone(), predecessors);
+        }
     }
 }
 
-fn remove_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
+pub fn remove_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
     fn remove_id(nd_id: NodeId, id_list: &mut Vec<NodeId>) {
         id_list.retain(|i| i.to_owned() != nd_id);
     }
@@ -179,8 +194,6 @@ pub fn instructions_to_cfg(instructions: &[IRInstruction]) -> Vec<Node> {
 
     add_all_edges(&mut graph);
 
-    dbg!(&graph);
-
     graph
 }
 
@@ -188,7 +201,7 @@ pub fn pretty_print_graph_as_graphviz(graph: &Vec<Node>) {
     use std::io::Write;
     
     // Print the graph in Graphviz format to file
-    let mut dotfile = std::fs::File::create("cfg.dot").unwrap();
+    let mut dotfile = std::fs::File::create(format!("cfg.{}.dot", make_temporary())).unwrap();
     writeln!(dotfile, "digraph G {{").unwrap();
 
     for node in graph {
