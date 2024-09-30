@@ -1405,7 +1405,6 @@ fn take_entry_node(cfg: &mut Vec<Node>) -> Node {
 }
 
 fn take_exit_node(cfg: &mut Vec<Node>) -> Node {
-    // find the Exit node in 'cfg' and remove it from the list and return it
     let exit_node = cfg.iter_mut().find(|node| match node {
         Node::Exit { .. } => true,
         _ => false,
@@ -1423,19 +1422,7 @@ pub fn eliminate_empty_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
     use crate::cfg::{add_edge, remove_edge};
 
     let removed_entry = take_entry_node(cfg);
-    assert_eq!(NodeId::Entry, match removed_entry {
-        Node::Entry { .. } => NodeId::Entry,
-        _ => unreachable!(),
-    });
     let removed_exit = take_exit_node(cfg);
-    assert_eq!(NodeId::Exit, match removed_exit {
-        Node::Exit { .. } => NodeId::Exit,
-        _ => {
-            println!("got: {:?}", removed_exit);
-            println!("sorted_blocks: {:?}", cfg);
-            unreachable!()
-        }
-    });
 
     let mut changes = Vec::new();
     let mut nodes_to_remove = Vec::new();
@@ -1477,27 +1464,17 @@ pub fn eliminate_useless_labels(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
     let sorted_blocks = sort_basic_blocks(cfg);
     
     let removed_entry = take_entry_node(sorted_blocks);
-    assert_eq!(NodeId::Entry, match removed_entry {
-        Node::Entry { .. } => NodeId::Entry,
-        _ => unreachable!(),
-    });
     let removed_exit = take_exit_node(sorted_blocks);
-    assert_eq!(NodeId::Exit, match removed_exit {
-        Node::Exit { .. } => NodeId::Exit,
-        _ => unreachable!(),
-    });
 
     let copy = sorted_blocks.clone();
-
-    let len = sorted_blocks.len();
 
     let mut i = 0;
     while i < sorted_blocks.len() {
         let block = sorted_blocks.get_mut(i).unwrap();
         if let Node::Block { ref mut instructions, predecessors, .. } = block {
-            let first_instructionn = instructions.first();
-            match first_instructionn {
-                Some(IRInstruction::Label(label)) => {
+            let first_instruction = instructions.first();
+            match first_instruction {
+                Some(IRInstruction::Label(_)) => {
                     let mut keep_jump = false;
                     let default_pred = if i == 0 { removed_entry.clone() } else { copy.get(i - 1).cloned().unwrap() };
 
@@ -1513,12 +1490,18 @@ pub fn eliminate_useless_labels(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
                     }
 
                     if !keep_jump {
-                        println!("instructions[0]: {:?}", instructions[0]);
-                        instructions.remove(0);
+                        fn is_label(instr: &IRInstruction) -> bool {
+                            match instr {
+                                IRInstruction::Label(_) => true,
+                                _ => false,
+                            }
+                        }
+
+                        let removed = instructions.remove(0);                        
+                        assert!(is_label(&removed));
                     }
                 }
-                _ => {
-                }
+                _ => {}
             }
         }
 
@@ -1535,15 +1518,7 @@ pub fn eliminate_useless_jumps(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
     let sorted_blocks = sort_basic_blocks(cfg);
 
     let removed_entry = take_entry_node(sorted_blocks);
-    assert_eq!(NodeId::Entry, match removed_entry {
-        Node::Entry { .. } => NodeId::Entry,
-        _ => unreachable!(),
-    });
     let removed_exit = take_exit_node(sorted_blocks);
-    assert_eq!(NodeId::Exit, match removed_exit {
-        Node::Exit { .. } => NodeId::Exit,
-        _ => unreachable!(),
-    });
 
     let copy = sorted_blocks.clone();
 
@@ -1569,8 +1544,18 @@ pub fn eliminate_useless_jumps(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
                     }
 
                     if !keep_jump {
-                        println!("popping 1");
-                        instructions.pop();
+                        fn is_jump(instr: &Option<IRInstruction>) -> bool {
+                            match instr {
+                                Some(instr) => match instr {
+                                    IRInstruction::Jump(_) | IRInstruction::JumpIfZero { .. } | IRInstruction::JumpIfNotZero { .. } => true,
+                                     _ => false,
+                                }
+                                _ => false
+                            }
+                        }
+
+                        let popped = instructions.pop();
+                        assert!(is_jump(&popped));
                     }
                 }
                 _ => {}
@@ -1679,8 +1664,13 @@ pub fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
 
     // Remove marked nodes in reverse order to maintain correct indices
     for &index in nodes_to_remove.iter().rev() {
+        if let Node::Exit { .. } = &cfg[index] {
+            continue;
+        }
         cfg.remove(index);
     }
+
+    dbg!(&cfg);
 
     // Return a mutable reference to the remaining nodes
     cfg
