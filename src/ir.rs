@@ -982,28 +982,54 @@ impl Irfy for IfStatement {
         let else_label = format!("Else.{}", tmp);
         let end_label = format!("End.{}", tmp);
 
+        // Generate code for the condition
         let condition = emit_tacky_and_convert(&self.condition, &mut instructions);
 
-        instructions.push(IRInstruction::JumpIfZero {
-            condition,
-            target: else_label.clone(),
-        });
+        // If there is no else clause
+        if self.else_branch.is_none() {
+            // Emit JumpIfZero to end_label (because there is no else clause)
+            instructions.push(IRInstruction::JumpIfZero {
+                condition,
+                target: end_label.clone(),
+            });
 
-        if let Some(then_branch) = self.then_branch.irfy() {
-            instructions.extend::<Vec<IRInstruction>>(then_branch.into());
+            // Emit the then clause
+            if let Some(then_branch) = self.then_branch.irfy() {
+                instructions.extend::<Vec<IRInstruction>>(then_branch.into());
+            }
+
+            // End the if statement with the end label
+            instructions.push(IRInstruction::Label(end_label));
+
+        } else {
+            // If there is an else clause
+            // Emit JumpIfZero to else_label
+            instructions.push(IRInstruction::JumpIfZero {
+                condition,
+                target: else_label.clone(),
+            });
+
+            // Emit the then clause
+            if let Some(then_branch) = self.then_branch.irfy() {
+                instructions.extend::<Vec<IRInstruction>>(then_branch.into());
+            }
+
+            // Unconditional jump to the end label after then clause
+            instructions.push(IRInstruction::Jump(end_label.clone()));
+
+            // Now handle the else clause
+            instructions.push(IRInstruction::Label(else_label.clone()));
+
+            // Emit the else clause
+            if let Some(else_branch) = &*self.else_branch {
+                if let Some(else_instrs) = else_branch.irfy() {
+                    instructions.extend::<Vec<IRInstruction>>(else_instrs.into());
+                }
+            }
+
+            // End the if-else structure with the end label
+            instructions.push(IRInstruction::Label(end_label));
         }
-
-        instructions.push(IRInstruction::Jump(end_label.clone()));
-
-        instructions.push(IRInstruction::Label(else_label.clone()));
-
-        if self.else_branch.is_some() {
-            instructions.extend::<Vec<IRInstruction>>(
-                self.else_branch.clone().unwrap().irfy().unwrap().into(),
-            );
-        }
-
-        instructions.push(IRInstruction::Label(end_label));
 
         Some(IRNode::Instructions(instructions))
     }
@@ -1566,8 +1592,6 @@ pub fn eliminate_useless_jumps(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
 
     sorted_blocks.insert(0, removed_entry);
     sorted_blocks.push(removed_exit);
-
-    dbg!(&sorted_blocks);
 
     sorted_blocks
 }
