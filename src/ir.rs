@@ -1,9 +1,7 @@
 use std::{collections::{HashMap, HashSet}, default};
 
 use crate::{
-    cfg::{self, instructions_to_cfg, pretty_print_graph_as_graphviz, remove_edge, Node, NodeId},
-    lexer::Const,
-    parser::{
+    cfg::{self, instructions_to_cfg, pretty_print_graph_as_graphviz, remove_edge, Node, NodeId}, codegen::tacky_type, lexer::Const, parser::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
         BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,
         CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression,
@@ -11,11 +9,10 @@ use crate::{
         FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement,
         SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression,
         Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement,
-    },
-    typechecker::{
+    }, typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
         IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE, TYPE_TABLE,
-    },
+    }
 };
 use anyhow::Result;
 
@@ -2229,11 +2226,9 @@ fn copy_propagation(cfg: &mut Vec<Node>) -> Vec<Node> {
         let mut new_block = block.clone();
         let instructions = get_block_instructions(block);
 
-        println!("instructions: {:?}", instructions);
-
         let mut new_instructions = vec![];
         for instr in instructions {
-            if let Some(rewritten_instr) = rewrite_instruction(&instr, &mut annotated_instructions) {
+            if let Some(rewritten_instr) = rewrite_instruction(&instr, id2num(&get_block_id(block)), &mut annotated_instructions) {
                 new_instructions.push(rewritten_instr);
             }
         }
@@ -2252,7 +2247,7 @@ fn copy_propagation(cfg: &mut Vec<Node>) -> Vec<Node> {
     new_cfg
 }
 
-fn find_reaching_copies(cfg: &mut Vec<Node>, annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>, annotated_instructions: &mut HashMap<IRInstruction, Vec<IRInstruction>>) {
+fn find_reaching_copies(cfg: &mut Vec<Node>, annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>, annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRInstruction>>) {
     let all_copies = find_all_copies(cfg);
     let mut worklist = vec![];
 
@@ -2261,6 +2256,7 @@ fn find_reaching_copies(cfg: &mut Vec<Node>, annotated_blocks: &mut HashMap<Node
             Node::Entry { .. } | Node::Exit { .. } => continue,
             Node::Block { .. } => {
                 worklist.push(node.clone());
+                println!("inserting block id {} with copies {:?}", get_block_id(node), all_copies.clone());
                 annotated_blocks.insert(get_block_id(node), all_copies.clone());
             }
         }
@@ -2275,7 +2271,6 @@ fn find_reaching_copies(cfg: &mut Vec<Node>, annotated_blocks: &mut HashMap<Node
         transfer(&block, &incoming_copies, annotated_instructions, annotated_blocks);
 
         if old_annotation != annotated_blocks.get(&get_block_id(&block)).cloned().unwrap() {
-            println!("Changed annotation for block {:?}", get_block_id(&block));
             let block_successors = get_block_successors(&block);
             for succ in block_successors.iter() {
                 match succ {
@@ -2316,10 +2311,17 @@ fn meet(block: &Node, all_copies: &[IRInstruction], annotated_blocks: &mut HashM
     incoming_copies
 }
 
+fn id2num(id: &NodeId) -> usize {
+    match id {
+        NodeId::BlockId(num) => *num,
+        _ => panic!("Expected block id"),
+    }
+}
+
 fn transfer(
     block: &Node,
     initial_reaching_copies: &[IRInstruction],
-    annotated_instructions: &mut HashMap<IRInstruction, Vec<IRInstruction>>,
+    annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRInstruction>>,
     annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>,
 ) {
     let mut current_reaching_copies = initial_reaching_copies.to_vec();
@@ -2327,7 +2329,7 @@ fn transfer(
     let block_instructions = get_block_instructions(block);
 
     for instruction in block_instructions.iter() {
-        annotated_instructions.insert(instruction.clone(), current_reaching_copies.clone());
+        annotated_instructions.insert((id2num(&get_block_id(block)), instruction.clone()), current_reaching_copies.clone());
 
         match instruction {
             IRInstruction::Copy { src: _, dst } => {
@@ -2405,6 +2407,7 @@ fn transfer(
         }
     }
 
+    println!("inserting block id {} with copies {:?}", get_block_id(block), current_reaching_copies);
     annotated_blocks.insert(get_block_id(block), current_reaching_copies);
 }
 
@@ -2461,8 +2464,12 @@ fn find_all_copies(cfg: &mut Vec<Node>) -> Vec<IRInstruction> {
         match block {
             Node::Block { instructions, .. } => {
                 for instruction in instructions.iter() {
-                    if let IRInstruction::Copy { .. } = instruction {
-                        all_copies.push(instruction.clone());
+                    if let IRInstruction::Copy { src, dst } = instruction {
+                        let src_t = tacky_type(src);
+                        let dst_t = tacky_type(dst);
+                        if src_t == dst_t {
+                            all_copies.push(instruction.clone());
+                        }
                     }
                 }
             }
@@ -2481,6 +2488,7 @@ fn replace_operand(op: &IRValue, reaching_copies: &[IRInstruction]) -> IRValue {
     for copy in reaching_copies.iter() {
         if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
             if copy_dst == op {
+                println!("replacing operand {:?} with {:?}", op, copy_src);
                 return copy_src.to_owned();
             }
         }
@@ -2496,8 +2504,10 @@ fn optionally_replace_operand(op: &Option<IRValue>, reaching_copies: &[IRInstruc
     }
 }
 
-fn rewrite_instruction(instr: &IRInstruction, annotated_instructions: &mut HashMap<IRInstruction, Vec<IRInstruction>>) -> Option<IRInstruction> {
-    let reaching_copies = annotated_instructions.get(instr).unwrap();
+fn rewrite_instruction(instr: &IRInstruction, num: usize, annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRInstruction>>) -> Option<IRInstruction> {
+    let reaching_copies = annotated_instructions.get(&(num, instr.to_owned())).unwrap();
+    println!("reaching copies {:?}", reaching_copies);
+    println!("annotated instructions {:?}", annotated_instructions);
 
     match instr {
         IRInstruction::Copy { src, dst } => {
@@ -2521,6 +2531,7 @@ fn rewrite_instruction(instr: &IRInstruction, annotated_instructions: &mut HashM
             return Some(IRInstruction::Binary { op: *op, lhs: new_lhs, rhs: new_rhs, dst: dst.clone() });
         }
         IRInstruction::Ret(value) => {
+            println!("replacing return with copies {:?}", reaching_copies);
             let new_value = optionally_replace_operand(value, reaching_copies);
             return Some(IRInstruction::Ret(new_value));
         }
