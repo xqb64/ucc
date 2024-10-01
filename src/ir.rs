@@ -1909,7 +1909,6 @@ fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
 
                 if let Some(condition_val) = condition_val {
                     if is_zero(&condition_val) {
-                        println!("hereeeeeee jumping");
                         optimized_instructions.push(IRInstruction::Jump(target.clone()));
                     }
                 } else {
@@ -2303,7 +2302,8 @@ fn meet(block: &Node, all_copies: &[IRInstruction], annotated_blocks: &mut HashM
             NodeId::Entry => return vec![],
             NodeId::Exit => panic!("AAAA"),
             NodeId::BlockId(_) => {
-                let pred_out_copies = annotated_blocks.get(pred).unwrap();
+                let empty_vec = vec![];
+                let pred_out_copies = annotated_blocks.get(pred).unwrap_or(&empty_vec);
                 incoming_copies = incoming_copies
                         .iter()
                         .filter(|copy| pred_out_copies.contains(copy))
@@ -2397,12 +2397,53 @@ fn transfer(
             }
 
             _ => {
-                continue;
+                match get_dst(instruction) {
+                    Some(dst) => filter_updated(&mut current_reaching_copies, dst),
+                    None => {}
+                }
             }
         }
     }
 
     annotated_blocks.insert(get_block_id(block), current_reaching_copies);
+}
+
+fn filter_updated(reaching_copies: &mut Vec<IRInstruction>, dst: IRValue) {
+    let mut to_remove = vec![];
+    for (idx, copy) in reaching_copies.iter().enumerate() {
+        if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+            if copy_src == &dst || copy_dst == &dst {
+                to_remove.push(idx);
+            }
+        }
+    }
+
+    for idx in to_remove.iter().rev() {
+        reaching_copies.remove(*idx);
+    }
+}
+
+fn get_dst(instr: &IRInstruction) -> Option<IRValue> {
+    match instr {
+        IRInstruction::Copy { src: _, dst } => Some(dst.clone()),
+        IRInstruction::Unary { op: _, src: _, dst } => Some(dst.clone()),
+        IRInstruction::Binary { op: _, lhs: _, rhs: _, dst } => Some(dst.clone()),
+        IRInstruction::Call { target: _, args: _, dst } => dst.clone(),
+        IRInstruction::CopyFromOffset { dst, .. } => Some(dst.clone()),
+        IRInstruction::CopyToOffset { dst, .. } => Some(IRValue::Var(dst.clone())),
+        IRInstruction::Load { dst, .. } => Some(dst.clone()),
+        IRInstruction::AddPtr { dst, .. } => Some(dst.clone()),
+        IRInstruction::GetAddress { dst, .. } => Some(dst.clone()),
+        IRInstruction::IntToDouble { dst, .. } => Some(dst.clone()),
+        IRInstruction::DoubleToInt { dst, .. } => Some(dst.clone()),
+        IRInstruction::UIntToDouble { dst, .. } => Some(dst.clone()),
+        IRInstruction::DoubletoUInt { dst, .. } => Some(dst.clone()),
+        IRInstruction::SignExtend { dst, .. } => Some(dst.clone()),
+        IRInstruction::ZeroExtend { dst, .. } => Some(dst.clone()),
+        IRInstruction::Truncate { dst, .. } => Some(dst.clone()),
+        IRInstruction::Store { .. } => None,
+        IRInstruction::JumpIfNotZero { .. } | IRInstruction::JumpIfZero { .. } | IRInstruction::Label(_) | IRInstruction::Jump(_) | IRInstruction::Ret(_) => None,
+    }
 }
 
 fn get_block_id(block: &Node) -> NodeId {
@@ -2485,8 +2526,7 @@ fn rewrite_instruction(instr: &IRInstruction, annotated_instructions: &mut HashM
         }
         IRInstruction::Call { target, args, dst } => {
             let new_args = args.iter().map(|arg| replace_operand(arg, reaching_copies)).collect();
-            let new_dst = optionally_replace_operand(dst, reaching_copies);
-            return Some(IRInstruction::Call { target: target.clone(), args: new_args, dst: new_dst });
+            return Some(IRInstruction::Call { target: target.clone(), args: new_args, dst: dst.clone() });
         }
         IRInstruction::JumpIfNotZero { condition, target } => {
             let new_condition = replace_operand(condition, reaching_copies);
