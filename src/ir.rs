@@ -2386,6 +2386,34 @@ fn replace_operand(op: &IRValue, reaching_copies: &[IRInstruction]) -> IRValue {
     return op.to_owned();
 }
 
+fn rewrite_instruction(instr: &IRInstruction, annotated_instructions: &mut HashMap<IRInstruction, Vec<IRInstruction>>) -> Option<IRInstruction> {
+    let reaching_copies = annotated_instructions.get(instr).unwrap();
+
+    match instr {
+        IRInstruction::Copy { src, dst } => {
+            for copy in reaching_copies.iter() {
+                if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+                    if copy == instr || (copy_src == dst && copy_dst == src) {
+                        return None;
+                    }
+                }
+            }
+            let new_src = replace_operand(src, reaching_copies);
+            return Some(IRInstruction::Copy { src: new_src, dst: dst.clone() });
+        }
+        IRInstruction::Unary { op, src, dst } => {
+            let new_src = replace_operand(src, reaching_copies);
+            return Some(IRInstruction::Unary { op: *op, src: new_src, dst: dst.clone() });
+        }
+        IRInstruction::Binary { op, lhs, rhs, dst } => {
+            let new_lhs = replace_operand(lhs, reaching_copies);
+            let new_rhs = replace_operand(rhs, reaching_copies);
+            return Some(IRInstruction::Binary { op: *op, lhs: new_lhs, rhs: new_rhs, dst: dst.clone() });
+        }
+        _ => return None,
+    }
+}
+
 fn get_block_by_id(cfg: &Vec<Node>, id: &NodeId) -> Node {
     cfg.iter().find(|node| match node {
         Node::Block { id: block_id, .. } => block_id == id,
