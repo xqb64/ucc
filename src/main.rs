@@ -88,6 +88,10 @@ fn run(opts: &Opt) -> Result<()> {
         optimizations.push(Optimization::UnreachableCodeElimination);
     }
 
+    if opts.propagate_copies {
+        optimizations.push(Optimization::CopyPropagation);
+    }
+
     let optimized_prog = ir_prog.optimize(optimizations);
 
     if opts.tacky {
@@ -184,4 +188,7 @@ struct Opt {
 
     #[structopt(name = "eliminate-unreachable-code", long)]
     eliminate_unreachable_code: bool,
+
+    #[structopt(name = "propagate-copies", long)]
+    propagate_copies: bool,
 }

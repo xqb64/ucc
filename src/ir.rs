@@ -1442,9 +1442,9 @@ impl Optimize for IRFunction {
 
             pretty_print_graph_as_graphviz(&cfg);
 
-            // if enabled_optimizations.contains(&Optimization::CopyPropagation) {
-            //     cfg = copy_propagation(&cfg);
-            // }
+            if enabled_optimizations.contains(&Optimization::CopyPropagation) {
+                cfg = copy_propagation(&mut cfg);
+            }
 
             // if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
             //     cfg = dead_store_elimination(&cfg);
@@ -1797,8 +1797,38 @@ pub fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
     cfg
 }
 
-fn copy_propagation(instructions: &Vec<Node>) -> Vec<Node> {
-    instructions.to_owned()
+fn copy_propagation(cfg: &mut Vec<Node>) -> Vec<Node> {
+    let mut annotated_instructions = HashMap::new();
+    let mut annotated_blocks = HashMap::new();
+
+    // Perform reaching copies analysis
+    find_reaching_copies(cfg, &mut annotated_blocks, &mut annotated_instructions);
+
+    // Iterate over each block and rewrite instructions based on reaching copies
+    let mut new_cfg = vec![];
+    for block in cfg.iter() {
+        let mut new_block = block.clone();
+        let instructions = get_block_instructions(block);
+
+        let mut new_instructions = vec![];
+        for instr in instructions {
+            if let Some(rewritten_instr) = rewrite_instruction(&instr, &mut annotated_instructions) {
+                new_instructions.push(rewritten_instr);
+            }
+        }
+
+        // Update the block with new instructions
+        match new_block {
+            Node::Block { ref mut instructions, .. } => {
+                *instructions = new_instructions;
+            }
+            _ => {}
+        }
+
+        new_cfg.push(new_block);
+    }
+
+    new_cfg
 }
 
 fn dead_store_elimination(instructions: &Vec<Node>) -> Vec<Node> {
@@ -2234,7 +2264,7 @@ fn transfer(
     for instruction in block_instructions.iter() {
         annotated_instructions.insert(instruction.clone(), current_reaching_copies.clone());
         match instruction {
-            IRInstruction::Copy { src, dst } => {
+            IRInstruction::Copy { src: _, dst } => {
                 let mut i = 0;
                 while i < current_reaching_copies.len() {
                     if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &current_reaching_copies[i] {
@@ -2252,7 +2282,7 @@ fn transfer(
                     current_reaching_copies.push(instruction.clone());
                 }
             }
-            IRInstruction::Call { target, args, dst } => {
+            IRInstruction::Call { dst, .. } => {
                 let mut i = 0;
                 while i < current_reaching_copies.len() {
                     if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &current_reaching_copies[i] {
@@ -2266,7 +2296,7 @@ fn transfer(
                     }
                 }
             }
-            IRInstruction::Unary { op, src, dst } => {
+            IRInstruction::Unary { dst, .. } => {
                 let mut i = 0;
                 while i < current_reaching_copies.len() {
                     if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &current_reaching_copies[i] {
@@ -2280,7 +2310,7 @@ fn transfer(
                     }
                 }
             }
-            IRInstruction::Binary { op, lhs, rhs, dst } => {
+            IRInstruction::Binary { dst, .. } => {
                 let mut i = 0;
                 while i < current_reaching_copies.len() {
                     if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &current_reaching_copies[i] {
@@ -2329,12 +2359,9 @@ fn find_all_copies(cfg: &mut Vec<Node>) -> Vec<IRInstruction> {
     all_copies
 }
 
-fn find_reaching_copies(cfg: &mut Vec<Node>) {
+fn find_reaching_copies(cfg: &mut Vec<Node>, annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>, annotated_instructions: &mut HashMap<IRInstruction, Vec<IRInstruction>>) {
     let all_copies = find_all_copies(cfg);
     let mut worklist = vec![];
-
-    let mut annotated_blocks = HashMap::new();
-    let mut annotated_instructions = HashMap::new();
 
     for node in cfg.iter() {
         match node {
@@ -2350,9 +2377,9 @@ fn find_reaching_copies(cfg: &mut Vec<Node>) {
         let block = worklist.remove(0);
         let old_annotation = annotated_blocks.get(&get_block_id(&block)).cloned().unwrap();
 
-        let incoming_copies = meet(&block, &all_copies, &mut annotated_blocks);
+        let incoming_copies = meet(&block, &all_copies, annotated_blocks);
 
-        transfer(&block, &incoming_copies, &mut annotated_instructions, &mut annotated_blocks);
+        transfer(&block, &incoming_copies, annotated_instructions, annotated_blocks);
 
         if old_annotation != annotated_blocks.get(&get_block_id(&block)).cloned().unwrap() {
             let block_successors = get_block_successors(&block);
@@ -2360,7 +2387,7 @@ fn find_reaching_copies(cfg: &mut Vec<Node>) {
                 match succ {
                     NodeId::Exit => continue,
                     NodeId::Entry => panic!("WAAAAAAAAAAAAAA"),
-                    NodeId::BlockId(block_id) => {
+                    NodeId::BlockId(_) => {
                         let successor = get_block_by_id(cfg, succ);
                         if !worklist.contains(&successor) {
                             worklist.push(successor.clone());
@@ -2373,12 +2400,12 @@ fn find_reaching_copies(cfg: &mut Vec<Node>) {
 }
 
 fn replace_operand(op: &IRValue, reaching_copies: &[IRInstruction]) -> IRValue {
-    if let IRValue::Constant(konst) = op {
+    if let IRValue::Constant(_) = op {
         return op.to_owned();
     }
 
     for copy in reaching_copies.iter() {
-        if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+        if let IRInstruction::Copy { src: copy_src, dst: _copy_dst } = copy {
             return copy_src.to_owned();
         }
     }
@@ -2437,7 +2464,7 @@ fn meet(block: &Node, all_copies: &[IRInstruction], annotated_blocks: &mut HashM
         match pred {
             NodeId::Entry => return vec![],
             NodeId::Exit => panic!("AAAA"),
-            NodeId::BlockId(block_id) => {
+            NodeId::BlockId(_) => {
                 let pred_out_copies = annotated_blocks.get(pred).unwrap();
                 incoming_copies = incoming_copies
                         .iter()

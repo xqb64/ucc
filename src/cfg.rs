@@ -149,7 +149,7 @@ pub fn add_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
     }
 
     // Update the successors of the predecessor
-    if let Some(Node::Block { id, successors, .. }) = graph
+    if let Some(Node::Block { id: _, successors, .. }) = graph
         .iter_mut()
         .find(|n| matches!(n, Node::Block { id, .. } if *id == pred))
     {
@@ -158,7 +158,7 @@ pub fn add_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
 
     // Update the predecessors of the successor
     if let Some(Node::Block {
-        id, predecessors, ..
+        id: _, predecessors, ..
     }) = graph
         .iter_mut()
         .find(|n| matches!(n, Node::Block { id, .. } if *id == succ))
@@ -190,7 +190,7 @@ pub fn remove_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
     }
 
     // Update the successors of the predecessor
-    if let Some(Node::Block { id, successors, .. }) = graph
+    if let Some(Node::Block { id: _, successors, .. }) = graph
         .iter_mut()
         .find(|n| matches!(n, Node::Block { id, .. } if *id == pred))
     {
@@ -199,7 +199,7 @@ pub fn remove_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
 
     // Update the predecessors of the successor
     if let Some(Node::Block {
-        id, predecessors, ..
+        id: _, predecessors, ..
     }) = graph
         .iter_mut()
         .find(|n| matches!(n, Node::Block { id, .. } if *id == succ))
