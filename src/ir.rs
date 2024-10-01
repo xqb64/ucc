@@ -1813,6 +1813,7 @@ fn copy_propagation(cfg: &mut Vec<Node>) -> Vec<Node> {
         let mut new_instructions = vec![];
         for instr in instructions {
             if let Some(rewritten_instr) = rewrite_instruction(&instr, &mut annotated_instructions) {
+                dbg!("rewritten_instr", &rewritten_instr);
                 new_instructions.push(rewritten_instr);
             }
         }
@@ -2255,81 +2256,87 @@ fn transfer(
     block: &Node,
     initial_reaching_copies: &[IRInstruction],
     annotated_instructions: &mut HashMap<IRInstruction, Vec<IRInstruction>>,
-    annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>
+    annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>,
 ) {
     let mut current_reaching_copies = initial_reaching_copies.to_vec();
 
+    // Iterate over the instructions in the block
     let block_instructions = get_block_instructions(block);
 
     for instruction in block_instructions.iter() {
+        // 1. Annotate the instruction with current reaching copies
         annotated_instructions.insert(instruction.clone(), current_reaching_copies.clone());
+
         match instruction {
-            IRInstruction::Copy { src: _, dst } => {
-                let mut i = 0;
-                while i < current_reaching_copies.len() {
-                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &current_reaching_copies[i] {
-                        if copy_src == dst || copy_dst == dst {
-                            current_reaching_copies.remove(i);
-                        } else {
-                            i += 1; // Increment only if no removal occurred
-                        }
+            IRInstruction::Copy { src, dst } => {
+                // 2. Skip if there's already a Copy(dst, src) in current_reaching_copies
+                if current_reaching_copies.iter().any(|copy| {
+                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+                        copy_src == dst && copy_dst == src
                     } else {
-                        i += 1;
+                        false
                     }
+                }) {
+                    continue;
                 }
-                // After filtering, check if the instruction is already present
-                if !current_reaching_copies.contains(&instruction) {
-                    current_reaching_copies.push(instruction.clone());
-                }
-            }
-            IRInstruction::Call { dst, .. } => {
-                let mut i = 0;
-                while i < current_reaching_copies.len() {
-                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &current_reaching_copies[i] {
-                        if is_static(copy_src) || is_static(copy_dst) || Some(copy_src.to_owned()) == *dst || Some(copy_dst.clone()) == *dst {
-                            current_reaching_copies.remove(i);
-                        } else {
-                            i += 1;
-                        }
+
+                // 3. Remove any copies where copy.src == dst or copy.dst == dst
+                current_reaching_copies.retain(|copy| {
+                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+                        copy_src != dst && copy_dst != dst
                     } else {
-                        i += 1;
+                        true
                     }
-                }
+                });
+
+                // 4. Add the current instruction to current_reaching_copies
+                current_reaching_copies.push(instruction.clone());
             }
-            IRInstruction::Unary { dst, .. } => {
-                let mut i = 0;
-                while i < current_reaching_copies.len() {
-                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &current_reaching_copies[i] {
-                        if copy_src == dst || copy_dst == dst {
-                            current_reaching_copies.remove(i);
-                        } else {
-                            i += 1;
-                        }
+
+            IRInstruction::Call { target: _, args: _, dst } => {
+                // Handle function calls
+                current_reaching_copies.retain(|copy| {
+                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+                        // 5. Remove copies if copy.src or copy.dst is static, or equals dst
+                        !is_static(copy_src) && !is_static(copy_dst) && &Some(copy_src.to_owned()) != dst && &Some(copy_dst.to_owned()) != dst
                     } else {
-                        i += 1;
+                        true
                     }
-                }
+                });
             }
-            IRInstruction::Binary { dst, .. } => {
-                let mut i = 0;
-                while i < current_reaching_copies.len() {
-                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &current_reaching_copies[i] {
-                        if copy_src == dst || copy_dst == dst {
-                            current_reaching_copies.remove(i);
-                        } else {
-                            i += 1;
-                        }
+
+            IRInstruction::Unary { op: _, src, dst } => {
+                // Handle unary operations
+                current_reaching_copies.retain(|copy| {
+                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+                        // 6. Remove copies if copy.src == dst or copy.dst == dst
+                        copy_src != dst && copy_dst != dst
                     } else {
-                        i += 1;
+                        true
                     }
-                }
+                });
             }
-            _ => {}
+
+            IRInstruction::Binary { op: _, lhs: _, rhs: _, dst } => {
+                // Handle binary operations, same logic as Unary
+                current_reaching_copies.retain(|copy| {
+                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+                        copy_src != dst && copy_dst != dst
+                    } else {
+                        true
+                    }
+                });
+            }
+
+            _ => {
+                // Other instructions, continue processing
+                continue;
+            }
         }
     }
 
-    annotated_blocks.insert(get_block_id(block), current_reaching_copies.clone());
-
+    // 7. Annotate the block with the current reaching copies
+    annotated_blocks.insert(get_block_id(block), current_reaching_copies);
 }
 
 fn get_block_id(block: &Node) -> NodeId {
@@ -2405,8 +2412,10 @@ fn replace_operand(op: &IRValue, reaching_copies: &[IRInstruction]) -> IRValue {
     }
 
     for copy in reaching_copies.iter() {
-        if let IRInstruction::Copy { src: copy_src, dst: _copy_dst } = copy {
-            return copy_src.to_owned();
+        if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+            if copy_dst == op {
+                return copy_src.to_owned();
+            }
         }
     }
 
