@@ -1,7 +1,7 @@
-use std::{collections::HashSet, default};
+use std::{collections::{HashMap, HashSet}, default};
 
 use crate::{
-    cfg::{instructions_to_cfg, pretty_print_graph_as_graphviz, remove_edge, Node, NodeId},
+    cfg::{self, instructions_to_cfg, pretty_print_graph_as_graphviz, remove_edge, Node, NodeId},
     lexer::Const,
     parser::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
@@ -40,7 +40,7 @@ pub struct IRStaticConstant {
     pub init: StaticInit,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum IRInstruction {
     Unary {
         op: UnaryOp,
@@ -131,7 +131,7 @@ pub enum IRInstruction {
     Ret(Option<IRValue>),
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum IRValue {
     Constant(Const),
     Var(String),
@@ -144,7 +144,7 @@ pub enum UnaryOp {
     Not,
 }
 
-#[derive(Debug, Clone, PartialEq, Copy, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -2218,5 +2218,237 @@ impl std::ops::Not for Const {
             Const::ULong(val) => Const::ULong(!val),
             _ => unreachable!(),
         }
+    }
+}
+
+fn transfer(
+    block: &Node,
+    initial_reaching_copies: &[IRInstruction],
+    annotated_instructions: &mut HashMap<IRInstruction, Vec<IRInstruction>>,
+    annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>
+) {
+    let mut current_reaching_copies = initial_reaching_copies.to_vec();
+
+    let block_instructions = get_block_instructions(block);
+
+    for instruction in block_instructions.iter() {
+        annotated_instructions.insert(instruction.clone(), current_reaching_copies.clone());
+        match instruction {
+            IRInstruction::Copy { src, dst } => {
+                let mut i = 0;
+                while i < current_reaching_copies.len() {
+                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &current_reaching_copies[i] {
+                        if copy_src == dst || copy_dst == dst {
+                            current_reaching_copies.remove(i);
+                        } else {
+                            i += 1; // Increment only if no removal occurred
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+                // After filtering, check if the instruction is already present
+                if !current_reaching_copies.contains(&instruction) {
+                    current_reaching_copies.push(instruction.clone());
+                }
+            }
+            IRInstruction::Call { target, args, dst } => {
+                let mut i = 0;
+                while i < current_reaching_copies.len() {
+                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &current_reaching_copies[i] {
+                        if is_static(copy_src) || is_static(copy_dst) || Some(copy_src.to_owned()) == *dst || Some(copy_dst.clone()) == *dst {
+                            current_reaching_copies.remove(i);
+                        } else {
+                            i += 1;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            IRInstruction::Unary { op, src, dst } => {
+                let mut i = 0;
+                while i < current_reaching_copies.len() {
+                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &current_reaching_copies[i] {
+                        if copy_src == dst || copy_dst == dst {
+                            current_reaching_copies.remove(i);
+                        } else {
+                            i += 1;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            IRInstruction::Binary { op, lhs, rhs, dst } => {
+                let mut i = 0;
+                while i < current_reaching_copies.len() {
+                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &current_reaching_copies[i] {
+                        if copy_src == dst || copy_dst == dst {
+                            current_reaching_copies.remove(i);
+                        } else {
+                            i += 1;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    annotated_blocks.insert(get_block_id(block), current_reaching_copies.clone());
+
+}
+
+fn get_block_id(block: &Node) -> NodeId {
+    match block {
+        Node::Block { id, .. } => id.clone(),
+        Node::Entry { .. } => NodeId::Entry,
+        Node::Exit { .. } => NodeId::Exit,
+    }
+}
+
+fn find_all_copies(cfg: &mut Vec<Node>) -> Vec<IRInstruction> {
+    let mut all_copies = vec![];
+
+    for block in cfg.iter() {
+        match block {
+            Node::Block { instructions, .. } => {
+                for instruction in instructions.iter() {
+                    if let IRInstruction::Copy { .. } = instruction {
+                        all_copies.push(instruction.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    all_copies
+}
+
+fn find_reaching_copies(cfg: &mut Vec<Node>) {
+    let all_copies = find_all_copies(cfg);
+    let mut worklist = vec![];
+
+    let mut annotated_blocks = HashMap::new();
+    let mut annotated_instructions = HashMap::new();
+
+    for node in cfg.iter() {
+        match node {
+            Node::Entry { .. } | Node::Exit { .. } => continue,
+            Node::Block { .. } => {
+                worklist.push(node.clone());
+                annotated_blocks.insert(get_block_id(node), all_copies.clone());
+            }
+        }
+    }
+
+    while !worklist.is_empty() {
+        let block = worklist.remove(0);
+        let old_annotation = annotated_blocks.get(&get_block_id(&block)).cloned().unwrap();
+
+        let incoming_copies = meet(&block, &all_copies, &mut annotated_blocks);
+
+        transfer(&block, &incoming_copies, &mut annotated_instructions, &mut annotated_blocks);
+
+        if old_annotation != annotated_blocks.get(&get_block_id(&block)).cloned().unwrap() {
+            let block_successors = get_block_successors(&block);
+            for succ in block_successors.iter() {
+                match succ {
+                    NodeId::Exit => continue,
+                    NodeId::Entry => panic!("WAAAAAAAAAAAAAA"),
+                    NodeId::BlockId(block_id) => {
+                        let successor = get_block_by_id(cfg, succ);
+                        if !worklist.contains(&successor) {
+                            worklist.push(successor.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn replace_operand(op: &IRValue, reaching_copies: &[IRInstruction]) -> IRValue {
+    if let IRValue::Constant(konst) = op {
+        return op.to_owned();
+    }
+
+    for copy in reaching_copies.iter() {
+        if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+            return copy_src.to_owned();
+        }
+    }
+
+    return op.to_owned();
+}
+
+fn get_block_by_id(cfg: &Vec<Node>, id: &NodeId) -> Node {
+    cfg.iter().find(|node| match node {
+        Node::Block { id: block_id, .. } => block_id == id,
+        _ => false,
+    }).unwrap().clone()
+}
+
+fn get_block_successors(block: &Node) -> Vec<NodeId> {
+    match block {
+        Node::Block { successors, .. } => successors.clone(),
+        Node::Entry { successors } => successors.clone(),
+        Node::Exit { .. } => vec![NodeId::Exit],
+    }
+}
+
+fn meet(block: &Node, all_copies: &[IRInstruction], annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>) -> Vec<IRInstruction> {
+    let mut incoming_copies = all_copies.to_vec();
+    let block_predecessors = get_block_predecessors(block);
+
+    for pred in block_predecessors.iter() {
+        match pred {
+            NodeId::Entry => return vec![],
+            NodeId::Exit => panic!("AAAA"),
+            NodeId::BlockId(block_id) => {
+                let pred_out_copies = annotated_blocks.get(pred).unwrap();
+                incoming_copies = incoming_copies
+                        .iter()
+                        .filter(|copy| pred_out_copies.contains(copy))
+                        .cloned()
+                        .collect();
+            }
+        }
+    }
+
+    incoming_copies
+}
+
+fn get_block_predecessors(block: &Node) -> Vec<NodeId> {
+    match block {
+        Node::Block { predecessors, .. } => predecessors.clone(),
+        Node::Exit { predecessors } => predecessors.clone(),
+        _ => vec![],
+    }
+}
+
+fn get_block_instructions(block: &Node) -> Vec<IRInstruction> {
+    match block {
+        Node::Block { instructions, .. } => instructions.clone(),
+        _ => vec![],
+    }
+}
+
+fn is_static(value: &IRValue) -> bool {
+    match value {
+        IRValue::Var(name) => {
+            let symbol_table = SYMBOL_TABLE.lock().unwrap();
+            if let Some(entry) = symbol_table.get(name) {
+                if let IdentifierAttrs::StaticAttr { .. } = entry.attrs {
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false,
     }
 }
