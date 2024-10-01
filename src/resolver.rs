@@ -4,7 +4,14 @@ use std::collections::HashMap;
 use crate::{
     ir::make_temporary,
     parser::{
-        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression, MemberDeclaration, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration, SubscriptExpression, Type, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement
+        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BlockItem,
+        BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression,
+        ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression,
+        Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement,
+        Initializer, LiteralExpression, MemberDeclaration, ProgramStatement, ReturnStatement,
+        SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
+        StructDeclaration, SubscriptExpression, Type, UnaryExpression, VariableDeclaration,
+        VariableExpression, WhileStatement,
     },
 };
 
@@ -22,13 +29,21 @@ pub struct StructTableEntry {
 }
 
 pub trait Resolve {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self>
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self>
     where
         Self: Sized;
 }
 
 impl Resolve for Declaration {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         match self {
             Declaration::Variable(var_decl) => {
                 var_decl.resolve(variable_map, struct_map)?;
@@ -46,7 +61,10 @@ impl Resolve for Declaration {
     }
 }
 
-fn resolve_structure_declaration<'a>(decl: &'a mut StructDeclaration, struct_map: &'a mut HashMap<String, StructTableEntry>) -> Result<StructDeclaration> {
+fn resolve_structure_declaration<'a>(
+    decl: &'a mut StructDeclaration,
+    struct_map: &'a mut HashMap<String, StructTableEntry>,
+) -> Result<StructDeclaration> {
     let prev_entry = struct_map.get(&decl.tag).cloned();
 
     let unique_tag;
@@ -100,7 +118,11 @@ fn optionally_resolve_init(
 }
 
 impl Resolve for VariableDeclaration {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         match self.is_global {
             true => {
                 variable_map.insert(
@@ -195,7 +217,11 @@ fn resolve_init(
 }
 
 impl Resolve for FunctionDeclaration {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {       
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         if self.body.is_some() && !self.is_global {
             bail!("function definition in non-global scope");
         }
@@ -249,7 +275,9 @@ impl Resolve for FunctionDeclaration {
             new_params.push(resolve_param(param, &mut inner_map)?);
         }
 
-        self.body = resolve_optional_block_item(&mut self.body, &mut inner_map, &mut new_struct_map)?.into();
+        self.body =
+            resolve_optional_block_item(&mut self.body, &mut inner_map, &mut new_struct_map)?
+                .into();
         self.params = new_params;
         self._type = resolve_type(&self._type, &mut new_struct_map)?;
 
@@ -258,7 +286,11 @@ impl Resolve for FunctionDeclaration {
 }
 
 impl Resolve for BlockItem {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         match self {
             BlockItem::Declaration(decl) => {
                 decl.resolve(variable_map, struct_map)?;
@@ -273,7 +305,11 @@ impl Resolve for BlockItem {
 }
 
 impl Resolve for Statement {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         match self {
             Statement::Expression(expr) => {
                 expr.resolve(variable_map, struct_map)?;
@@ -321,14 +357,22 @@ impl Resolve for Statement {
 }
 
 impl Resolve for ExpressionStatement {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         self.expr = resolve_exp(&self.expr, variable_map, struct_map)?;
         Ok(self)
     }
 }
 
 impl Resolve for ReturnStatement {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         self.expr = resolve_optional_expr(&self.expr, variable_map, struct_map)?;
         self.target_type = optionally_resolve_type(&self.target_type, struct_map)?;
         Ok(self)
@@ -348,7 +392,11 @@ fn optionally_resolve_type(
 }
 
 impl Resolve for ProgramStatement {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         for block_item in &mut self.block_items {
             block_item.resolve(variable_map, struct_map)?;
         }
@@ -357,17 +405,30 @@ impl Resolve for ProgramStatement {
 }
 
 impl Resolve for IfStatement {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         self.condition = resolve_exp(&self.condition, variable_map, struct_map)?;
-        self.then_branch = self.then_branch.resolve(variable_map, struct_map)?.to_owned().into();
-        self.else_branch = resolve_optional_block_item(&mut self.else_branch, variable_map, struct_map)?.into();
+        self.then_branch = self
+            .then_branch
+            .resolve(variable_map, struct_map)?
+            .to_owned()
+            .into();
+        self.else_branch =
+            resolve_optional_block_item(&mut self.else_branch, variable_map, struct_map)?.into();
 
         Ok(self)
     }
 }
 
 impl Resolve for BlockStatement {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
         for stmt in &mut self.stmts {
@@ -378,45 +439,77 @@ impl Resolve for BlockStatement {
 }
 
 impl Resolve for ForStatement {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
         self.init = resolve_for_init(&mut self.init, &mut new_variable_map, &mut new_struct_map)?;
         self.condition = resolve_optional_expr(&self.condition, &mut new_variable_map, struct_map)?;
         self.post = resolve_optional_expr(&self.post, &mut new_variable_map, struct_map)?;
-        self.body = self.body.resolve(&mut new_variable_map, &mut new_struct_map)?.to_owned().into();
+        self.body = self
+            .body
+            .resolve(&mut new_variable_map, &mut new_struct_map)?
+            .to_owned()
+            .into();
         Ok(self)
     }
 }
 
 impl Resolve for DoWhileStatement {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
-        self.body = self.body.resolve(&mut new_variable_map, &mut new_struct_map)?.to_owned().into();
+        self.body = self
+            .body
+            .resolve(&mut new_variable_map, &mut new_struct_map)?
+            .to_owned()
+            .into();
         self.condition = resolve_exp(&self.condition, &mut new_variable_map, struct_map)?;
         Ok(self)
     }
 }
 
 impl Resolve for WhileStatement {
-    fn resolve(&mut self, variable_map: &mut HashMap<String, Variable>, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        variable_map: &mut HashMap<String, Variable>,
+        struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
         self.condition = resolve_exp(&self.condition, &mut new_variable_map, struct_map)?;
-        self.body = self.body.resolve(&mut new_variable_map, &mut new_struct_map)?.to_owned().into();
+        self.body = self
+            .body
+            .resolve(&mut new_variable_map, &mut new_struct_map)?
+            .to_owned()
+            .into();
         Ok(self)
     }
 }
 
 impl Resolve for BreakStatement {
-    fn resolve(&mut self, _variable_map: &mut HashMap<String, Variable>, _struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        _variable_map: &mut HashMap<String, Variable>,
+        _struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         Ok(self)
     }
 }
 
 impl Resolve for ContinueStatement {
-    fn resolve(&mut self, _variable_map: &mut HashMap<String, Variable>, _struct_map: &mut HashMap<String, StructTableEntry>) -> Result<&mut Self> {
+    fn resolve(
+        &mut self,
+        _variable_map: &mut HashMap<String, Variable>,
+        _struct_map: &mut HashMap<String, StructTableEntry>,
+    ) -> Result<&mut Self> {
         Ok(self)
     }
 }
@@ -579,7 +672,11 @@ fn resolve_exp(
                 _type: resolved_type,
             }))
         }
-        Expression::Dot(DotExpression { structure, member, _type }) => {
+        Expression::Dot(DotExpression {
+            structure,
+            member,
+            _type,
+        }) => {
             let resolved_structure = resolve_exp(&structure, variable_map, struct_map)?;
             Ok(Expression::Dot(DotExpression {
                 structure: resolved_structure.into(),
@@ -587,7 +684,11 @@ fn resolve_exp(
                 _type,
             }))
         }
-        Expression::Arrow(ArrowExpression { pointer, member, _type }) => {
+        Expression::Arrow(ArrowExpression {
+            pointer,
+            member,
+            _type,
+        }) => {
             let resolved_pointer = resolve_exp(&pointer, variable_map, struct_map)?;
             Ok(Expression::Arrow(ArrowExpression {
                 pointer: resolved_pointer.into(),
@@ -622,7 +723,9 @@ fn copy_variable_map(variable_map: &HashMap<String, Variable>) -> HashMap<String
     spam
 }
 
-fn copy_struct_map(struct_map: &HashMap<String, StructTableEntry>) -> HashMap<String, StructTableEntry> {
+fn copy_struct_map(
+    struct_map: &HashMap<String, StructTableEntry>,
+) -> HashMap<String, StructTableEntry> {
     let spam = struct_map
         .iter()
         .map(|(k, v)| {
@@ -641,7 +744,7 @@ fn copy_struct_map(struct_map: &HashMap<String, StructTableEntry>) -> HashMap<St
 fn resolve_for_init<'a>(
     init: &'a mut ForInit,
     variable_map: &'a mut HashMap<String, Variable>,
-    struct_map: &'a mut HashMap<String, StructTableEntry>
+    struct_map: &'a mut HashMap<String, StructTableEntry>,
 ) -> Result<ForInit> {
     match init {
         ForInit::Expression(expr) => {
@@ -674,7 +777,10 @@ fn resolve_optional_block_item(
     struct_map: &mut HashMap<String, StructTableEntry>,
 ) -> Result<Option<BlockItem>> {
     if block_item.is_some() {
-        let resolved_block_item = block_item.as_mut().unwrap().resolve(variable_map, struct_map)?;
+        let resolved_block_item = block_item
+            .as_mut()
+            .unwrap()
+            .resolve(variable_map, struct_map)?;
         Ok(Some(resolved_block_item.to_owned()))
     } else {
         Ok(None)
@@ -700,7 +806,10 @@ fn resolve_param(param: &str, variable_map: &mut HashMap<String, Variable>) -> R
     Ok(unique_name)
 }
 
-fn resolve_type(type_specifier: &Type, struct_map: &mut HashMap<String, StructTableEntry>) -> Result<Type> {
+fn resolve_type(
+    type_specifier: &Type,
+    struct_map: &mut HashMap<String, StructTableEntry>,
+) -> Result<Type> {
     match type_specifier {
         Type::Struct { tag } => {
             if struct_map.contains_key(tag) {

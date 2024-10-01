@@ -112,14 +112,19 @@ impl Parser {
 
     fn parse_declaration(&mut self) -> Result<BlockItem> {
         match self.peek(3).as_slice() {
-            [Token::Struct, Token::Identifier(_), Token::LBrace | Token::Semicolon] => self.parse_struct_decl(),
+            [Token::Struct, Token::Identifier(_), Token::LBrace | Token::Semicolon] => {
+                self.parse_struct_decl()
+            }
             _ => self.parse_var_or_fn_decl(),
         }
     }
 
     fn parse_struct_decl(&mut self) -> Result<BlockItem> {
         self.consume(&Token::Struct)?;
-        let tag = self.consume(&Token::Identifier("".to_owned()))?.unwrap().as_string();
+        let tag = self
+            .consume(&Token::Identifier("".to_owned()))?
+            .unwrap()
+            .as_string();
         let members = if self.is_next(&[Token::LBrace]) {
             let mut members = vec![];
             loop {
@@ -135,10 +140,9 @@ impl Parser {
             vec![]
         };
         self.consume(&Token::Semicolon)?;
-        Ok(BlockItem::Declaration(Declaration::Struct(StructDeclaration {
-            tag,
-            members,
-        })))
+        Ok(BlockItem::Declaration(Declaration::Struct(
+            StructDeclaration { tag, members },
+        )))
     }
 
     fn parse_member_decl(&mut self) -> Result<MemberDeclaration> {
@@ -393,7 +397,7 @@ impl Parser {
                 }
                 _ => {
                     specifier_list.push(self.current.clone().unwrap());
-                    self.advance();        
+                    self.advance();
                 }
             }
         }
@@ -478,7 +482,7 @@ impl Parser {
                 self.current
             );
         };
-        
+
         self.current_target_type = None;
 
         Ok(BlockItem::Declaration(Declaration::Function(
@@ -513,7 +517,9 @@ impl Parser {
                     || sorted_specifiers.contains(&Token::Double)
                     || sorted_specifiers.contains(&Token::Char)
                     || sorted_specifiers.contains(&Token::Void)
-                    || sorted_specifiers.iter().any(|s| matches!(s, Token::Identifier(_)))
+                    || sorted_specifiers
+                        .iter()
+                        .any(|s| matches!(s, Token::Identifier(_)))
                     || (sorted_specifiers.contains(&Token::Signed)
                         && sorted_specifiers.contains(&Token::Unsigned))
                 {
@@ -1017,14 +1023,20 @@ impl Parser {
                     _type: Type::Dummy,
                 });
             } else if self.is_next(&[Token::Dot]) {
-                let member = self.consume(&Token::Identifier("".to_owned()))?.unwrap().as_string();
+                let member = self
+                    .consume(&Token::Identifier("".to_owned()))?
+                    .unwrap()
+                    .as_string();
                 expr = Expression::Dot(DotExpression {
                     structure: expr.into(),
                     member,
                     _type: Type::Dummy,
                 });
             } else if self.is_next(&[Token::Arrow]) {
-                let member = self.consume(&Token::Identifier("".to_owned()))?.unwrap().as_string();
+                let member = self
+                    .consume(&Token::Identifier("".to_owned()))?
+                    .unwrap()
+                    .as_string();
                 expr = Expression::Arrow(ArrowExpression {
                     pointer: expr.into(),
                     member,

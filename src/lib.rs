@@ -1,3 +1,4 @@
+pub mod cfg;
 pub mod codegen;
 pub mod emitter;
 pub mod ir;
@@ -6,4 +7,3 @@ pub mod loop_label;
 pub mod parser;
 pub mod resolver;
 pub mod typechecker;
-pub mod cfg;

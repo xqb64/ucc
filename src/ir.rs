@@ -1,14 +1,23 @@
 use std::{collections::HashSet, default};
 
-use anyhow::Result;
 use crate::{
-    cfg::{instructions_to_cfg, pretty_print_graph_as_graphviz, remove_edge, Node, NodeId}, lexer::Const, parser::{
-        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement
-    }, typechecker::{
+    cfg::{instructions_to_cfg, pretty_print_graph_as_graphviz, remove_edge, Node, NodeId},
+    lexer::Const,
+    parser::{
+        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
+        BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,
+        CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression,
+        DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement,
+        FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement,
+        SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression,
+        Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement,
+    },
+    typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
         IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE, TYPE_TABLE,
-    }
+    },
 };
+use anyhow::Result;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IRProgram {
@@ -162,7 +171,11 @@ fn emit_tacky_and_convert(e: &Expression, instructions: &mut Vec<IRInstruction>)
     match result {
         ExpResult::SubObject { base, offset } => {
             let dst = make_tacky_variable(get_type(e));
-            instructions.push(IRInstruction::CopyFromOffset { src: base, offset, dst: dst.clone() });
+            instructions.push(IRInstruction::CopyFromOffset {
+                src: base,
+                offset,
+                dst: dst.clone(),
+            });
             dst
         }
         ExpResult::PlainOperand(val) => val,
@@ -571,8 +584,16 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                 ExpResult::DereferencedPointer(ptr) => ExpResult::PlainOperand(ptr),
                 ExpResult::SubObject { base, offset } => {
                     let dst = make_tacky_variable(get_type(e));
-                    instructions.push(IRInstruction::GetAddress { src: IRValue::Var(base.clone()), dst: dst.clone() });
-                    instructions.push(IRInstruction::AddPtr { ptr: dst.clone(), index: IRValue::Constant(Const::Long(offset as i64)), scale: 1, dst: dst.clone() });
+                    instructions.push(IRInstruction::GetAddress {
+                        src: IRValue::Var(base.clone()),
+                        dst: dst.clone(),
+                    });
+                    instructions.push(IRInstruction::AddPtr {
+                        ptr: dst.clone(),
+                        index: IRValue::Constant(Const::Long(offset as i64)),
+                        scale: 1,
+                        dst: dst.clone(),
+                    });
                     ExpResult::PlainOperand(dst)
                 }
             }
@@ -608,19 +629,38 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
         Expression::SizeofT(SizeofTExpression { t, _type }) => {
             ExpResult::PlainOperand(IRValue::Constant(Const::ULong(get_size_of_type(t) as u64)))
         }
-        Expression::Dot(DotExpression { structure, member, _type }) => {
+        Expression::Dot(DotExpression {
+            structure,
+            member,
+            _type,
+        }) => {
             let struct_tag = match get_type(structure) {
                 Type::Struct { tag } => tag,
                 _ => unreachable!(),
             };
             let struct_def = TYPE_TABLE.lock().unwrap().get(struct_tag).cloned().unwrap();
-            let member_offset = struct_def.members.iter().find(|m| m.name == *member).unwrap().offset;
-            
+            let member_offset = struct_def
+                .members
+                .iter()
+                .find(|m| m.name == *member)
+                .unwrap()
+                .offset;
+
             let inner_object = emit_tacky(structure, instructions);
 
             match inner_object {
-                ExpResult::PlainOperand(IRValue::Var(v)) => return ExpResult::SubObject { base: v, offset: member_offset },
-                ExpResult::SubObject { base, offset } => return ExpResult::SubObject { base, offset: offset + member_offset },
+                ExpResult::PlainOperand(IRValue::Var(v)) => {
+                    return ExpResult::SubObject {
+                        base: v,
+                        offset: member_offset,
+                    }
+                }
+                ExpResult::SubObject { base, offset } => {
+                    return ExpResult::SubObject {
+                        base,
+                        offset: offset + member_offset,
+                    }
+                }
                 ExpResult::DereferencedPointer(ptr) => {
                     let type_of_e = get_type(e);
                     let dst_ptr = make_tacky_variable(&Type::Pointer(type_of_e.to_owned().into()));
@@ -636,16 +676,25 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                 _ => unreachable!(),
             }
         }
-        Expression::Arrow(ArrowExpression { pointer, member, _type }) => {
+        Expression::Arrow(ArrowExpression {
+            pointer,
+            member,
+            _type,
+        }) => {
             let struct_tag = match get_type(pointer) {
                 Type::Pointer(referenced) => match &**referenced {
                     Type::Struct { tag } => tag,
                     _ => unreachable!(),
-                }
+                },
                 _ => unreachable!(),
             };
             let struct_def = TYPE_TABLE.lock().unwrap().get(struct_tag).cloned().unwrap();
-            let member_offset = struct_def.members.iter().find(|m| m.name == *member).unwrap().offset;
+            let member_offset = struct_def
+                .members
+                .iter()
+                .find(|m| m.name == *member)
+                .unwrap()
+                .offset;
 
             let ptr = emit_tacky_and_convert(pointer, instructions);
 
@@ -671,13 +720,21 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
     }
 }
 
-fn emit_assignment(lhs: &Expression, rhs: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult {
+fn emit_assignment(
+    lhs: &Expression,
+    rhs: &Expression,
+    instructions: &mut Vec<IRInstruction>,
+) -> ExpResult {
     let lval = emit_tacky(lhs, instructions);
     let rval = emit_tacky_and_convert(rhs, instructions);
 
     match &lval {
         ExpResult::SubObject { base, offset } => {
-            instructions.push(IRInstruction::CopyToOffset { src: rval.clone(), dst: base.to_owned(), offset: *offset });
+            instructions.push(IRInstruction::CopyToOffset {
+                src: rval.clone(),
+                dst: base.to_owned(),
+                offset: *offset,
+            });
             ExpResult::PlainOperand(rval)
         }
         ExpResult::PlainOperand(val) => {
@@ -926,7 +983,7 @@ impl Irfy for ProgramStatement {
                             continue;
                         }
                     }
-                    _ => {},
+                    _ => {}
                 },
                 BlockItem::Statement(stmt) => {
                     if let Some(ir_stmt) = stmt.irfy() {
@@ -1000,7 +1057,6 @@ impl Irfy for IfStatement {
 
             // End the if statement with the end label
             instructions.push(IRInstruction::Label(end_label));
-
         } else {
             // If there is an else clause
             // Emit JumpIfZero to else_label
@@ -1238,7 +1294,7 @@ impl Irfy for VariableDeclaration {
                 &mut instructions,
                 0,
                 &self._type,
-            ); 
+            );
         }
 
         Some(IRNode::Instructions(instructions))
@@ -1369,7 +1425,7 @@ impl Optimize for IRFunction {
             return self.clone();
         }
 
-        loop {  
+        loop {
             let post_constant_folding;
             if enabled_optimizations.contains(&Optimization::ConstantFolding) {
                 post_constant_folding = constant_folding(&self.body);
@@ -1412,29 +1468,41 @@ impl Optimize for IRFunction {
 }
 
 fn unreachable_code_elimination(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
-    eliminate_empty_blocks(eliminate_useless_labels(eliminate_useless_jumps(eliminate_unreachable_blocks(cfg))))
+    eliminate_empty_blocks(eliminate_useless_labels(eliminate_useless_jumps(
+        eliminate_unreachable_blocks(cfg),
+    )))
 }
 
 fn take_entry_node(cfg: &mut Vec<Node>) -> Node {
-   // find the Entry node in 'cfg' and remove it from the list and return it
-   let entry_node = cfg.iter_mut().find(|node| match node {
-       Node::Entry { .. } => true,
-       _ => false,
-   }).take().unwrap().clone();
+    // find the Entry node in 'cfg' and remove it from the list and return it
+    let entry_node = cfg
+        .iter_mut()
+        .find(|node| match node {
+            Node::Entry { .. } => true,
+            _ => false,
+        })
+        .take()
+        .unwrap()
+        .clone();
 
-   cfg.retain(|node| match node {
-       Node::Entry { .. } => false,
-       _ => true,
-   });
+    cfg.retain(|node| match node {
+        Node::Entry { .. } => false,
+        _ => true,
+    });
 
-   entry_node 
+    entry_node
 }
 
 fn take_exit_node(cfg: &mut Vec<Node>) -> Node {
-    let exit_node = cfg.iter_mut().find(|node| match node {
-        Node::Exit { .. } => true,
-        _ => false,
-    }).take().unwrap().clone();
+    let exit_node = cfg
+        .iter_mut()
+        .find(|node| match node {
+            Node::Exit { .. } => true,
+            _ => false,
+        })
+        .take()
+        .unwrap()
+        .clone();
 
     cfg.retain(|node| match node {
         Node::Exit { .. } => false,
@@ -1454,7 +1522,14 @@ pub fn eliminate_empty_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
     let mut nodes_to_remove = Vec::new();
 
     for (index, node) in cfg.iter().enumerate() {
-        if let Node::Block { id, instructions, predecessors, successors, .. } = node {
+        if let Node::Block {
+            id,
+            instructions,
+            predecessors,
+            successors,
+            ..
+        } = node
+        {
             if instructions.is_empty() {
                 match (predecessors.as_slice(), successors.as_slice()) {
                     ([pred], [succ]) => {
@@ -1464,7 +1539,7 @@ pub fn eliminate_empty_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
                     _ => {
                         panic!("Empty block should have exactly one predecessor and one successor");
                     }
-                }    
+                }
             }
         }
     }
@@ -1488,7 +1563,7 @@ pub fn eliminate_empty_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
 
 pub fn eliminate_useless_labels(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
     let sorted_blocks = sort_basic_blocks(cfg);
-    
+
     let removed_entry = take_entry_node(sorted_blocks);
     let removed_exit = take_exit_node(sorted_blocks);
 
@@ -1497,19 +1572,30 @@ pub fn eliminate_useless_labels(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
     let mut i = 0;
     while i < sorted_blocks.len() {
         let block = sorted_blocks.get_mut(i).unwrap();
-        if let Node::Block { ref mut instructions, predecessors, .. } = block {
+        if let Node::Block {
+            ref mut instructions,
+            predecessors,
+            ..
+        } = block
+        {
             let first_instruction = instructions.first();
             match first_instruction {
                 Some(IRInstruction::Label(_)) => {
                     let mut keep_jump = false;
-                    let default_pred = if i == 0 { removed_entry.clone() } else { copy.get(i - 1).cloned().unwrap() };
+                    let default_pred = if i == 0 {
+                        removed_entry.clone()
+                    } else {
+                        copy.get(i - 1).cloned().unwrap()
+                    };
 
                     for pred in predecessors {
-                        if *pred != match default_pred {
-                            Node::Block { ref id, .. } => id.to_owned(),
-                            Node::Entry { .. } => NodeId::Entry,
-                            Node::Exit { .. } => NodeId::Exit,
-                        } {
+                        if *pred
+                            != match default_pred {
+                                Node::Block { ref id, .. } => id.to_owned(),
+                                Node::Entry { .. } => NodeId::Entry,
+                                Node::Exit { .. } => NodeId::Exit,
+                            }
+                        {
                             keep_jump = true;
                             break;
                         }
@@ -1523,7 +1609,7 @@ pub fn eliminate_useless_labels(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
                             }
                         }
 
-                        let removed = instructions.remove(0);                        
+                        let removed = instructions.remove(0);
                         assert!(is_label(&removed));
                     }
                 }
@@ -1552,18 +1638,27 @@ pub fn eliminate_useless_jumps(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
     while i < sorted_blocks.len() - 1 {
         let block = sorted_blocks.get_mut(i).unwrap();
         let b = block.clone();
-        if let Node::Block { ref mut instructions, successors, .. } = block {
+        if let Node::Block {
+            ref mut instructions,
+            successors,
+            ..
+        } = block
+        {
             match instructions.last() {
-                Some(IRInstruction::Jump(_)) | Some(IRInstruction::JumpIfZero { .. }) | Some(IRInstruction::JumpIfNotZero { .. }) => {
+                Some(IRInstruction::Jump(_))
+                | Some(IRInstruction::JumpIfZero { .. })
+                | Some(IRInstruction::JumpIfNotZero { .. }) => {
                     let mut keep_jump = false;
-                    let default_succ = copy.get(i+1).unwrap();
+                    let default_succ = copy.get(i + 1).unwrap();
 
                     for succ in successors {
-                        if *succ != match default_succ {
-                            Node::Block { ref id, .. } => id.to_owned(),
-                            Node::Entry { .. } => NodeId::Entry,
-                            Node::Exit { .. } => NodeId::Exit,
-                        } {
+                        if *succ
+                            != match default_succ {
+                                Node::Block { ref id, .. } => id.to_owned(),
+                                Node::Entry { .. } => NodeId::Entry,
+                                Node::Exit { .. } => NodeId::Exit,
+                            }
+                        {
                             keep_jump = true;
                             break;
                         }
@@ -1573,10 +1668,12 @@ pub fn eliminate_useless_jumps(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
                         fn is_jump(instr: &Option<IRInstruction>) -> bool {
                             match instr {
                                 Some(instr) => match instr {
-                                    IRInstruction::Jump(_) | IRInstruction::JumpIfZero { .. } | IRInstruction::JumpIfNotZero { .. } => true,
-                                     _ => false,
-                                }
-                                _ => false
+                                    IRInstruction::Jump(_)
+                                    | IRInstruction::JumpIfZero { .. }
+                                    | IRInstruction::JumpIfNotZero { .. } => true,
+                                    _ => false,
+                                },
+                                _ => false,
                             }
                         }
 
@@ -1640,7 +1737,9 @@ pub fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
     dfs(cfg, NodeId::Entry, &mut visited);
 
     // Collect nodes to remove
-    let nodes_to_remove: Vec<usize> = cfg.iter().enumerate()
+    let nodes_to_remove: Vec<usize> = cfg
+        .iter()
+        .enumerate()
         .filter_map(|(index, blk)| {
             if visited.contains(match blk {
                 Node::Block { id, .. } => id,
@@ -1658,7 +1757,12 @@ pub fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
 
     for &index in &nodes_to_remove {
         match &cfg[index] {
-            Node::Block { id, successors, predecessors, .. } => {
+            Node::Block {
+                id,
+                successors,
+                predecessors,
+                ..
+            } => {
                 for pred in predecessors {
                     edges_to_remove.push((pred.clone(), id.clone()));
                 }
@@ -1706,7 +1810,10 @@ fn control_flow_graph_to_ir(cfg: &mut Vec<Node>) -> Vec<IRInstruction> {
 
     for node in cfg {
         match node {
-            Node::Block { instructions: instrs, .. } => {
+            Node::Block {
+                instructions: instrs,
+                ..
+            } => {
                 instructions.extend(instrs.clone());
             }
             _ => {}
@@ -1767,22 +1874,20 @@ fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
             }
             IRInstruction::Unary { op, src, dst } => {
                 let src_val = get_constant_value(src);
-            
+
                 if let Some(src_val) = src_val {
                     let result = match op {
                         UnaryOp::Negate => -src_val,
-                        UnaryOp::Complement => {
-                            match src_val {
-                                Const::Int(_) | Const::Long(_) | Const::UInt(_) | Const::ULong(_) => !src_val,
-                                _ => panic!("Complement requires an integer type"),
+                        UnaryOp::Complement => match src_val {
+                            Const::Int(_) | Const::Long(_) | Const::UInt(_) | Const::ULong(_) => {
+                                !src_val
                             }
-                        }
-                        UnaryOp::Not => {
-                            match src_val == Const::Int(0) {
-                                true => Const::Int(1),
-                                false => Const::Int(0),
-                            }
-                        }
+                            _ => panic!("Complement requires an integer type"),
+                        },
+                        UnaryOp::Not => match src_val == Const::Int(0) {
+                            true => Const::Int(1),
+                            false => Const::Int(0),
+                        },
                     };
                     optimized_instructions.push(IRInstruction::Copy {
                         src: IRValue::Constant(result),
@@ -1815,28 +1920,52 @@ fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
                     optimized_instructions.push(instr.clone());
                 }
             }
-            IRInstruction::Truncate { src: IRValue::Constant(konst), dst } => {
+            IRInstruction::Truncate {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
-            IRInstruction::SignExtend { src: IRValue::Constant(konst), dst } => {
+            IRInstruction::SignExtend {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
-            IRInstruction::ZeroExtend { src: IRValue::Constant(konst), dst } => {
+            IRInstruction::ZeroExtend {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
-            IRInstruction::DoubleToInt { src: IRValue::Constant(konst), dst } => {
+            IRInstruction::DoubleToInt {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
-            IRInstruction::DoubletoUInt { src: IRValue::Constant(konst), dst } => {
+            IRInstruction::DoubletoUInt {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
-            IRInstruction::IntToDouble { src: IRValue::Constant(konst), dst } => {
+            IRInstruction::IntToDouble {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
-            IRInstruction::UIntToDouble { src: IRValue::Constant(konst), dst } => {
+            IRInstruction::UIntToDouble {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
-            IRInstruction::Copy { src: IRValue::Constant(konst), dst } => {
+            IRInstruction::Copy {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
             _ => {
@@ -1850,7 +1979,7 @@ fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
 
 fn evaluate_cast(konst: &Const, dst: &IRValue) -> Vec<IRInstruction> {
     use crate::codegen::tacky_type;
-    
+
     let dst_type = tacky_type(dst);
     let converted_src = match const_convert(konst, &dst_type) {
         Ok(result) => result,
@@ -2028,9 +2157,13 @@ impl std::ops::Div for Const {
             (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs.checked_div(rhs).unwrap_or(0)),
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs.checked_div(rhs).unwrap_or(0)),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs.checked_div(rhs).unwrap_or(0)),
-            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs.checked_div(rhs).unwrap_or(0)),
+            (Const::ULong(lhs), Const::ULong(rhs)) => {
+                Const::ULong(lhs.checked_div(rhs).unwrap_or(0))
+            }
             (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs.checked_div(rhs).unwrap_or(0)),
-            (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs.checked_div(rhs).unwrap_or(0)),
+            (Const::UChar(lhs), Const::UChar(rhs)) => {
+                Const::UChar(lhs.checked_div(rhs).unwrap_or(0))
+            }
             (Const::Double(lhs), Const::Double(rhs)) => Const::Double(lhs / rhs),
             _ => {
                 unreachable!()
@@ -2047,9 +2180,13 @@ impl std::ops::Rem for Const {
             (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs.checked_rem(rhs).unwrap_or(0)),
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs.checked_rem(rhs).unwrap_or(0)),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs.checked_rem(rhs).unwrap_or(0)),
-            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs.checked_rem(rhs).unwrap_or(0)),
+            (Const::ULong(lhs), Const::ULong(rhs)) => {
+                Const::ULong(lhs.checked_rem(rhs).unwrap_or(0))
+            }
             (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs.checked_rem(rhs).unwrap_or(0)),
-            (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs.checked_rem(rhs).unwrap_or(0)),
+            (Const::UChar(lhs), Const::UChar(rhs)) => {
+                Const::UChar(lhs.checked_rem(rhs).unwrap_or(0))
+            }
             _ => unreachable!(),
         }
     }

@@ -1,7 +1,16 @@
 use crate::{
-    ir::make_temporary, lexer::Const, parser::{
-        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement
-    }
+    ir::make_temporary,
+    lexer::Const,
+    parser::{
+        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
+        BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression,
+        ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement,
+        DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration,
+        IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression,
+        SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration,
+        SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration,
+        VariableExpression, WhileStatement,
+    },
 };
 use anyhow::{bail, Result};
 use std::{cmp::max, collections::HashMap, sync::Mutex};
@@ -103,7 +112,8 @@ fn validate_struct_definition(definition: &mut StructDeclaration) -> Result<()> 
             if member_names.contains(member_name) {
                 bail!(
                     "Duplicate declaration of member {} in structure {}",
-                    member_name, tag
+                    member_name,
+                    tag
                 );
             } else {
                 member_names.insert(member_name.clone());
@@ -130,7 +140,7 @@ fn validate_struct_definition(definition: &mut StructDeclaration) -> Result<()> 
 impl Typecheck for StructDeclaration {
     fn typecheck(&mut self) -> Result<&mut Self>
     where
-        Self: Sized
+        Self: Sized,
     {
         if self.members.is_empty() {
             return Ok(self);
@@ -177,7 +187,7 @@ impl Typecheck for VariableDeclaration {
         } else {
             validate_type_specifier(&self._type)?;
         }
-  
+
         match self.is_global {
             true => {
                 if !is_complete(&self._type) && self.storage_class != Some(StorageClass::Extern) {
@@ -264,7 +274,7 @@ impl Typecheck for VariableDeclaration {
                 if !is_complete(&self._type) {
                     bail!("Variable declared with incomplete type");
                 }
-                
+
                 match self.storage_class {
                     Some(StorageClass::Extern) => {
                         if self.init.is_some() {
@@ -435,7 +445,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         }
         (Type::Struct { tag }, Initializer::Compound(_name, _type, compound_init)) => {
             let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
-            
+
             if compound_init.len() > struct_def.members.len() {
                 bail!("Too many initializers");
             }
@@ -576,7 +586,6 @@ impl Typecheck for FunctionDeclaration {
             }
             _ => bail!("Function has non-function type"),
         };
-
 
         let has_body = self.body.is_some();
 
@@ -742,16 +751,19 @@ impl Typecheck for Statement {
                 if target_type == &Some(Type::Void) {
                     bail!("Return statement with expression in void function");
                 } else {
-                    let ret_type = SYMBOL_TABLE.lock().unwrap().get(belongs_to).cloned().unwrap()._type;
+                    let ret_type = SYMBOL_TABLE
+                        .lock()
+                        .unwrap()
+                        .get(belongs_to)
+                        .cloned()
+                        .unwrap()
+                        ._type;
                     let target_type = match ret_type {
                         Type::Func { ret, .. } => ret,
                         _ => unreachable!(),
                     };
                     let typechecked_expr = typecheck_and_convert(expression)?;
-                    let converted_expr = convert_by_assignment(
-                        &typechecked_expr,
-                        &target_type,
-                    )?;
+                    let converted_expr = convert_by_assignment(&typechecked_expr, &target_type)?;
                     *expression = converted_expr;
                 }
                 Ok(self)
@@ -819,7 +831,7 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
         }
         (Type::Struct { tag }, Initializer::Compound(name, _type, compound_init)) => {
             let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
-   
+
             if compound_init.len() > struct_def.members.len() {
                 bail!("Too many initializers");
             }
@@ -842,9 +854,7 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
 
             Ok(Initializer::Compound(
                 name.clone(),
-                Type::Struct {
-                    tag: tag.clone(),
-                },
+                Type::Struct { tag: tag.clone() },
                 typechecked_inits,
             ))
         }
@@ -1355,10 +1365,10 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     lhs: Box::new(typed_lhs.to_owned()),
                     rhs: Box::new(converted_right),
                     _type: left_type.to_owned(),
-                }))            
+                }))
             } else {
                 bail!("Invalid lvalue in assignment");
-            }              
+            }
         }
         Expression::Conditional(ConditionalExpression {
             condition,
@@ -1505,16 +1515,18 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _ => bail!("Dereference of non-pointer type"),
             }
         }
-        Expression::AddrOf(AddrOfExpression { expr, _type }) => if is_lvalue(expr) {
-            let typed_inner = typecheck_expr(expr)?;
-            let referenced_type = get_type(&typed_inner);
-            Ok(Expression::AddrOf(AddrOfExpression {
-                expr: Box::new(typed_inner.to_owned()),
-                _type: Type::Pointer(Box::new(referenced_type.to_owned())),
-            }))
-        } else {
-            bail!("Can't take address of a non-lvalue");
-        },
+        Expression::AddrOf(AddrOfExpression { expr, _type }) => {
+            if is_lvalue(expr) {
+                let typed_inner = typecheck_expr(expr)?;
+                let referenced_type = get_type(&typed_inner);
+                Ok(Expression::AddrOf(AddrOfExpression {
+                    expr: Box::new(typed_inner.to_owned()),
+                    _type: Type::Pointer(Box::new(referenced_type.to_owned())),
+                }))
+            } else {
+                bail!("Can't take address of a non-lvalue");
+            }
+        }
         Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
             typecheck_subscript(expr, index)
         }
@@ -1547,18 +1559,32 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _type: Type::Ulong,
             }))
         }
-        Expression::Dot(DotExpression { structure, member, _type }) => {
+        Expression::Dot(DotExpression {
+            structure,
+            member,
+            _type,
+        }) => {
             let typed_structure = typecheck_and_convert(structure)?;
             match get_type(&typed_structure) {
                 Type::Struct { tag } => {
                     let struct_def = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
-                    
-                    if !struct_def.members.to_vec().into_iter().any(|m| m.name == *member) {
+
+                    if !struct_def
+                        .members
+                        .to_vec()
+                        .into_iter()
+                        .any(|m| m.name == *member)
+                    {
                         bail!("Unknown member in struct");
                     }
 
                     // find the type of the member
-                    let member_def = struct_def.members.to_vec().into_iter().find(|m| m.name == *member).unwrap();
+                    let member_def = struct_def
+                        .members
+                        .to_vec()
+                        .into_iter()
+                        .find(|m| m.name == *member)
+                        .unwrap();
 
                     Ok(Expression::Dot(DotExpression {
                         structure: Box::new(typed_structure),
@@ -1569,19 +1595,33 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _ => bail!("Non-struct type in dot expression"),
             }
         }
-        Expression::Arrow(ArrowExpression { pointer, member, _type }) => {
+        Expression::Arrow(ArrowExpression {
+            pointer,
+            member,
+            _type,
+        }) => {
             let typed_pointer = typecheck_and_convert(pointer)?;
             match get_type(&typed_pointer) {
                 Type::Pointer(referenced) => {
                     if let Type::Struct { tag } = &**referenced {
                         let struct_def = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
-                        
-                        if !struct_def.members.to_vec().into_iter().any(|m| m.name == *member) {
+
+                        if !struct_def
+                            .members
+                            .to_vec()
+                            .into_iter()
+                            .any(|m| m.name == *member)
+                        {
                             bail!("Unknown member in struct");
                         }
 
                         // find the type of the member
-                        let member_def = struct_def.members.to_vec().into_iter().find(|m| m.name == *member).unwrap();
+                        let member_def = struct_def
+                            .members
+                            .to_vec()
+                            .into_iter()
+                            .find(|m| m.name == *member)
+                            .unwrap();
 
                         Ok(Expression::Arrow(ArrowExpression {
                             pointer: Box::new(typed_pointer),
@@ -1828,7 +1868,10 @@ pub enum StaticInit {
 }
 
 pub fn is_scalar(t: &Type) -> bool {
-    !matches!(t, Type::Void | Type::Array { .. } | Type::Func { .. } | Type::Struct { .. })
+    !matches!(
+        t,
+        Type::Void | Type::Array { .. } | Type::Func { .. } | Type::Struct { .. }
+    )
 }
 
 pub fn is_complete(t: &Type) -> bool {

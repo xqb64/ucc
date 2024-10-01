@@ -72,7 +72,7 @@ fn run(opts: &Opt) -> Result<()> {
 
     let ir_prog = if let IRNode::Program(prog) = &mut tac {
         prog.static_vars = tacky_defs;
-    
+
         prog
     } else {
         unreachable!()

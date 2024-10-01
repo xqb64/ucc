@@ -21,12 +21,20 @@ impl Ord for NodeId {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub enum Node {
-    Entry { successors: Vec<NodeId> },
-    Exit { predecessors: Vec<NodeId> },
-    Block { id: NodeId, predecessors: Vec<NodeId>, instructions: Vec<IRInstruction>, successors: Vec<NodeId> },
+    Entry {
+        successors: Vec<NodeId>,
+    },
+    Exit {
+        predecessors: Vec<NodeId>,
+    },
+    Block {
+        id: NodeId,
+        predecessors: Vec<NodeId>,
+        instructions: Vec<IRInstruction>,
+        successors: Vec<NodeId>,
+    },
 }
 
 impl Node {
@@ -53,7 +61,10 @@ fn partition_into_basic_blocks(instructions: &[IRInstruction]) -> Vec<Vec<&IRIns
                 }
                 current_block = vec![instruction];
             }
-            IRInstruction::Jump(_) | IRInstruction::JumpIfZero { .. } | IRInstruction::JumpIfNotZero { .. } | IRInstruction::Ret(_) => {
+            IRInstruction::Jump(_)
+            | IRInstruction::JumpIfZero { .. }
+            | IRInstruction::JumpIfNotZero { .. }
+            | IRInstruction::Ret(_) => {
                 current_block.push(instruction);
                 finished_blocks.push(current_block);
                 current_block = vec![];
@@ -94,9 +105,11 @@ fn add_all_edges(graph: &mut Vec<Node>) {
     for node in graph.clone().iter() {
         match node {
             Node::Entry { .. } | Node::Exit { .. } => continue,
-            Node::Block { id, instructions, .. } => {
+            Node::Block {
+                id, instructions, ..
+            } => {
                 let next_id;
-                
+
                 if *id == max_block_id(graph) {
                     next_id = NodeId::Exit;
                 } else {
@@ -136,24 +149,36 @@ pub fn add_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
     }
 
     // Update the successors of the predecessor
-    if let Some(Node::Block { id, successors, .. }) = graph.iter_mut().find(|n| matches!(n, Node::Block { id, .. } if *id == pred)) {
+    if let Some(Node::Block { id, successors, .. }) = graph
+        .iter_mut()
+        .find(|n| matches!(n, Node::Block { id, .. } if *id == pred))
+    {
         add_id(succ.clone(), successors);
     }
 
     // Update the predecessors of the successor
-    if let Some(Node::Block { id, predecessors, .. }) = graph.iter_mut().find(|n| matches!(n, Node::Block { id, .. } if *id == succ)) {
+    if let Some(Node::Block {
+        id, predecessors, ..
+    }) = graph
+        .iter_mut()
+        .find(|n| matches!(n, Node::Block { id, .. } if *id == succ))
+    {
         add_id(pred.clone(), predecessors);
     }
 
     // Cover the entry and exit nodes
     if pred == NodeId::Entry {
-        if let Some(Node::Entry { successors }) = graph.iter_mut().find(|n| matches!(n, Node::Entry { .. })) {
+        if let Some(Node::Entry { successors }) =
+            graph.iter_mut().find(|n| matches!(n, Node::Entry { .. }))
+        {
             add_id(succ.clone(), successors);
         }
     }
 
     if succ == NodeId::Exit {
-        if let Some(Node::Exit { predecessors }) = graph.iter_mut().find(|n| matches!(n, Node::Exit { .. })) {
+        if let Some(Node::Exit { predecessors }) =
+            graph.iter_mut().find(|n| matches!(n, Node::Exit { .. }))
+        {
             add_id(pred.clone(), predecessors);
         }
     }
@@ -165,12 +190,20 @@ pub fn remove_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
     }
 
     // Update the successors of the predecessor
-    if let Some(Node::Block { id, successors, .. }) = graph.iter_mut().find(|n| matches!(n, Node::Block { id, .. } if *id == pred)) {
+    if let Some(Node::Block { id, successors, .. }) = graph
+        .iter_mut()
+        .find(|n| matches!(n, Node::Block { id, .. } if *id == pred))
+    {
         remove_id(succ.clone(), successors);
     }
 
     // Update the predecessors of the successor
-    if let Some(Node::Block { id, predecessors, .. }) = graph.iter_mut().find(|n| matches!(n, Node::Block { id, .. } if *id == succ)) {
+    if let Some(Node::Block {
+        id, predecessors, ..
+    }) = graph
+        .iter_mut()
+        .find(|n| matches!(n, Node::Block { id, .. } if *id == succ))
+    {
         remove_id(pred.clone(), predecessors);
     }
 }
@@ -215,7 +248,9 @@ pub fn instructions_to_cfg(instructions: &[IRInstruction]) -> Vec<Node> {
 
     let mut graph = vec![Node::Entry { successors: vec![] }];
     graph.extend(basic_blocks);
-    graph.push(Node::Exit { predecessors: vec![] });
+    graph.push(Node::Exit {
+        predecessors: vec![],
+    });
 
     add_all_edges(&mut graph);
 
@@ -224,7 +259,7 @@ pub fn instructions_to_cfg(instructions: &[IRInstruction]) -> Vec<Node> {
 
 pub fn pretty_print_graph_as_graphviz(graph: &Vec<Node>) {
     use std::io::Write;
-    
+
     // Print the graph in Graphviz format to file
     let mut dotfile = std::fs::File::create(format!("cfg.{}.dot", make_temporary())).unwrap();
     writeln!(dotfile, "digraph G {{").unwrap();
@@ -241,13 +276,33 @@ pub fn pretty_print_graph_as_graphviz(graph: &Vec<Node>) {
                     writeln!(dotfile, "  {} -> Exit", pred).unwrap();
                 }
             }
-            Node::Block { id, predecessors, successors, instructions } => {
+            Node::Block {
+                id,
+                predecessors,
+                successors,
+                instructions,
+            } => {
                 // print instructions in the block as a table
                 writeln!(dotfile, "  {} [shape=plaintext, label=<", id).unwrap();
-                writeln!(dotfile, "<table border=\"0\" cellborder=\"1\" cellspacing=\"0\">").unwrap();
-                writeln!(dotfile, "<tr><td colspan=\"2\">Block {}</td></tr>", id_to_num(id)).unwrap();
+                writeln!(
+                    dotfile,
+                    "<table border=\"0\" cellborder=\"1\" cellspacing=\"0\">"
+                )
+                .unwrap();
+                writeln!(
+                    dotfile,
+                    "<tr><td colspan=\"2\">Block {}</td></tr>",
+                    id_to_num(id)
+                )
+                .unwrap();
                 for instr in instructions {
-                    writeln!(dotfile, "<tr><td>{}</td><td>{:?}</td></tr>", id_to_num(id), instr).unwrap();
+                    writeln!(
+                        dotfile,
+                        "<tr><td>{}</td><td>{:?}</td></tr>",
+                        id_to_num(id),
+                        instr
+                    )
+                    .unwrap();
                 }
                 writeln!(dotfile, "</table>>];").unwrap();
 

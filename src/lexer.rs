@@ -81,7 +81,7 @@ impl Iterator for Lexer {
                 _ => unreachable!(),
             }
         } else if let Some(m) = self.double_constant_re.find(src) {
-            self.pos += m.as_str().len() - 1;              
+            self.pos += m.as_str().len() - 1;
             Token::Constant(Const::Double(
                 m.as_str()[..m.as_str().len() - 1].parse::<f64>().unwrap(),
             ))
@@ -148,7 +148,7 @@ impl Iterator for Lexer {
                 "," => Token::Comma,
                 "&" => Token::Ampersand,
                 ";" => Token::Semicolon,
-                "." => { 
+                "." => {
                     // if the next character is a constant followed by a suffix, it's an error
                     if self.constant_re.is_match(&self.src[self.pos..]) {
                         return Some(Token::Error);
@@ -298,8 +298,8 @@ pub enum Const {
 
 impl Ord for Const {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        use Const::*;
         use std::any::Any;
+        use Const::*;
         match (self, other) {
             (Double(d1), Double(d2)) => d1.partial_cmp(d2).unwrap_or(std::cmp::Ordering::Equal),
             (Int(i1), Int(i2)) => i1.cmp(i2),
