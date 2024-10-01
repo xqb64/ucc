@@ -1797,41 +1797,6 @@ pub fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
     cfg
 }
 
-fn copy_propagation(cfg: &mut Vec<Node>) -> Vec<Node> {
-    let mut annotated_instructions = HashMap::new();
-    let mut annotated_blocks = HashMap::new();
-
-    // Perform reaching copies analysis
-    find_reaching_copies(cfg, &mut annotated_blocks, &mut annotated_instructions);
-
-    // Iterate over each block and rewrite instructions based on reaching copies
-    let mut new_cfg = vec![];
-    for block in cfg.iter() {
-        let mut new_block = block.clone();
-        let instructions = get_block_instructions(block);
-
-        let mut new_instructions = vec![];
-        for instr in instructions {
-            if let Some(rewritten_instr) = rewrite_instruction(&instr, &mut annotated_instructions) {
-                dbg!("rewritten_instr", &rewritten_instr);
-                new_instructions.push(rewritten_instr);
-            }
-        }
-
-        // Update the block with new instructions
-        match new_block {
-            Node::Block { ref mut instructions, .. } => {
-                *instructions = new_instructions;
-            }
-            _ => {}
-        }
-
-        new_cfg.push(new_block);
-    }
-
-    new_cfg
-}
-
 fn dead_store_elimination(instructions: &Vec<Node>) -> Vec<Node> {
     instructions.to_owned()
 }
@@ -2252,6 +2217,105 @@ impl std::ops::Not for Const {
     }
 }
 
+fn copy_propagation(cfg: &mut Vec<Node>) -> Vec<Node> {
+    let mut annotated_instructions = HashMap::new();
+    let mut annotated_blocks = HashMap::new();
+
+    // Perform reaching copies analysis
+    find_reaching_copies(cfg, &mut annotated_blocks, &mut annotated_instructions);
+
+    // Iterate over each block and rewrite instructions based on reaching copies
+    let mut new_cfg = vec![];
+    for block in cfg.iter() {
+        let mut new_block = block.clone();
+        let instructions = get_block_instructions(block);
+
+        println!("instructions: {:?}", instructions);
+
+        let mut new_instructions = vec![];
+        for instr in instructions {
+            if let Some(rewritten_instr) = rewrite_instruction(&instr, &mut annotated_instructions) {
+                new_instructions.push(rewritten_instr);
+            }
+        }
+
+        // Update the block with new instructions
+        match new_block {
+            Node::Block { ref mut instructions, .. } => {
+                *instructions = new_instructions;
+            }
+            _ => {}
+        }
+
+        new_cfg.push(new_block);
+    }
+
+    new_cfg
+}
+
+fn find_reaching_copies(cfg: &mut Vec<Node>, annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>, annotated_instructions: &mut HashMap<IRInstruction, Vec<IRInstruction>>) {
+    let all_copies = find_all_copies(cfg);
+    let mut worklist = vec![];
+
+    for node in cfg.iter() {
+        match node {
+            Node::Entry { .. } | Node::Exit { .. } => continue,
+            Node::Block { .. } => {
+                worklist.push(node.clone());
+                annotated_blocks.insert(get_block_id(node), all_copies.clone());
+            }
+        }
+    }
+
+    while !worklist.is_empty() {
+        let block = worklist.remove(0);
+        let old_annotation = annotated_blocks.get(&get_block_id(&block)).cloned().unwrap();
+
+        let incoming_copies = meet(&block, &all_copies, annotated_blocks);
+
+        transfer(&block, &incoming_copies, annotated_instructions, annotated_blocks);
+
+        if old_annotation != annotated_blocks.get(&get_block_id(&block)).cloned().unwrap() {
+            println!("Changed annotation for block {:?}", get_block_id(&block));
+            let block_successors = get_block_successors(&block);
+            for succ in block_successors.iter() {
+                match succ {
+                    NodeId::Exit => continue,
+                    NodeId::Entry => panic!("WAAAAAAAAAAAAAA"),
+                    NodeId::BlockId(_) => {
+                        let successor = get_block_by_id(cfg, succ);
+                        if !worklist.contains(&successor) {
+                            worklist.push(successor.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn meet(block: &Node, all_copies: &[IRInstruction], annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>) -> Vec<IRInstruction> {
+    let mut incoming_copies = all_copies.to_vec();
+    let block_predecessors = get_block_predecessors(block);
+
+    for pred in block_predecessors.iter() {
+        match pred {
+            NodeId::Entry => return vec![],
+            NodeId::Exit => panic!("AAAA"),
+            NodeId::BlockId(_) => {
+                let pred_out_copies = annotated_blocks.get(pred).unwrap();
+                incoming_copies = incoming_copies
+                        .iter()
+                        .filter(|copy| pred_out_copies.contains(copy))
+                        .cloned()
+                        .collect();
+            }
+        }
+    }
+
+    incoming_copies
+}
+
 fn transfer(
     block: &Node,
     initial_reaching_copies: &[IRInstruction],
@@ -2260,82 +2324,84 @@ fn transfer(
 ) {
     let mut current_reaching_copies = initial_reaching_copies.to_vec();
 
-    // Iterate over the instructions in the block
     let block_instructions = get_block_instructions(block);
 
     for instruction in block_instructions.iter() {
-        // 1. Annotate the instruction with current reaching copies
         annotated_instructions.insert(instruction.clone(), current_reaching_copies.clone());
 
         match instruction {
-            IRInstruction::Copy { src, dst } => {
-                // 2. Skip if there's already a Copy(dst, src) in current_reaching_copies
-                if current_reaching_copies.iter().any(|copy| {
-                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
-                        copy_src == dst && copy_dst == src
-                    } else {
-                        false
-                    }
-                }) {
+            IRInstruction::Copy { src: _, dst } => {
+                if current_reaching_copies.contains(&instruction) {
                     continue;
                 }
 
-                // 3. Remove any copies where copy.src == dst or copy.dst == dst
-                current_reaching_copies.retain(|copy| {
+                let mut to_remove = vec![];
+                for (idx, copy) in current_reaching_copies.iter().enumerate() {
                     if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
-                        copy_src != dst && copy_dst != dst
-                    } else {
-                        true
+                        if copy_src == dst || copy_dst == dst {
+                            to_remove.push(idx);
+                        }
                     }
-                });
+                }
 
-                // 4. Add the current instruction to current_reaching_copies
+                for idx in to_remove.iter().rev() {
+                    current_reaching_copies.remove(*idx);
+                }
+
                 current_reaching_copies.push(instruction.clone());
             }
 
             IRInstruction::Call { target: _, args: _, dst } => {
-                // Handle function calls
-                current_reaching_copies.retain(|copy| {
+                let mut to_remove = vec![];
+                for (idx, copy) in current_reaching_copies.iter().enumerate() {
                     if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
-                        // 5. Remove copies if copy.src or copy.dst is static, or equals dst
-                        !is_static(copy_src) && !is_static(copy_dst) && &Some(copy_src.to_owned()) != dst && &Some(copy_dst.to_owned()) != dst
-                    } else {
-                        true
+                        if &Some(copy_src.to_owned()) == dst || &Some(copy_dst.to_owned()) == dst || is_static(copy_src) || is_static(copy_dst) {
+                            to_remove.push(idx);
+                        }
                     }
-                });
+                }
+
+                for idx in to_remove.iter().rev() {
+                    current_reaching_copies.remove(*idx);
+                }
             }
 
-            IRInstruction::Unary { op: _, src, dst } => {
-                // Handle unary operations
-                current_reaching_copies.retain(|copy| {
+            IRInstruction::Unary { op: _, src: _, dst } => {
+                let mut to_remove = vec![];
+                for (idx, copy) in current_reaching_copies.iter().enumerate() {
                     if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
-                        // 6. Remove copies if copy.src == dst or copy.dst == dst
-                        copy_src != dst && copy_dst != dst
-                    } else {
-                        true
+                        if copy_src == dst || copy_dst == dst {
+                            to_remove.push(idx);
+                        }
                     }
-                });
+                }
+
+                for idx in to_remove.iter().rev() {
+                    current_reaching_copies.remove(*idx);
+                }
             }
 
             IRInstruction::Binary { op: _, lhs: _, rhs: _, dst } => {
-                // Handle binary operations, same logic as Unary
-                current_reaching_copies.retain(|copy| {
+                let mut to_remove = vec![];
+                for (idx, copy) in current_reaching_copies.iter().enumerate() {
                     if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
-                        copy_src != dst && copy_dst != dst
-                    } else {
-                        true
+                        if copy_src == dst || copy_dst == dst {
+                            to_remove.push(idx);
+                        }
                     }
-                });
+                }
+
+                for idx in to_remove.iter().rev() {
+                    current_reaching_copies.remove(*idx);
+                }
             }
 
             _ => {
-                // Other instructions, continue processing
                 continue;
             }
         }
     }
 
-    // 7. Annotate the block with the current reaching copies
     annotated_blocks.insert(get_block_id(block), current_reaching_copies);
 }
 
@@ -2366,46 +2432,6 @@ fn find_all_copies(cfg: &mut Vec<Node>) -> Vec<IRInstruction> {
     all_copies
 }
 
-fn find_reaching_copies(cfg: &mut Vec<Node>, annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>, annotated_instructions: &mut HashMap<IRInstruction, Vec<IRInstruction>>) {
-    let all_copies = find_all_copies(cfg);
-    let mut worklist = vec![];
-
-    for node in cfg.iter() {
-        match node {
-            Node::Entry { .. } | Node::Exit { .. } => continue,
-            Node::Block { .. } => {
-                worklist.push(node.clone());
-                annotated_blocks.insert(get_block_id(node), all_copies.clone());
-            }
-        }
-    }
-
-    while !worklist.is_empty() {
-        let block = worklist.remove(0);
-        let old_annotation = annotated_blocks.get(&get_block_id(&block)).cloned().unwrap();
-
-        let incoming_copies = meet(&block, &all_copies, annotated_blocks);
-
-        transfer(&block, &incoming_copies, annotated_instructions, annotated_blocks);
-
-        if old_annotation != annotated_blocks.get(&get_block_id(&block)).cloned().unwrap() {
-            let block_successors = get_block_successors(&block);
-            for succ in block_successors.iter() {
-                match succ {
-                    NodeId::Exit => continue,
-                    NodeId::Entry => panic!("WAAAAAAAAAAAAAA"),
-                    NodeId::BlockId(_) => {
-                        let successor = get_block_by_id(cfg, succ);
-                        if !worklist.contains(&successor) {
-                            worklist.push(successor.clone());
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 fn replace_operand(op: &IRValue, reaching_copies: &[IRInstruction]) -> IRValue {
     if let IRValue::Constant(_) = op {
         return op.to_owned();
@@ -2420,6 +2446,13 @@ fn replace_operand(op: &IRValue, reaching_copies: &[IRInstruction]) -> IRValue {
     }
 
     return op.to_owned();
+}
+
+fn optionally_replace_operand(op: &Option<IRValue>, reaching_copies: &[IRInstruction]) -> Option<IRValue> {
+    match op {
+        Some(value) => Some(replace_operand(value, reaching_copies)),
+        None => None,
+    }
 }
 
 fn rewrite_instruction(instr: &IRInstruction, annotated_instructions: &mut HashMap<IRInstruction, Vec<IRInstruction>>) -> Option<IRInstruction> {
@@ -2446,7 +2479,24 @@ fn rewrite_instruction(instr: &IRInstruction, annotated_instructions: &mut HashM
             let new_rhs = replace_operand(rhs, reaching_copies);
             return Some(IRInstruction::Binary { op: *op, lhs: new_lhs, rhs: new_rhs, dst: dst.clone() });
         }
-        _ => return None,
+        IRInstruction::Ret(value) => {
+            let new_value = optionally_replace_operand(value, reaching_copies);
+            return Some(IRInstruction::Ret(new_value));
+        }
+        IRInstruction::Call { target, args, dst } => {
+            let new_args = args.iter().map(|arg| replace_operand(arg, reaching_copies)).collect();
+            let new_dst = optionally_replace_operand(dst, reaching_copies);
+            return Some(IRInstruction::Call { target: target.clone(), args: new_args, dst: new_dst });
+        }
+        IRInstruction::JumpIfNotZero { condition, target } => {
+            let new_condition = replace_operand(condition, reaching_copies);
+            return Some(IRInstruction::JumpIfNotZero { condition: new_condition, target: target.clone() });
+        }
+        IRInstruction::JumpIfZero { condition, target } => {
+            let new_condition = replace_operand(condition, reaching_copies);
+            return Some(IRInstruction::JumpIfZero { condition: new_condition, target: target.clone() });
+        }
+        _ => return Some(instr.clone()),
     }
 }
 
@@ -2463,28 +2513,6 @@ fn get_block_successors(block: &Node) -> Vec<NodeId> {
         Node::Entry { successors } => successors.clone(),
         Node::Exit { .. } => vec![NodeId::Exit],
     }
-}
-
-fn meet(block: &Node, all_copies: &[IRInstruction], annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>) -> Vec<IRInstruction> {
-    let mut incoming_copies = all_copies.to_vec();
-    let block_predecessors = get_block_predecessors(block);
-
-    for pred in block_predecessors.iter() {
-        match pred {
-            NodeId::Entry => return vec![],
-            NodeId::Exit => panic!("AAAA"),
-            NodeId::BlockId(_) => {
-                let pred_out_copies = annotated_blocks.get(pred).unwrap();
-                incoming_copies = incoming_copies
-                        .iter()
-                        .filter(|copy| pred_out_copies.contains(copy))
-                        .cloned()
-                        .collect();
-            }
-        }
-    }
-
-    incoming_copies
 }
 
 fn get_block_predecessors(block: &Node) -> Vec<NodeId> {
