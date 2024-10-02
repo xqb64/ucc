@@ -92,6 +92,10 @@ fn run(opts: &Opt) -> Result<()> {
         optimizations.push(Optimization::CopyPropagation);
     }
 
+    if opts.eliminate_dead_stores {
+        optimizations.push(Optimization::DeadStoreElimination);
+    }
+
     let optimized_prog = ir_prog.optimize(optimizations);
 
     if opts.tacky {

@@ -1440,6 +1440,8 @@ impl Optimize for IRFunction {
             return self.clone();
         }
 
+        let all_static_vars = find_all_static_variables();
+
         loop {
             let mut aliased_vars = address_taken_analysis(&self.body);
 
@@ -1463,9 +1465,9 @@ impl Optimize for IRFunction {
                 cfg = copy_propagation(&mut cfg, &mut aliased_vars);
             }
 
-            // if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
-            //     cfg = dead_store_elimination(&cfg);
-            // }
+            if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
+                cfg = dead_store_elimination(&mut cfg, &all_static_vars);
+            }
 
             let optimized_function_body = control_flow_graph_to_ir(&mut cfg);
 
@@ -1526,6 +1528,19 @@ fn take_exit_node(cfg: &mut Vec<Node>) -> Node {
     });
 
     exit_node
+}
+
+fn find_all_static_variables() -> Vec<IRValue> {
+    let mut static_vars = vec![];
+    for (name, entry) in SYMBOL_TABLE.lock().unwrap().iter() {
+        if let IdentifierAttrs::StaticAttr {
+            initial_value,
+            global: _,
+        } = &entry.attrs {
+            static_vars.push(IRValue::Var(name.clone()));            
+        }
+    }
+    static_vars
 }
 
 pub fn eliminate_empty_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
@@ -1813,8 +1828,52 @@ pub fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
     cfg
 }
 
-fn dead_store_elimination(instructions: &Vec<Node>) -> Vec<Node> {
-    instructions.to_owned()
+fn dead_store_elimination(cfg: &mut Vec<Node>, all_static_variables: &[IRValue]) -> Vec<Node> {
+    let mut annotated_instructions = HashMap::new();
+    let mut annotated_blocks = HashMap::new();
+
+    // Perform dead store elimination analysis
+    find_dead_stores(
+        cfg,
+        &mut annotated_blocks,
+        &mut annotated_instructions,
+        all_static_variables,
+    );
+
+    // Iterate over each block and eliminate dead stores based on the analysis
+    let mut new_cfg = vec![];
+    for block in cfg.iter() {
+        let mut new_block = block.clone();
+        let instructions = get_block_instructions(block);
+
+        let mut new_instructions = vec![];
+        for instr in instructions {
+            // Check if the instruction is a dead store
+            if !is_dead_store(
+                &instr,
+                &mut annotated_instructions,
+                id2num(&get_block_id(block)),
+            ) {
+                // If it's not a dead store, keep the instruction
+                new_instructions.push(instr.clone());
+            }
+        }
+
+        // Update the block with new instructions
+        match new_block {
+            Node::Block {
+                ref mut instructions,
+                ..
+            } => {
+                *instructions = new_instructions;
+            }
+            _ => {}
+        }
+
+        new_cfg.push(new_block);
+    }
+
+    new_cfg
 }
 
 fn control_flow_graph_to_ir(cfg: &mut Vec<Node>) -> Vec<IRInstruction> {
@@ -2816,5 +2875,212 @@ fn is_static(value: &IRValue) -> bool {
             false
         }
         _ => false,
+    }
+}
+
+fn transfer_dead_store(
+    block: &Node,
+    annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRValue>>,
+    annotated_blocks: &mut HashMap<NodeId, Vec<IRValue>>,
+    end_live_variables: &[IRValue],
+    all_static_variables: &[IRValue],
+) {
+    // Start with the live variables at the end of the block
+    let mut current_live_variables = end_live_variables.to_vec();
+
+    // Get the instructions for the current block
+    let instructions = get_block_instructions(block);
+
+    // Process the instructions in reverse order
+    for instruction in instructions.iter().rev() {
+        // Annotate the instruction with the current live variables
+        annotated_instructions.insert(
+            (id2num(&get_block_id(block)), instruction.clone()),
+            current_live_variables.clone(),
+        );
+
+        // Update the live variables based on the type of instruction
+        match instruction {
+            IRInstruction::Binary { op, lhs, rhs, dst } => {
+                // Remove the destination from live variables
+                current_live_variables.retain(|x| x != dst);
+
+                // Add source variables if they are vars
+                if let IRValue::Var(_) = lhs {
+                    current_live_variables.push(lhs.clone());
+                }
+                if let IRValue::Var(_) = rhs {
+                    current_live_variables.push(rhs.clone());
+                }
+            }
+            IRInstruction::Unary { src, dst, .. } => {
+                // Remove the destination from live variables
+                current_live_variables.retain(|x| x != dst);
+
+                // Add the source variable if it is a var
+                if let IRValue::Var(_) = src {
+                    current_live_variables.push(src.clone());
+                }
+            }
+            IRInstruction::JumpIfZero { condition, .. } |
+            IRInstruction::JumpIfNotZero { condition, .. } => {
+                // Add the condition variable if it is a var
+                if let IRValue::Var(_) = condition {
+                    current_live_variables.push(condition.clone());
+                }
+            }
+            IRInstruction::Call { args, dst, .. } => {
+                // Remove the destination from live variables
+                if let Some(dst_var) = dst {
+                    current_live_variables.retain(|x| x != dst_var);
+                }
+
+                // Add the argument variables
+                for arg in args {
+                    if let IRValue::Var(_) = arg {
+                        current_live_variables.push(arg.clone());
+                    }
+                }
+
+                // Add all static and aliased variables
+                current_live_variables.extend(all_static_variables.iter().cloned());
+            }
+            IRInstruction::Ret(Some(v)) => {
+                // Add the return value if it is a var
+                if let IRValue::Var(_) = v {
+                    current_live_variables.push(v.clone());
+                }
+            }
+            IRInstruction::Load { src_ptr, dst } => {
+                // Remove the destination from live variables
+                current_live_variables.retain(|x| x != dst);
+
+                // Add the source pointer variable
+                if let IRValue::Var(_) = src_ptr {
+                    current_live_variables.push(src_ptr.clone());
+                }
+
+                // Add all static and aliased variables
+                current_live_variables.extend(all_static_variables.iter().cloned());
+            }
+            IRInstruction::Store { src, dst_ptr } => {
+                // Add the source and destination pointer variables
+                if let IRValue::Var(_) = src {
+                    current_live_variables.push(src.clone());
+                }
+                if let IRValue::Var(_) = dst_ptr {
+                    current_live_variables.push(dst_ptr.clone());
+                }
+            }
+            _ => {
+                // Other instruction types don't affect live variables
+            }
+        }
+    }
+
+    // Update the annotated blocks with the final live variables for this block
+    annotated_blocks.insert(get_block_id(block), current_live_variables.clone());
+}
+
+fn meet_dead_store(block: &Node, annotated_blocks: &mut HashMap<NodeId, Vec<IRValue>>, all_static_variables: &[IRValue]) -> Vec<IRValue> {
+    let mut live_vars = vec![];
+    let successors = get_block_successors(block);
+
+    for succ in successors {
+        match succ {
+            NodeId::Exit => live_vars.extend(all_static_variables.to_vec()),
+            NodeId::Entry => panic!("AAAAAAA"),
+            NodeId::BlockId(id) => {
+                let succ_live_vars = annotated_blocks.get(&succ).unwrap();
+                live_vars.extend(succ_live_vars.to_owned());
+            }
+        }
+    }
+
+    live_vars
+}
+
+fn is_dead_store(instr: &IRInstruction, annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRValue>>, num: usize) -> bool {
+    if let IRInstruction::Call { target, args, dst } = instr {
+        return false;
+    }
+
+    if let Some(dst) = get_dst(instr) {
+        let live_variables = annotated_instructions
+            .get(&(num, instr.to_owned()))
+            .unwrap();
+
+        if !live_variables.contains(&dst) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn find_dead_stores(
+    cfg: &mut Vec<Node>,
+    annotated_blocks: &mut HashMap<NodeId, Vec<IRValue>>,
+    annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRValue>>,
+    all_static_variables: &[IRValue],
+) {
+    let mut worklist = vec![];
+
+    // Initialize the worklist with all blocks
+    for node in cfg.iter() {
+        match node {
+            Node::Entry { .. } | Node::Exit { .. } => continue,
+            Node::Block { .. } => {
+                worklist.push(node.clone());
+                // Initialize the annotated blocks with empty live variable sets
+                annotated_blocks.insert(get_block_id(node), vec![]);
+            }
+        }
+    }
+
+    // Continue iterating until there are no changes
+    while !worklist.is_empty() {
+        let block = worklist.remove(0);
+
+        // Get the old live variable set
+        let old_live_vars = annotated_blocks
+            .get(&get_block_id(&block))
+            .cloned()
+            .unwrap_or_default();
+
+        // Compute the live variables at the end of the block (meet function)
+        let end_live_vars = meet_dead_store(&block, annotated_blocks, all_static_variables);
+
+        // Perform transfer function to propagate dead store information
+        transfer_dead_store(
+            &block,
+            annotated_instructions,
+            annotated_blocks,
+            &end_live_vars,
+            all_static_variables,
+        );
+
+        // If the live variable set changes, propagate it to successors
+        let new_live_vars = annotated_blocks
+            .get(&get_block_id(&block))
+            .cloned()
+            .unwrap_or_default();
+
+        if new_live_vars != old_live_vars {
+            let block_successors = get_block_successors(&block);
+
+            for succ in block_successors.iter() {
+                match succ {
+                    NodeId::Exit => continue,
+                    NodeId::Entry => panic!("Entry node encountered during propagation"),
+                    NodeId::BlockId(_) => {
+                        let successor = get_block_by_id(cfg, succ);
+                        if !worklist.contains(&successor) {
+                            worklist.push(successor.clone());
+                        }
+                    }
+                }
+            }
+        }
     }
 }
