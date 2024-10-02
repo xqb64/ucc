@@ -393,7 +393,7 @@ impl Parser {
                 Some(Token::Struct) => {
                     specifier_list.push(self.current.clone().unwrap());
                     self.advance();
-                    
+
                     // Check if the next token is an identifier
                     if let Some(Token::Identifier(_)) = self.current {
                         specifier_list.push(self.current.clone().unwrap());
@@ -410,7 +410,7 @@ impl Parser {
         }
         specifier_list
     }
-    
+
     fn process_declarator(
         &self,
         declarator: &Declarator,

@@ -1,7 +1,13 @@
-use std::{collections::{HashMap, HashSet}, default};
+use std::{
+    collections::{HashMap, HashSet},
+    default,
+};
 
 use crate::{
-    cfg::{self, instructions_to_cfg, pretty_print_graph_as_graphviz, remove_edge, Node, NodeId}, codegen::tacky_type, lexer::Const, parser::{
+    cfg::{self, instructions_to_cfg, pretty_print_graph_as_graphviz, remove_edge, Node, NodeId},
+    codegen::tacky_type,
+    lexer::Const,
+    parser::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
         BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,
         CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression,
@@ -9,10 +15,11 @@ use crate::{
         FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement,
         SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression,
         Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement,
-    }, typechecker::{
+    },
+    typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
         IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE, TYPE_TABLE,
-    }
+    },
 };
 use anyhow::Result;
 
@@ -2230,7 +2237,12 @@ fn copy_propagation(cfg: &mut Vec<Node>, aliased_vars: &mut Vec<IRValue>) -> Vec
     let mut annotated_blocks = HashMap::new();
 
     // Perform reaching copies analysis
-    find_reaching_copies(cfg, &mut annotated_blocks, &mut annotated_instructions, aliased_vars);
+    find_reaching_copies(
+        cfg,
+        &mut annotated_blocks,
+        &mut annotated_instructions,
+        aliased_vars,
+    );
 
     // Iterate over each block and rewrite instructions based on reaching copies
     let mut new_cfg = vec![];
@@ -2240,14 +2252,21 @@ fn copy_propagation(cfg: &mut Vec<Node>, aliased_vars: &mut Vec<IRValue>) -> Vec
 
         let mut new_instructions = vec![];
         for instr in instructions {
-            if let Some(rewritten_instr) = rewrite_instruction(&instr, id2num(&get_block_id(block)), &mut annotated_instructions) {
+            if let Some(rewritten_instr) = rewrite_instruction(
+                &instr,
+                id2num(&get_block_id(block)),
+                &mut annotated_instructions,
+            ) {
                 new_instructions.push(rewritten_instr);
             }
         }
 
         // Update the block with new instructions
         match new_block {
-            Node::Block { ref mut instructions, .. } => {
+            Node::Block {
+                ref mut instructions,
+                ..
+            } => {
                 *instructions = new_instructions;
             }
             _ => {}
@@ -2280,13 +2299,27 @@ fn find_reaching_copies(
 
     while !worklist.is_empty() {
         let block = worklist.remove(0);
-        let old_annotation = annotated_blocks.get(&get_block_id(&block)).cloned().unwrap();
+        let old_annotation = annotated_blocks
+            .get(&get_block_id(&block))
+            .cloned()
+            .unwrap();
 
         let incoming_copies = meet(&block, &all_copies, annotated_blocks);
 
-        transfer(&block, &incoming_copies, annotated_instructions, annotated_blocks, aliased_vars);
+        transfer(
+            &block,
+            &incoming_copies,
+            annotated_instructions,
+            annotated_blocks,
+            aliased_vars,
+        );
 
-        if old_annotation != annotated_blocks.get(&get_block_id(&block)).cloned().unwrap() {
+        if old_annotation
+            != annotated_blocks
+                .get(&get_block_id(&block))
+                .cloned()
+                .unwrap()
+        {
             let block_successors = get_block_successors(&block);
             for succ in block_successors.iter() {
                 match succ {
@@ -2304,7 +2337,11 @@ fn find_reaching_copies(
     }
 }
 
-fn meet(block: &Node, all_copies: &[IRInstruction], annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>) -> Vec<IRInstruction> {
+fn meet(
+    block: &Node,
+    all_copies: &[IRInstruction],
+    annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>,
+) -> Vec<IRInstruction> {
     let mut incoming_copies = all_copies.to_vec();
     let block_predecessors = get_block_predecessors(block);
 
@@ -2316,10 +2353,10 @@ fn meet(block: &Node, all_copies: &[IRInstruction], annotated_blocks: &mut HashM
                 let empty_vec = vec![];
                 let pred_out_copies = annotated_blocks.get(pred).unwrap_or(&empty_vec);
                 incoming_copies = incoming_copies
-                        .iter()
-                        .filter(|copy| pred_out_copies.contains(copy))
-                        .cloned()
-                        .collect();
+                    .iter()
+                    .filter(|copy| pred_out_copies.contains(copy))
+                    .cloned()
+                    .collect();
             }
         }
     }
@@ -2379,12 +2416,18 @@ fn transfer(
 
                 // Filter out updated dst and possibly add the copy
                 filter_updated(&mut current_reaching_copies, dst);
-                if (tacky_type(src) == tacky_type(dst)) || (get_signedness(&tacky_type(src)) == get_signedness(&tacky_type(dst))) {
+                if (tacky_type(src) == tacky_type(dst))
+                    || (get_signedness(&tacky_type(src)) == get_signedness(&tacky_type(dst)))
+                {
                     current_reaching_copies.push(instruction.clone());
                 }
             }
 
-            IRInstruction::Call { target: _, args: _, dst } => {
+            IRInstruction::Call {
+                target: _,
+                args: _,
+                dst,
+            } => {
                 // First filter out copies killed by dst
                 if let Some(d) = dst {
                     filter_updated(&mut current_reaching_copies, d);
@@ -2402,8 +2445,12 @@ fn transfer(
             IRInstruction::Store { src, dst_ptr: _ } => {
                 // Filter out copies that are static or aliased
                 current_reaching_copies.retain(|cp| match cp {
-                    IRInstruction::Copy { src: cp_src, dst: cp_dst } => {
-                        !var_is_aliased(aliased_vars, cp_src) && !var_is_aliased(aliased_vars, cp_dst)
+                    IRInstruction::Copy {
+                        src: cp_src,
+                        dst: cp_dst,
+                    } => {
+                        !var_is_aliased(aliased_vars, cp_src)
+                            && !var_is_aliased(aliased_vars, cp_dst)
                     }
                     _ => true,
                 });
@@ -2414,7 +2461,12 @@ fn transfer(
                 filter_updated(&mut current_reaching_copies, dst);
             }
 
-            IRInstruction::Binary { op: _, lhs: _, rhs: _, dst } => {
+            IRInstruction::Binary {
+                op: _,
+                lhs: _,
+                rhs: _,
+                dst,
+            } => {
                 // Filter out copies whose src or dst is the same as dst
                 filter_updated(&mut current_reaching_copies, dst);
             }
@@ -2450,8 +2502,17 @@ fn get_dst(instr: &IRInstruction) -> Option<IRValue> {
     match instr {
         IRInstruction::Copy { src: _, dst } => Some(dst.clone()),
         IRInstruction::Unary { op: _, src: _, dst } => Some(dst.clone()),
-        IRInstruction::Binary { op: _, lhs: _, rhs: _, dst } => Some(dst.clone()),
-        IRInstruction::Call { target: _, args: _, dst } => dst.clone(),
+        IRInstruction::Binary {
+            op: _,
+            lhs: _,
+            rhs: _,
+            dst,
+        } => Some(dst.clone()),
+        IRInstruction::Call {
+            target: _,
+            args: _,
+            dst,
+        } => dst.clone(),
         IRInstruction::CopyFromOffset { dst, .. } => Some(dst.clone()),
         IRInstruction::CopyToOffset { dst, .. } => Some(IRValue::Var(dst.clone())),
         IRInstruction::Load { dst, .. } => Some(dst.clone()),
@@ -2465,7 +2526,11 @@ fn get_dst(instr: &IRInstruction) -> Option<IRValue> {
         IRInstruction::ZeroExtend { dst, .. } => Some(dst.clone()),
         IRInstruction::Truncate { dst, .. } => Some(dst.clone()),
         IRInstruction::Store { .. } => None,
-        IRInstruction::JumpIfNotZero { .. } | IRInstruction::JumpIfZero { .. } | IRInstruction::Label(_) | IRInstruction::Jump(_) | IRInstruction::Ret(_) => None,
+        IRInstruction::JumpIfNotZero { .. }
+        | IRInstruction::JumpIfZero { .. }
+        | IRInstruction::Label(_)
+        | IRInstruction::Jump(_)
+        | IRInstruction::Ret(_) => None,
     }
 }
 
@@ -2506,7 +2571,11 @@ fn replace_operand(op: &IRValue, reaching_copies: &[IRInstruction]) -> IRValue {
     }
 
     for copy in reaching_copies.iter() {
-        if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+        if let IRInstruction::Copy {
+            src: copy_src,
+            dst: copy_dst,
+        } = copy
+        {
             if copy_dst == op {
                 return copy_src.to_owned();
             }
@@ -2516,114 +2585,200 @@ fn replace_operand(op: &IRValue, reaching_copies: &[IRInstruction]) -> IRValue {
     return op.to_owned();
 }
 
-fn optionally_replace_operand(op: &Option<IRValue>, reaching_copies: &[IRInstruction]) -> Option<IRValue> {
+fn optionally_replace_operand(
+    op: &Option<IRValue>,
+    reaching_copies: &[IRInstruction],
+) -> Option<IRValue> {
     match op {
         Some(value) => Some(replace_operand(value, reaching_copies)),
         None => None,
     }
 }
 
-fn rewrite_instruction(instr: &IRInstruction, num: usize, annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRInstruction>>) -> Option<IRInstruction> {
-    let reaching_copies = annotated_instructions.get(&(num, instr.to_owned())).unwrap();
+fn rewrite_instruction(
+    instr: &IRInstruction,
+    num: usize,
+    annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRInstruction>>,
+) -> Option<IRInstruction> {
+    let reaching_copies = annotated_instructions
+        .get(&(num, instr.to_owned()))
+        .unwrap();
 
     match instr {
         IRInstruction::Copy { src, dst } => {
             for copy in reaching_copies.iter() {
-                if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+                if let IRInstruction::Copy {
+                    src: copy_src,
+                    dst: copy_dst,
+                } = copy
+                {
                     if copy == instr || (copy_src == dst && copy_dst == src) {
                         return None;
                     }
                 }
             }
             let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::Copy { src: new_src, dst: dst.clone() });
+            return Some(IRInstruction::Copy {
+                src: new_src,
+                dst: dst.clone(),
+            });
         }
         IRInstruction::Unary { op, src, dst } => {
             let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::Unary { op: *op, src: new_src, dst: dst.clone() });
+            return Some(IRInstruction::Unary {
+                op: *op,
+                src: new_src,
+                dst: dst.clone(),
+            });
         }
         IRInstruction::Binary { op, lhs, rhs, dst } => {
             let new_lhs = replace_operand(lhs, reaching_copies);
             let new_rhs = replace_operand(rhs, reaching_copies);
-            return Some(IRInstruction::Binary { op: *op, lhs: new_lhs, rhs: new_rhs, dst: dst.clone() });
+            return Some(IRInstruction::Binary {
+                op: *op,
+                lhs: new_lhs,
+                rhs: new_rhs,
+                dst: dst.clone(),
+            });
         }
         IRInstruction::Ret(value) => {
             let new_value = optionally_replace_operand(value, reaching_copies);
             return Some(IRInstruction::Ret(new_value));
         }
         IRInstruction::Call { target, args, dst } => {
-            let new_args = args.iter().map(|arg| replace_operand(arg, reaching_copies)).collect();
-            return Some(IRInstruction::Call { target: target.clone(), args: new_args, dst: dst.clone() });
+            let new_args = args
+                .iter()
+                .map(|arg| replace_operand(arg, reaching_copies))
+                .collect();
+            return Some(IRInstruction::Call {
+                target: target.clone(),
+                args: new_args,
+                dst: dst.clone(),
+            });
         }
         IRInstruction::JumpIfNotZero { condition, target } => {
             let new_condition = replace_operand(condition, reaching_copies);
-            return Some(IRInstruction::JumpIfNotZero { condition: new_condition, target: target.clone() });
+            return Some(IRInstruction::JumpIfNotZero {
+                condition: new_condition,
+                target: target.clone(),
+            });
         }
         IRInstruction::JumpIfZero { condition, target } => {
             let new_condition = replace_operand(condition, reaching_copies);
-            return Some(IRInstruction::JumpIfZero { condition: new_condition, target: target.clone() });
+            return Some(IRInstruction::JumpIfZero {
+                condition: new_condition,
+                target: target.clone(),
+            });
         }
         IRInstruction::DoubleToInt { src, dst } => {
             let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::DoubleToInt { src: new_src, dst: dst.clone() });
+            return Some(IRInstruction::DoubleToInt {
+                src: new_src,
+                dst: dst.clone(),
+            });
         }
         IRInstruction::DoubletoUInt { src, dst } => {
             let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::DoubletoUInt { src: new_src, dst: dst.clone() });
+            return Some(IRInstruction::DoubletoUInt {
+                src: new_src,
+                dst: dst.clone(),
+            });
         }
         IRInstruction::IntToDouble { src, dst } => {
             let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::IntToDouble { src: new_src, dst: dst.clone() });
+            return Some(IRInstruction::IntToDouble {
+                src: new_src,
+                dst: dst.clone(),
+            });
         }
         IRInstruction::UIntToDouble { src, dst } => {
             let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::UIntToDouble { src: new_src, dst: dst.clone() });
+            return Some(IRInstruction::UIntToDouble {
+                src: new_src,
+                dst: dst.clone(),
+            });
         }
         IRInstruction::SignExtend { src, dst } => {
             let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::SignExtend { src: new_src, dst: dst.clone() });
+            return Some(IRInstruction::SignExtend {
+                src: new_src,
+                dst: dst.clone(),
+            });
         }
         IRInstruction::ZeroExtend { src, dst } => {
             let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::ZeroExtend { src: new_src, dst: dst.clone() });
+            return Some(IRInstruction::ZeroExtend {
+                src: new_src,
+                dst: dst.clone(),
+            });
         }
         IRInstruction::Truncate { src, dst } => {
             let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::Truncate { src: new_src, dst: dst.clone() });
+            return Some(IRInstruction::Truncate {
+                src: new_src,
+                dst: dst.clone(),
+            });
         }
         IRInstruction::Load { src_ptr, dst } => {
             let new_src_ptr = replace_operand(src_ptr, reaching_copies);
-            return Some(IRInstruction::Load { src_ptr: new_src_ptr, dst: dst.clone() });
+            return Some(IRInstruction::Load {
+                src_ptr: new_src_ptr,
+                dst: dst.clone(),
+            });
         }
         IRInstruction::Store { src, dst_ptr } => {
             let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::Store { src: new_src, dst_ptr: dst_ptr.clone() });
+            return Some(IRInstruction::Store {
+                src: new_src,
+                dst_ptr: dst_ptr.clone(),
+            });
         }
         IRInstruction::CopyToOffset { src, dst, offset } => {
             let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::CopyToOffset { src: new_src, dst: dst.clone(), offset: offset.clone() });
+            return Some(IRInstruction::CopyToOffset {
+                src: new_src,
+                dst: dst.clone(),
+                offset: offset.clone(),
+            });
         }
         IRInstruction::CopyFromOffset { src, offset, dst } => {
             let new_src = match replace_operand(&IRValue::Var(src.to_owned()), reaching_copies) {
                 IRValue::Var(name) => name,
                 _ => panic!("Expected variable"),
             };
-            return Some(IRInstruction::CopyFromOffset { src: new_src, offset: offset.clone(), dst: dst.clone() });
+            return Some(IRInstruction::CopyFromOffset {
+                src: new_src,
+                offset: offset.clone(),
+                dst: dst.clone(),
+            });
         }
-        IRInstruction::AddPtr { ptr, index, scale, dst } => {
+        IRInstruction::AddPtr {
+            ptr,
+            index,
+            scale,
+            dst,
+        } => {
             let new_ptr = replace_operand(ptr, reaching_copies);
             let new_index = replace_operand(index, reaching_copies);
-            return Some(IRInstruction::AddPtr { ptr: new_ptr, index: new_index, scale: *scale, dst: dst.clone() });
+            return Some(IRInstruction::AddPtr {
+                ptr: new_ptr,
+                index: new_index,
+                scale: *scale,
+                dst: dst.clone(),
+            });
         }
         _ => return Some(instr.clone()),
     }
 }
 
 fn get_block_by_id(cfg: &Vec<Node>, id: &NodeId) -> Node {
-    cfg.iter().find(|node| match node {
-        Node::Block { id: block_id, .. } => block_id == id,
-        _ => false,
-    }).unwrap().clone()
+    cfg.iter()
+        .find(|node| match node {
+            Node::Block { id: block_id, .. } => block_id == id,
+            _ => false,
+        })
+        .unwrap()
+        .clone()
 }
 
 fn get_block_successors(block: &Node) -> Vec<NodeId> {
