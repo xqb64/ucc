@@ -1,3 +1,5 @@
+use crate::ir::ReachingCopies;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SimpleInstr {
     Label(String),
@@ -70,13 +72,54 @@ where I: Clone + Instr, V: Clone {
         }
     }
 
-    fn update_basic_block(&mut self, block_idx: usize, new_block: BasicBlock<V, I>) {
+    pub fn strip_annotations(self) -> CFG<(), I> {
+        CFG {
+            basic_blocks: self.basic_blocks.into_iter().map(|(idx, block)| {
+                (
+                    idx,
+                    BasicBlock {
+                        id: block.id,
+                        instructions: block.instructions.into_iter().map(|(_, instr)| ((), instr)).collect(),
+                        preds: block.preds,
+                        succs: block.succs,
+                        value: (),
+                    },
+                )
+            }).collect(),
+            entry_succs: self.entry_succs,
+            exit_preds: self.exit_preds,
+            debug_label: self.debug_label,
+        }
+    }
+
+    pub fn initialize_annotation(self, ident: ReachingCopies) -> CFG<ReachingCopies, I> {
+        CFG {
+            basic_blocks: self.basic_blocks.into_iter().map(|(idx, block)| {
+                (
+                    idx,
+                    BasicBlock {
+                        id: block.id,
+                        instructions: block.instructions.into_iter().map(|(_, instr)| (ident.clone(), instr)).collect(),
+                        preds: block.preds,
+                        succs: block.succs,
+                        value: ident.clone(),
+                    },
+                )
+            }).collect(),
+            entry_succs: self.entry_succs,
+            exit_preds: self.exit_preds,
+            debug_label: self.debug_label,
+        }
+    }
+
+    pub fn update_basic_block(&mut self, block_idx: usize, new_block: BasicBlock<V, I>) -> CFG<V, I> {
         for (idx, block) in &mut self.basic_blocks {
             if *idx == block_idx {
-                *block = new_block;
+                *block = new_block.clone();
                 break;
             }
         }
+        self.clone()
     }
 
     pub fn add_edge(&mut self, pred: NodeId, succ: NodeId) {
@@ -137,7 +180,7 @@ where I: Clone + Instr, V: Clone {
         finished_blocks
     }
 
-    fn get_block_value(&self, blocknum: usize) -> &V {
+    pub fn get_block_value(&self, blocknum: usize) -> &V {
         let block = self.basic_blocks.iter().find(|(i, _)| *i == blocknum).unwrap();
         &block.1.value
     }
