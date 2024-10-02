@@ -186,6 +186,7 @@ impl Parser {
 
     fn parse_var_or_fn_decl(&mut self) -> Result<BlockItem> {
         let specifier_list = self.consume_while_specifier();
+        println!("specifier_list: {:?}", specifier_list);
 
         let (base_type, storage_class) = self.parse_type_and_storage_specifiers(&specifier_list)?;
 
@@ -392,8 +393,14 @@ impl Parser {
                 Some(Token::Struct) => {
                     specifier_list.push(self.current.clone().unwrap());
                     self.advance();
-                    specifier_list.push(self.current.clone().unwrap());
-                    self.advance();
+                    
+                    // Check if the next token is an identifier
+                    if let Some(Token::Identifier(_)) = self.current {
+                        specifier_list.push(self.current.clone().unwrap());
+                        self.advance();
+                    } else {
+                        panic!("Expected an identifier after 'struct'");
+                    }
                 }
                 _ => {
                     specifier_list.push(self.current.clone().unwrap());
@@ -403,7 +410,7 @@ impl Parser {
         }
         specifier_list
     }
-
+    
     fn process_declarator(
         &self,
         declarator: &Declarator,
@@ -571,7 +578,10 @@ impl Parser {
             match storage_classes[0] {
                 Token::Static => Some(StorageClass::Static),
                 Token::Extern => Some(StorageClass::Extern),
-                _ => unreachable!(),
+                _ => {
+                    println!("{:?}", storage_classes);
+                    unreachable!()
+                }
             }
         } else {
             None

@@ -1431,13 +1431,13 @@ impl Optimize for IRFunction {
             }
 
             let mut cfg = instructions_to_cfg(&post_constant_folding);
-            pretty_print_graph_as_graphviz(&cfg);
+            // pretty_print_graph_as_graphviz(&cfg);
 
             if enabled_optimizations.contains(&Optimization::UnreachableCodeElimination) {
                 cfg = unreachable_code_elimination(&mut cfg).to_vec();
             }
 
-            pretty_print_graph_as_graphviz(&cfg);
+            // pretty_print_graph_as_graphviz(&cfg);
 
             if enabled_optimizations.contains(&Optimization::CopyPropagation) {
                 cfg = copy_propagation(&mut cfg);

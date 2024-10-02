@@ -191,4 +191,7 @@ struct Opt {
 
     #[structopt(name = "propagate-copies", long)]
     propagate_copies: bool,
+
+    #[structopt(name = "eliminate-dead-stores", long)]
+    eliminate_dead_stores: bool,
 }
