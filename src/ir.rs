@@ -2379,7 +2379,7 @@ fn transfer(
 
                 // Filter out updated dst and possibly add the copy
                 filter_updated(&mut current_reaching_copies, dst);
-                if tacky_type(src) == tacky_type(dst) {
+                if (tacky_type(src) == tacky_type(dst)) || (get_signedness(&tacky_type(src)) == get_signedness(&tacky_type(dst))) {
                     current_reaching_copies.push(instruction.clone());
                 }
             }
