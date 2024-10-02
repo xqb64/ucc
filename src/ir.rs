@@ -1494,22 +1494,22 @@ impl Optimize for IRFunction {
                 post_constant_folding,
             );
 
-            cfg.print_as_graphviz();
+            // cfg.print_as_graphviz();
             
             // First optimization: Unreachable code elimination
             if enabled_optimizations.contains(&Optimization::UnreachableCodeElimination) {
                 cfg = unreachable_code_elimination(&mut cfg).to_owned();
             }
 
-            cfg.print_as_graphviz();
+            // cfg.print_as_graphviz();
             
             // Reannotate the cfg with ReachingCopies for copy propagation
             if enabled_optimizations.contains(&Optimization::CopyPropagation) {
                 cfg = copy_propagation::<(), IRInstruction>(&mut aliased_vars, &cfg);  // Call copy propagation
             }
 
-            cfg.print_as_graphviz();
-            // 
+            // cfg.print_as_graphviz();
+            
             // if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
             //     cfg = dead_store_elimination(&mut cfg, &all_static_vars);
             // }
@@ -1917,12 +1917,8 @@ impl std::ops::Not for Const {
 
 use std::fmt::Debug;
 
-fn unreachable_code_elimination<V: Clone + Debug, I: Debug  + Instr + Clone>(cfg: &mut cfg::CFG<V, I>) -> cfg::CFG<V, I> {
-    let mut cfg = eliminate_unreachable_blocks(cfg);
-    cfg = eliminate_useless_jumps(&mut cfg);
-    cfg = eliminate_useless_labels(&mut cfg);
-    cfg = remove_empty_blocks(&mut cfg);
-    cfg
+fn unreachable_code_elimination<V: Clone + Debug, I: Debug  + Instr + Clone>(cfg: &mut cfg::CFG<V, I>) -> &mut cfg::CFG<V, I> {
+    remove_empty_blocks(eliminate_useless_labels(eliminate_useless_jumps(eliminate_unreachable_blocks(cfg))))
 }
 
 fn is_zero(konst: &Const) -> bool {
@@ -1943,7 +1939,7 @@ use std::collections::HashSet;
 type NodeSet = HashSet<NodeId>;
 
 // DFS to find reachable blocks
-pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> cfg::CFG<V, I> {
+pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> &mut cfg::CFG<V, I> {
     fn dfs<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &cfg::CFG<V, I>, explored: &mut NodeSet, node_id: NodeId) {
         if explored.contains(&node_id) {
             return;
@@ -1986,14 +1982,13 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
         cfg.remove_edge(pred, succ);
     }
 
-    cfg::CFG {
-        basic_blocks: updated_blocks,
-        ..cfg.clone()
-    }
+    cfg.basic_blocks = updated_blocks;
+
+    cfg
 }
 
 // Eliminate useless jump instructions
-pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> cfg::CFG<V, I> {
+pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> &mut cfg::CFG<V, I> {
     fn drop_last<T>(vec: &mut Vec<T>) {
         vec.pop();
     }
@@ -2022,15 +2017,14 @@ pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: 
             }
         })
         .collect();
+    
+    cfg.basic_blocks = updated_blocks;
 
-    cfg::CFG {
-        basic_blocks: updated_blocks,
-        ..cfg.clone()
-    }
+    cfg
 }
 
 // Eliminate useless label instructions
-pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> cfg::CFG<V, I> {
+pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> &mut cfg::CFG<V, I> {
     let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg.basic_blocks.iter()
         .enumerate()
         .map(|(idx, (n, blk))| {
@@ -2054,13 +2048,12 @@ pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(cfg:
         })
         .collect();
 
-    cfg::CFG {
-        basic_blocks: updated_blocks,
-        ..cfg.clone()
-    }
+    cfg.basic_blocks = updated_blocks;
+
+    cfg
 }
 
-pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> cfg::CFG<V, I> {
+pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> &mut cfg::CFG<V, I> {
     let mut edges_to_remove = Vec::new();
     let mut edges_to_add = Vec::new();
 
@@ -2096,10 +2089,9 @@ pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut
     }
 
     // Return the updated CFG with filtered basic blocks
-    cfg::CFG {
-        basic_blocks: updated_blocks,
-        ..cfg.clone()
-    }
+    cfg.basic_blocks = updated_blocks;
+
+    cfg
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
