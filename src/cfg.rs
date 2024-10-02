@@ -1,339 +1,266 @@
-use crate::ir::{make_temporary, IRInstruction};
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SimpleInstr {
+    Label(String),
+    ConditionalJump(String),
+    UnconditionalJump(String),
+    Return,
+    Other,
+}
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Hash)]
+pub trait Instr {
+    fn simplify(&self) -> SimpleInstr;
+    fn pp_instr(&self) -> String;  // Returns the instruction as a formatted string
+    fn is_jump(&self) -> bool;
+    fn is_label(&self) -> bool;
+}
+
+impl dyn Instr {
+    fn is_jump(&self) -> bool {
+        match self.simplify() {
+            SimpleInstr::ConditionalJump(_)
+            | SimpleInstr::UnconditionalJump(..) => true,
+            _ => false,
+        }
+    }
+
+    fn is_label(&self) -> bool {
+        match self.simplify() {
+            SimpleInstr::Label(_) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum NodeId {
     Entry,
+    Block(usize),  // Block ID is represented by an index
     Exit,
-    BlockId(usize),
 }
 
-impl Ord for NodeId {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match (self, other) {
-            (NodeId::Entry, NodeId::Entry) => std::cmp::Ordering::Equal,
-            (NodeId::Exit, NodeId::Exit) => std::cmp::Ordering::Equal,
-            (NodeId::BlockId(a), NodeId::BlockId(b)) => a.cmp(b),
-            (NodeId::Entry, _) => std::cmp::Ordering::Less,
-            (_, NodeId::Entry) => std::cmp::Ordering::Greater,
-            (NodeId::Exit, _) => std::cmp::Ordering::Greater,
-            (_, NodeId::Exit) => std::cmp::Ordering::Less,
+#[derive(Clone, Debug)]
+pub struct BasicBlock<V, I>
+where I: Clone + Instr, V: Clone {
+    pub id: NodeId,
+    pub instructions: Vec<(V, I)>,  // Tuple of value and instruction
+    pub preds: Vec<NodeId>,          // Predecessor nodes
+    pub succs: Vec<NodeId>,          // Successor nodes
+    pub value: V,                    // Annotated value (e.g., live variables)
+}
+
+#[derive(Clone, Debug)]
+pub struct CFG<V, I>
+where I: Clone + Instr, V: Clone {
+    pub basic_blocks: Vec<(usize, BasicBlock<V, I>)>,  // List of blocks indexed by ID
+    pub entry_succs: Vec<NodeId>,                      // Successors of the entry node
+    pub exit_preds: Vec<NodeId>,                       // Predecessors of the exit node
+    pub debug_label: String,                           // Label for debugging
+}
+
+impl<V, I> CFG<V, I>
+where I: Clone + Instr, V: Clone {
+    pub fn get_succs(&self, node_id: &NodeId) -> Vec<NodeId> {
+        match node_id {
+            NodeId::Entry => self.entry_succs.clone(),
+            NodeId::Block(n) => {
+                let block = self.basic_blocks.iter().find(|(i, _)| *i == *n).unwrap();
+                block.1.succs.clone()
+            }
+            NodeId::Exit => vec![],  // Exit node has no successors
         }
     }
-}
 
-#[derive(Debug, Clone, PartialEq, Hash)]
-pub enum Node {
-    Entry {
-        successors: Vec<NodeId>,
-    },
-    Exit {
-        predecessors: Vec<NodeId>,
-    },
-    Block {
-        id: NodeId,
-        predecessors: Vec<NodeId>,
-        instructions: Vec<IRInstruction>,
-        successors: Vec<NodeId>,
-    },
-}
-
-impl Node {
-    pub fn id(&self) -> NodeId {
-        match self {
-            Node::Entry { .. } => NodeId::Entry,
-            Node::Exit { .. } => NodeId::Exit,
-            Node::Block { id, .. } => id.to_owned(),
+    fn update_basic_block(&mut self, block_idx: usize, new_block: BasicBlock<V, I>) {
+        for (idx, block) in &mut self.basic_blocks {
+            if *idx == block_idx {
+                *block = new_block;
+                break;
+            }
         }
     }
-}
 
-impl Eq for Node {}
+    pub fn add_edge(&mut self, pred: NodeId, succ: NodeId) {
+        let add_if_missing = |node_list: &mut Vec<NodeId>, node_id: NodeId| {
+            if !node_list.contains(&node_id) {
+                node_list.push(node_id);
+            }
+        };
+        
+        // Add successor to predecessor
+        match pred {
+            NodeId::Entry => add_if_missing(&mut self.entry_succs, succ.clone()),
+            NodeId::Block(n) => {
+                let block = self.basic_blocks.iter_mut().find(|(i, _)| *i == n).unwrap();
+                add_if_missing(&mut block.1.succs, succ.clone());
+            }
+            NodeId::Exit => panic!("Cannot add edges from the Exit node"),
+        }
 
-fn partition_into_basic_blocks(instructions: &[IRInstruction]) -> Vec<Vec<&IRInstruction>> {
-    let mut finished_blocks = vec![];
-    let mut current_block = vec![];
+        // Add predecessor to successor
+        match succ {
+            NodeId::Block(n) => {
+                let block = self.basic_blocks.iter_mut().find(|(i, _)| *i == n).unwrap();
+                add_if_missing(&mut block.1.preds, pred);
+            }
+            NodeId::Exit => add_if_missing(&mut self.exit_preds, pred),
+            NodeId::Entry => panic!("Cannot add edges to the Entry node"),
+        }
+    }
 
-    for instruction in instructions {
-        match instruction {
-            IRInstruction::Label { .. } => {
-                if !current_block.is_empty() {
+    fn partition_into_basic_blocks(instructions: Vec<I>) -> Vec<Vec<I>> {
+        let mut finished_blocks = Vec::new();
+        let mut current_block = Vec::new();
+
+        for i in instructions {
+            match i.simplify() {
+                SimpleInstr::Label(_) => {
+                    if !current_block.is_empty() {
+                        finished_blocks.push(current_block);
+                    }
+                    current_block = vec![i];
+                }
+                SimpleInstr::ConditionalJump(_) | SimpleInstr::UnconditionalJump(_) | SimpleInstr::Return => {
+                    current_block.push(i);
                     finished_blocks.push(current_block);
+                    current_block = Vec::new();
                 }
-                current_block = vec![instruction];
-            }
-            IRInstruction::Jump(_)
-            | IRInstruction::JumpIfZero { .. }
-            | IRInstruction::JumpIfNotZero { .. }
-            | IRInstruction::Ret(_) => {
-                current_block.push(instruction);
-                finished_blocks.push(current_block);
-                current_block = vec![];
-            }
-            _ => {
-                current_block.push(instruction);
-            }
-        }
-    }
-
-    if !current_block.is_empty() {
-        finished_blocks.push(current_block);
-    }
-
-    finished_blocks
-}
-
-fn create_basic_blocks(instruction_groups: Vec<Vec<&IRInstruction>>) -> Vec<Node> {
-    let mut blocks = vec![];
-    let mut block_id_counter = 0;
-
-    for group in instruction_groups {
-        blocks.push(Node::Block {
-            id: NodeId::BlockId(block_id_counter),
-            predecessors: vec![],
-            instructions: group.iter().cloned().cloned().collect(),
-            successors: vec![],
-        });
-        block_id_counter += 1;
-    }
-
-    blocks
-}
-
-fn add_all_edges(graph: &mut Vec<Node>) {
-    add_edge(NodeId::Entry, NodeId::BlockId(0), graph);
-
-    for node in graph.clone().iter() {
-        match node {
-            Node::Entry { .. } | Node::Exit { .. } => continue,
-            Node::Block {
-                id, instructions, ..
-            } => {
-                let next_id;
-
-                if *id == max_block_id(graph) {
-                    next_id = NodeId::Exit;
-                } else {
-                    next_id = NodeId::BlockId(id_to_num(id) + 1);
-                }
-
-                let instr = instructions.last().unwrap();
-
-                match instr {
-                    IRInstruction::Ret(_) => add_edge(id.to_owned(), NodeId::Exit, graph),
-                    IRInstruction::Jump(target) => {
-                        let target_id = get_block_by_label(target, graph);
-                        add_edge(id.to_owned(), target_id, graph);
-                    }
-                    IRInstruction::JumpIfZero { target, .. } => {
-                        let target_id = get_block_by_label(target, graph);
-                        add_edge(id.to_owned(), target_id, graph);
-                        add_edge(id.to_owned(), next_id, graph);
-                    }
-                    IRInstruction::JumpIfNotZero { target, .. } => {
-                        let target_id = get_block_by_label(target, graph);
-                        add_edge(id.to_owned(), target_id, graph);
-                        add_edge(id.to_owned(), next_id, graph);
-                    }
-                    _ => add_edge(id.to_owned(), next_id, graph),
+                SimpleInstr::Other => {
+                    current_block.push(i);
                 }
             }
         }
-    }
-}
 
-pub fn add_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
-    fn add_id(nd_id: NodeId, id_list: &mut Vec<NodeId>) {
-        if !id_list.contains(&nd_id) {
-            id_list.push(nd_id);
+        if !current_block.is_empty() {
+            finished_blocks.push(current_block);
         }
+
+        finished_blocks
     }
 
-    // Update the successors of the predecessor
-    if let Some(Node::Block {
-        id: _, successors, ..
-    }) = graph
-        .iter_mut()
-        .find(|n| matches!(n, Node::Block { id, .. } if *id == pred))
+    fn get_block_value(&self, blocknum: usize) -> &V {
+        let block = self.basic_blocks.iter().find(|(i, _)| *i == blocknum).unwrap();
+        &block.1.value
+    }
+
+    fn update_successors<F>(&mut self, node_id: &NodeId, f: F)
+    where
+        F: FnOnce(&mut Vec<NodeId>),
     {
-        add_id(succ.clone(), successors);
-    }
-
-    // Update the predecessors of the successor
-    if let Some(Node::Block {
-        id: _,
-        predecessors,
-        ..
-    }) = graph
-        .iter_mut()
-        .find(|n| matches!(n, Node::Block { id, .. } if *id == succ))
-    {
-        add_id(pred.clone(), predecessors);
-    }
-
-    // Cover the entry and exit nodes
-    if pred == NodeId::Entry {
-        if let Some(Node::Entry { successors }) =
-            graph.iter_mut().find(|n| matches!(n, Node::Entry { .. }))
-        {
-            add_id(succ.clone(), successors);
+        match node_id {
+            NodeId::Entry => f(&mut self.entry_succs),
+            NodeId::Block(n) => {
+                let block = self.basic_blocks.iter_mut().find(|(i, _)| *i == *n).unwrap();
+                f(&mut block.1.succs);
+            }
+            NodeId::Exit => panic!("Internal error: malformed CFG"),
         }
     }
 
-    if succ == NodeId::Exit {
-        if let Some(Node::Exit { predecessors }) =
-            graph.iter_mut().find(|n| matches!(n, Node::Exit { .. }))
-        {
-            add_id(pred.clone(), predecessors);
-        }
-    }
-}
-
-pub fn remove_edge(pred: NodeId, succ: NodeId, graph: &mut Vec<Node>) {
-    fn remove_id(nd_id: NodeId, id_list: &mut Vec<NodeId>) {
-        id_list.retain(|i| i.to_owned() != nd_id);
-    }
-
-    // Update the successors of the predecessor
-    if let Some(Node::Block {
-        id: _, successors, ..
-    }) = graph
-        .iter_mut()
-        .find(|n| matches!(n, Node::Block { id, .. } if *id == pred))
+    fn update_predecessors<F>(&mut self, node_id: &NodeId, f: F)
+    where
+        F: FnOnce(&mut Vec<NodeId>),
     {
-        remove_id(succ.clone(), successors);
-    }
-
-    // Update the predecessors of the successor
-    if let Some(Node::Block {
-        id: _,
-        predecessors,
-        ..
-    }) = graph
-        .iter_mut()
-        .find(|n| matches!(n, Node::Block { id, .. } if *id == succ))
-    {
-        remove_id(pred.clone(), predecessors);
-    }
-}
-
-fn id_to_num(id: &NodeId) -> usize {
-    match id {
-        NodeId::BlockId(num) => *num,
-        _ => unreachable!(),
-    }
-}
-
-fn get_block_by_label(label: &str, graph: &Vec<Node>) -> NodeId {
-    graph.iter().find(|n| matches!(n, Node::Block { instructions, .. } if instructions.iter().any(|x| x == &IRInstruction::Label(label.to_owned()))))
-        .map(|n| match n {
-            Node::Block { id, .. } => id.to_owned(),
-            _ => unreachable!(),
-        })
-        .unwrap()
-}
-
-fn max_block_id(graph: &Vec<Node>) -> NodeId {
-    let mut max = 0;
-
-    for node in graph {
-        match node {
-            Node::Block { id, .. } => {
-                if let NodeId::BlockId(num) = id {
-                    if *num > max {
-                        max = *num;
-                    }
-                }
+        match node_id {
+            NodeId::Exit => f(&mut self.exit_preds),
+            NodeId::Block(n) => {
+                let block = self.basic_blocks.iter_mut().find(|(i, _)| *i == *n).unwrap();
+                f(&mut block.1.preds);
             }
-            _ => continue,
+            NodeId::Entry => panic!("Internal error: malformed CFG"),
         }
     }
 
-    NodeId::BlockId(max)
-}
+    pub fn remove_edge(&mut self, pred: NodeId, succ: NodeId) {
+        let remove_id = |vec: &mut Vec<NodeId>, id: &NodeId| {
+            vec.retain(|x| x != id);
+        };
 
-pub fn instructions_to_cfg(instructions: &[IRInstruction]) -> Vec<Node> {
-    let basic_blocks = create_basic_blocks(partition_into_basic_blocks(instructions));
+        self.update_successors(&pred, |succs| remove_id(succs, &succ));
+        self.update_predecessors(&succ, |preds| remove_id(preds, &pred));
+    }
 
-    let mut graph = vec![Node::Entry { successors: vec![] }];
-    graph.extend(basic_blocks);
-    graph.push(Node::Exit {
-        predecessors: vec![],
-    });
+    fn add_all_edges(&mut self) {
+        use std::collections::HashMap;
 
-    add_all_edges(&mut graph);
-
-    graph
-}
-
-pub fn pretty_print_graph_as_graphviz(graph: &Vec<Node>) {
-    use std::io::Write;
-
-    // Print the graph in Graphviz format to file
-    let mut dotfile = std::fs::File::create(format!("cfg.{}.dot", make_temporary())).unwrap();
-    writeln!(dotfile, "digraph G {{").unwrap();
-
-    for node in graph {
-        match node {
-            Node::Entry { successors } => {
-                for succ in successors {
-                    writeln!(dotfile, "  Entry -> {}", succ).unwrap();
-                }
+        // Create a map from labels to block IDs
+        let mut label_map = HashMap::new();
+        for (idx, block) in &self.basic_blocks {
+            if let SimpleInstr::Label(lbl) = block.instructions[0].1.simplify() {
+                label_map.insert(lbl.clone(), block.id.clone());
             }
-            Node::Exit { predecessors } => {
-                for pred in predecessors {
-                    writeln!(dotfile, "  {} -> Exit", pred).unwrap();
+        }
+
+        // Add outgoing edges from each basic block
+        for (id_num, block) in self.basic_blocks.clone() {
+            let next_block = if id_num == self.basic_blocks.last().unwrap().0 {
+                NodeId::Exit
+            } else {
+                NodeId::Block(id_num + 1)
+            };
+
+            let last_instr = &block.instructions.last().unwrap().1;
+
+            match last_instr.simplify() {
+                SimpleInstr::Return => self.add_edge(block.id.clone(), NodeId::Exit),
+                SimpleInstr::UnconditionalJump(target) => {
+                    let target_id = label_map.get(&target).unwrap();
+                    self.add_edge(block.id.clone(), target_id.clone());
                 }
+                SimpleInstr::ConditionalJump(target) => {
+                    let target_id = label_map.get(&target).unwrap();
+                    self.add_edge(block.id.clone(), next_block.clone());
+                    self.add_edge(block.id.clone(), target_id.clone());
+                }
+                _ => self.add_edge(block.id.clone(), next_block.clone()),
             }
-            Node::Block {
-                id,
-                predecessors,
-                successors,
-                instructions,
-            } => {
-                // print instructions in the block as a table
-                writeln!(dotfile, "  {} [shape=plaintext, label=<", id).unwrap();
-                writeln!(
-                    dotfile,
-                    "<table border=\"0\" cellborder=\"1\" cellspacing=\"0\">"
+        }
+
+        // Finally, add edge from Entry to the first block
+        self.add_edge(NodeId::Entry, NodeId::Block(0));
+    }
+
+    pub fn instructions_to_cfg(debug_label: String, instructions: Vec<I>) -> CFG<V, I>
+    where
+        V: Default,
+    {
+        let partitioned_blocks = Self::partition_into_basic_blocks(instructions);
+
+        let basic_blocks = partitioned_blocks
+            .into_iter()
+            .enumerate()
+            .map(|(idx, instrs)| {
+                let instructions_with_ann = instrs.into_iter().map(|i| (V::default(), i)).collect();
+                (
+                    idx,
+                    BasicBlock {
+                        id: NodeId::Block(idx),
+                        instructions: instructions_with_ann,
+                        preds: vec![],
+                        succs: vec![],
+                        value: V::default(),
+                    },
                 )
-                .unwrap();
-                writeln!(
-                    dotfile,
-                    "<tr><td colspan=\"2\">Block {}</td></tr>",
-                    id_to_num(id)
-                )
-                .unwrap();
-                for instr in instructions {
-                    writeln!(
-                        dotfile,
-                        "<tr><td>{}</td><td>{:?}</td></tr>",
-                        id_to_num(id),
-                        instr
-                    )
-                    .unwrap();
-                }
-                writeln!(dotfile, "</table>>];").unwrap();
+            })
+            .collect();
 
-                for pred in predecessors {
-                    writeln!(dotfile, "  {} -> {}", pred, id).unwrap();
-                }
+        let mut cfg = CFG {
+            basic_blocks,
+            entry_succs: vec![],
+            exit_preds: vec![],
+            debug_label,
+        };
 
-                for succ in successors {
-                    writeln!(dotfile, "  {} -> {}", id, succ).unwrap();
-                }
-            }
-        }
+        cfg.add_all_edges();
+        cfg
     }
 
-    writeln!(dotfile, "}}").unwrap();
-}
-
-impl std::fmt::Display for NodeId {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            NodeId::Entry => write!(f, "Entry"),
-            NodeId::Exit => write!(f, "Exit"),
-            NodeId::BlockId(num) => write!(f, "Block{}", num),
-        }
+    pub fn cfg_to_instructions(&self) -> Vec<I> 
+    where
+        I: Clone,
+    {
+        self.basic_blocks
+            .iter()
+            .flat_map(|(_, block)| block.instructions.iter().map(|(_, instr)| instr.clone()))
+            .collect()
     }
 }

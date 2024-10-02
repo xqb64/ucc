@@ -1,10 +1,7 @@
-use std::{
-    collections::{HashMap, HashSet},
-    default,
-};
+use std::collections::HashMap;
 
 use crate::{
-    cfg::{self, instructions_to_cfg, pretty_print_graph_as_graphviz, remove_edge, Node, NodeId},
+    cfg::{self, BasicBlock, Instr, NodeId, SimpleInstr},
     codegen::tacky_type,
     lexer::Const,
     parser::{
@@ -1434,13 +1431,49 @@ fn address_taken_analysis(instrs: &[IRInstruction]) -> Vec<IRValue> {
     instrs.iter().filter_map(addr_taken).collect()
 }
 
+impl Instr for IRInstruction {
+    fn simplify(&self) -> SimpleInstr {
+        match self {
+            IRInstruction::Label(lbl) => SimpleInstr::Label(lbl.clone()),
+            IRInstruction::JumpIfZero { target, .. } | IRInstruction::JumpIfNotZero { target, .. } => SimpleInstr::ConditionalJump(target.clone()),
+            IRInstruction::Jump(target) => SimpleInstr::UnconditionalJump(target.clone()),
+            IRInstruction::Ret(_) => SimpleInstr::Return,
+            _ => SimpleInstr::Other,
+        }
+    }
+
+    fn pp_instr(&self) -> String {
+        match self {
+            IRInstruction::Label(lbl) => format!("Label({})", lbl),
+            IRInstruction::JumpIfZero { target, .. } | IRInstruction::JumpIfNotZero { target, .. } => format!("ConditionalJump({})", target),
+            IRInstruction::Jump(target) => format!("UnconditionalJump({})", target),
+            IRInstruction::Ret(_) => "Return".to_string(),
+            _ => "Other".to_string(),
+        }
+    }
+
+    fn is_jump(&self) -> bool {
+        match self {
+            IRInstruction::Jump(_) | IRInstruction::JumpIfZero {..} | IRInstruction::JumpIfNotZero { .. } => true,
+            _ => false,
+        }
+    }
+
+    fn is_label(&self) -> bool {
+        match self {
+            IRInstruction::Label(_) => true,
+            _ => false,
+        }
+    }
+}
+
 impl Optimize for IRFunction {
     fn optimize(&mut self, enabled_optimizations: Vec<Optimization>) -> Self {
         if self.body.is_empty() {
             return self.clone();
         }
 
-        let all_static_vars = find_all_static_variables();
+        // let all_static_vars = find_all_static_variables();
 
         loop {
             let mut aliased_vars = address_taken_analysis(&self.body);
@@ -1452,24 +1485,26 @@ impl Optimize for IRFunction {
                 post_constant_folding = self.body.clone();
             }
 
-            let mut cfg = instructions_to_cfg(&post_constant_folding);
-            // pretty_print_graph_as_graphviz(&cfg);
+            let mut cfg: cfg::CFG<(), IRInstruction> = cfg::CFG::<(), IRInstruction>::instructions_to_cfg(
+                "spam".to_string(),
+                post_constant_folding,
+            );
 
             if enabled_optimizations.contains(&Optimization::UnreachableCodeElimination) {
-                cfg = unreachable_code_elimination(&mut cfg).to_vec();
+                cfg = unreachable_code_elimination(&mut cfg).to_owned();
             }
 
             // pretty_print_graph_as_graphviz(&cfg);
 
-            if enabled_optimizations.contains(&Optimization::CopyPropagation) {
-                cfg = copy_propagation(&mut cfg, &mut aliased_vars);
-            }
+            // if enabled_optimizations.contains(&Optimization::CopyPropagation) {
+            //     cfg = copy_propagation(&mut cfg, &mut aliased_vars);
+            // }
 
-            if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
-                cfg = dead_store_elimination(&mut cfg, &all_static_vars);
-            }
+            // if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
+            //     cfg = dead_store_elimination(&mut cfg, &all_static_vars);
+            // }
 
-            let optimized_function_body = control_flow_graph_to_ir(&mut cfg);
+            let optimized_function_body = cfg.cfg_to_instructions();
 
             if optimized_function_body == self.body || optimized_function_body.is_empty() {
                 return IRFunction {
@@ -1483,415 +1518,6 @@ impl Optimize for IRFunction {
             self.body = optimized_function_body;
         }
     }
-}
-
-fn unreachable_code_elimination(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
-    eliminate_empty_blocks(eliminate_useless_labels(eliminate_useless_jumps(
-        eliminate_unreachable_blocks(cfg),
-    )))
-}
-
-fn take_entry_node(cfg: &mut Vec<Node>) -> Node {
-    // find the Entry node in 'cfg' and remove it from the list and return it
-    let entry_node = cfg
-        .iter_mut()
-        .find(|node| match node {
-            Node::Entry { .. } => true,
-            _ => false,
-        })
-        .take()
-        .unwrap()
-        .clone();
-
-    cfg.retain(|node| match node {
-        Node::Entry { .. } => false,
-        _ => true,
-    });
-
-    entry_node
-}
-
-fn take_exit_node(cfg: &mut Vec<Node>) -> Node {
-    let exit_node = cfg
-        .iter_mut()
-        .find(|node| match node {
-            Node::Exit { .. } => true,
-            _ => false,
-        })
-        .take()
-        .unwrap()
-        .clone();
-
-    cfg.retain(|node| match node {
-        Node::Exit { .. } => false,
-        _ => true,
-    });
-
-    exit_node
-}
-
-fn find_all_static_variables() -> Vec<IRValue> {
-    let mut static_vars = vec![];
-    for (name, entry) in SYMBOL_TABLE.lock().unwrap().iter() {
-        if let IdentifierAttrs::StaticAttr {
-            initial_value,
-            global: _,
-        } = &entry.attrs {
-            static_vars.push(IRValue::Var(name.clone()));            
-        }
-    }
-    static_vars
-}
-
-pub fn eliminate_empty_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
-    use crate::cfg::{add_edge, remove_edge};
-
-    let removed_entry = take_entry_node(cfg);
-    let removed_exit = take_exit_node(cfg);
-
-    let mut changes = Vec::new();
-    let mut nodes_to_remove = Vec::new();
-
-    for (index, node) in cfg.iter().enumerate() {
-        if let Node::Block {
-            id,
-            instructions,
-            predecessors,
-            successors,
-            ..
-        } = node
-        {
-            if instructions.is_empty() {
-                match (predecessors.as_slice(), successors.as_slice()) {
-                    ([pred], [succ]) => {
-                        changes.push((pred.clone(), id.clone(), succ.clone()));
-                        nodes_to_remove.push(index); // Mark this node for removal
-                    }
-                    _ => {
-                        panic!("Empty block should have exactly one predecessor and one successor");
-                    }
-                }
-            }
-        }
-    }
-
-    for (pred, id, succ) in changes {
-        remove_edge(pred.clone(), id.clone(), cfg);
-        remove_edge(id.clone(), succ.clone(), cfg);
-        add_edge(pred.clone(), succ.clone(), cfg);
-    }
-
-    nodes_to_remove.reverse();
-    for index in nodes_to_remove {
-        cfg.remove(index);
-    }
-
-    cfg.insert(0, removed_entry);
-    cfg.push(removed_exit);
-
-    cfg
-}
-
-pub fn eliminate_useless_labels(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
-    let sorted_blocks = sort_basic_blocks(cfg);
-
-    let removed_entry = take_entry_node(sorted_blocks);
-    let removed_exit = take_exit_node(sorted_blocks);
-
-    let copy = sorted_blocks.clone();
-
-    let mut i = 0;
-    while i < sorted_blocks.len() {
-        let block = sorted_blocks.get_mut(i).unwrap();
-        if let Node::Block {
-            ref mut instructions,
-            predecessors,
-            ..
-        } = block
-        {
-            let first_instruction = instructions.first();
-            match first_instruction {
-                Some(IRInstruction::Label(_)) => {
-                    let mut keep_jump = false;
-                    let default_pred = if i == 0 {
-                        removed_entry.clone()
-                    } else {
-                        copy.get(i - 1).cloned().unwrap()
-                    };
-
-                    for pred in predecessors {
-                        if *pred
-                            != match default_pred {
-                                Node::Block { ref id, .. } => id.to_owned(),
-                                Node::Entry { .. } => NodeId::Entry,
-                                Node::Exit { .. } => NodeId::Exit,
-                            }
-                        {
-                            keep_jump = true;
-                            break;
-                        }
-                    }
-
-                    if !keep_jump {
-                        fn is_label(instr: &IRInstruction) -> bool {
-                            match instr {
-                                IRInstruction::Label(_) => true,
-                                _ => false,
-                            }
-                        }
-
-                        let removed = instructions.remove(0);
-                        assert!(is_label(&removed));
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        i += 1;
-    }
-
-    sorted_blocks.insert(0, removed_entry);
-    sorted_blocks.push(removed_exit);
-
-    sorted_blocks
-}
-
-pub fn eliminate_useless_jumps(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
-    let sorted_blocks = sort_basic_blocks(cfg);
-
-    let removed_entry = take_entry_node(sorted_blocks);
-    let removed_exit = take_exit_node(sorted_blocks);
-
-    let copy = sorted_blocks.clone();
-
-    let mut i = 0;
-    while i < sorted_blocks.len() - 1 {
-        let block = sorted_blocks.get_mut(i).unwrap();
-        let b = block.clone();
-        if let Node::Block {
-            ref mut instructions,
-            successors,
-            ..
-        } = block
-        {
-            match instructions.last() {
-                Some(IRInstruction::Jump(_))
-                | Some(IRInstruction::JumpIfZero { .. })
-                | Some(IRInstruction::JumpIfNotZero { .. }) => {
-                    let mut keep_jump = false;
-                    let default_succ = copy.get(i + 1).unwrap();
-
-                    for succ in successors {
-                        if *succ
-                            != match default_succ {
-                                Node::Block { ref id, .. } => id.to_owned(),
-                                Node::Entry { .. } => NodeId::Entry,
-                                Node::Exit { .. } => NodeId::Exit,
-                            }
-                        {
-                            keep_jump = true;
-                            break;
-                        }
-                    }
-
-                    if !keep_jump {
-                        fn is_jump(instr: &Option<IRInstruction>) -> bool {
-                            match instr {
-                                Some(instr) => match instr {
-                                    IRInstruction::Jump(_)
-                                    | IRInstruction::JumpIfZero { .. }
-                                    | IRInstruction::JumpIfNotZero { .. } => true,
-                                    _ => false,
-                                },
-                                _ => false,
-                            }
-                        }
-
-                        let popped = instructions.pop();
-                        assert!(is_jump(&popped));
-                    }
-                }
-                _ => {}
-            }
-        }
-        i += 1;
-    }
-
-    sorted_blocks.insert(0, removed_entry);
-    sorted_blocks.push(removed_exit);
-
-    sorted_blocks
-}
-
-fn sort_basic_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
-    cfg.sort_by_key(|node| match node {
-        Node::Block { id, .. } => id.clone(),
-        Node::Entry { .. } => NodeId::Entry,
-        Node::Exit { .. } => NodeId::Exit,
-    });
-
-    cfg
-}
-
-pub fn eliminate_unreachable_blocks(cfg: &mut Vec<Node>) -> &mut Vec<Node> {
-    let mut visited = HashSet::new();
-
-    fn dfs(graph: &[Node], node_id: NodeId, visited: &mut HashSet<NodeId>) {
-        if visited.contains(&node_id) {
-            return;
-        }
-
-        visited.insert(node_id.clone());
-
-        if let Some(node) = graph.iter().find(|n| match n {
-            Node::Entry { .. } => node_id == NodeId::Entry,
-            Node::Exit { .. } => node_id == NodeId::Exit,
-            Node::Block { id, .. } => id == &node_id,
-        }) {
-            match node {
-                Node::Entry { successors } => {
-                    for successor in successors {
-                        dfs(graph, successor.clone(), visited);
-                    }
-                }
-                Node::Block { successors, .. } => {
-                    for successor in successors {
-                        dfs(graph, successor.clone(), visited);
-                    }
-                }
-                Node::Exit { .. } => {}
-            }
-        }
-    }
-
-    dfs(cfg, NodeId::Entry, &mut visited);
-
-    // Collect nodes to remove
-    let nodes_to_remove: Vec<usize> = cfg
-        .iter()
-        .enumerate()
-        .filter_map(|(index, blk)| {
-            if visited.contains(match blk {
-                Node::Block { id, .. } => id,
-                Node::Entry { .. } => &NodeId::Entry,
-                Node::Exit { .. } => &NodeId::Exit,
-            }) {
-                None // Keep this node
-            } else {
-                Some(index) // Mark this node for removal
-            }
-        })
-        .collect();
-
-    let mut edges_to_remove = Vec::new();
-
-    for &index in &nodes_to_remove {
-        match &cfg[index] {
-            Node::Block {
-                id,
-                successors,
-                predecessors,
-                ..
-            } => {
-                for pred in predecessors {
-                    edges_to_remove.push((pred.clone(), id.clone()));
-                }
-                for succ in successors {
-                    edges_to_remove.push((id.clone(), succ.clone()));
-                }
-            }
-            Node::Entry { successors } => {
-                for succ in successors {
-                    edges_to_remove.push((NodeId::Entry, succ.clone()));
-                }
-            }
-            Node::Exit { predecessors } => {
-                for pred in predecessors {
-                    edges_to_remove.push((pred.clone(), NodeId::Exit));
-                }
-            }
-        }
-    }
-
-    for (src, dest) in edges_to_remove {
-        remove_edge(src, dest, cfg);
-    }
-
-    for &index in nodes_to_remove.iter().rev() {
-        if let Node::Exit { .. } = &cfg[index] {
-            continue;
-        }
-        cfg.remove(index);
-    }
-
-    cfg
-}
-
-fn dead_store_elimination(cfg: &mut Vec<Node>, all_static_variables: &[IRValue]) -> Vec<Node> {
-    let mut annotated_instructions = HashMap::new();
-    let mut annotated_blocks = HashMap::new();
-
-    // Perform dead store elimination analysis
-    find_dead_stores(
-        cfg,
-        &mut annotated_blocks,
-        &mut annotated_instructions,
-        all_static_variables,
-    );
-
-    // Iterate over each block and eliminate dead stores based on the analysis
-    let mut new_cfg = vec![];
-    for block in cfg.iter() {
-        let mut new_block = block.clone();
-        let instructions = get_block_instructions(block);
-
-        let mut new_instructions = vec![];
-        for instr in instructions {
-            // Check if the instruction is a dead store
-            if !is_dead_store(
-                &instr,
-                &mut annotated_instructions,
-                id2num(&get_block_id(block)),
-            ) {
-                // If it's not a dead store, keep the instruction
-                new_instructions.push(instr.clone());
-            }
-        }
-
-        // Update the block with new instructions
-        match new_block {
-            Node::Block {
-                ref mut instructions,
-                ..
-            } => {
-                *instructions = new_instructions;
-            }
-            _ => {}
-        }
-
-        new_cfg.push(new_block);
-    }
-
-    new_cfg
-}
-
-fn control_flow_graph_to_ir(cfg: &mut Vec<Node>) -> Vec<IRInstruction> {
-    let mut instructions = vec![];
-
-    for node in cfg {
-        match node {
-            Node::Block {
-                instructions: instrs,
-                ..
-            } => {
-                instructions.extend(instrs.clone());
-            }
-            _ => {}
-        }
-    }
-
-    instructions
 }
 
 fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
@@ -2047,6 +1673,13 @@ fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
     optimized_instructions
 }
 
+fn get_constant_value(value: &IRValue) -> Option<Const> {
+    match value {
+        IRValue::Constant(konst) => Some(konst.to_owned()),
+        _ => None,
+    }
+}
+
 fn evaluate_cast(konst: &Const, dst: &IRValue) -> Vec<IRInstruction> {
     use crate::codegen::tacky_type;
 
@@ -2146,25 +1779,6 @@ fn const_convert(konst: &Const, dst_type: &Type) -> Result<Const> {
             Const::UChar(val) => Ok(Const::ULong(*val as u64)),
         },
         _ => unreachable!(),
-    }
-}
-
-fn is_zero(konst: &Const) -> bool {
-    match konst {
-        Const::Int(val) => *val == 0,
-        Const::Long(val) => *val == 0,
-        Const::UInt(val) => *val == 0,
-        Const::ULong(val) => *val == 0,
-        Const::Double(val) => *val == 0.0,
-        Const::Char(val) => *val == 0,
-        Const::UChar(val) => *val == 0,
-    }
-}
-
-fn get_constant_value(value: &IRValue) -> Option<Const> {
-    match value {
-        IRValue::Constant(konst) => Some(konst.to_owned()),
-        _ => None,
     }
 }
 
@@ -2291,796 +1905,189 @@ impl std::ops::Not for Const {
     }
 }
 
-fn copy_propagation(cfg: &mut Vec<Node>, aliased_vars: &mut Vec<IRValue>) -> Vec<Node> {
-    let mut annotated_instructions = HashMap::new();
-    let mut annotated_blocks = HashMap::new();
+use std::fmt::Debug;
 
-    // Perform reaching copies analysis
-    find_reaching_copies(
-        cfg,
-        &mut annotated_blocks,
-        &mut annotated_instructions,
-        aliased_vars,
-    );
+fn unreachable_code_elimination<V: Clone + Debug, I: Debug  + Instr + Clone>(cfg: &mut cfg::CFG<V, I>) -> cfg::CFG<V, I> {
+    let mut cfg = eliminate_unreachable_blocks(cfg);
+    cfg = eliminate_useless_jumps(&mut cfg);
+    cfg = eliminate_useless_labels(&mut cfg);
+    cfg = remove_empty_blocks(&mut cfg);
+    cfg
+}
 
-    // Iterate over each block and rewrite instructions based on reaching copies
-    let mut new_cfg = vec![];
-    for block in cfg.iter() {
-        let mut new_block = block.clone();
-        let instructions = get_block_instructions(block);
+fn is_zero(konst: &Const) -> bool {
+    match konst {
+        Const::Int(val) => *val == 0,
+        Const::Long(val) => *val == 0,
+        Const::UInt(val) => *val == 0,
+        Const::ULong(val) => *val == 0,
+        Const::Double(val) => *val == 0.0,
+        Const::Char(val) => *val == 0,
+        Const::UChar(val) => *val == 0,
+    }
+}
 
-        let mut new_instructions = vec![];
-        for instr in instructions {
-            if let Some(rewritten_instr) = rewrite_instruction(
-                &instr,
-                id2num(&get_block_id(block)),
-                &mut annotated_instructions,
-            ) {
-                new_instructions.push(rewritten_instr);
+use std::collections::HashSet;
+
+// Module aliases and utility sets
+type NodeSet = HashSet<NodeId>;
+
+// DFS to find reachable blocks
+pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> cfg::CFG<V, I> {
+    fn dfs<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &cfg::CFG<V, I>, explored: &mut NodeSet, node_id: NodeId) {
+        if explored.contains(&node_id) {
+            return;
+        }
+        
+        explored.insert(node_id.clone());
+
+        let succs = cfg.get_succs(&node_id);
+        for succ in succs {
+            dfs(cfg, explored, succ.clone());
+        }
+    }
+
+    let mut reachable_block_ids = HashSet::new();
+    dfs(cfg, &mut reachable_block_ids, NodeId::Entry);
+
+    let mut edges_to_remove = vec![];
+
+    // Filter out unreachable blocks
+    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg.basic_blocks.iter()
+    .filter(|(_, blk)| {
+        if reachable_block_ids.contains(&blk.id) {
+            true
+        } else {
+            // Collect edges to remove
+            for pred in &blk.preds {
+                edges_to_remove.push((pred.clone(), blk.id.clone()));
             }
-        }
-
-        // Update the block with new instructions
-        match new_block {
-            Node::Block {
-                ref mut instructions,
-                ..
-            } => {
-                *instructions = new_instructions;
-            }
-            _ => {}
-        }
-
-        new_cfg.push(new_block);
-    }
-
-    new_cfg
-}
-
-fn find_reaching_copies(
-    cfg: &mut Vec<Node>,
-    annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>,
-    annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRInstruction>>,
-    aliased_vars: &mut Vec<IRValue>,
-) {
-    let all_copies = find_all_copies(cfg);
-    let mut worklist = vec![];
-
-    for node in cfg.iter() {
-        match node {
-            Node::Entry { .. } | Node::Exit { .. } => continue,
-            Node::Block { .. } => {
-                worklist.push(node.clone());
-                annotated_blocks.insert(get_block_id(node), all_copies.clone());
-            }
-        }
-    }
-
-    while !worklist.is_empty() {
-        let block = worklist.remove(0);
-        let old_annotation = annotated_blocks
-            .get(&get_block_id(&block))
-            .cloned()
-            .unwrap();
-
-        let incoming_copies = meet(&block, &all_copies, annotated_blocks);
-
-        transfer(
-            &block,
-            &incoming_copies,
-            annotated_instructions,
-            annotated_blocks,
-            aliased_vars,
-        );
-
-        if old_annotation
-            != annotated_blocks
-                .get(&get_block_id(&block))
-                .cloned()
-                .unwrap()
-        {
-            let block_successors = get_block_successors(&block);
-            for succ in block_successors.iter() {
-                match succ {
-                    NodeId::Exit => continue,
-                    NodeId::Entry => panic!("WAAAAAAAAAAAAAA"),
-                    NodeId::BlockId(_) => {
-                        let successor = get_block_by_id(cfg, succ);
-                        if !worklist.contains(&successor) {
-                            worklist.push(successor.clone());
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn meet(
-    block: &Node,
-    all_copies: &[IRInstruction],
-    annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>,
-) -> Vec<IRInstruction> {
-    let mut incoming_copies = all_copies.to_vec();
-    let block_predecessors = get_block_predecessors(block);
-
-    for pred in block_predecessors.iter() {
-        match pred {
-            NodeId::Entry => return vec![],
-            NodeId::Exit => panic!("AAAA"),
-            NodeId::BlockId(_) => {
-                let empty_vec = vec![];
-                let pred_out_copies = annotated_blocks.get(pred).unwrap_or(&empty_vec);
-                incoming_copies = incoming_copies
-                    .iter()
-                    .filter(|copy| pred_out_copies.contains(copy))
-                    .cloned()
-                    .collect();
-            }
-        }
-    }
-
-    incoming_copies
-}
-
-fn id2num(id: &NodeId) -> usize {
-    match id {
-        NodeId::BlockId(num) => *num,
-        _ => panic!("Expected block id"),
-    }
-}
-
-fn var_is_aliased(aliased_vars: &[IRValue], var: &IRValue) -> bool {
-    // Assume is_static checks if the variable is static
-    match var {
-        IRValue::Constant(_) => false,
-        IRValue::Var(v) => aliased_vars.contains(var) || is_static(var),
-        _ => false,
-    }
-}
-
-fn filter_updated(copies: &mut Vec<IRInstruction>, updated: &IRValue) {
-    // A copy is killed if we've updated its src or destination
-    copies.retain(|cp| match cp {
-        IRInstruction::Copy { src, dst } => src != updated && dst != updated,
-        _ => true,
-    });
-}
-
-fn transfer(
-    block: &Node,
-    initial_reaching_copies: &[IRInstruction],
-    annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRInstruction>>,
-    annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>,
-    aliased_vars: &mut Vec<IRValue>,
-) {
-    let mut current_reaching_copies = initial_reaching_copies.to_vec();
-    let block_instructions = get_block_instructions(block);
-
-    for instruction in block_instructions.iter() {
-        annotated_instructions.insert(
-            (id2num(&get_block_id(block)), instruction.clone()),
-            current_reaching_copies.clone(),
-        );
-
-        match instruction {
-            IRInstruction::Copy { src, dst } => {
-                // If the src and dst already have the same value, no effect
-                if current_reaching_copies.iter().any(|cp| match cp {
-                    IRInstruction::Copy { src: s, dst: d } => s == dst && d == src,
-                    _ => false,
-                }) {
-                    continue;
-                }
-
-                // Filter out updated dst and possibly add the copy
-                filter_updated(&mut current_reaching_copies, dst);
-                if (tacky_type(src) == tacky_type(dst))
-                    || (get_signedness(&tacky_type(src)) == get_signedness(&tacky_type(dst)))
-                {
-                    current_reaching_copies.push(instruction.clone());
-                }
-            }
-
-            IRInstruction::Call {
-                target: _,
-                args: _,
-                dst,
-            } => {
-                // First filter out copies killed by dst
-                if let Some(d) = dst {
-                    filter_updated(&mut current_reaching_copies, d);
-                }
-
-                // Then filter out copies that are static or aliased
-                current_reaching_copies.retain(|cp| match cp {
-                    IRInstruction::Copy { src, dst } => {
-                        !var_is_aliased(aliased_vars, src) && !var_is_aliased(aliased_vars, dst)
-                    }
-                    _ => true,
-                });
-            }
-
-            IRInstruction::Store { src, dst_ptr: _ } => {
-                // Filter out copies that are static or aliased
-                current_reaching_copies.retain(|cp| match cp {
-                    IRInstruction::Copy {
-                        src: cp_src,
-                        dst: cp_dst,
-                    } => {
-                        !var_is_aliased(aliased_vars, cp_src)
-                            && !var_is_aliased(aliased_vars, cp_dst)
-                    }
-                    _ => true,
-                });
-            }
-
-            IRInstruction::Unary { op: _, src: _, dst } => {
-                // Filter out copies whose src or dst is the same as dst
-                filter_updated(&mut current_reaching_copies, dst);
-            }
-
-            IRInstruction::Binary {
-                op: _,
-                lhs: _,
-                rhs: _,
-                dst,
-            } => {
-                // Filter out copies whose src or dst is the same as dst
-                filter_updated(&mut current_reaching_copies, dst);
-            }
-
-            _ => {
-                if let Some(dst) = get_dst(instruction) {
-                    filter_updated(&mut current_reaching_copies, &dst);
-                }
-            }
-        }
-    }
-
-    // Insert the final state of reaching copies for the block
-    annotated_blocks.insert(get_block_id(block), current_reaching_copies);
-}
-
-// fn filter_updated(reaching_copies: &mut Vec<IRInstruction>, dst: IRValue) {
-//     let mut to_remove = vec![];
-//     for (idx, copy) in reaching_copies.iter().enumerate() {
-//         if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
-//             if copy_src == &dst || copy_dst == &dst {
-//                 to_remove.push(idx);
-//             }
-//         }
-//     }
-
-//     for idx in to_remove.iter().rev() {
-//         reaching_copies.remove(*idx);
-//     }
-// }
-
-fn get_dst(instr: &IRInstruction) -> Option<IRValue> {
-    match instr {
-        IRInstruction::Copy { src: _, dst } => Some(dst.clone()),
-        IRInstruction::Unary { op: _, src: _, dst } => Some(dst.clone()),
-        IRInstruction::Binary {
-            op: _,
-            lhs: _,
-            rhs: _,
-            dst,
-        } => Some(dst.clone()),
-        IRInstruction::Call {
-            target: _,
-            args: _,
-            dst,
-        } => dst.clone(),
-        IRInstruction::CopyFromOffset { dst, .. } => Some(dst.clone()),
-        IRInstruction::CopyToOffset { dst, .. } => Some(IRValue::Var(dst.clone())),
-        IRInstruction::Load { dst, .. } => Some(dst.clone()),
-        IRInstruction::AddPtr { dst, .. } => Some(dst.clone()),
-        IRInstruction::GetAddress { dst, .. } => Some(dst.clone()),
-        IRInstruction::IntToDouble { dst, .. } => Some(dst.clone()),
-        IRInstruction::DoubleToInt { dst, .. } => Some(dst.clone()),
-        IRInstruction::UIntToDouble { dst, .. } => Some(dst.clone()),
-        IRInstruction::DoubletoUInt { dst, .. } => Some(dst.clone()),
-        IRInstruction::SignExtend { dst, .. } => Some(dst.clone()),
-        IRInstruction::ZeroExtend { dst, .. } => Some(dst.clone()),
-        IRInstruction::Truncate { dst, .. } => Some(dst.clone()),
-        IRInstruction::Store { .. } => None,
-        IRInstruction::JumpIfNotZero { .. }
-        | IRInstruction::JumpIfZero { .. }
-        | IRInstruction::Label(_)
-        | IRInstruction::Jump(_)
-        | IRInstruction::Ret(_) => None,
-    }
-}
-
-fn get_block_id(block: &Node) -> NodeId {
-    match block {
-        Node::Block { id, .. } => id.clone(),
-        Node::Entry { .. } => NodeId::Entry,
-        Node::Exit { .. } => NodeId::Exit,
-    }
-}
-
-fn find_all_copies(cfg: &mut Vec<Node>) -> Vec<IRInstruction> {
-    let mut all_copies = vec![];
-
-    for block in cfg.iter() {
-        match block {
-            Node::Block { instructions, .. } => {
-                for instruction in instructions.iter() {
-                    if let IRInstruction::Copy { src, dst } = instruction {
-                        let src_t = tacky_type(src);
-                        let dst_t = tacky_type(dst);
-                        if src_t == dst_t {
-                            all_copies.push(instruction.clone());
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    all_copies
-}
-
-fn replace_operand(op: &IRValue, reaching_copies: &[IRInstruction]) -> IRValue {
-    if let IRValue::Constant(_) = op {
-        return op.to_owned();
-    }
-
-    for copy in reaching_copies.iter() {
-        if let IRInstruction::Copy {
-            src: copy_src,
-            dst: copy_dst,
-        } = copy
-        {
-            if copy_dst == op {
-                return copy_src.to_owned();
-            }
-        }
-    }
-
-    return op.to_owned();
-}
-
-fn optionally_replace_operand(
-    op: &Option<IRValue>,
-    reaching_copies: &[IRInstruction],
-) -> Option<IRValue> {
-    match op {
-        Some(value) => Some(replace_operand(value, reaching_copies)),
-        None => None,
-    }
-}
-
-fn rewrite_instruction(
-    instr: &IRInstruction,
-    num: usize,
-    annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRInstruction>>,
-) -> Option<IRInstruction> {
-    let reaching_copies = annotated_instructions
-        .get(&(num, instr.to_owned()))
-        .unwrap();
-
-    match instr {
-        IRInstruction::Copy { src, dst } => {
-            for copy in reaching_copies.iter() {
-                if let IRInstruction::Copy {
-                    src: copy_src,
-                    dst: copy_dst,
-                } = copy
-                {
-                    if copy == instr || (copy_src == dst && copy_dst == src) {
-                        return None;
-                    }
-                }
-            }
-            let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::Copy {
-                src: new_src,
-                dst: dst.clone(),
-            });
-        }
-        IRInstruction::Unary { op, src, dst } => {
-            let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::Unary {
-                op: *op,
-                src: new_src,
-                dst: dst.clone(),
-            });
-        }
-        IRInstruction::Binary { op, lhs, rhs, dst } => {
-            let new_lhs = replace_operand(lhs, reaching_copies);
-            let new_rhs = replace_operand(rhs, reaching_copies);
-            return Some(IRInstruction::Binary {
-                op: *op,
-                lhs: new_lhs,
-                rhs: new_rhs,
-                dst: dst.clone(),
-            });
-        }
-        IRInstruction::Ret(value) => {
-            let new_value = optionally_replace_operand(value, reaching_copies);
-            return Some(IRInstruction::Ret(new_value));
-        }
-        IRInstruction::Call { target, args, dst } => {
-            let new_args = args
-                .iter()
-                .map(|arg| replace_operand(arg, reaching_copies))
-                .collect();
-            return Some(IRInstruction::Call {
-                target: target.clone(),
-                args: new_args,
-                dst: dst.clone(),
-            });
-        }
-        IRInstruction::JumpIfNotZero { condition, target } => {
-            let new_condition = replace_operand(condition, reaching_copies);
-            return Some(IRInstruction::JumpIfNotZero {
-                condition: new_condition,
-                target: target.clone(),
-            });
-        }
-        IRInstruction::JumpIfZero { condition, target } => {
-            let new_condition = replace_operand(condition, reaching_copies);
-            return Some(IRInstruction::JumpIfZero {
-                condition: new_condition,
-                target: target.clone(),
-            });
-        }
-        IRInstruction::DoubleToInt { src, dst } => {
-            let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::DoubleToInt {
-                src: new_src,
-                dst: dst.clone(),
-            });
-        }
-        IRInstruction::DoubletoUInt { src, dst } => {
-            let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::DoubletoUInt {
-                src: new_src,
-                dst: dst.clone(),
-            });
-        }
-        IRInstruction::IntToDouble { src, dst } => {
-            let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::IntToDouble {
-                src: new_src,
-                dst: dst.clone(),
-            });
-        }
-        IRInstruction::UIntToDouble { src, dst } => {
-            let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::UIntToDouble {
-                src: new_src,
-                dst: dst.clone(),
-            });
-        }
-        IRInstruction::SignExtend { src, dst } => {
-            let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::SignExtend {
-                src: new_src,
-                dst: dst.clone(),
-            });
-        }
-        IRInstruction::ZeroExtend { src, dst } => {
-            let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::ZeroExtend {
-                src: new_src,
-                dst: dst.clone(),
-            });
-        }
-        IRInstruction::Truncate { src, dst } => {
-            let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::Truncate {
-                src: new_src,
-                dst: dst.clone(),
-            });
-        }
-        IRInstruction::Load { src_ptr, dst } => {
-            let new_src_ptr = replace_operand(src_ptr, reaching_copies);
-            return Some(IRInstruction::Load {
-                src_ptr: new_src_ptr,
-                dst: dst.clone(),
-            });
-        }
-        IRInstruction::Store { src, dst_ptr } => {
-            let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::Store {
-                src: new_src,
-                dst_ptr: dst_ptr.clone(),
-            });
-        }
-        IRInstruction::CopyToOffset { src, dst, offset } => {
-            let new_src = replace_operand(src, reaching_copies);
-            return Some(IRInstruction::CopyToOffset {
-                src: new_src,
-                dst: dst.clone(),
-                offset: offset.clone(),
-            });
-        }
-        IRInstruction::CopyFromOffset { src, offset, dst } => {
-            let new_src = match replace_operand(&IRValue::Var(src.to_owned()), reaching_copies) {
-                IRValue::Var(name) => name,
-                _ => panic!("Expected variable"),
-            };
-            return Some(IRInstruction::CopyFromOffset {
-                src: new_src,
-                offset: offset.clone(),
-                dst: dst.clone(),
-            });
-        }
-        IRInstruction::AddPtr {
-            ptr,
-            index,
-            scale,
-            dst,
-        } => {
-            let new_ptr = replace_operand(ptr, reaching_copies);
-            let new_index = replace_operand(index, reaching_copies);
-            return Some(IRInstruction::AddPtr {
-                ptr: new_ptr,
-                index: new_index,
-                scale: *scale,
-                dst: dst.clone(),
-            });
-        }
-        _ => return Some(instr.clone()),
-    }
-}
-
-fn get_block_by_id(cfg: &Vec<Node>, id: &NodeId) -> Node {
-    cfg.iter()
-        .find(|node| match node {
-            Node::Block { id: block_id, .. } => block_id == id,
-            _ => false,
-        })
-        .unwrap()
-        .clone()
-}
-
-fn get_block_successors(block: &Node) -> Vec<NodeId> {
-    match block {
-        Node::Block { successors, .. } => successors.clone(),
-        Node::Entry { successors } => successors.clone(),
-        Node::Exit { .. } => vec![NodeId::Exit],
-    }
-}
-
-fn get_block_predecessors(block: &Node) -> Vec<NodeId> {
-    match block {
-        Node::Block { predecessors, .. } => predecessors.clone(),
-        Node::Exit { predecessors } => predecessors.clone(),
-        _ => vec![],
-    }
-}
-
-fn get_block_instructions(block: &Node) -> Vec<IRInstruction> {
-    match block {
-        Node::Block { instructions, .. } => instructions.clone(),
-        _ => vec![],
-    }
-}
-
-fn is_static(value: &IRValue) -> bool {
-    match value {
-        IRValue::Var(name) => {
-            let symbol_table = SYMBOL_TABLE.lock().unwrap();
-            if let Some(entry) = symbol_table.get(name) {
-                if let IdentifierAttrs::StaticAttr { .. } = entry.attrs {
-                    return true;
-                }
+            for succ in &blk.succs {
+                edges_to_remove.push((blk.id.clone(), succ.clone()));
             }
             false
         }
-        _ => false,
+    })
+    .cloned()
+    .collect();
+
+    // Now remove the edges
+    for (pred, succ) in edges_to_remove {
+        cfg.remove_edge(pred, succ);
+    }
+
+    cfg::CFG {
+        basic_blocks: updated_blocks,
+        ..cfg.clone()
     }
 }
 
-fn transfer_dead_store(
-    block: &Node,
-    annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRValue>>,
-    annotated_blocks: &mut HashMap<NodeId, Vec<IRValue>>,
-    end_live_variables: &[IRValue],
-    all_static_variables: &[IRValue],
-) {
-    // Start with the live variables at the end of the block
-    let mut current_live_variables = end_live_variables.to_vec();
-
-    // Get the instructions for the current block
-    let instructions = get_block_instructions(block);
-
-    // Process the instructions in reverse order
-    for instruction in instructions.iter().rev() {
-        // Annotate the instruction with the current live variables
-        annotated_instructions.insert(
-            (id2num(&get_block_id(block)), instruction.clone()),
-            current_live_variables.clone(),
-        );
-
-        // Update the live variables based on the type of instruction
-        match instruction {
-            IRInstruction::Binary { op, lhs, rhs, dst } => {
-                // Remove the destination from live variables
-                current_live_variables.retain(|x| x != dst);
-
-                // Add source variables if they are vars
-                if let IRValue::Var(_) = lhs {
-                    current_live_variables.push(lhs.clone());
-                }
-                if let IRValue::Var(_) = rhs {
-                    current_live_variables.push(rhs.clone());
-                }
-            }
-            IRInstruction::Unary { src, dst, .. } => {
-                // Remove the destination from live variables
-                current_live_variables.retain(|x| x != dst);
-
-                // Add the source variable if it is a var
-                if let IRValue::Var(_) = src {
-                    current_live_variables.push(src.clone());
-                }
-            }
-            IRInstruction::JumpIfZero { condition, .. } |
-            IRInstruction::JumpIfNotZero { condition, .. } => {
-                // Add the condition variable if it is a var
-                if let IRValue::Var(_) = condition {
-                    current_live_variables.push(condition.clone());
-                }
-            }
-            IRInstruction::Call { args, dst, .. } => {
-                // Remove the destination from live variables
-                if let Some(dst_var) = dst {
-                    current_live_variables.retain(|x| x != dst_var);
-                }
-
-                // Add the argument variables
-                for arg in args {
-                    if let IRValue::Var(_) = arg {
-                        current_live_variables.push(arg.clone());
-                    }
-                }
-
-                // Add all static and aliased variables
-                current_live_variables.extend(all_static_variables.iter().cloned());
-            }
-            IRInstruction::Ret(Some(v)) => {
-                // Add the return value if it is a var
-                if let IRValue::Var(_) = v {
-                    current_live_variables.push(v.clone());
-                }
-            }
-            IRInstruction::Load { src_ptr, dst } => {
-                // Remove the destination from live variables
-                current_live_variables.retain(|x| x != dst);
-
-                // Add the source pointer variable
-                if let IRValue::Var(_) = src_ptr {
-                    current_live_variables.push(src_ptr.clone());
-                }
-
-                // Add all static and aliased variables
-                current_live_variables.extend(all_static_variables.iter().cloned());
-            }
-            IRInstruction::Store { src, dst_ptr } => {
-                // Add the source and destination pointer variables
-                if let IRValue::Var(_) = src {
-                    current_live_variables.push(src.clone());
-                }
-                if let IRValue::Var(_) = dst_ptr {
-                    current_live_variables.push(dst_ptr.clone());
-                }
-            }
-            _ => {
-                // Other instruction types don't affect live variables
-            }
-        }
+// Eliminate useless jump instructions
+pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> cfg::CFG<V, I> {
+    fn drop_last<T>(vec: &mut Vec<T>) {
+        vec.pop();
     }
 
-    // Update the annotated blocks with the final live variables for this block
-    annotated_blocks.insert(get_block_id(block), current_live_variables.clone());
-}
-
-fn meet_dead_store(block: &Node, annotated_blocks: &mut HashMap<NodeId, Vec<IRValue>>, all_static_variables: &[IRValue]) -> Vec<IRValue> {
-    let mut live_vars = vec![];
-    let successors = get_block_successors(block);
-
-    for succ in successors {
-        match succ {
-            NodeId::Exit => live_vars.extend(all_static_variables.to_vec()),
-            NodeId::Entry => panic!("AAAAAAA"),
-            NodeId::BlockId(id) => {
-                let succ_live_vars = annotated_blocks.get(&succ).unwrap();
-                live_vars.extend(succ_live_vars.to_owned());
-            }
-        }
-    }
-
-    live_vars
-}
-
-fn is_dead_store(instr: &IRInstruction, annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRValue>>, num: usize) -> bool {
-    if let IRInstruction::Call { target, args, dst } = instr {
-        return false;
-    }
-
-    if let Some(dst) = get_dst(instr) {
-        let live_variables = annotated_instructions
-            .get(&(num, instr.to_owned()))
-            .unwrap();
-
-        if !live_variables.contains(&dst) {
-            return true;
-        }
-    }
-
-    false
-}
-
-fn find_dead_stores(
-    cfg: &mut Vec<Node>,
-    annotated_blocks: &mut HashMap<NodeId, Vec<IRValue>>,
-    annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRValue>>,
-    all_static_variables: &[IRValue],
-) {
-    let mut worklist = vec![];
-
-    // Initialize the worklist with all blocks
-    for node in cfg.iter() {
-        match node {
-            Node::Entry { .. } | Node::Exit { .. } => continue,
-            Node::Block { .. } => {
-                worklist.push(node.clone());
-                // Initialize the annotated blocks with empty live variable sets
-                annotated_blocks.insert(get_block_id(node), vec![]);
-            }
-        }
-    }
-
-    // Continue iterating until there are no changes
-    while !worklist.is_empty() {
-        let block = worklist.remove(0);
-
-        // Get the old live variable set
-        let old_live_vars = annotated_blocks
-            .get(&get_block_id(&block))
-            .cloned()
-            .unwrap_or_default();
-
-        // Compute the live variables at the end of the block (meet function)
-        let end_live_vars = meet_dead_store(&block, annotated_blocks, all_static_variables);
-
-        // Perform transfer function to propagate dead store information
-        transfer_dead_store(
-            &block,
-            annotated_instructions,
-            annotated_blocks,
-            &end_live_vars,
-            all_static_variables,
-        );
-
-        // If the live variable set changes, propagate it to successors
-        let new_live_vars = annotated_blocks
-            .get(&get_block_id(&block))
-            .cloned()
-            .unwrap_or_default();
-
-        if new_live_vars != old_live_vars {
-            let block_successors = get_block_successors(&block);
-
-            for succ in block_successors.iter() {
-                match succ {
-                    NodeId::Exit => continue,
-                    NodeId::Entry => panic!("Entry node encountered during propagation"),
-                    NodeId::BlockId(_) => {
-                        let successor = get_block_by_id(cfg, succ);
-                        if !worklist.contains(&successor) {
-                            worklist.push(successor.clone());
+    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg.basic_blocks.iter()
+        .enumerate()
+        .map(|(idx, (n, blk))| {
+            if idx == cfg.basic_blocks.len() - 1 {
+                // Do not modify the last block
+                (n.clone(), blk.clone())
+            } else {
+                match blk.instructions.last() {
+                    Some((_, instr)) if instr.is_jump() => {
+                        let (_, default_succ) = &cfg.basic_blocks[idx + 1];
+                        if blk.succs.iter().all(|succ| succ == &default_succ.id) {
+                            // Useless jump, drop the last instruction
+                            let mut new_blk = blk.clone();
+                            drop_last(&mut new_blk.instructions);
+                            (n.clone(), new_blk)
+                        } else {
+                            (n.clone(), blk.clone())
                         }
                     }
+                    _ => (n.clone(), blk.clone())
                 }
             }
-        }
+        })
+        .collect();
+
+    cfg::CFG {
+        basic_blocks: updated_blocks,
+        ..cfg.clone()
+    }
+}
+
+// Eliminate useless label instructions
+pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> cfg::CFG<V, I> {
+    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg.basic_blocks.iter()
+        .enumerate()
+        .map(|(idx, (n, blk))| {
+            if let Some((_, instr)) = blk.instructions.first() {
+                if instr.is_label() {
+                    let default_pred = if idx == 0 {
+                        NodeId::Entry
+                    } else {
+                        cfg.basic_blocks[idx - 1].1.id.clone()
+                    };
+
+                    if blk.preds.iter().all(|pred| pred == &default_pred) {
+                        // Remove the label
+                        let mut new_blk = blk.clone();
+                        new_blk.instructions.remove(0);
+                        return (n.clone(), new_blk);
+                    }
+                }
+            }
+            (n.clone(), blk.clone())
+        })
+        .collect();
+
+    cfg::CFG {
+        basic_blocks: updated_blocks,
+        ..cfg.clone()
+    }
+}
+
+pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> cfg::CFG<V, I> {
+    let mut edges_to_remove = Vec::new();
+    let mut edges_to_add = Vec::new();
+
+    // Collect empty blocks and their associated edges for removal and addition
+    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg.basic_blocks.iter()
+        .filter(|(_, blk)| {
+            if blk.instructions.is_empty() {
+                // Empty block - collect edges to remove and add
+                if blk.preds.len() == 1 && blk.succs.len() == 1 {
+                    let pred = blk.preds[0].clone();
+                    let succ = blk.succs[0].clone();
+                    edges_to_remove.push((pred.clone(), blk.id.clone()));
+                    edges_to_remove.push((blk.id.clone(), succ.clone()));
+                    edges_to_add.push((pred, succ));
+                    false // Mark this block for removal
+                } else {
+                    panic!("Empty block should have exactly one predecessor and one successor");
+                }
+            } else {
+                true // Keep this block
+            }
+        })
+        .cloned()
+        .collect();
+
+    // Now perform the edge modifications after the iteration
+    for (pred, succ) in edges_to_remove {
+        cfg.remove_edge(pred, succ);
+    }
+
+    for (pred, succ) in edges_to_add {
+        cfg.add_edge(pred, succ);
+    }
+
+    // Return the updated CFG with filtered basic blocks
+    cfg::CFG {
+        basic_blocks: updated_blocks,
+        ..cfg.clone()
     }
 }
