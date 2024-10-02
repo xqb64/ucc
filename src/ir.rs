@@ -1416,6 +1416,17 @@ impl Optimize for IRProgram {
     }
 }
 
+fn address_taken_analysis(instrs: &[IRInstruction]) -> Vec<IRValue> {
+    let addr_taken = |instr: &IRInstruction| -> Option<IRValue> {
+        match instr {
+            IRInstruction::GetAddress { src, dst: _ } => Some(src.to_owned()),
+            _ => None,
+        }
+    };
+
+    instrs.iter().filter_map(addr_taken).collect()
+}
+
 impl Optimize for IRFunction {
     fn optimize(&mut self, enabled_optimizations: Vec<Optimization>) -> Self {
         if self.body.is_empty() {
@@ -1423,6 +1434,8 @@ impl Optimize for IRFunction {
         }
 
         loop {
+            let mut aliased_vars = address_taken_analysis(&self.body);
+
             let post_constant_folding;
             if enabled_optimizations.contains(&Optimization::ConstantFolding) {
                 post_constant_folding = constant_folding(&self.body);
@@ -1440,7 +1453,7 @@ impl Optimize for IRFunction {
             // pretty_print_graph_as_graphviz(&cfg);
 
             if enabled_optimizations.contains(&Optimization::CopyPropagation) {
-                cfg = copy_propagation(&mut cfg);
+                cfg = copy_propagation(&mut cfg, &mut aliased_vars);
             }
 
             // if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
@@ -2212,12 +2225,12 @@ impl std::ops::Not for Const {
     }
 }
 
-fn copy_propagation(cfg: &mut Vec<Node>) -> Vec<Node> {
+fn copy_propagation(cfg: &mut Vec<Node>, aliased_vars: &mut Vec<IRValue>) -> Vec<Node> {
     let mut annotated_instructions = HashMap::new();
     let mut annotated_blocks = HashMap::new();
 
     // Perform reaching copies analysis
-    find_reaching_copies(cfg, &mut annotated_blocks, &mut annotated_instructions);
+    find_reaching_copies(cfg, &mut annotated_blocks, &mut annotated_instructions, aliased_vars);
 
     // Iterate over each block and rewrite instructions based on reaching copies
     let mut new_cfg = vec![];
@@ -2246,7 +2259,12 @@ fn copy_propagation(cfg: &mut Vec<Node>) -> Vec<Node> {
     new_cfg
 }
 
-fn find_reaching_copies(cfg: &mut Vec<Node>, annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>, annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRInstruction>>) {
+fn find_reaching_copies(
+    cfg: &mut Vec<Node>,
+    annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>,
+    annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRInstruction>>,
+    aliased_vars: &mut Vec<IRValue>,
+) {
     let all_copies = find_all_copies(cfg);
     let mut worklist = vec![];
 
@@ -2266,7 +2284,7 @@ fn find_reaching_copies(cfg: &mut Vec<Node>, annotated_blocks: &mut HashMap<Node
 
         let incoming_copies = meet(&block, &all_copies, annotated_blocks);
 
-        transfer(&block, &incoming_copies, annotated_instructions, annotated_blocks);
+        transfer(&block, &incoming_copies, annotated_instructions, annotated_blocks, aliased_vars);
 
         if old_annotation != annotated_blocks.get(&get_block_id(&block)).cloned().unwrap() {
             let block_successors = get_block_successors(&block);
@@ -2321,6 +2339,7 @@ fn transfer(
     initial_reaching_copies: &[IRInstruction],
     annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRInstruction>>,
     annotated_blocks: &mut HashMap<NodeId, Vec<IRInstruction>>,
+    aliased_vars: &mut Vec<IRValue>,
 ) {
     let mut current_reaching_copies = initial_reaching_copies.to_vec();
 
@@ -2330,7 +2349,7 @@ fn transfer(
         annotated_instructions.insert((id2num(&get_block_id(block)), instruction.clone()), current_reaching_copies.clone());
 
         match instruction {
-            IRInstruction::Copy { src: _, dst } => {
+            IRInstruction::Copy { src, dst } => {
                 if current_reaching_copies.contains(&instruction) {
                     continue;
                 }
@@ -2348,14 +2367,20 @@ fn transfer(
                     current_reaching_copies.remove(*idx);
                 }
 
-                current_reaching_copies.push(instruction.clone());
+                let src_t = tacky_type(src);
+                let dst_t = tacky_type(dst);
+
+                if (src_t == dst_t) || (get_signedness(&src_t) == get_signedness(&dst_t)) {
+                    current_reaching_copies.push(instruction.clone());
+                }
             }
 
             IRInstruction::Call { target: _, args: _, dst } => {
                 let mut to_remove = vec![];
                 for (idx, copy) in current_reaching_copies.iter().enumerate() {
                     if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
-                        if &Some(copy_src.to_owned()) == dst || &Some(copy_dst.to_owned()) == dst || is_static(copy_src) || is_static(copy_dst) {
+                        // if &Some(copy_src.to_owned()) == dst || &Some(copy_dst.to_owned()) == dst || is_static(copy_src) || is_static(copy_dst) {
+                        if aliased_vars.contains(copy_src) || aliased_vars.contains(copy_dst) || (dst.is_some() && (&Some(copy_src.to_owned()) == dst || &Some(copy_dst.to_owned()) == dst)) {
                             to_remove.push(idx);
                         }
                     }
@@ -2363,6 +2388,17 @@ fn transfer(
 
                 for idx in to_remove.iter().rev() {
                     current_reaching_copies.remove(*idx);
+                }
+            }
+
+            IRInstruction::Store { src, dst_ptr } => {
+                let mut to_remove = vec![];
+                for (idx, copy) in current_reaching_copies.iter().enumerate() {
+                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+                        if aliased_vars.contains(copy_src) || aliased_vars.contains(copy_dst) {
+                            to_remove.push(idx);
+                        }
+                    }
                 }
             }
 
@@ -2539,6 +2575,58 @@ fn rewrite_instruction(instr: &IRInstruction, num: usize, annotated_instructions
         IRInstruction::JumpIfZero { condition, target } => {
             let new_condition = replace_operand(condition, reaching_copies);
             return Some(IRInstruction::JumpIfZero { condition: new_condition, target: target.clone() });
+        }
+        IRInstruction::DoubleToInt { src, dst } => {
+            let new_src = replace_operand(src, reaching_copies);
+            return Some(IRInstruction::DoubleToInt { src: new_src, dst: dst.clone() });
+        }
+        IRInstruction::DoubletoUInt { src, dst } => {
+            let new_src = replace_operand(src, reaching_copies);
+            return Some(IRInstruction::DoubletoUInt { src: new_src, dst: dst.clone() });
+        }
+        IRInstruction::IntToDouble { src, dst } => {
+            let new_src = replace_operand(src, reaching_copies);
+            return Some(IRInstruction::IntToDouble { src: new_src, dst: dst.clone() });
+        }
+        IRInstruction::UIntToDouble { src, dst } => {
+            let new_src = replace_operand(src, reaching_copies);
+            return Some(IRInstruction::UIntToDouble { src: new_src, dst: dst.clone() });
+        }
+        IRInstruction::SignExtend { src, dst } => {
+            let new_src = replace_operand(src, reaching_copies);
+            return Some(IRInstruction::SignExtend { src: new_src, dst: dst.clone() });
+        }
+        IRInstruction::ZeroExtend { src, dst } => {
+            let new_src = replace_operand(src, reaching_copies);
+            return Some(IRInstruction::ZeroExtend { src: new_src, dst: dst.clone() });
+        }
+        IRInstruction::Truncate { src, dst } => {
+            let new_src = replace_operand(src, reaching_copies);
+            return Some(IRInstruction::Truncate { src: new_src, dst: dst.clone() });
+        }
+        IRInstruction::Load { src_ptr, dst } => {
+            let new_src_ptr = replace_operand(src_ptr, reaching_copies);
+            return Some(IRInstruction::Load { src_ptr: new_src_ptr, dst: dst.clone() });
+        }
+        IRInstruction::Store { src, dst_ptr } => {
+            let new_src = replace_operand(src, reaching_copies);
+            return Some(IRInstruction::Store { src: new_src, dst_ptr: dst_ptr.clone() });
+        }
+        IRInstruction::CopyToOffset { src, dst, offset } => {
+            let new_src = replace_operand(src, reaching_copies);
+            return Some(IRInstruction::CopyToOffset { src: new_src, dst: dst.clone(), offset: offset.clone() });
+        }
+        IRInstruction::CopyFromOffset { src, offset, dst } => {
+            let new_src = match replace_operand(&IRValue::Var(src.to_owned()), reaching_copies) {
+                IRValue::Var(name) => name,
+                _ => panic!("Expected variable"),
+            };
+            return Some(IRInstruction::CopyFromOffset { src: new_src, offset: offset.clone(), dst: dst.clone() });
+        }
+        IRInstruction::AddPtr { ptr, index, scale, dst } => {
+            let new_ptr = replace_operand(ptr, reaching_copies);
+            let new_index = replace_operand(index, reaching_copies);
+            return Some(IRInstruction::AddPtr { ptr: new_ptr, index: new_index, scale: *scale, dst: dst.clone() });
         }
         _ => return Some(instr.clone()),
     }
