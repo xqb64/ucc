@@ -1493,17 +1493,23 @@ impl Optimize for IRFunction {
                 "spam".to_string(),
                 post_constant_folding,
             );
+
+            // cfg.print_as_graphviz();
             
             // First optimization: Unreachable code elimination
             if enabled_optimizations.contains(&Optimization::UnreachableCodeElimination) {
                 cfg = unreachable_code_elimination(&mut cfg).to_owned();
             }
+
+            // cfg.print_as_graphviz();
             
             // Reannotate the cfg with ReachingCopies for copy propagation
             if enabled_optimizations.contains(&Optimization::CopyPropagation) {
                 cfg = copy_propagation::<(), IRInstruction>(&mut aliased_vars, &cfg);  // Call copy propagation
             }
-                        
+
+            // cfg.print_as_graphviz();
+            // 
             // if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
             //     cfg = dead_store_elimination(&mut cfg, &all_static_vars);
             // }

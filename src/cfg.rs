@@ -1,4 +1,4 @@
-use crate::ir::ReachingCopies;
+use crate::ir::{make_temporary, ReachingCopies};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SimpleInstr {
@@ -305,5 +305,72 @@ where I: Clone + Instr, V: Clone {
             .iter()
             .flat_map(|(_, block)| block.instructions.iter().map(|(_, instr)| instr.clone()))
             .collect()
+    }
+
+    pub fn print_as_graphviz(&self) {
+        use std::fs::File;
+        use std::io::Write;
+
+        let tmp = make_temporary();
+        let path = format!("cfg.{}.dot", tmp);
+
+        let mut file = File::create(path.clone()).unwrap();
+        writeln!(file, "digraph G {{").unwrap();
+
+        // Print the entry node
+        writeln!(file, "  Entry [shape=circle]").unwrap();
+
+        // Print the basic blocks
+        for (idx, block) in &self.basic_blocks {
+            writeln!(file, "  Block{} [shape=plaintext label=<", idx).unwrap();
+            writeln!(file, "    <table border=\"0\" cellborder=\"1\" cellspacing=\"0\">").unwrap();
+            writeln!(file, "      <tr><td><b>Block {}</b></td></tr>", idx).unwrap();
+            for (_, instr) in &block.instructions {
+                writeln!(file, "      <tr><td>{}</td></tr>", instr.pp_instr()).unwrap();
+            }
+            writeln!(file, "    </table>").unwrap();
+            writeln!(file, "  >]").unwrap();
+        }
+
+        // Print the exit node
+
+        writeln!(file, "  Exit [shape=doublecircle]").unwrap();
+
+        fn extract_id(node: &NodeId) -> String {
+            match node {
+                NodeId::Entry => "Entry".to_string(),
+                NodeId::Block(n) => format!("Block{}", n),
+                NodeId::Exit => "Exit".to_string(),
+            }
+        }
+
+        // Print the edges
+        for (idx, block) in &self.basic_blocks {
+            for succ in &block.succs {
+                writeln!(file, "  Block{} -> {}", idx, extract_id(succ)).unwrap();
+            }
+        }
+
+        // Print the entry edges
+        for succ in &self.entry_succs {
+            writeln!(file, "  Entry -> {}", extract_id(succ)).unwrap();
+        }
+
+        // Print the exit edges
+        for pred in &self.exit_preds {
+            writeln!(file, "  {} -> Exit", extract_id(pred)).unwrap();
+        }
+
+        writeln!(file, "}}").unwrap();
+
+        // Convert the dot file to png
+        std::process::Command::new("dot")
+            .arg("-Tpng")
+            .arg(path)
+            .arg("-o")
+            .arg(format!("cfg.{}.png", tmp))
+            .output()
+            .expect("Failed to execute dot command");
+
     }
 }
