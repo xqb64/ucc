@@ -1450,7 +1450,6 @@ impl Optimize for IRFunction {
             let optimized_function_body = control_flow_graph_to_ir(&mut cfg);
 
             if optimized_function_body == self.body || optimized_function_body.is_empty() {
-                println!("optimized_function_body: {:?}", optimized_function_body);
                 return IRFunction {
                     name: self.name.clone(),
                     params: self.params.clone(),
@@ -2256,7 +2255,6 @@ fn find_reaching_copies(cfg: &mut Vec<Node>, annotated_blocks: &mut HashMap<Node
             Node::Entry { .. } | Node::Exit { .. } => continue,
             Node::Block { .. } => {
                 worklist.push(node.clone());
-                println!("inserting block id {} with copies {:?}", get_block_id(node), all_copies.clone());
                 annotated_blocks.insert(get_block_id(node), all_copies.clone());
             }
         }
@@ -2407,7 +2405,6 @@ fn transfer(
         }
     }
 
-    println!("inserting block id {} with copies {:?}", get_block_id(block), current_reaching_copies);
     annotated_blocks.insert(get_block_id(block), current_reaching_copies);
 }
 
@@ -2488,7 +2485,6 @@ fn replace_operand(op: &IRValue, reaching_copies: &[IRInstruction]) -> IRValue {
     for copy in reaching_copies.iter() {
         if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
             if copy_dst == op {
-                println!("replacing operand {:?} with {:?}", op, copy_src);
                 return copy_src.to_owned();
             }
         }
@@ -2506,8 +2502,6 @@ fn optionally_replace_operand(op: &Option<IRValue>, reaching_copies: &[IRInstruc
 
 fn rewrite_instruction(instr: &IRInstruction, num: usize, annotated_instructions: &mut HashMap<(usize, IRInstruction), Vec<IRInstruction>>) -> Option<IRInstruction> {
     let reaching_copies = annotated_instructions.get(&(num, instr.to_owned())).unwrap();
-    println!("reaching copies {:?}", reaching_copies);
-    println!("annotated instructions {:?}", annotated_instructions);
 
     match instr {
         IRInstruction::Copy { src, dst } => {
@@ -2531,7 +2525,6 @@ fn rewrite_instruction(instr: &IRInstruction, num: usize, annotated_instructions
             return Some(IRInstruction::Binary { op: *op, lhs: new_lhs, rhs: new_rhs, dst: dst.clone() });
         }
         IRInstruction::Ret(value) => {
-            println!("replacing return with copies {:?}", reaching_copies);
             let new_value = optionally_replace_operand(value, reaching_copies);
             return Some(IRInstruction::Ret(new_value));
         }
