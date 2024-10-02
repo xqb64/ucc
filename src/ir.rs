@@ -1451,8 +1451,8 @@ impl Instr for IRInstruction {
             IRInstruction::Label(lbl) => format!("Label({})", lbl),
             IRInstruction::JumpIfZero { target, .. } | IRInstruction::JumpIfNotZero { target, .. } => format!("ConditionalJump({})", target),
             IRInstruction::Jump(target) => format!("UnconditionalJump({})", target),
-            IRInstruction::Ret(_) => "Return".to_string(),
-            _ => "Other".to_string(),
+            IRInstruction::Ret(val) => format!("Return {:?}", val),
+            _ => format!("{:?}", self),
         }
     }
 
@@ -1494,21 +1494,21 @@ impl Optimize for IRFunction {
                 post_constant_folding,
             );
 
-            // cfg.print_as_graphviz();
+            cfg.print_as_graphviz();
             
             // First optimization: Unreachable code elimination
             if enabled_optimizations.contains(&Optimization::UnreachableCodeElimination) {
                 cfg = unreachable_code_elimination(&mut cfg).to_owned();
             }
 
-            // cfg.print_as_graphviz();
+            cfg.print_as_graphviz();
             
             // Reannotate the cfg with ReachingCopies for copy propagation
             if enabled_optimizations.contains(&Optimization::CopyPropagation) {
                 cfg = copy_propagation::<(), IRInstruction>(&mut aliased_vars, &cfg);  // Call copy propagation
             }
 
-            // cfg.print_as_graphviz();
+            cfg.print_as_graphviz();
             // 
             // if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
             //     cfg = dead_store_elimination(&mut cfg, &all_static_vars);
