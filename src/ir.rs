@@ -2334,6 +2334,23 @@ fn id2num(id: &NodeId) -> usize {
     }
 }
 
+fn var_is_aliased(aliased_vars: &[IRValue], var: &IRValue) -> bool {
+    // Assume is_static checks if the variable is static
+    match var {
+        IRValue::Constant(_) => false,
+        IRValue::Var(v) => aliased_vars.contains(var) || is_static(var),
+        _ => false,
+    }
+}
+
+fn filter_updated(copies: &mut Vec<IRInstruction>, updated: &IRValue) {
+    // A copy is killed if we've updated its src or destination
+    copies.retain(|cp| match cp {
+        IRInstruction::Copy { src, dst } => src != updated && dst != updated,
+        _ => true,
+    });
+}
+
 fn transfer(
     block: &Node,
     initial_reaching_copies: &[IRInstruction],
@@ -2342,122 +2359,92 @@ fn transfer(
     aliased_vars: &mut Vec<IRValue>,
 ) {
     let mut current_reaching_copies = initial_reaching_copies.to_vec();
-
     let block_instructions = get_block_instructions(block);
 
     for instruction in block_instructions.iter() {
-        annotated_instructions.insert((id2num(&get_block_id(block)), instruction.clone()), current_reaching_copies.clone());
+        annotated_instructions.insert(
+            (id2num(&get_block_id(block)), instruction.clone()),
+            current_reaching_copies.clone(),
+        );
 
         match instruction {
             IRInstruction::Copy { src, dst } => {
-                if current_reaching_copies.contains(&instruction) {
+                // If the src and dst already have the same value, no effect
+                if current_reaching_copies.iter().any(|cp| match cp {
+                    IRInstruction::Copy { src: s, dst: d } => s == dst && d == src,
+                    _ => false,
+                }) {
                     continue;
                 }
 
-                let mut to_remove = vec![];
-                for (idx, copy) in current_reaching_copies.iter().enumerate() {
-                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
-                        if copy_src == dst || copy_dst == dst {
-                            to_remove.push(idx);
-                        }
-                    }
-                }
-
-                for idx in to_remove.iter().rev() {
-                    current_reaching_copies.remove(*idx);
-                }
-
-                let src_t = tacky_type(src);
-                let dst_t = tacky_type(dst);
-
-                if (src_t == dst_t) || (get_signedness(&src_t) == get_signedness(&dst_t)) {
+                // Filter out updated dst and possibly add the copy
+                filter_updated(&mut current_reaching_copies, dst);
+                if tacky_type(src) == tacky_type(dst) {
                     current_reaching_copies.push(instruction.clone());
                 }
             }
 
             IRInstruction::Call { target: _, args: _, dst } => {
-                let mut to_remove = vec![];
-                for (idx, copy) in current_reaching_copies.iter().enumerate() {
-                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
-                        // if &Some(copy_src.to_owned()) == dst || &Some(copy_dst.to_owned()) == dst || is_static(copy_src) || is_static(copy_dst) {
-                        if aliased_vars.contains(copy_src) || aliased_vars.contains(copy_dst) || (dst.is_some() && (&Some(copy_src.to_owned()) == dst || &Some(copy_dst.to_owned()) == dst)) {
-                            to_remove.push(idx);
-                        }
-                    }
+                // First filter out copies killed by dst
+                if let Some(d) = dst {
+                    filter_updated(&mut current_reaching_copies, d);
                 }
 
-                for idx in to_remove.iter().rev() {
-                    current_reaching_copies.remove(*idx);
-                }
+                // Then filter out copies that are static or aliased
+                current_reaching_copies.retain(|cp| match cp {
+                    IRInstruction::Copy { src, dst } => {
+                        !var_is_aliased(aliased_vars, src) && !var_is_aliased(aliased_vars, dst)
+                    }
+                    _ => true,
+                });
             }
 
-            IRInstruction::Store { src, dst_ptr } => {
-                let mut to_remove = vec![];
-                for (idx, copy) in current_reaching_copies.iter().enumerate() {
-                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
-                        if aliased_vars.contains(copy_src) || aliased_vars.contains(copy_dst) {
-                            to_remove.push(idx);
-                        }
+            IRInstruction::Store { src, dst_ptr: _ } => {
+                // Filter out copies that are static or aliased
+                current_reaching_copies.retain(|cp| match cp {
+                    IRInstruction::Copy { src: cp_src, dst: cp_dst } => {
+                        !var_is_aliased(aliased_vars, cp_src) && !var_is_aliased(aliased_vars, cp_dst)
                     }
-                }
+                    _ => true,
+                });
             }
 
             IRInstruction::Unary { op: _, src: _, dst } => {
-                let mut to_remove = vec![];
-                for (idx, copy) in current_reaching_copies.iter().enumerate() {
-                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
-                        if copy_src == dst || copy_dst == dst {
-                            to_remove.push(idx);
-                        }
-                    }
-                }
-
-                for idx in to_remove.iter().rev() {
-                    current_reaching_copies.remove(*idx);
-                }
+                // Filter out copies whose src or dst is the same as dst
+                filter_updated(&mut current_reaching_copies, dst);
             }
 
             IRInstruction::Binary { op: _, lhs: _, rhs: _, dst } => {
-                let mut to_remove = vec![];
-                for (idx, copy) in current_reaching_copies.iter().enumerate() {
-                    if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
-                        if copy_src == dst || copy_dst == dst {
-                            to_remove.push(idx);
-                        }
-                    }
-                }
-
-                for idx in to_remove.iter().rev() {
-                    current_reaching_copies.remove(*idx);
-                }
+                // Filter out copies whose src or dst is the same as dst
+                filter_updated(&mut current_reaching_copies, dst);
             }
 
             _ => {
-                match get_dst(instruction) {
-                    Some(dst) => filter_updated(&mut current_reaching_copies, dst),
-                    None => {}
+                if let Some(dst) = get_dst(instruction) {
+                    filter_updated(&mut current_reaching_copies, &dst);
                 }
             }
         }
     }
 
+    // Insert the final state of reaching copies for the block
     annotated_blocks.insert(get_block_id(block), current_reaching_copies);
 }
 
-fn filter_updated(reaching_copies: &mut Vec<IRInstruction>, dst: IRValue) {
-    let mut to_remove = vec![];
-    for (idx, copy) in reaching_copies.iter().enumerate() {
-        if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
-            if copy_src == &dst || copy_dst == &dst {
-                to_remove.push(idx);
-            }
-        }
-    }
+// fn filter_updated(reaching_copies: &mut Vec<IRInstruction>, dst: IRValue) {
+//     let mut to_remove = vec![];
+//     for (idx, copy) in reaching_copies.iter().enumerate() {
+//         if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = copy {
+//             if copy_src == &dst || copy_dst == &dst {
+//                 to_remove.push(idx);
+//             }
+//         }
+//     }
 
-    for idx in to_remove.iter().rev() {
-        reaching_copies.remove(*idx);
-    }
-}
+//     for idx in to_remove.iter().rev() {
+//         reaching_copies.remove(*idx);
+//     }
+// }
 
 fn get_dst(instr: &IRInstruction) -> Option<IRValue> {
     match instr {
