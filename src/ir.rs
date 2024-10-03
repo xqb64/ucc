@@ -1986,7 +1986,7 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
 
     // dbg!(&blocks_to_remove);
 
-        for block in blocks_to_remove {
+    for block in blocks_to_remove {
         cfg.remove_block(block);
     }    
 
@@ -2107,6 +2107,12 @@ impl ReachingCopies {
         ReachingCopies(HashSet::new())
     }
 
+    pub fn union(&self, other: &ReachingCopies) -> ReachingCopies {
+        let mut new_set = self.0.clone();
+        new_set.extend(other.0.iter().cloned());
+        ReachingCopies(new_set)
+    }
+
     pub fn add(&mut self, copy: Cp) {
         self.0.insert(copy);
     }
@@ -2190,7 +2196,6 @@ fn transfer(
     let is_aliased = |v: &IRValue| var_is_aliased(aliased_vars, v);
 
     let process_instr = |current_copies: ReachingCopies, instr: &IRInstruction| {
-        let new_copies = current_copies.clone();
         match instr {
             IRInstruction::Copy { src, dst } => {
                 if same_type(src, dst) {
@@ -2223,6 +2228,15 @@ fn transfer(
                     .cloned()
                     .collect(),
             ),
+
+            IRInstruction::Unary { op, src, dst } => {
+                filter_updated(&current_copies, dst)
+            }
+
+            IRInstruction::Binary { op, lhs, rhs, dst } => {
+                filter_updated(&current_copies, dst)
+            }
+
             _ => {
                 if let Some(dst) = get_dst(instr) {
                     filter_updated(&current_copies, &dst)
@@ -2262,7 +2276,7 @@ fn meet(
             }
             NodeId::Block(n) => {
                 let v = cfg.get_block_value(*n  );
-                incoming = incoming.filter(|cp| v.mem(cp));
+                incoming = incoming.union(&v);
             }
             _ => panic!("Internal error"),
         }
@@ -2275,7 +2289,7 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
     cfg: &cfg::CFG<(), IRInstruction>,
 ) -> cfg::CFG<ReachingCopies, IRInstruction> {
     let ident = collect_all_copies(cfg);
-    let mut starting_cfg = cfg.clone().initialize_annotation(ident.clone());
+    let mut starting_cfg = cfg.clone().initialize_annotation(ReachingCopies::new());
 
     let mut worklist: Vec<(usize, BasicBlock<ReachingCopies, IRInstruction>)> = starting_cfg.basic_blocks.clone();
 
