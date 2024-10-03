@@ -40,7 +40,7 @@ pub enum NodeId {
     Exit,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BasicBlock<V, I>
 where I: Clone + Instr, V: Clone {
     pub id: NodeId,
@@ -61,6 +61,14 @@ where I: Clone + Instr, V: Clone {
 
 impl<V, I> CFG<V, I>
 where I: Clone + Instr, V: Clone {
+    pub fn get_block_by_id(&self, block_id: &NodeId) -> (usize, BasicBlock<V, I>) {
+        match block_id {
+            NodeId::Entry => panic!("Cannot get the Entry node"),
+            NodeId::Block(n) => self.basic_blocks.iter().find(|(_, blk)| &blk.id == block_id).unwrap().clone(),
+            NodeId::Exit => panic!("Cannot get the Exit node"),
+        }
+    }
+
     pub fn get_succs(&self, node_id: &NodeId) -> Vec<NodeId> {
         match node_id {
             NodeId::Entry => self.entry_succs.clone(),

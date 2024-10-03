@@ -2252,8 +2252,12 @@ fn meet(
 ) -> ReachingCopies {
     let mut incoming = ident.clone();
     for pred in &block.preds {
+        println!("block.preds: {:?}", block.preds);
         match pred {
-            NodeId::Entry => return ReachingCopies::new(),
+            NodeId::Entry => {
+                println!("node entry is pred");
+                return ReachingCopies::new();
+            }
             NodeId::Block(n) => {
                 let v = cfg.get_block_value(*n);
                 incoming = incoming.filter(|cp| v.mem(cp));
@@ -2273,19 +2277,30 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
 
     let mut worklist: Vec<(usize, BasicBlock<ReachingCopies, IRInstruction>)> = starting_cfg.basic_blocks.clone();
 
+    println!("worklist: {:?}", worklist);
+
     while let Some((block_idx, blk)) = worklist.pop() {
         let old_annotation = blk.value.clone();
-        let incoming_copies = meet(&ident, &starting_cfg, &blk);
+        let incoming_copies = meet(&ident, &starting_cfg, dbg!(&blk));
         let block = transfer(aliased_vars, &blk, incoming_copies);
         let updated_cfg = starting_cfg.update_basic_block(block_idx, block);
 
-        if old_annotation != updated_cfg.basic_blocks[block_idx].1.value {
-            worklist.extend(updated_cfg.basic_blocks[block_idx].1.succs.iter().map(|succ| {
+        let new_annotation = &updated_cfg.basic_blocks[block_idx].1.value;
+        if &old_annotation != new_annotation {
+            let block_successors = updated_cfg.get_succs(&blk.id);
+
+            for succ in block_successors {
                 match succ {
-                    NodeId::Block(n) => updated_cfg.basic_blocks[*n].clone(),
+                    NodeId::Block(n) => {
+                        let s = updated_cfg.get_block_by_id(&succ);
+                        if !worklist.contains(&s) {
+                            worklist.push(s.clone());
+                        }
+                    }
+                    NodeId::Exit => continue,
                     _ => panic!("Internal error"),
                 }
-            }));
+            }
         }
     }
 
