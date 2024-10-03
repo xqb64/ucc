@@ -2107,6 +2107,11 @@ impl ReachingCopies {
         ReachingCopies(HashSet::new())
     }
 
+    pub fn intersection(&self, other: &ReachingCopies) -> ReachingCopies {
+        let new_set = self.0.intersection(&other.0).cloned().collect();
+        ReachingCopies(new_set)
+    }
+
     pub fn union(&self, other: &ReachingCopies) -> ReachingCopies {
         let mut new_set = self.0.clone();
         new_set.extend(other.0.iter().cloned());
@@ -2268,15 +2273,13 @@ fn meet(
 ) -> ReachingCopies {
     let mut incoming = ident.clone();
     for pred in &block.preds {
-        println!("block.preds: {:?}", block.preds);
         match pred {
             NodeId::Entry => {
-                println!("node entry is pred");
                 return ReachingCopies::new();
             }
             NodeId::Block(n) => {
-                let v = cfg.get_block_value(*n  );
-                incoming = incoming.union(&v);
+                let v = cfg.get_block_value(*n);
+                incoming = incoming.intersection(&v);
             }
             _ => panic!("Internal error"),
         }
@@ -2289,7 +2292,7 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
     cfg: &cfg::CFG<(), IRInstruction>,
 ) -> cfg::CFG<ReachingCopies, IRInstruction> {
     let ident = collect_all_copies(cfg);
-    let mut starting_cfg = cfg.clone().initialize_annotation(ReachingCopies::new());
+    let mut starting_cfg = cfg.clone().initialize_annotation(ident.clone());
 
     let mut worklist: Vec<(usize, BasicBlock<ReachingCopies, IRInstruction>)> = starting_cfg.basic_blocks.clone();
 
