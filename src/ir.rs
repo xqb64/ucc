@@ -1963,7 +1963,6 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
     let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg.basic_blocks.iter()
     .filter(|(_, blk)| {
         if reachable_block_ids.contains(&blk.id) {
-            blocks_to_remove.push(blk.id.clone());
             true
         } else {
             // Collect edges to remove
@@ -1973,24 +1972,29 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
             for succ in &blk.succs {
                 edges_to_remove.push((blk.id.clone(), succ.clone()));
             }
+            blocks_to_remove.push(blk.id.clone());
             false
         }
     })
     .cloned()
     .collect();
 
-    // Now remove the edges
-    for (pred, succ) in edges_to_remove {
-        cfg.remove_edge(pred, succ);
-    }
-
-    // let mut i = 0;
-    // while i < blocks_to_remove.len() {
-    //     cfg.remove_block(blocks_to_remove[i].clone());
-    //     i += 1;
+    // // Now remove the edges
+    // for (pred, succ) in edges_to_remove {
+    //     cfg.remove_edge(pred, succ);
     // }
 
-    cfg.basic_blocks = updated_blocks;
+    // dbg!(&blocks_to_remove);
+
+        for block in blocks_to_remove {
+        cfg.remove_block(block);
+    }    
+
+    // dbg!(&cfg);
+
+    // dbg!(&updated_blocks);
+
+    // cfg.basic_blocks = updated_blocks;
 
     cfg
 }
@@ -2084,7 +2088,7 @@ pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut
         cfg.remove_block(block);
     }    
     // Return the updated CFG with filtered basic blocks
-    cfg.basic_blocks = updated_blocks;
+    // cfg.basic_blocks = updated_blocks;
 
     cfg
 }
