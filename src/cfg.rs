@@ -200,12 +200,49 @@ where I: Clone + Instr, V: Clone {
         match node_id {
             NodeId::Entry => f(&mut self.entry_succs),
             NodeId::Block(n) => {
-                let block = self.basic_blocks.iter_mut().find(|(i, _)| *i == *n).unwrap();
+                let block = self.basic_blocks.iter_mut().find(|(_, blk)| blk.id == *node_id).unwrap();
                 f(&mut block.1.succs);
             }
             NodeId::Exit => panic!("Internal error: malformed CFG"),
         }
     }
+
+    pub fn remove_block(&mut self, block_id: NodeId) {
+        // First, collect the successors and predecessors that need to be updated
+        let mut successors_to_update = Vec::new();
+        let mut predecessors_to_update = Vec::new();
+    
+        // Collect successors of the block
+        self.update_successors(&block_id, |succs| {
+            successors_to_update.extend(succs.clone()); // Clone the successors
+            succs.clear(); // Clear all successors of the block
+        });
+    
+        // Collect predecessors of the block
+        self.update_predecessors(&block_id, |preds| {
+            predecessors_to_update.extend(preds.clone()); // Clone the predecessors
+            preds.clear(); // Clear all predecessors of the block
+        });
+    
+        // Now update all the predecessors by removing the block from their successor lists
+        for succ in successors_to_update {
+            self.update_predecessors(&succ, |preds| {
+                preds.retain(|x| x != &block_id); // Remove block from predecessors
+            });
+        }
+    
+        // Now update all the successors by removing the block from their predecessor lists
+        for pred in predecessors_to_update {
+            self.update_successors(&pred, |succs| {
+                succs.retain(|x| x != &block_id); // Remove block from successors
+            });
+        }
+    
+        // Finally, remove the block from the basic blocks
+        self.basic_blocks.retain(|(_, blk)| blk.id != block_id);
+    }
+    
+    
 
     fn update_predecessors<F>(&mut self, node_id: &NodeId, f: F)
     where

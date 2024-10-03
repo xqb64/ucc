@@ -1957,11 +1957,13 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
     dfs(cfg, &mut reachable_block_ids, NodeId::Entry);
 
     let mut edges_to_remove = vec![];
+    let mut blocks_to_remove = vec![];
 
     // Filter out unreachable blocks
     let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg.basic_blocks.iter()
     .filter(|(_, blk)| {
         if reachable_block_ids.contains(&blk.id) {
+            blocks_to_remove.push(blk.id.clone());
             true
         } else {
             // Collect edges to remove
@@ -1981,6 +1983,12 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
     for (pred, succ) in edges_to_remove {
         cfg.remove_edge(pred, succ);
     }
+
+    // let mut i = 0;
+    // while i < blocks_to_remove.len() {
+    //     cfg.remove_block(blocks_to_remove[i].clone());
+    //     i += 1;
+    // }
 
     cfg.basic_blocks = updated_blocks;
 
@@ -2054,24 +2062,16 @@ pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(cfg:
 }
 
 pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> &mut cfg::CFG<V, I> {
-    let mut edges_to_remove = Vec::new();
-    let mut edges_to_add = Vec::new();
+    println!("Removing empty blocks");
+
+    let mut blocks_to_remove = Vec::new();
 
     // Collect empty blocks and their associated edges for removal and addition
     let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg.basic_blocks.iter()
         .filter(|(_, blk)| {
             if blk.instructions.is_empty() {
-                // Empty block - collect edges to remove and add
-                if blk.preds.len() == 1 && blk.succs.len() == 1 {
-                    let pred = blk.preds[0].clone();
-                    let succ = blk.succs[0].clone();
-                    edges_to_remove.push((pred.clone(), blk.id.clone()));
-                    edges_to_remove.push((blk.id.clone(), succ.clone()));
-                    edges_to_add.push((pred, succ));
-                    false // Mark this block for removal
-                } else {
-                    panic!("Empty block should have exactly one predecessor and one successor");
-                }
+                blocks_to_remove.push(blk.id.clone());
+                false // Mark this block for removal
             } else {
                 true // Keep this block
             }
@@ -2079,15 +2079,10 @@ pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut
         .cloned()
         .collect();
 
-    // Now perform the edge modifications after the iteration
-    for (pred, succ) in edges_to_remove {
-        cfg.remove_edge(pred, succ);
-    }
 
-    for (pred, succ) in edges_to_add {
-        cfg.add_edge(pred, succ);
-    }
-
+    for block in blocks_to_remove {
+        cfg.remove_block(block);
+    }    
     // Return the updated CFG with filtered basic blocks
     cfg.basic_blocks = updated_blocks;
 
@@ -2277,21 +2272,19 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
 
     let mut worklist: Vec<(usize, BasicBlock<ReachingCopies, IRInstruction>)> = starting_cfg.basic_blocks.clone();
 
-    println!("worklist: {:?}", worklist);
-
     while let Some((block_idx, blk)) = worklist.pop() {
         let old_annotation = blk.value.clone();
         let incoming_copies = meet(&ident, &starting_cfg, &blk);
         let block = transfer(aliased_vars, &blk, incoming_copies);
         let updated_cfg = starting_cfg.update_basic_block(block_idx, block);
 
-        let new_annotation = &updated_cfg.basic_blocks[block_idx].1.value;
+        let new_annotation = updated_cfg.get_block_value(block_idx);
         if &old_annotation != new_annotation {
             let block_successors = updated_cfg.get_succs(&blk.id);
 
             for succ in block_successors {
                 match succ {
-                    NodeId::Block(n) => {
+                    NodeId::Block(_) => {
                         let s = updated_cfg.get_block_by_id(&succ);
                         if !worklist.contains(&s) {
                             worklist.push(s.clone());
