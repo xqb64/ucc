@@ -2150,8 +2150,13 @@ fn var_is_aliased(aliased_vars: &HashSet<String>, v: &IRValue) -> bool {
 }
 
 fn filter_updated(copies: &ReachingCopies, updated: &IRValue) -> ReachingCopies {
-    let is_killed = |cp: &Cp| cp.src == *updated || cp.dst == *updated;
-    copies.filter(|cp| !is_killed(cp))
+    match updated {
+        IRValue::Var(_) => {
+            let is_killed = |cp: &Cp| cp.src == *updated || cp.dst == *updated;
+            copies.filter(|cp| !is_killed(cp))
+        }
+        IRValue::Constant(_) => copies.clone(),
+    }
 }
 
 fn get_dst(instr: &IRInstruction) -> Option<IRValue> {
@@ -2188,12 +2193,10 @@ fn transfer(
         let new_copies = current_copies.clone();
         match instr {
             IRInstruction::Copy { src, dst } => {
-                if new_copies.mem(&Cp { src: dst.clone(), dst: src.clone() }) {
-                    // dst and src already have the same value, so no effect
-                    current_copies
-                } else if same_type(src, dst) {
-                    filter_updated(&current_copies, dst).add(Cp { src: src.clone(), dst: dst.clone() });
-                    current_copies
+                if same_type(src, dst) {
+                    let mut updated_copies = filter_updated(&current_copies, dst);
+                    updated_copies.add(Cp { src: src.clone(), dst: dst.clone() });
+                    updated_copies
                 } else {
                     filter_updated(&current_copies, dst)
                 }
@@ -2258,7 +2261,7 @@ fn meet(
                 return ReachingCopies::new();
             }
             NodeId::Block(n) => {
-                let v = cfg.get_block_value(*n);
+                let v = cfg.get_block_value(*n  );
                 incoming = incoming.filter(|cp| v.mem(cp));
             }
             _ => panic!("Internal error"),
@@ -2356,13 +2359,15 @@ fn rewrite_instruction(
     // Filter out useless copy instructions
     match instr {
         IRInstruction::Copy { src, dst } => {
-            if reaching_copies.mem(&Cp { src: src.clone(), dst: dst.clone() })
-                || reaching_copies.mem(&Cp { src: dst.clone(), dst: src.clone() })
-            {
-                None
-            } else {
-                Some(IRInstruction::Copy { src: replace(src), dst: dst.clone() })
+            for copy in reaching_copies.elements().iter() {
+                let c = IRInstruction::Copy { src: copy.src.clone(), dst: copy.dst.clone() };
+                if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &c {
+                    if &c == instr || (copy_src == dst && copy_dst == src) {
+                        return None;
+                    }
+                }
             }
+            Some(IRInstruction::Copy { src: replace(src), dst: dst.clone() })
         }
         // Handle other instruction rewrites, replacing operands
         IRInstruction::Unary { op, src, dst } => Some(IRInstruction::Unary { src: replace(src), op: *op, dst: dst.clone() }),
