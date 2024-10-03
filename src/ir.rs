@@ -2281,7 +2281,7 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
 
     while let Some((block_idx, blk)) = worklist.pop() {
         let old_annotation = blk.value.clone();
-        let incoming_copies = meet(&ident, &starting_cfg, dbg!(&blk));
+        let incoming_copies = meet(&ident, &starting_cfg, &blk);
         let block = transfer(aliased_vars, &blk, incoming_copies);
         let updated_cfg = starting_cfg.update_basic_block(block_idx, block);
 
