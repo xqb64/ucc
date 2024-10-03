@@ -2269,7 +2269,7 @@ fn meet(
     for pred in &block.preds {
         match pred {
             NodeId::Entry => {
-                return ReachingCopies::new();
+                incoming = incoming.intersection(&ReachingCopies::new());
             }
             NodeId::Block(n) => {
                 let v = cfg.get_block_value(*n);
@@ -2339,7 +2339,7 @@ fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(aliased_vars: &H
         basic_blocks: annotated_cfg
             .basic_blocks
             .iter()
-            .map(|(idx, blk)| (idx.clone(), rewrite_block((*idx, blk.clone()))))
+            .map(|(idx, blk)| (*idx, rewrite_block((*idx, blk.clone()))))
             .collect(),
         entry_succs: annotated_cfg.entry_succs.clone(),
         exit_preds: annotated_cfg.exit_preds.clone(),
