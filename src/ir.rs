@@ -2200,9 +2200,17 @@ fn transfer(
 ) -> BasicBlock<ReachingCopies, IRInstruction> {
     let is_aliased = |v: &IRValue| var_is_aliased(aliased_vars, v);
 
-    let process_instr = |current_copies: ReachingCopies, instr: &IRInstruction| {
-        match instr {
-            IRInstruction::Copy { src, dst } => {
+    let mut current_copies = initial_reaching_copies.clone();
+    let mut annotated_instructions = Vec::new();
+
+    for instr in &block.instructions {
+        // Annotate the instruction with the current copies before processing
+        let annotated_instr = (current_copies.clone(), instr.1.clone());
+        annotated_instructions.push(annotated_instr);
+
+        // Process the instruction to update current_copies
+        current_copies = match instr.1 {
+            IRInstruction::Copy { ref src, ref dst } => {
                 if same_type(src, dst) {
                     let mut updated_copies = filter_updated(&current_copies, dst);
                     updated_copies.add(Cp { src: src.clone(), dst: dst.clone() });
@@ -2211,10 +2219,10 @@ fn transfer(
                     filter_updated(&current_copies, dst)
                 }
             }
-            IRInstruction::Call { dst, .. } => {
+            IRInstruction::Call { ref dst, .. } => {
                 let filtered = match dst {
                     Some(d) => filter_updated(&current_copies, d),
-                    None => current_copies,
+                    None => current_copies.clone(),
                 };
 
                 ReachingCopies(
@@ -2233,36 +2241,22 @@ fn transfer(
                     .cloned()
                     .collect(),
             ),
-
-            IRInstruction::Unary { op, src, dst } => {
-                filter_updated(&current_copies, dst)
-            }
-
-            IRInstruction::Binary { op, lhs, rhs, dst } => {
-                filter_updated(&current_copies, dst)
-            }
-
             _ => {
-                if let Some(dst) = get_dst(instr) {
+                if let Some(dst) = get_dst(&instr.1) {
                     filter_updated(&current_copies, &dst)
                 } else {
-                    current_copies
+                    current_copies.clone()
                 }
             }
-        }
-    };
-
-    let final_reaching_copies = block
-        .instructions
-        .iter()
-        .fold(initial_reaching_copies, |current_copies, (_, instr)| {
-            process_instr(current_copies, instr)
-        });
+        };
+    }
 
     BasicBlock {
-        instructions: block.instructions.clone(),
-        value: final_reaching_copies,
-        ..block.clone()
+        instructions: annotated_instructions,
+        value: current_copies,
+        preds: block.preds.clone(),
+        succs: block.succs.clone(),
+        id: block.id.clone(),
     }
 }
 
