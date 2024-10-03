@@ -1505,7 +1505,7 @@ impl Optimize for IRFunction {
             
             // Reannotate the cfg with ReachingCopies for copy propagation
             if enabled_optimizations.contains(&Optimization::CopyPropagation) {
-                cfg = copy_propagation::<(), IRInstruction>(&mut aliased_vars, &cfg);  // Call copy propagation
+                cfg = copy_propagation::<(), IRInstruction>(&mut aliased_vars, cfg);  // Call copy propagation
             }
 
             // cfg.print_as_graphviz();
@@ -2283,10 +2283,10 @@ fn meet(
 
 fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
     aliased_vars: &HashSet<String>,
-    cfg: &cfg::CFG<(), IRInstruction>,
+    cfg: cfg::CFG<(), IRInstruction>,
 ) -> cfg::CFG<ReachingCopies, IRInstruction> {
-    let ident = collect_all_copies(cfg);
-    let mut starting_cfg = cfg.clone().initialize_annotation(ident.clone());
+    let ident = collect_all_copies(&cfg);
+    let mut starting_cfg = cfg.initialize_annotation(ident.clone());
 
     let mut worklist: Vec<(usize, BasicBlock<ReachingCopies, IRInstruction>)> = starting_cfg.basic_blocks.clone();
 
@@ -2294,16 +2294,17 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
         let old_annotation = blk.value.clone();
         let incoming_copies = meet(&ident, &starting_cfg, &blk);
         let block = transfer(aliased_vars, &blk, incoming_copies);
-        let updated_cfg = starting_cfg.update_basic_block(block_idx, block);
+        
+        starting_cfg.update_basic_block(block_idx, block);
 
-        let new_annotation = updated_cfg.get_block_value(block_idx);
+        let new_annotation = starting_cfg.get_block_value(block_idx);
         if &old_annotation != new_annotation {
-            let block_successors = updated_cfg.get_succs(&blk.id);
+            let block_successors = starting_cfg.get_succs(&blk.id);
 
             for succ in block_successors {
                 match succ {
                     NodeId::Block(_) => {
-                        let s = updated_cfg.get_block_by_id(&succ);
+                        let s = starting_cfg.get_block_by_id(&succ);
                         if !worklist.contains(&s) {
                             worklist.push(s.clone());
                         }
@@ -2318,7 +2319,7 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
     starting_cfg
 }
 
-fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(aliased_vars: &HashSet<String>, cfg: &cfg::CFG<(), IRInstruction>) -> cfg::CFG<(), IRInstruction> {
+fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(aliased_vars: &HashSet<String>, cfg: cfg::CFG<(), IRInstruction>) -> cfg::CFG<(), IRInstruction> {
     let annotated_cfg = find_reaching_copies::<(), IRInstruction>(aliased_vars, cfg);
 
     let rewrite_block = |(idx, block): (usize, BasicBlock<ReachingCopies, IRInstruction>)| {
