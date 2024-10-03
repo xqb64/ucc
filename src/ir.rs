@@ -2211,7 +2211,9 @@ fn transfer(
         // Process the instruction to update current_copies
         current_copies = match instr.1 {
             IRInstruction::Copy { ref src, ref dst } => {
-                if same_type(src, dst) {
+                if current_copies.0.contains(&Cp { src: src.clone(), dst: dst.clone() }) {
+                    continue;
+                } else if same_type(src, dst) {
                     let mut updated_copies = filter_updated(&current_copies, dst);
                     updated_copies.add(Cp { src: src.clone(), dst: dst.clone() });
                     updated_copies
@@ -2269,7 +2271,7 @@ fn meet(
     for pred in &block.preds {
         match pred {
             NodeId::Entry => {
-                incoming = incoming.intersection(&ReachingCopies::new());
+                return ReachingCopies::new();
             }
             NodeId::Block(n) => {
                 let v = cfg.get_block_value(*n);
@@ -2371,17 +2373,17 @@ fn rewrite_instruction(
     // Filter out useless copy instructions
     match instr {
         IRInstruction::Copy { src, dst } => {
-            for copy in reaching_copies.elements().iter() {
-                let c = IRInstruction::Copy { src: copy.src.clone(), dst: copy.dst.clone() };
-                if let IRInstruction::Copy { src: copy_src, dst: copy_dst } = &c {
-                    if &c == instr || (copy_src == dst && copy_dst == src) {
-                        return None;
-                    }
+            for copy in reaching_copies.0.iter() {
+                if (copy.src == *src && copy.dst == *dst) || (copy.src == *dst && copy.dst == *src) {
+                    return None;
                 }
             }
-            Some(IRInstruction::Copy { src: replace(src), dst: dst.clone() })
-        }
-        // Handle other instruction rewrites, replacing operands
+            let new_src = replace(src);
+            Some(IRInstruction::Copy {
+                src: new_src,
+                dst: dst.clone(),
+            })
+    }
         IRInstruction::Unary { op, src, dst } => Some(IRInstruction::Unary { src: replace(src), op: *op, dst: dst.clone() }),
         IRInstruction::Binary { op, lhs, rhs, dst } => Some(IRInstruction::Binary {
             lhs: replace(lhs),
