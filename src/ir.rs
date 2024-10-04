@@ -2372,7 +2372,7 @@ fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(
             .collect::<Vec<_>>();
 
         BasicBlock {
-            instructions: new_instructions,
+            instructions: dbg!(new_instructions),
             ..block.clone()
         }
     };
@@ -2507,6 +2507,14 @@ fn rewrite_instruction(
             src: replace(src),
             dst_ptr: dst_ptr.clone(),
         }),
+        IRInstruction::Call { target, args, dst } => {
+            let new_args = args.iter().map(|arg| replace(arg)).collect();
+            Some(IRInstruction::Call {
+                target: target.clone(),
+                args: new_args,
+                dst: dst.clone(),
+            })
+        }
         _ => Some(instr.clone()),
     }
 }
