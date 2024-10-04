@@ -2260,13 +2260,11 @@ fn transfer(
                 }
             }
             IRInstruction::Call { dst, .. } => {
-                // Filter out copies killed by `dst`
                 let copies_after_dst_filter = match dst {
                     Some(d) => filter_updated(current_copies, d),
                     None => current_copies,
                 };
 
-                // Filter out copies that are static
                 copies_after_dst_filter
                     .filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
             }
@@ -2275,7 +2273,6 @@ fn transfer(
                     .filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
             }
             _ => {
-                // Handle other instructions
                 match get_dst(instr) {
                     Some(dst) => filter_updated(current_copies, &dst),
                     None => current_copies,
