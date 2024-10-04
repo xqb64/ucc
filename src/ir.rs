@@ -2251,10 +2251,12 @@ fn transfer(
                     println!("filtering copies {:?}", copies_to_remove);
                     current_copies = current_copies.filter(|cp| !copies_to_remove.contains(cp));
 
-                    current_copies.add(Cp {
-                        src: src.clone(),
-                        dst: dst.clone(),
-                    });
+                    if same_type(src, dst) {
+                        current_copies.add(Cp {
+                            src: src.clone(),
+                            dst: dst.clone(),
+                        });    
+                    }
 
                     current_copies
                 }
@@ -2507,7 +2509,7 @@ fn rewrite_instruction(
                     dst: dst.clone(),
                     offset: offset.clone(),
                 }),
-                _ => None,
+                _ => panic!("internal error"),
             }
         }
         IRInstruction::AddPtr {
