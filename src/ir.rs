@@ -2217,7 +2217,7 @@ fn transfer(
                     }
 
                     println!("filtering copies {:?}", copies_to_remove);
-                    current_copies.filter(|cp| !copies_to_remove.contains(cp));
+                    current_copies = current_copies.filter(|cp| !copies_to_remove.contains(cp));
                 
                     current_copies.add(Cp {
                         src: src.clone(),
