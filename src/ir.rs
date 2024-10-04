@@ -2267,23 +2267,12 @@ fn transfer(
                 };
 
                 // Filter out copies that are static
-                ReachingCopies(
-                    copies_after_dst_filter
-                        .0
-                        .into_iter()
-                        .filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
-                        .collect(),
-                )
+                copies_after_dst_filter
+                    .filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
             }
             IRInstruction::Store { .. } => {
-                // Filter out copies where `src` or `dst` is aliased
-                ReachingCopies(
-                    current_copies
-                        .0
-                        .into_iter()
-                        .filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
-                        .collect(),
-                )
+                current_copies
+                    .filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
             }
             _ => {
                 // Handle other instructions
