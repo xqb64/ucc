@@ -1923,7 +1923,7 @@ impl std::ops::Not for Const {
     }
 }
 
-use std::{clone, fmt::Debug};
+use std::fmt::Debug;
 
 fn unreachable_code_elimination<V: Clone + Debug, I: Debug + Instr + Clone>(
     cfg: &mut cfg::CFG<V, I>,
@@ -2147,8 +2147,9 @@ impl ReachingCopies {
         ReachingCopies(new_set)
     }
 
-    pub fn add(&mut self, copy: Cp) {
+    pub fn add(&mut self, copy: Cp) -> Self {
         self.0.insert(copy);
+        ReachingCopies(self.0.clone())
     }
 
     pub fn mem(&self, copy: &Cp) -> bool {
@@ -2191,7 +2192,7 @@ fn filter_updated(mut copies: ReachingCopies, updated: &IRValue) -> ReachingCopi
     // A copy is killed if we've updated its src or destination
     copies
         .0
-        .retain(|cp| &cp.src != updated && &cp.dst != updated);
+        .retain(|cp| !(&cp.src == updated || &cp.dst == updated));
 
     copies
 }
@@ -2223,42 +2224,26 @@ fn transfer(
     block: &BasicBlock<ReachingCopies, IRInstruction>,
     initial_reaching_copies: ReachingCopies,
 ) -> BasicBlock<ReachingCopies, IRInstruction> {
-    println!("trasnferring block {:?}", block.id);
-
     let is_aliased = |var: &IRValue| var_is_aliased(aliased_vars, var);
 
-    let process_instr = |mut current_copies: ReachingCopies,
-                         (_index, instr): (usize, &IRInstruction)| {
+    let process_instr = |current_copies: ReachingCopies, instr: &IRInstruction| {
+        
         let annotated_instr = (current_copies.clone(), instr.clone());
 
         let new_copies = match instr {
             IRInstruction::Copy { src, dst } => {
-                if current_copies.0.contains(&Cp {
+                if current_copies.mem(&Cp {
                     src: dst.clone(),
                     dst: src.clone(),
                 }) {
                     println!("returning current_copies");
                     current_copies
+                } else if same_type(src, dst) {
+                    let mut updated = filter_updated(current_copies, dst);
+                    let new_copies = updated.add(Cp { src: src.clone(), dst: dst.clone() });
+                    new_copies
                 } else {
-                    let mut copies_to_remove = vec![];
-
-                    for copy in current_copies.0.iter() {
-                        if &copy.src == dst || &copy.dst == dst {
-                            copies_to_remove.push(copy.clone());
-                        }
-                    }
-
-                    println!("filtering copies {:?}", copies_to_remove);
-                    current_copies = current_copies.filter(|cp| !copies_to_remove.contains(cp));
-
-                    if same_type(src, dst) {
-                        current_copies.add(Cp {
-                            src: src.clone(),
-                            dst: dst.clone(),
-                        });    
-                    }
-
-                    current_copies
+                    filter_updated(current_copies, dst)
                 }
             }
             IRInstruction::Call { dst, .. } => {
@@ -2285,14 +2270,11 @@ fn transfer(
         (new_copies, annotated_instr)
     };
 
-    // Fold over the instructions, updating the state
     let (final_reaching_copies, annotated_instructions): (
         ReachingCopies,
         Vec<(ReachingCopies, IRInstruction)>,
-    ) = block.instructions.iter().enumerate().fold(
-        (initial_reaching_copies, Vec::new()),
-        |(current_copies, mut annotated_instrs), (index, instr)| {
-            let (new_copies, annotated_instr) = process_instr(current_copies, (index, &instr.1));
+    ) = block.instructions.iter().fold((initial_reaching_copies, Vec::new()), |(current_copies, mut annotated_instrs), instr| {
+            let (new_copies, annotated_instr) = process_instr(current_copies, &instr.1);
             annotated_instrs.push(annotated_instr);
             (new_copies, annotated_instrs)
         },
@@ -2339,6 +2321,8 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
     let mut worklist: Vec<(usize, BasicBlock<ReachingCopies, IRInstruction>)> =
         starting_cfg.basic_blocks.clone();
 
+    println!("ident {:?}", ident);
+
     loop {
         if worklist.is_empty() {
             break;
@@ -2349,7 +2333,11 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
         // starting_cfg.print_as_graphviz();
 
         let old_annotation = blk.value.clone();
+        println!("old_annotation {:?}", old_annotation);
+
         let incoming_copies = meet(&ident, &starting_cfg, &blk);
+        println!("incoming_copies {:?}", incoming_copies);
+        println!("transfering block {:?}", blk.id);
 
         let block = transfer(aliased_vars, &blk, incoming_copies);
 
@@ -2425,7 +2413,7 @@ fn rewrite_instruction(
             IRValue::Var(_) => {
                 // Try to find a copy where dst matches op
                 reaching_copies
-                    .elements()
+                    .0
                     .iter()
                     .find(|cp| cp.dst == op.clone())
                     .map(|cp| cp.src.clone())
