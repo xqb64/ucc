@@ -1999,22 +1999,10 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
         .cloned()
         .collect();
 
-    // // Now remove the edges
-    // for (pred, succ) in edges_to_remove {
-    //     cfg.remove_edge(pred, succ);
-    // }
-
-    // dbg!(&blocks_to_remove);
 
     for block in blocks_to_remove {
         cfg.remove_block(block);
     }
-
-    // dbg!(&cfg);
-
-    // dbg!(&updated_blocks);
-
-    // cfg.basic_blocks = updated_blocks;
 
     cfg
 }
