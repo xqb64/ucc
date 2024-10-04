@@ -2116,8 +2116,9 @@ impl ReachingCopies {
         ReachingCopies(new_set)
     }
 
-    pub fn add(&mut self, copy: Cp) {
+    pub fn add(&mut self, copy: Cp) -> Self {
         self.0.insert(copy);
+        self.clone()
     }
 
     pub fn mem(&self, copy: &Cp) -> bool {
@@ -2219,7 +2220,7 @@ fn transfer(
                     println!("filtering copies {:?}", copies_to_remove);
                     current_copies = current_copies.filter(|cp| !copies_to_remove.contains(cp));
                 
-                    current_copies.add(Cp {
+                    current_copies = current_copies.add(Cp {
                         src: src.clone(),
                         dst: dst.clone(),
                     });
