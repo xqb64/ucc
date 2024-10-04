@@ -2454,7 +2454,7 @@ fn collect_all_copies(cfg: &cfg::CFG<(), IRInstruction>) -> ReachingCopies {
         for (_, instr) in &block.instructions {
             if let IRInstruction::Copy { src, dst } = instr {
                 if same_type(&src, &dst) {
-                    copies.add(Cp { src: src.clone(), dst: dst.clone() });
+                    copies = copies.add(Cp { src: src.clone(), dst: dst.clone() });
                 }
             }
         }
