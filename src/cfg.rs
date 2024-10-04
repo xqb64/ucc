@@ -13,7 +13,7 @@ pub enum SimpleInstr {
 
 pub trait Instr {
     fn simplify(&self) -> SimpleInstr;
-    fn pp_instr(&self) -> String;  // Returns the instruction as a formatted string
+    fn pp_instr(&self) -> String; // Returns the instruction as a formatted string
     fn is_jump(&self) -> bool;
     fn is_label(&self) -> bool;
 }
@@ -21,8 +21,7 @@ pub trait Instr {
 impl dyn Instr {
     fn is_jump(&self) -> bool {
         match self.simplify() {
-            SimpleInstr::ConditionalJump(_)
-            | SimpleInstr::UnconditionalJump(..) => true,
+            SimpleInstr::ConditionalJump(_) | SimpleInstr::UnconditionalJump(..) => true,
             _ => false,
         }
     }
@@ -38,35 +37,49 @@ impl dyn Instr {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum NodeId {
     Entry,
-    Block(usize),  // Block ID is represented by an index
+    Block(usize), // Block ID is represented by an index
     Exit,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct BasicBlock<V, I>
-where I: Clone + Instr, V: Clone {
+where
+    I: Clone + Instr,
+    V: Clone,
+{
     pub id: NodeId,
-    pub instructions: Vec<(V, I)>,  // Tuple of value and instruction
-    pub preds: Vec<NodeId>,          // Predecessor nodes
-    pub succs: Vec<NodeId>,          // Successor nodes
-    pub value: V,                    // Annotated value (e.g., live variables)
+    pub instructions: Vec<(V, I)>, // Tuple of value and instruction
+    pub preds: Vec<NodeId>,        // Predecessor nodes
+    pub succs: Vec<NodeId>,        // Successor nodes
+    pub value: V,                  // Annotated value (e.g., live variables)
 }
 
 #[derive(Clone, Debug)]
 pub struct CFG<V, I>
-where I: Clone + Instr, V: Clone {
-    pub basic_blocks: Vec<(usize, BasicBlock<V, I>)>,  // List of blocks indexed by ID
-    pub entry_succs: Vec<NodeId>,                      // Successors of the entry node
-    pub exit_preds: Vec<NodeId>,                       // Predecessors of the exit node
-    pub debug_label: String,                           // Label for debugging
+where
+    I: Clone + Instr,
+    V: Clone,
+{
+    pub basic_blocks: Vec<(usize, BasicBlock<V, I>)>, // List of blocks indexed by ID
+    pub entry_succs: Vec<NodeId>,                     // Successors of the entry node
+    pub exit_preds: Vec<NodeId>,                      // Predecessors of the exit node
+    pub debug_label: String,                          // Label for debugging
 }
 
 impl<V, I> CFG<V, I>
-where I: Clone + Instr + Debug, V: Clone + Debug {
+where
+    I: Clone + Instr + Debug,
+    V: Clone + Debug,
+{
     pub fn get_block_by_id(&self, block_id: &NodeId) -> (usize, BasicBlock<V, I>) {
         match block_id {
             NodeId::Entry => panic!("Cannot get the Entry node"),
-            NodeId::Block(n) => self.basic_blocks.iter().find(|(_, blk)| &blk.id == block_id).unwrap().clone(),
+            NodeId::Block(n) => self
+                .basic_blocks
+                .iter()
+                .find(|(_, blk)| &blk.id == block_id)
+                .unwrap()
+                .clone(),
             NodeId::Exit => panic!("Cannot get the Exit node"),
         }
     }
@@ -78,24 +91,32 @@ where I: Clone + Instr + Debug, V: Clone + Debug {
                 let block = self.basic_blocks.iter().find(|(i, _)| *i == *n).unwrap();
                 block.1.succs.clone()
             }
-            NodeId::Exit => vec![],  // Exit node has no successors
+            NodeId::Exit => vec![], // Exit node has no successors
         }
     }
 
     pub fn strip_annotations(self) -> CFG<(), I> {
         CFG {
-            basic_blocks: self.basic_blocks.into_iter().map(|(idx, block)| {
-                (
-                    idx,
-                    BasicBlock {
-                        id: block.id,
-                        instructions: block.instructions.into_iter().map(|(_, instr)| ((), instr)).collect(),
-                        preds: block.preds,
-                        succs: block.succs,
-                        value: (),
-                    },
-                )
-            }).collect(),
+            basic_blocks: self
+                .basic_blocks
+                .into_iter()
+                .map(|(idx, block)| {
+                    (
+                        idx,
+                        BasicBlock {
+                            id: block.id,
+                            instructions: block
+                                .instructions
+                                .into_iter()
+                                .map(|(_, instr)| ((), instr))
+                                .collect(),
+                            preds: block.preds,
+                            succs: block.succs,
+                            value: (),
+                        },
+                    )
+                })
+                .collect(),
             entry_succs: self.entry_succs,
             exit_preds: self.exit_preds,
             debug_label: self.debug_label,
@@ -104,32 +125,34 @@ where I: Clone + Instr + Debug, V: Clone + Debug {
 
     pub fn initialize_annotation(self, dummy_val: ReachingCopies) -> CFG<ReachingCopies, I> {
         // Initialize a single instruction with dummy_val
-        let initialize_instruction = |(_, instr): (V, I)| -> (ReachingCopies, I) {
-            (dummy_val.clone(), instr)
-        };
+        let initialize_instruction =
+            |(_, instr): (V, I)| -> (ReachingCopies, I) { (dummy_val.clone(), instr) };
 
         // Initialize a block by updating its instructions and value
-        let initialize_block = |(idx, block): (usize, BasicBlock<V, I>)| -> (usize, BasicBlock<ReachingCopies, I>) {
-            (
-                idx,
-                BasicBlock {
-                    id: block.id,
-                    // Apply the dummy_val to each instruction
-                    instructions: block.instructions
-                        .into_iter()
-                        .map(initialize_instruction)
-                        .collect(),
-                    preds: block.preds,
-                    succs: block.succs,
-                    // Set the block's value to dummy_val
-                    value: dummy_val.clone(),
-                },
-            )
-        };
+        let initialize_block =
+            |(idx, block): (usize, BasicBlock<V, I>)| -> (usize, BasicBlock<ReachingCopies, I>) {
+                (
+                    idx,
+                    BasicBlock {
+                        id: block.id,
+                        // Apply the dummy_val to each instruction
+                        instructions: block
+                            .instructions
+                            .into_iter()
+                            .map(initialize_instruction)
+                            .collect(),
+                        preds: block.preds,
+                        succs: block.succs,
+                        // Set the block's value to dummy_val
+                        value: dummy_val.clone(),
+                    },
+                )
+            };
 
         // Apply the changes to each block in the CFG
         CFG {
-            basic_blocks: self.basic_blocks
+            basic_blocks: self
+                .basic_blocks
                 .into_iter()
                 .map(initialize_block)
                 .collect(),
@@ -154,7 +177,7 @@ where I: Clone + Instr + Debug, V: Clone + Debug {
                 node_list.push(node_id);
             }
         };
-        
+
         // Add successor to predecessor
         match pred {
             NodeId::Entry => add_if_missing(&mut self.entry_succs, succ.clone()),
@@ -188,7 +211,9 @@ where I: Clone + Instr + Debug, V: Clone + Debug {
                     }
                     current_block = vec![i];
                 }
-                SimpleInstr::ConditionalJump(_) | SimpleInstr::UnconditionalJump(_) | SimpleInstr::Return => {
+                SimpleInstr::ConditionalJump(_)
+                | SimpleInstr::UnconditionalJump(_)
+                | SimpleInstr::Return => {
                     current_block.push(i);
                     finished_blocks.push(current_block);
                     current_block = Vec::new();
@@ -207,7 +232,11 @@ where I: Clone + Instr + Debug, V: Clone + Debug {
     }
 
     pub fn get_block_value(&self, blocknum: usize) -> &V {
-        let block = self.basic_blocks.iter().find(|(i, _)| *i == blocknum).unwrap();
+        let block = self
+            .basic_blocks
+            .iter()
+            .find(|(i, _)| *i == blocknum)
+            .unwrap();
         &block.1.value
     }
 
@@ -218,7 +247,11 @@ where I: Clone + Instr + Debug, V: Clone + Debug {
         match node_id {
             NodeId::Entry => f(&mut self.entry_succs),
             NodeId::Block(n) => {
-                let block = self.basic_blocks.iter_mut().find(|(_, blk)| blk.id == *node_id).unwrap();
+                let block = self
+                    .basic_blocks
+                    .iter_mut()
+                    .find(|(_, blk)| blk.id == *node_id)
+                    .unwrap();
                 f(&mut block.1.succs);
             }
             NodeId::Exit => panic!("Internal error: malformed CFG"),
@@ -229,33 +262,33 @@ where I: Clone + Instr + Debug, V: Clone + Debug {
         // First, collect the successors and predecessors that need to be updated
         let mut successors_to_update = Vec::new();
         let mut predecessors_to_update = Vec::new();
-    
+
         // Collect successors of the block
         self.update_successors(&block_id, |succs| {
             successors_to_update.extend(succs.clone()); // Clone the successors
             succs.clear(); // Clear all successors of the block
         });
-    
+
         // Collect predecessors of the block
         self.update_predecessors(&block_id, |preds| {
             predecessors_to_update.extend(preds.clone()); // Clone the predecessors
             preds.clear(); // Clear all predecessors of the block
         });
-    
+
         // Now update all the predecessors by removing the block from their successor lists
         for succ in successors_to_update {
             self.update_predecessors(&succ, |preds| {
                 preds.retain(|x| x != &block_id); // Remove block from predecessors
             });
         }
-    
+
         // Now update all the successors by removing the block from their predecessor lists
         for pred in predecessors_to_update {
             self.update_successors(&pred, |succs| {
                 succs.retain(|x| x != &block_id); // Remove block from successors
             });
         }
-    
+
         // Finally, remove the block from the basic blocks
         self.basic_blocks.retain(|(_, blk)| blk.id != block_id);
 
@@ -264,10 +297,7 @@ where I: Clone + Instr + Debug, V: Clone + Debug {
             self.entry_succs.push(block.1.id.clone());
             block.1.preds.push(NodeId::Entry);
         }
-
     }
-    
-    
 
     fn update_predecessors<F>(&mut self, node_id: &NodeId, f: F)
     where
@@ -276,7 +306,11 @@ where I: Clone + Instr + Debug, V: Clone + Debug {
         match node_id {
             NodeId::Exit => f(&mut self.exit_preds),
             NodeId::Block(n) => {
-                let block = self.basic_blocks.iter_mut().find(|(i, _)| *i == *n).unwrap();
+                let block = self
+                    .basic_blocks
+                    .iter_mut()
+                    .find(|(i, _)| *i == *n)
+                    .unwrap();
                 f(&mut block.1.preds);
             }
             NodeId::Entry => panic!("Internal error: malformed CFG"),
@@ -367,7 +401,7 @@ where I: Clone + Instr + Debug, V: Clone + Debug {
         cfg
     }
 
-    pub fn cfg_to_instructions(&self) -> Vec<I> 
+    pub fn cfg_to_instructions(&self) -> Vec<I>
     where
         I: Clone,
     {
@@ -380,19 +414,19 @@ where I: Clone + Instr + Debug, V: Clone + Debug {
     pub fn print_as_graphviz(&self) {
         use std::fs::File;
         use std::io::Write;
-    
+
         let tmp = make_temporary();
         let path = format!("cfg.{}.dot", tmp);
-    
+
         let mut file = File::create(path.clone()).unwrap();
         writeln!(file, "digraph {{").unwrap();
-    
+
         // Graph general settings
         writeln!(file, "  labeljust=l;").unwrap();
         writeln!(file, "  node[shape=\"box\"];").unwrap();
         writeln!(file, "  Entry[label=\"ENTRY\"];").unwrap();
         writeln!(file, "  Exit[label=\"EXIT\"];").unwrap();
-    
+
         // Function to extract node ids
         fn extract_id(node: &NodeId) -> String {
             match node {
@@ -401,44 +435,64 @@ where I: Clone + Instr + Debug, V: Clone + Debug {
                 NodeId::Exit => "Exit".to_string(),
             }
         }
-    
+
         // Print the basic blocks
         for (idx, block) in &self.basic_blocks {
             writeln!(file, "  Block{}[label=<", idx).unwrap();
-            writeln!(file, "    <table border=\"0\" cellborder=\"1\" cellspacing=\"0\">").unwrap();
-            writeln!(file, "      <tr><td colspan=\"2\"><b>Block {}</b></td></tr>", idx).unwrap();
-    
+            writeln!(
+                file,
+                "    <table border=\"0\" cellborder=\"1\" cellspacing=\"0\">"
+            )
+            .unwrap();
+            writeln!(
+                file,
+                "      <tr><td colspan=\"2\"><b>Block {}</b></td></tr>",
+                idx
+            )
+            .unwrap();
+
             // Print the instructions and value annotations
             for (val, instr) in &block.instructions {
-                writeln!(file, "      <tr><td align=\"left\">{}</td><td align=\"left\">{:?}</td></tr>", instr.pp_instr(), val).unwrap();
+                writeln!(
+                    file,
+                    "      <tr><td align=\"left\">{}</td><td align=\"left\">{:?}</td></tr>",
+                    instr.pp_instr(),
+                    val
+                )
+                .unwrap();
             }
-    
+
             // Add any block annotations
-            writeln!(file, "      <tr><td colspan=\"2\">{:?}</td></tr>", block.value).unwrap();
-    
+            writeln!(
+                file,
+                "      <tr><td colspan=\"2\">{:?}</td></tr>",
+                block.value
+            )
+            .unwrap();
+
             writeln!(file, "    </table>").unwrap();
             writeln!(file, "  >];").unwrap();
         }
-    
+
         // Print the entry edges
         for succ in &self.entry_succs {
             writeln!(file, "  Entry -> {};", extract_id(succ)).unwrap();
         }
-    
+
         // Print the block edges
         for (idx, block) in &self.basic_blocks {
             for succ in &block.succs {
                 writeln!(file, "  Block{} -> {};", idx, extract_id(succ)).unwrap();
             }
         }
-    
+
         // Print the exit edges
         for pred in &self.exit_preds {
             writeln!(file, "  {} -> Exit;", extract_id(pred)).unwrap();
         }
-    
+
         writeln!(file, "}}").unwrap();
-    
+
         // Convert the dot file to png
         std::process::Command::new("dot")
             .arg("-Tpng")

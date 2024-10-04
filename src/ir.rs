@@ -1427,7 +1427,7 @@ fn address_taken_analysis(instrs: &[IRInstruction]) -> HashSet<String> {
                 } else {
                     None
                 }
-            },
+            }
             _ => None,
         }
     };
@@ -1439,7 +1439,10 @@ impl Instr for IRInstruction {
     fn simplify(&self) -> SimpleInstr {
         match self {
             IRInstruction::Label(lbl) => SimpleInstr::Label(lbl.clone()),
-            IRInstruction::JumpIfZero { target, .. } | IRInstruction::JumpIfNotZero { target, .. } => SimpleInstr::ConditionalJump(target.clone()),
+            IRInstruction::JumpIfZero { target, .. }
+            | IRInstruction::JumpIfNotZero { target, .. } => {
+                SimpleInstr::ConditionalJump(target.clone())
+            }
             IRInstruction::Jump(target) => SimpleInstr::UnconditionalJump(target.clone()),
             IRInstruction::Ret(_) => SimpleInstr::Return,
             _ => SimpleInstr::Other,
@@ -1449,7 +1452,8 @@ impl Instr for IRInstruction {
     fn pp_instr(&self) -> String {
         match self {
             IRInstruction::Label(lbl) => format!("Label({})", lbl),
-            IRInstruction::JumpIfZero { target, .. } | IRInstruction::JumpIfNotZero { target, .. } => format!("ConditionalJump({})", target),
+            IRInstruction::JumpIfZero { target, .. }
+            | IRInstruction::JumpIfNotZero { target, .. } => format!("ConditionalJump({})", target),
             IRInstruction::Jump(target) => format!("UnconditionalJump({})", target),
             IRInstruction::Ret(val) => format!("Return {:?}", val),
             _ => format!("{:?}", self),
@@ -1458,7 +1462,9 @@ impl Instr for IRInstruction {
 
     fn is_jump(&self) -> bool {
         match self {
-            IRInstruction::Jump(_) | IRInstruction::JumpIfZero {..} | IRInstruction::JumpIfNotZero { .. } => true,
+            IRInstruction::Jump(_)
+            | IRInstruction::JumpIfZero { .. }
+            | IRInstruction::JumpIfNotZero { .. } => true,
             _ => false,
         }
     }
@@ -1489,27 +1495,29 @@ impl Optimize for IRFunction {
                 post_constant_folding = self.body.clone();
             }
 
-            let mut cfg: cfg::CFG<(), IRInstruction> = cfg::CFG::<(), IRInstruction>::instructions_to_cfg(
-                "spam".to_string(),
-                post_constant_folding,
-            );
+            let mut cfg: cfg::CFG<(), IRInstruction> =
+                cfg::CFG::<(), IRInstruction>::instructions_to_cfg(
+                    "spam".to_string(),
+                    post_constant_folding,
+                );
 
             // cfg.print_as_graphviz();
-            
+
             // First optimization: Unreachable code elimination
             if enabled_optimizations.contains(&Optimization::UnreachableCodeElimination) {
                 cfg = unreachable_code_elimination(&mut cfg).to_owned();
             }
 
             // cfg.print_as_graphviz();
-            
+
             // Reannotate the cfg with ReachingCopies for copy propagation
             if enabled_optimizations.contains(&Optimization::CopyPropagation) {
-                cfg = copy_propagation::<(), IRInstruction>(&mut aliased_vars, cfg);  // Call copy propagation
+                cfg = copy_propagation::<(), IRInstruction>(&mut aliased_vars, cfg);
+                // Call copy propagation
             }
 
             // cfg.print_as_graphviz();
-            
+
             // if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
             //     cfg = dead_store_elimination(&mut cfg, &all_static_vars);
             // }
@@ -1917,8 +1925,12 @@ impl std::ops::Not for Const {
 
 use std::{clone, fmt::Debug};
 
-fn unreachable_code_elimination<V: Clone + Debug, I: Debug  + Instr + Clone>(cfg: &mut cfg::CFG<V, I>) -> &mut cfg::CFG<V, I> {
-    remove_empty_blocks(eliminate_useless_labels(eliminate_useless_jumps(eliminate_unreachable_blocks(cfg))))
+fn unreachable_code_elimination<V: Clone + Debug, I: Debug + Instr + Clone>(
+    cfg: &mut cfg::CFG<V, I>,
+) -> &mut cfg::CFG<V, I> {
+    remove_empty_blocks(eliminate_useless_labels(eliminate_useless_jumps(
+        eliminate_unreachable_blocks(cfg),
+    )))
 }
 
 fn is_zero(konst: &Const) -> bool {
@@ -1939,12 +1951,18 @@ use std::collections::HashSet;
 type NodeSet = HashSet<NodeId>;
 
 // DFS to find reachable blocks
-pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> &mut cfg::CFG<V, I> {
-    fn dfs<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &cfg::CFG<V, I>, explored: &mut NodeSet, node_id: NodeId) {
+pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
+    cfg: &mut cfg::CFG<V, I>,
+) -> &mut cfg::CFG<V, I> {
+    fn dfs<V: Clone + Debug, I: Clone + Debug + Instr>(
+        cfg: &cfg::CFG<V, I>,
+        explored: &mut NodeSet,
+        node_id: NodeId,
+    ) {
         if explored.contains(&node_id) {
             return;
         }
-        
+
         explored.insert(node_id.clone());
 
         let succs = cfg.get_succs(&node_id);
@@ -1960,24 +1978,26 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
     let mut blocks_to_remove = vec![];
 
     // Filter out unreachable blocks
-    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg.basic_blocks.iter()
-    .filter(|(_, blk)| {
-        if reachable_block_ids.contains(&blk.id) {
-            true
-        } else {
-            // Collect edges to remove
-            for pred in &blk.preds {
-                edges_to_remove.push((pred.clone(), blk.id.clone()));
+    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg
+        .basic_blocks
+        .iter()
+        .filter(|(_, blk)| {
+            if reachable_block_ids.contains(&blk.id) {
+                true
+            } else {
+                // Collect edges to remove
+                for pred in &blk.preds {
+                    edges_to_remove.push((pred.clone(), blk.id.clone()));
+                }
+                for succ in &blk.succs {
+                    edges_to_remove.push((blk.id.clone(), succ.clone()));
+                }
+                blocks_to_remove.push(blk.id.clone());
+                false
             }
-            for succ in &blk.succs {
-                edges_to_remove.push((blk.id.clone(), succ.clone()));
-            }
-            blocks_to_remove.push(blk.id.clone());
-            false
-        }
-    })
-    .cloned()
-    .collect();
+        })
+        .cloned()
+        .collect();
 
     // // Now remove the edges
     // for (pred, succ) in edges_to_remove {
@@ -1988,7 +2008,7 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
 
     for block in blocks_to_remove {
         cfg.remove_block(block);
-    }    
+    }
 
     // dbg!(&cfg);
 
@@ -2000,12 +2020,16 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
 }
 
 // Eliminate useless jump instructions
-pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> &mut cfg::CFG<V, I> {
+pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(
+    cfg: &mut cfg::CFG<V, I>,
+) -> &mut cfg::CFG<V, I> {
     fn drop_last<T>(vec: &mut Vec<T>) {
         vec.pop();
     }
 
-    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg.basic_blocks.iter()
+    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg
+        .basic_blocks
+        .iter()
         .enumerate()
         .map(|(idx, (n, blk))| {
             if idx == cfg.basic_blocks.len() - 1 {
@@ -2024,20 +2048,24 @@ pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: 
                             (n.clone(), blk.clone())
                         }
                     }
-                    _ => (n.clone(), blk.clone())
+                    _ => (n.clone(), blk.clone()),
                 }
             }
         })
         .collect();
-    
+
     cfg.basic_blocks = updated_blocks;
 
     cfg
 }
 
 // Eliminate useless label instructions
-pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> &mut cfg::CFG<V, I> {
-    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg.basic_blocks.iter()
+pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(
+    cfg: &mut cfg::CFG<V, I>,
+) -> &mut cfg::CFG<V, I> {
+    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg
+        .basic_blocks
+        .iter()
         .enumerate()
         .map(|(idx, (n, blk))| {
             if let Some((_, instr)) = blk.instructions.first() {
@@ -2065,11 +2093,15 @@ pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(cfg:
     cfg
 }
 
-pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut cfg::CFG<V, I>) -> &mut cfg::CFG<V, I> {
+pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
+    cfg: &mut cfg::CFG<V, I>,
+) -> &mut cfg::CFG<V, I> {
     let mut blocks_to_remove = Vec::new();
 
     // Collect empty blocks and their associated edges for removal and addition
-    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg.basic_blocks.iter()
+    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg
+        .basic_blocks
+        .iter()
         .filter(|(_, blk)| {
             if blk.instructions.is_empty() {
                 blocks_to_remove.push(blk.id.clone());
@@ -2081,10 +2113,9 @@ pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(cfg: &mut
         .cloned()
         .collect();
 
-
     for block in blocks_to_remove {
         cfg.remove_block(block);
-    }    
+    }
     // Return the updated CFG with filtered basic blocks
     // cfg.basic_blocks = updated_blocks;
 
@@ -2116,9 +2147,8 @@ impl ReachingCopies {
         ReachingCopies(new_set)
     }
 
-    pub fn add(&mut self, copy: Cp) -> Self {
+    pub fn add(&mut self, copy: Cp) {
         self.0.insert(copy);
-        self.clone()
     }
 
     pub fn mem(&self, copy: &Cp) -> bool {
@@ -2153,15 +2183,15 @@ fn is_static(var: &str) -> bool {
 fn var_is_aliased(aliased_vars: &HashSet<String>, v: &IRValue) -> bool {
     match v {
         IRValue::Constant(_) => false,
-        IRValue::Var(var) => {
-            aliased_vars.contains(var) || is_static(var)
-        }
+        IRValue::Var(var) => aliased_vars.contains(var) || is_static(var),
     }
 }
 
 fn filter_updated(mut copies: ReachingCopies, updated: &IRValue) -> ReachingCopies {
     // A copy is killed if we've updated its src or destination
-    copies.0.retain(|cp| &cp.src != updated && &cp.dst != updated);
+    copies
+        .0
+        .retain(|cp| &cp.src != updated && &cp.dst != updated);
 
     copies
 }
@@ -2197,7 +2227,8 @@ fn transfer(
 
     let is_aliased = |var: &IRValue| var_is_aliased(aliased_vars, var);
 
-    let process_instr = |mut current_copies: ReachingCopies, (_index, instr): (usize, &IRInstruction)| {
+    let process_instr = |mut current_copies: ReachingCopies,
+                         (_index, instr): (usize, &IRInstruction)| {
         let annotated_instr = (current_copies.clone(), instr.clone());
 
         let new_copies = match instr {
@@ -2210,17 +2241,17 @@ fn transfer(
                     current_copies
                 } else {
                     let mut copies_to_remove = vec![];
-                    
+
                     for copy in current_copies.0.iter() {
                         if &copy.src == dst || &copy.dst == dst {
                             copies_to_remove.push(copy.clone());
-                        } 
+                        }
                     }
 
                     println!("filtering copies {:?}", copies_to_remove);
                     current_copies = current_copies.filter(|cp| !copies_to_remove.contains(cp));
-                
-                    current_copies = current_copies.add(Cp {
+
+                    current_copies.add(Cp {
                         src: src.clone(),
                         dst: dst.clone(),
                     });
@@ -2234,21 +2265,25 @@ fn transfer(
                     Some(d) => filter_updated(current_copies, d),
                     None => current_copies,
                 };
-                
+
                 // Filter out copies that are static
-                ReachingCopies(copies_after_dst_filter
-                    .0
-                    .into_iter()
-                    .filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
-                    .collect())
+                ReachingCopies(
+                    copies_after_dst_filter
+                        .0
+                        .into_iter()
+                        .filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
+                        .collect(),
+                )
             }
             IRInstruction::Store { .. } => {
                 // Filter out copies where `src` or `dst` is aliased
-                ReachingCopies(current_copies
-                    .0
-                    .into_iter()
-                    .filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
-                    .collect())
+                ReachingCopies(
+                    current_copies
+                        .0
+                        .into_iter()
+                        .filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
+                        .collect(),
+                )
             }
             _ => {
                 // Handle other instructions
@@ -2263,15 +2298,17 @@ fn transfer(
     };
 
     // Fold over the instructions, updating the state
-    let (final_reaching_copies, annotated_instructions): (ReachingCopies, Vec<(ReachingCopies, IRInstruction)>) =
-        block.instructions.iter().enumerate().fold(
-            (initial_reaching_copies, Vec::new()),
-            |(current_copies, mut annotated_instrs), (index, instr)| {
-                let (new_copies, annotated_instr) = process_instr(current_copies, (index, &instr.1));
-                annotated_instrs.push(annotated_instr);
-                (new_copies, annotated_instrs)
-            },
-        );
+    let (final_reaching_copies, annotated_instructions): (
+        ReachingCopies,
+        Vec<(ReachingCopies, IRInstruction)>,
+    ) = block.instructions.iter().enumerate().fold(
+        (initial_reaching_copies, Vec::new()),
+        |(current_copies, mut annotated_instrs), (index, instr)| {
+            let (new_copies, annotated_instr) = process_instr(current_copies, (index, &instr.1));
+            annotated_instrs.push(annotated_instr);
+            (new_copies, annotated_instrs)
+        },
+    );
 
     // Return the new block with updated instructions and value
     BasicBlock {
@@ -2284,7 +2321,7 @@ fn transfer(
 fn meet(
     ident: &ReachingCopies,
     cfg: &cfg::CFG<ReachingCopies, IRInstruction>,
-    block: &BasicBlock<ReachingCopies, IRInstruction>
+    block: &BasicBlock<ReachingCopies, IRInstruction>,
 ) -> ReachingCopies {
     let mut incoming = ident.clone();
     for pred in &block.preds {
@@ -2311,7 +2348,8 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
     let ident = collect_all_copies(&cfg);
     let mut starting_cfg = cfg.initialize_annotation(ident.clone());
 
-    let mut worklist: Vec<(usize, BasicBlock<ReachingCopies, IRInstruction>)> = starting_cfg.basic_blocks.clone();
+    let mut worklist: Vec<(usize, BasicBlock<ReachingCopies, IRInstruction>)> =
+        starting_cfg.basic_blocks.clone();
 
     loop {
         if worklist.is_empty() {
@@ -2321,12 +2359,12 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
         let (block_idx, blk) = worklist.remove(0);
 
         // starting_cfg.print_as_graphviz();
-        
+
         let old_annotation = blk.value.clone();
         let incoming_copies = meet(&ident, &starting_cfg, &blk);
 
         let block = transfer(aliased_vars, &blk, incoming_copies);
-        
+
         starting_cfg.update_basic_block(block_idx, block);
 
         let new_annotation = starting_cfg.get_block_value(block_idx);
@@ -2351,7 +2389,10 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
     starting_cfg
 }
 
-fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(aliased_vars: &HashSet<String>, cfg: cfg::CFG<(), IRInstruction>) -> cfg::CFG<(), IRInstruction> {
+fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(
+    aliased_vars: &HashSet<String>,
+    cfg: cfg::CFG<(), IRInstruction>,
+) -> cfg::CFG<(), IRInstruction> {
     let annotated_cfg = find_reaching_copies::<(), IRInstruction>(aliased_vars, cfg);
 
     // annotated_cfg.print_as_graphviz();
@@ -2360,7 +2401,10 @@ fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(aliased_vars: &H
         let new_instructions = block
             .instructions
             .iter()
-            .filter_map(|(reaching_copies, instr)| rewrite_instruction(reaching_copies, instr).map(|new_instr| (reaching_copies.clone(), new_instr)))
+            .filter_map(|(reaching_copies, instr)| {
+                rewrite_instruction(reaching_copies, instr)
+                    .map(|new_instr| (reaching_copies.clone(), new_instr))
+            })
             .collect::<Vec<_>>();
 
         BasicBlock {
@@ -2379,7 +2423,7 @@ fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(aliased_vars: &H
         exit_preds: annotated_cfg.exit_preds.clone(),
         debug_label: annotated_cfg.debug_label.clone(),
     };
-        
+
     transformed_cfg.strip_annotations()
 }
 
@@ -2406,7 +2450,8 @@ fn rewrite_instruction(
     match instr {
         IRInstruction::Copy { src, dst } => {
             for copy in reaching_copies.0.iter() {
-                if (copy.src == *src && copy.dst == *dst) || (copy.src == *dst && copy.dst == *src) {
+                if (copy.src == *src && copy.dst == *dst) || (copy.src == *dst && copy.dst == *src)
+                {
                     return None;
                 }
             }
@@ -2416,33 +2461,88 @@ fn rewrite_instruction(
                 dst: dst.clone(),
             })
         }
-        IRInstruction::Unary { op, src, dst } => Some(IRInstruction::Unary { src: replace(src), op: *op, dst: dst.clone() }),
+        IRInstruction::Unary { op, src, dst } => Some(IRInstruction::Unary {
+            src: replace(src),
+            op: *op,
+            dst: dst.clone(),
+        }),
         IRInstruction::Binary { op, lhs, rhs, dst } => Some(IRInstruction::Binary {
             lhs: replace(lhs),
             rhs: replace(rhs),
-            op: *op, 
+            op: *op,
             dst: dst.clone(),
         }),
         IRInstruction::Ret(v) => Some(IRInstruction::Ret(v.as_ref().map(|v| replace(v)))),
-        IRInstruction::JumpIfZero { condition, target } => Some(IRInstruction::JumpIfZero { condition: replace(condition), target: target.clone() }),
-        IRInstruction::JumpIfNotZero { condition, target } => Some(IRInstruction::JumpIfNotZero { condition: replace(condition), target: target.clone() }),
-        IRInstruction::SignExtend { src, dst } => Some(IRInstruction::SignExtend { src: replace(src), dst: dst.clone() }),
-        IRInstruction::ZeroExtend { src, dst } => Some(IRInstruction::ZeroExtend { src: replace(src), dst: dst.clone() }),
-        IRInstruction::Truncate { src, dst } => Some(IRInstruction::Truncate { src: replace(src), dst: dst.clone() }),
-        IRInstruction::IntToDouble { src, dst } => Some(IRInstruction::IntToDouble { src: replace(src), dst: dst.clone() }),
-        IRInstruction::DoubleToInt { src, dst } => Some(IRInstruction::DoubleToInt { src: replace(src), dst: dst.clone() }),
-        IRInstruction::DoubletoUInt { src, dst } => Some(IRInstruction::DoubletoUInt { src: replace(src), dst: dst.clone() }),
-        IRInstruction::UIntToDouble { src, dst } => Some(IRInstruction::UIntToDouble { src: replace(src), dst: dst.clone() }),
-        IRInstruction::CopyToOffset { src, dst, offset } => Some(IRInstruction::CopyToOffset { src: replace(src), dst: dst.clone(), offset: offset.clone() }),
+        IRInstruction::JumpIfZero { condition, target } => Some(IRInstruction::JumpIfZero {
+            condition: replace(condition),
+            target: target.clone(),
+        }),
+        IRInstruction::JumpIfNotZero { condition, target } => Some(IRInstruction::JumpIfNotZero {
+            condition: replace(condition),
+            target: target.clone(),
+        }),
+        IRInstruction::SignExtend { src, dst } => Some(IRInstruction::SignExtend {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
+        IRInstruction::ZeroExtend { src, dst } => Some(IRInstruction::ZeroExtend {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
+        IRInstruction::Truncate { src, dst } => Some(IRInstruction::Truncate {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
+        IRInstruction::IntToDouble { src, dst } => Some(IRInstruction::IntToDouble {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
+        IRInstruction::DoubleToInt { src, dst } => Some(IRInstruction::DoubleToInt {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
+        IRInstruction::DoubletoUInt { src, dst } => Some(IRInstruction::DoubletoUInt {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
+        IRInstruction::UIntToDouble { src, dst } => Some(IRInstruction::UIntToDouble {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
+        IRInstruction::CopyToOffset { src, dst, offset } => Some(IRInstruction::CopyToOffset {
+            src: replace(src),
+            dst: dst.clone(),
+            offset: offset.clone(),
+        }),
         IRInstruction::CopyFromOffset { src, dst, offset } => {
             match replace(&IRValue::Var(src.to_owned())) {
-                IRValue::Var(new_src) => Some(IRInstruction::CopyFromOffset { src: new_src, dst: dst.clone(), offset: offset.clone() }),
+                IRValue::Var(new_src) => Some(IRInstruction::CopyFromOffset {
+                    src: new_src,
+                    dst: dst.clone(),
+                    offset: offset.clone(),
+                }),
                 _ => None,
             }
         }
-        IRInstruction::AddPtr { ptr, index, scale, dst } => Some(IRInstruction::AddPtr { ptr: replace(ptr), index: replace(index), scale: *scale, dst: dst.clone() }),
-        IRInstruction::Load { src_ptr, dst } => Some(IRInstruction::Load { src_ptr: replace(src_ptr), dst: dst.clone() }),
-        IRInstruction::Store { src, dst_ptr } => Some(IRInstruction::Store { src: replace(src), dst_ptr: dst_ptr.clone() }),
+        IRInstruction::AddPtr {
+            ptr,
+            index,
+            scale,
+            dst,
+        } => Some(IRInstruction::AddPtr {
+            ptr: replace(ptr),
+            index: replace(index),
+            scale: *scale,
+            dst: dst.clone(),
+        }),
+        IRInstruction::Load { src_ptr, dst } => Some(IRInstruction::Load {
+            src_ptr: replace(src_ptr),
+            dst: dst.clone(),
+        }),
+        IRInstruction::Store { src, dst_ptr } => Some(IRInstruction::Store {
+            src: replace(src),
+            dst_ptr: dst_ptr.clone(),
+        }),
         _ => Some(instr.clone()),
     }
 }
@@ -2454,7 +2554,10 @@ fn collect_all_copies(cfg: &cfg::CFG<(), IRInstruction>) -> ReachingCopies {
         for (_, instr) in &block.instructions {
             if let IRInstruction::Copy { src, dst } = instr {
                 if same_type(&src, &dst) {
-                    copies = copies.add(Cp { src: src.clone(), dst: dst.clone() });
+                    copies.add(Cp {
+                        src: src.clone(),
+                        dst: dst.clone(),
+                    });
                 }
             }
         }
@@ -2481,7 +2584,7 @@ impl std::fmt::Debug for Cp {
                     Const::Double(d) => d.to_string(),
                     Const::Char(c) => c.to_string(),
                     Const::UChar(uc) => uc.to_string(),
-                }
+                },
                 IRValue::Var(v) => v.to_owned(),
             }
         }
