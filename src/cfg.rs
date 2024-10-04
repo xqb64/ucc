@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crate::ir::{make_temporary, ReachingCopies};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -60,7 +62,7 @@ where I: Clone + Instr, V: Clone {
 }
 
 impl<V, I> CFG<V, I>
-where I: Clone + Instr, V: Clone {
+where I: Clone + Instr + Debug, V: Clone + Debug {
     pub fn get_block_by_id(&self, block_id: &NodeId) -> (usize, BasicBlock<V, I>) {
         match block_id {
             NodeId::Entry => panic!("Cannot get the Entry node"),
@@ -100,34 +102,50 @@ where I: Clone + Instr, V: Clone {
         }
     }
 
-    pub fn initialize_annotation(self, ident: ReachingCopies) -> CFG<ReachingCopies, I> {
+    pub fn initialize_annotation(self, dummy_val: ReachingCopies) -> CFG<ReachingCopies, I> {
+        // Initialize a single instruction with dummy_val
+        let initialize_instruction = |(_, instr): (V, I)| -> (ReachingCopies, I) {
+            (dummy_val.clone(), instr)
+        };
+
+        // Initialize a block by updating its instructions and value
+        let initialize_block = |(idx, block): (usize, BasicBlock<V, I>)| -> (usize, BasicBlock<ReachingCopies, I>) {
+            (
+                idx,
+                BasicBlock {
+                    id: block.id,
+                    // Apply the dummy_val to each instruction
+                    instructions: block.instructions
+                        .into_iter()
+                        .map(initialize_instruction)
+                        .collect(),
+                    preds: block.preds,
+                    succs: block.succs,
+                    // Set the block's value to dummy_val
+                    value: dummy_val.clone(),
+                },
+            )
+        };
+
+        // Apply the changes to each block in the CFG
         CFG {
-            basic_blocks: self.basic_blocks.into_iter().map(|(idx, block)| {
-                (
-                    idx,
-                    BasicBlock {
-                        id: block.id,
-                        instructions: block.instructions.into_iter().map(|(_, instr)| (ident.clone(), instr)).collect(),
-                        preds: block.preds,
-                        succs: block.succs,
-                        value: ident.clone(),
-                    },
-                )
-            }).collect(),
+            basic_blocks: self.basic_blocks
+                .into_iter()
+                .map(initialize_block)
+                .collect(),
             entry_succs: self.entry_succs,
             exit_preds: self.exit_preds,
             debug_label: self.debug_label,
         }
     }
 
-    pub fn update_basic_block(&mut self, block_idx: usize, new_block: BasicBlock<V, I>) -> CFG<V, I> {
+    pub fn update_basic_block(&mut self, block_idx: usize, new_block: BasicBlock<V, I>) {
         for (idx, block) in &mut self.basic_blocks {
             if *idx == block_idx {
-                *block = new_block.clone();
+                *block = new_block;
                 break;
             }
         }
-        self.clone()
     }
 
     pub fn add_edge(&mut self, pred: NodeId, succ: NodeId) {
@@ -240,6 +258,13 @@ where I: Clone + Instr, V: Clone {
     
         // Finally, remove the block from the basic blocks
         self.basic_blocks.retain(|(_, blk)| blk.id != block_id);
+
+        // Reconnect the entry node to the first block
+        if let Some(block) = self.basic_blocks.first_mut() {
+            self.entry_succs.push(block.1.id.clone());
+            block.1.preds.push(NodeId::Entry);
+        }
+
     }
     
     
@@ -355,32 +380,20 @@ where I: Clone + Instr, V: Clone {
     pub fn print_as_graphviz(&self) {
         use std::fs::File;
         use std::io::Write;
-
+    
         let tmp = make_temporary();
         let path = format!("cfg.{}.dot", tmp);
-
+    
         let mut file = File::create(path.clone()).unwrap();
-        writeln!(file, "digraph G {{").unwrap();
-
-        // Print the entry node
-        writeln!(file, "  Entry [shape=circle]").unwrap();
-
-        // Print the basic blocks
-        for (idx, block) in &self.basic_blocks {
-            writeln!(file, "  Block{} [shape=plaintext label=<", idx).unwrap();
-            writeln!(file, "    <table border=\"0\" cellborder=\"1\" cellspacing=\"0\">").unwrap();
-            writeln!(file, "      <tr><td><b>Block {}</b></td></tr>", idx).unwrap();
-            for (_, instr) in &block.instructions {
-                writeln!(file, "      <tr><td>{}</td></tr>", instr.pp_instr()).unwrap();
-            }
-            writeln!(file, "    </table>").unwrap();
-            writeln!(file, "  >]").unwrap();
-        }
-
-        // Print the exit node
-
-        writeln!(file, "  Exit [shape=doublecircle]").unwrap();
-
+        writeln!(file, "digraph {{").unwrap();
+    
+        // Graph general settings
+        writeln!(file, "  labeljust=l;").unwrap();
+        writeln!(file, "  node[shape=\"box\"];").unwrap();
+        writeln!(file, "  Entry[label=\"ENTRY\"];").unwrap();
+        writeln!(file, "  Exit[label=\"EXIT\"];").unwrap();
+    
+        // Function to extract node ids
         fn extract_id(node: &NodeId) -> String {
             match node {
                 NodeId::Entry => "Entry".to_string(),
@@ -388,26 +401,44 @@ where I: Clone + Instr, V: Clone {
                 NodeId::Exit => "Exit".to_string(),
             }
         }
-
-        // Print the edges
+    
+        // Print the basic blocks
         for (idx, block) in &self.basic_blocks {
-            for succ in &block.succs {
-                writeln!(file, "  Block{} -> {}", idx, extract_id(succ)).unwrap();
+            writeln!(file, "  Block{}[label=<", idx).unwrap();
+            writeln!(file, "    <table border=\"0\" cellborder=\"1\" cellspacing=\"0\">").unwrap();
+            writeln!(file, "      <tr><td colspan=\"2\"><b>Block {}</b></td></tr>", idx).unwrap();
+    
+            // Print the instructions and value annotations
+            for (val, instr) in &block.instructions {
+                writeln!(file, "      <tr><td align=\"left\">{}</td><td align=\"left\">{:?}</td></tr>", instr.pp_instr(), val).unwrap();
             }
+    
+            // Add any block annotations
+            writeln!(file, "      <tr><td colspan=\"2\">{:?}</td></tr>", block.value).unwrap();
+    
+            writeln!(file, "    </table>").unwrap();
+            writeln!(file, "  >];").unwrap();
         }
-
+    
         // Print the entry edges
         for succ in &self.entry_succs {
-            writeln!(file, "  Entry -> {}", extract_id(succ)).unwrap();
+            writeln!(file, "  Entry -> {};", extract_id(succ)).unwrap();
         }
-
+    
+        // Print the block edges
+        for (idx, block) in &self.basic_blocks {
+            for succ in &block.succs {
+                writeln!(file, "  Block{} -> {};", idx, extract_id(succ)).unwrap();
+            }
+        }
+    
         // Print the exit edges
         for pred in &self.exit_preds {
-            writeln!(file, "  {} -> Exit", extract_id(pred)).unwrap();
+            writeln!(file, "  {} -> Exit;", extract_id(pred)).unwrap();
         }
-
+    
         writeln!(file, "}}").unwrap();
-
+    
         // Convert the dot file to png
         std::process::Command::new("dot")
             .arg("-Tpng")
@@ -416,6 +447,5 @@ where I: Clone + Instr, V: Clone {
             .arg(format!("cfg.{}.png", tmp))
             .output()
             .expect("Failed to execute dot command");
-
     }
 }
