@@ -262,43 +262,55 @@ where
         // First, collect the successors and predecessors that need to be updated
         let mut successors_to_update = Vec::new();
         let mut predecessors_to_update = Vec::new();
-
+    
         // Collect successors of the block
         self.update_successors(&block_id, |succs| {
             successors_to_update.extend(succs.clone()); // Clone the successors
             succs.clear(); // Clear all successors of the block
         });
-
+    
         // Collect predecessors of the block
         self.update_predecessors(&block_id, |preds| {
             predecessors_to_update.extend(preds.clone()); // Clone the predecessors
             preds.clear(); // Clear all predecessors of the block
         });
-
+    
         // Now update all the predecessors by removing the block from their successor lists
-        for succ in successors_to_update {
-            self.update_predecessors(&succ, |preds| {
+        for succ in &successors_to_update {
+            self.update_predecessors(succ, |preds| {
                 preds.retain(|x| x != &block_id); // Remove block from predecessors
             });
         }
-
+    
         // Now update all the successors by removing the block from their predecessor lists
-        for pred in predecessors_to_update {
-            self.update_successors(&pred, |succs| {
+        for pred in &predecessors_to_update {
+            self.update_successors(pred, |succs| {
                 succs.retain(|x| x != &block_id); // Remove block from successors
             });
         }
-
+    
+        // Reconnect the block's predecessors to its successors, skipping the deleted block
+        for pred in predecessors_to_update {
+            for succ in &successors_to_update {
+                if pred != block_id && succ != &block_id {
+                    self.add_edge(pred.clone(), succ.clone());
+                }
+            }
+        }
+    
         // Finally, remove the block from the basic blocks
         self.basic_blocks.retain(|(_, blk)| blk.id != block_id);
-
-        // Reconnect the entry node to the first block
-        if let Some(block) = self.basic_blocks.first_mut() {
-            self.entry_succs.push(block.1.id.clone());
-            block.1.preds.push(NodeId::Entry);
+    
+        // If the entry node is affected, reconnect it to the first available block
+        if block_id == NodeId::Block(0) {
+            if let Some(block) = self.basic_blocks.first_mut() {
+                self.entry_succs.clear(); // Clear entry successors first
+                self.entry_succs.push(block.1.id.clone());
+                block.1.preds.push(NodeId::Entry);
+            }
         }
     }
-
+    
     fn update_predecessors<F>(&mut self, node_id: &NodeId, f: F)
     where
         F: FnOnce(&mut Vec<NodeId>),
@@ -493,6 +505,7 @@ where
 
         writeln!(file, "}}").unwrap();
 
+        println!("running dot command");
         // Convert the dot file to png
         std::process::Command::new("dot")
             .arg("-Tpng")

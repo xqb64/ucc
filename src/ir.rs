@@ -130,7 +130,7 @@ pub enum IRInstruction {
     Ret(Option<IRValue>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum IRValue {
     Constant(Const),
     Var(String),
@@ -2086,7 +2086,6 @@ pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
 ) -> &mut cfg::CFG<V, I> {
     let mut blocks_to_remove = Vec::new();
 
-    // Collect empty blocks and their associated edges for removal and addition
     let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg
         .basic_blocks
         .iter()
@@ -2104,13 +2103,11 @@ pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
     for block in blocks_to_remove {
         cfg.remove_block(block);
     }
-    // Return the updated CFG with filtered basic blocks
-    // cfg.basic_blocks = updated_blocks;
 
     cfg
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Cp {
     src: IRValue,
     dst: IRValue,
@@ -2124,31 +2121,21 @@ impl ReachingCopies {
         ReachingCopies(HashSet::new())
     }
 
-    pub fn intersection(&self, other: &ReachingCopies) -> ReachingCopies {
+    pub fn intersection(self, other: &ReachingCopies) -> ReachingCopies {
         let new_set = self.0.intersection(&other.0).cloned().collect();
         ReachingCopies(new_set)
     }
 
-    pub fn union(&self, other: &ReachingCopies) -> ReachingCopies {
-        let mut new_set = self.0.clone();
-        new_set.extend(other.0.iter().cloned());
-        ReachingCopies(new_set)
-    }
-
-    pub fn add(&mut self, copy: Cp) -> Self {
+    pub fn add(mut self, copy: Cp) -> Self {
         self.0.insert(copy);
-        ReachingCopies(self.0.clone())
+        self
     }
 
     pub fn mem(&self, copy: &Cp) -> bool {
         self.0.contains(copy)
     }
 
-    pub fn elements(&self) -> Vec<&Cp> {
-        self.0.iter().collect()
-    }
-
-    pub fn filter<F>(&self, f: F) -> Self
+    pub fn filter<F>(self, f: F) -> Self
     where
         F: Fn(&Cp) -> bool,
     {
@@ -2176,14 +2163,11 @@ fn var_is_aliased(aliased_vars: &HashSet<String>, v: &IRValue) -> bool {
     }
 }
 
-fn filter_updated(mut copies: ReachingCopies, updated: &IRValue) -> ReachingCopies {
-    // A copy is killed if we've updated its src or destination
-    copies
-        .0
-        .retain(|cp| !(&cp.src == updated || &cp.dst == updated));
-
-    copies
+fn filter_updated(copies: ReachingCopies, updated: &IRValue) -> ReachingCopies {
+    let is_killed = |cp: &Cp| cp.src == *updated || cp.dst == *updated;
+    copies.filter(|cp| !is_killed(cp))
 }
+
 fn get_dst(instr: &IRInstruction) -> Option<IRValue> {
     match instr {
         IRInstruction::Copy { dst, .. } => Some(dst.clone()),
@@ -2224,10 +2208,10 @@ fn transfer(
                     src: dst.clone(),
                     dst: src.clone(),
                 }) {
-                    println!("returning current_copies");
+                    println!("current_copies");
                     current_copies
                 } else if same_type(src, dst) {
-                    let mut updated = filter_updated(current_copies, dst);
+                    let updated = filter_updated(current_copies, dst);
                     let new_copies = updated.add(Cp { src: src.clone(), dst: dst.clone() });
                     new_copies
                 } else {
@@ -2285,12 +2269,11 @@ fn meet(
     for pred in &block.preds {
         match pred {
             NodeId::Entry => {
-                println!("returning new");
                 return ReachingCopies::new();
             }
             NodeId::Block(n) => {
                 let v = cfg.get_block_value(*n);
-                println!("v {:?}", v);
+
                 incoming = incoming.intersection(&v);
             }
             _ => panic!("Internal error"),
@@ -2309,8 +2292,6 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
     let mut worklist: Vec<(usize, BasicBlock<ReachingCopies, IRInstruction>)> =
         starting_cfg.basic_blocks.clone();
 
-    println!("ident {:?}", ident);
-
     loop {
         if worklist.is_empty() {
             break;
@@ -2318,16 +2299,23 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
 
         let (block_idx, blk) = worklist.remove(0);
 
+        println!("block: {}", block_idx);
+
+        println!("ident: {:?}", ident);
+
         // starting_cfg.print_as_graphviz();
 
         let old_annotation = blk.value.clone();
-        println!("old_annotation {:?}", old_annotation);
+
+        println!("old_annotation: {:?}", old_annotation);
 
         let incoming_copies = meet(&ident, &starting_cfg, &blk);
-        println!("incoming_copies {:?}", incoming_copies);
-        println!("transfering block {:?}", blk.id);
+
+        println!("incoming_copies: {:?}", incoming_copies);
 
         let block = transfer(aliased_vars, &blk, incoming_copies);
+
+        println!("block after transfer: {:?}", block.value);
 
         starting_cfg.update_basic_block(block_idx, block);
 
@@ -2361,7 +2349,7 @@ fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(
 
     // annotated_cfg.print_as_graphviz();
 
-    let rewrite_block = |(idx, block): (usize, BasicBlock<ReachingCopies, IRInstruction>)| {
+    let rewrite_block = |block: BasicBlock<ReachingCopies, IRInstruction>| {
         let new_instructions = block
             .instructions
             .iter()
@@ -2372,7 +2360,7 @@ fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(
             .collect::<Vec<_>>();
 
         BasicBlock {
-            instructions: dbg!(new_instructions),
+            instructions: new_instructions,
             ..block.clone()
         }
     };
@@ -2381,7 +2369,7 @@ fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(
         basic_blocks: annotated_cfg
             .basic_blocks
             .iter()
-            .map(|(idx, blk)| (*idx, rewrite_block((*idx, blk.clone()))))
+            .map(|(idx, blk)| (*idx, rewrite_block(blk.clone())))
             .collect(),
         entry_succs: annotated_cfg.entry_succs.clone(),
         exit_preds: annotated_cfg.exit_preds.clone(),
@@ -2395,11 +2383,19 @@ fn rewrite_instruction(
     reaching_copies: &ReachingCopies,
     instr: &IRInstruction,
 ) -> Option<IRInstruction> {
+    match instr {
+        IRInstruction::Copy { src, dst } => {
+            if reaching_copies.mem(&Cp { src: src.clone(), dst: dst.clone() }) || reaching_copies.mem(&Cp { src: dst.clone(), dst: src.clone() }) {
+                return None;
+            }
+        }
+        _ => {}
+    }
+
     let replace = |op: &IRValue| -> IRValue {
         match op {
             IRValue::Constant(_) => op.clone(),
-            IRValue::Var(_) => {
-                // Try to find a copy where dst matches op
+            IRValue::Var(v) => {
                 reaching_copies
                     .0
                     .iter()
@@ -2410,21 +2406,11 @@ fn rewrite_instruction(
         }
     };
 
-    // Filter out useless copy instructions
     match instr {
-        IRInstruction::Copy { src, dst } => {
-            for copy in reaching_copies.0.iter() {
-                if (copy.src == *src && copy.dst == *dst) || (copy.src == *dst && copy.dst == *src)
-                {
-                    return None;
-                }
-            }
-            let new_src = replace(src);
-            Some(IRInstruction::Copy {
-                src: new_src,
-                dst: dst.clone(),
-            })
-        }
+        IRInstruction::Copy { src, dst } => Some(IRInstruction::Copy {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
         IRInstruction::Unary { op, src, dst } => Some(IRInstruction::Unary {
             src: replace(src),
             op: *op,
@@ -2526,7 +2512,7 @@ fn collect_all_copies(cfg: &cfg::CFG<(), IRInstruction>) -> ReachingCopies {
         for (_, instr) in &block.instructions {
             if let IRInstruction::Copy { src, dst } = instr {
                 if same_type(&src, &dst) {
-                    copies.add(Cp {
+                    copies = copies.add(Cp {
                         src: src.clone(),
                         dst: dst.clone(),
                     });
