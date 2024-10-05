@@ -633,19 +633,12 @@ impl Codegen for IRInstruction {
                         let r = int_return_registers[reg_index];
                         match t {
                             AsmType::Bytearray { size, alignment: _ } => {
-                                let operand = match op {
-                                    AsmNode::Operand(operand) => operand.clone(),
-                                    _ => unreachable!(),
-                                };
-                                copy_bytes_to_reg(operand, r, size, &mut instructions);
+                                copy_bytes_to_reg(op, r, size, &mut instructions);
                             }
                             _ => {
                                 instructions.push(AsmInstruction::Mov {
                                     asm_type: t,
-                                    src: match op {
-                                        AsmNode::Operand(operand) => operand.clone(),
-                                        _ => unreachable!(),
-                                    },
+                                    src: op,
                                     dst: AsmOperand::Register(r),
                                 });
                             }
@@ -658,10 +651,7 @@ impl Codegen for IRInstruction {
                         let r = double_return_registers[reg_index];
                         instructions.push(AsmInstruction::Mov {
                             asm_type: AsmType::Double,
-                            src: match op {
-                                AsmNode::Operand(operand) => operand.clone(),
-                                _ => unreachable!(),
-                            },
+                            src: op,
                             dst: AsmOperand::Register(r),
                         });
                         reg_index += 1;
@@ -1297,12 +1287,6 @@ impl Codegen for IRInstruction {
 
                     for (t, op) in int_dests {
                         let r = int_return_registers[reg_index];
-
-                        let op = match op {
-                            AsmNode::Operand(operand) => operand,
-                            _ => unreachable!(),
-                        };
-
                         match t {
                             AsmType::Bytearray { size, alignment: _ } => {
                                 copy_bytes_from_reg(&r, &op, size, &mut instructions);
@@ -4165,54 +4149,91 @@ fn copy_bytes_to_reg(
     }
 }
 
-fn classify_return_value(retval: &IRValue) -> (Vec<(AsmType, AsmNode)>, Vec<AsmNode>, bool) {
-    let t = get_asm_type(retval);
+fn classify_return_value(retval: &IRValue) -> (Vec<(AsmType, AsmOperand)>, Vec<AsmOperand>, bool) {
+    let t = tacky_type(retval);
+    let val = retval.codegen().into();
+    classify_return_helper(retval, &t, &val)
+}
 
-    if t == AsmType::Double {
-        let operand = retval.codegen().into();
-        return (vec![], vec![operand], false);
-    } else if t == AsmType::Byte || t == AsmType::Longword || t == AsmType::Quadword {
-        let typed_operand = (t, retval.codegen().into());
-        return (vec![typed_operand], vec![], false);
-    } else {
-        // get StructEntry of retval
-        let struct_entry = match tacky_type(retval) {
-            Type::Struct { tag } => TYPE_TABLE.lock().unwrap().get(&tag).unwrap().clone(),
-            _ => unreachable!(),
-        };
-        let classes = classify_structure(&struct_entry);
-        let struct_size = struct_entry.size;
+fn classify_return_helper(
+    retval: &IRValue,
+    ret_type: &Type,
+    asm_retval: &AsmOperand
+) -> (Vec<(AsmType, AsmOperand)>, Vec<AsmOperand>, bool) {
+    match ret_type {
+        // Handling structure types
+        Type::Struct { tag } => {
+            let struct_entry = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+            let classes = classify_structure(&struct_entry);
 
-        if classes[0] == Class::Memory {
-            return (vec![], vec![], true);
-        } else {
-            let mut int_retvals = vec![];
-            let mut double_retvals = vec![];
+            let struct_size = struct_entry.size;
 
-            let mut offset = 0;
-
-            let name_of_retval = match retval {
-                IRValue::Var(name) => name.clone(),
-                _ => unreachable!(),
-            };
-
-            for class in classes {
-                let operand = AsmOperand::PseudoMem(name_of_retval.clone(), offset);
-                match class {
-                    Class::Sse => {
-                        double_retvals.push(AsmNode::Operand(operand));
+            if classes[0] == Class::Memory {
+                return (vec![], vec![], true);
+            } else {
+                let mut int_retvals = vec![];
+                let mut double_retvals = vec![];
+    
+                let mut offset = 0;
+    
+                let name_of_retval = match retval {
+                    IRValue::Var(name) => name.clone(),
+                    _ => unreachable!(),
+                };
+    
+                for class in classes {
+                    let operand = AsmOperand::PseudoMem(name_of_retval.clone(), offset);
+                    match class {
+                        Class::Sse => {
+                            double_retvals.push(operand);
+                        }
+                        Class::Integer => {
+                            let eightbyte_type = get_eightbyte_type(offset, struct_size);
+                            int_retvals.push((eightbyte_type, operand));
+                        }
+                        Class::Memory => unreachable!(),
                     }
-                    Class::Integer => {
-                        let eightbyte_type = get_eightbyte_type(offset, struct_size);
-                        int_retvals.push((eightbyte_type, AsmNode::Operand(operand)));
-                    }
-                    Class::Memory => unreachable!(),
+                    offset += 8;
                 }
-                offset += 8;
-            }
-
-            return (int_retvals, double_retvals, false);
+    
+                return (int_retvals, double_retvals, false);
+            }    
         }
+
+        // Handling floating-point return types
+        Type::Double => {
+            (vec![], vec![asm_retval.clone()], false)
+        }
+
+        // Handling other scalar types
+        t => {
+            let typed_operand = (convert_type(t), asm_retval.clone());
+            (vec![typed_operand], vec![], false)
+        }
+    }
+}
+
+
+fn convert_type(t: &Type) -> AsmType {
+    match t {
+        Type::Char | Type::UChar | Type::SChar => AsmType::Byte,
+        Type::Int | Type::Uint => AsmType::Longword,
+        Type::Long | Type::Ulong => AsmType::Quadword,
+        Type::Double => AsmType::Double,
+        Type::Array { element, size } => AsmType::Bytearray {
+            size: get_size_of_type(element) * size,
+            alignment: get_alignment_of_type(t),
+        },
+        Type::Struct { tag } => {
+            let struct_size = TYPE_TABLE.lock().unwrap().get(tag).unwrap().size;
+            let struct_alignment = TYPE_TABLE.lock().unwrap().get(tag).unwrap().alignment;
+            AsmType::Bytearray {
+                size: struct_size,
+                alignment: struct_alignment,
+            }
+        }
+        Type::Pointer(_) => AsmType::Quadword,
+        _ => unreachable!(),
     }
 }
 
