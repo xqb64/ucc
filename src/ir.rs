@@ -1599,10 +1599,11 @@ fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
                             }
                             _ => panic!("Complement requires an integer type"),
                         },
-                        UnaryOp::Not => match src_val == Const::Int(0) {
-                            true => Const::Int(1),
-                            false => Const::Int(0),
-                        },
+                        UnaryOp::Not => if is_zero(&src_val) {
+                            Const::Int(1)
+                        } else {
+                            Const::Int(0)
+                        }
                     };
                     optimized_instructions.push(IRInstruction::Copy {
                         src: IRValue::Constant(result),

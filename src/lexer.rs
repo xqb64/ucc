@@ -318,7 +318,7 @@ impl PartialEq for Const {
     fn eq(&self, other: &Self) -> bool {
         use Const::*;
         match (self, other) {
-            (Double(d1), Double(d2)) => d1.to_bits() == d2.to_bits(),
+            (Double(d1), Double(d2)) => d1 == d2 || d1.total_cmp(d2) == std::cmp::Ordering::Equal,
             (Int(i1), Int(i2)) => i1 == i2,
             (Long(l1), Long(l2)) => l1 == l2,
             (UInt(u1), UInt(u2)) => u1 == u2,
