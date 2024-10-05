@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::ir::{make_temporary, ReachingCopies};
+use crate::ir::make_temporary;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SimpleInstr {
@@ -74,7 +74,7 @@ where
     pub fn get_block_by_id(&self, block_id: &NodeId) -> (usize, BasicBlock<V, I>) {
         match block_id {
             NodeId::Entry => panic!("Cannot get the Entry node"),
-            NodeId::Block(n) => self
+            NodeId::Block(_) => self
                 .basic_blocks
                 .iter()
                 .find(|(_, blk)| &blk.id == block_id)
@@ -256,7 +256,7 @@ where
     {
         match node_id {
             NodeId::Entry => f(&mut self.entry_succs),
-            NodeId::Block(n) => {
+            NodeId::Block(_) => {
                 let block = self
                     .basic_blocks
                     .iter_mut()
@@ -353,7 +353,7 @@ where
 
         // Create a map from labels to block IDs
         let mut label_map = HashMap::new();
-        for (idx, block) in &self.basic_blocks {
+        for (_, block) in &self.basic_blocks {
             if let SimpleInstr::Label(lbl) = block.instructions[0].1.simplify() {
                 label_map.insert(lbl.clone(), block.id.clone());
             }

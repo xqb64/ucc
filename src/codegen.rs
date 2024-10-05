@@ -322,9 +322,9 @@ impl Codegen for IRFunction {
         instructions.push(AsmInstruction::AllocateStack(0));
 
         let (int_reg_params, double_reg_params, stack_params) =
-            classify_parameters_from_irvalue(&params_as_tacky, return_on_stack);
+            classify_parameters(&params_as_tacky, return_on_stack);
 
-        let int_regs = [
+        let int_regs: [AsmRegister; 6] = [
             AsmRegister::DI,
             AsmRegister::SI,
             AsmRegister::DX,
@@ -349,20 +349,13 @@ impl Codegen for IRFunction {
 
             match param_type {
                 AsmType::Bytearray { size, alignment: _ } => {
-                    let operand = match param {
-                        AsmNode::Operand(operand) => operand.clone(),
-                        _ => unreachable!(),
-                    };
-                    copy_bytes_from_reg(&reg, &operand, *size, &mut instructions);
+                    copy_bytes_from_reg(&reg, &param, *size, &mut instructions);
                 }
                 _ => {
                     let instr = AsmInstruction::Mov {
                         asm_type: *param_type,
                         src: AsmOperand::Register(reg),
-                        dst: match param {
-                            AsmNode::Operand(operand) => operand.clone(),
-                            _ => unreachable!(),
-                        },
+                        dst: param.clone(),
                     };
                     instructions.push(instr);
                 }
@@ -382,15 +375,12 @@ impl Codegen for IRFunction {
             AsmRegister::XMM7,
         ];
 
-        for (idx, (_param_type, param)) in double_reg_params.iter().enumerate() {
+        for (idx, param) in double_reg_params.iter().enumerate() {
             let reg = double_regs[idx];
             let instr = AsmInstruction::Mov {
                 asm_type: AsmType::Double,
                 src: AsmOperand::Register(reg),
-                dst: match param {
-                    AsmNode::Operand(operand) => operand.clone(),
-                    _ => unreachable!(),
-                },
+                dst: param.clone(),
             };
             instructions.push(instr);
         }
@@ -399,13 +389,9 @@ impl Codegen for IRFunction {
         for (param_type, param) in stack_params {
             match param_type {
                 AsmType::Bytearray { size, alignment: _ } => {
-                    let operand = match param {
-                        AsmNode::Operand(operand) => operand.clone(),
-                        _ => unreachable!(),
-                    };
                     instructions.extend(copy_bytes(
                         &AsmOperand::Memory(AsmRegister::BP, offset),
-                        &operand,
+                        &param,
                         size,
                     ));
                 }
@@ -413,10 +399,7 @@ impl Codegen for IRFunction {
                     let instr = AsmInstruction::Mov {
                         asm_type: param_type,
                         src: AsmOperand::Memory(AsmRegister::BP, offset),
-                        dst: match param {
-                            AsmNode::Operand(operand) => operand.clone(),
-                            _ => unreachable!(),
-                        },
+                        dst: param.clone(),
                     };
                     instructions.push(instr);
                 }
@@ -1187,7 +1170,7 @@ impl Codegen for IRInstruction {
                 }
 
                 let (int_args, double_args, stack_args) =
-                    classify_parameters_from_irvalue(args, return_in_memory);
+                    classify_parameters(args, return_in_memory);
 
                 let stack_padding = if stack_args.len() % 2 != 0 { 8 } else { 0 };
 
@@ -1199,19 +1182,12 @@ impl Codegen for IRInstruction {
                     let reg = int_registers[reg_index];
                     match reg_type {
                         AsmType::Bytearray { size, alignment: _ } => {
-                            let op = match reg_arg {
-                                AsmNode::Operand(operand) => operand,
-                                _ => unreachable!(),
-                            };
-                            copy_bytes_to_reg(op.clone(), reg, *size, &mut instructions);
+                            copy_bytes_to_reg(reg_arg.clone(), reg, *size, &mut instructions);
                         }
                         _ => {
                             instructions.push(AsmInstruction::Mov {
                                 asm_type: *reg_type,
-                                src: match reg_arg {
-                                    AsmNode::Operand(operand) => operand.clone(),
-                                    _ => unreachable!(),
-                                },
+                                src: reg_arg.clone(),
                                 dst: AsmOperand::Register(reg),
                             });
                         }
@@ -1220,7 +1196,7 @@ impl Codegen for IRInstruction {
                     reg_index += 1;
                 }
 
-                for (reg_index, (_reg_type, reg_arg)) in double_args.into_iter().enumerate() {
+                for (reg_index, reg_arg) in double_args.into_iter().enumerate() {
                     let reg = double_registers[reg_index];
 
                     instructions.push(AsmInstruction::Mov {
@@ -1239,18 +1215,13 @@ impl Codegen for IRInstruction {
                                 lhs: AsmOperand::Imm(8),
                                 rhs: AsmOperand::Register(AsmRegister::SP),
                             });
-                            instructions.extend(copy_bytes(
-                                match stack_arg {
-                                    AsmNode::Operand(operand) => operand,
-                                    _ => unreachable!(),
-                                },
+                            instructions.extend(copy_bytes(stack_arg,
                                 &AsmOperand::Memory(AsmRegister::SP, 0),
                                 *size,
                             ));
                         }
                         _ => match stack_arg {
-                            AsmNode::Operand(AsmOperand::Imm(_))
-                            | AsmNode::Operand(AsmOperand::Register(_)) => {
+                            AsmOperand::Imm(_) | AsmOperand::Register(_) => {
                                 instructions.push(AsmInstruction::Push(stack_arg.clone().into()));
                             }
                             _ => {
@@ -3552,102 +3523,105 @@ pub enum AsmType {
     Bytearray { size: usize, alignment: usize },
 }
 
-type ParameterAsmNode = (AsmType, AsmNode);
-type ParametersAsmNode = (
-    Vec<ParameterAsmNode>,
-    Vec<ParameterAsmNode>,
-    Vec<ParameterAsmNode>,
-);
+fn classify_parameters(params: &[IRValue], return_on_stack: bool) -> (Vec<(AsmType, AsmOperand)>, Vec<AsmOperand>, Vec<(AsmType, AsmOperand)>) {
+    // Map parameters to their types and converted values
+    let typed_params: Vec<(Type, AsmOperand)> = params
+        .iter()
+        .map(|v| (tacky_type(v), v.codegen().into()))
+        .collect();
+    
+    // Call the helper function
+    classify_params_helper(&typed_params, return_on_stack)
+}
 
-fn classify_parameters_from_irvalue(
-    parameters: &[IRValue],
-    return_in_memory: bool,
-) -> ParametersAsmNode {
+fn classify_params_helper(
+    typed_asm_vals: &[(Type, AsmOperand)],
+    return_on_stack: bool,
+) -> (Vec<(AsmType, AsmOperand)>, Vec<AsmOperand>, Vec<(AsmType, AsmOperand)>) {
+    // Determine how many integer registers are available based on whether the return is on the stack
+    let int_regs_available = if return_on_stack { 5 } else { 6 };
+
+    // Initialize register and stack argument vectors
     let mut int_reg_args = vec![];
     let mut double_reg_args = vec![];
     let mut stack_args = vec![];
 
-    let int_regs_available;
-    if return_in_memory {
-        int_regs_available = 5;
-    } else {
-        int_regs_available = 6;
-    }
+    // Process each parameter type
+    for (tacky_t, operand) in typed_asm_vals {
+        let typed_operand = (convert_type(tacky_t), operand.clone());
 
-    for parameter in parameters {
-        let type_of_param = get_asm_type(parameter);
-        let operand: AsmNode = parameter.codegen();
-
-        let typed_operand = (type_of_param, operand);
-
-        if type_of_param == AsmType::Double {
-            if double_reg_args.len() < 8 {
-                double_reg_args.push(typed_operand);
-            } else {
-                stack_args.push(typed_operand);
-            }
-        } else if type_of_param == AsmType::Byte
-            || type_of_param == AsmType::Longword
-            || type_of_param == AsmType::Quadword
-        {
-            if int_reg_args.len() < int_regs_available {
-                int_reg_args.push(typed_operand);
-            } else {
-                stack_args.push(typed_operand);
-            }
-        } else {
-            let t = tacky_type(parameter);
-
-            let struct_entry = match t {
-                Type::Struct { tag } => TYPE_TABLE.lock().unwrap().get(&tag).unwrap().clone(),
-                _ => unreachable!(),
-            };
-
-            let classes = classify_structure(&struct_entry);
-            let mut use_stack = true;
-
-            let struct_size = struct_entry.size;
-
-            let name_of_v = match parameter {
-                IRValue::Var(name) => name.clone(),
-                _ => unreachable!(),
-            };
-
-            if classes[0] != Class::Memory {
-                let mut tentative_ints = vec![];
-                let mut tentative_doubles = vec![];
-
-                let mut offset = 0;
-
-                for class in &classes {
-                    let operand = AsmOperand::PseudoMem(name_of_v.clone(), offset);
-                    if class == &Class::Sse {
-                        tentative_doubles.push((AsmType::Double, AsmNode::Operand(operand)));
-                    } else {
-                        let eightbyte_type = get_eightbyte_type(offset, struct_size);
-                        tentative_ints.push((eightbyte_type, AsmNode::Operand(operand)));
+        match tacky_t {
+            // Handle structure types
+            Type::Struct { tag } => {
+                let struct_entry = match tacky_t {
+                    Type::Struct { tag } => TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone(),
+                    _ => unreachable!(),
+                };
+    
+                let classes = classify_structure(&struct_entry);
+                let mut use_stack = true;
+    
+                let struct_size = struct_entry.size;
+    
+                let name_of_v = match operand {
+                    AsmOperand::PseudoMem(name, _) => name.clone(),
+                    _ => unreachable!(),
+                };
+    
+                if classes[0] != Class::Memory {
+                    let mut tentative_ints = vec![];
+                    let mut tentative_doubles = vec![];
+    
+                    let mut offset = 0;
+    
+                    for class in &classes {
+                        let operand = AsmOperand::PseudoMem(name_of_v.clone(), offset);
+                        if class == &Class::Sse {
+                            tentative_doubles.push(operand);
+                        } else {
+                            let eightbyte_type = get_eightbyte_type(offset, struct_size);
+                            tentative_ints.push((eightbyte_type, operand));
+                        }
+                        offset += 8;
                     }
-                    offset += 8;
+    
+                    if (tentative_doubles.len() + double_reg_args.len() <= 8)
+                        && (tentative_ints.len() + int_reg_args.len() <= int_regs_available)
+                    {
+                        double_reg_args.extend(tentative_doubles);
+                        int_reg_args.extend(tentative_ints);
+                        use_stack = false;
+                    }
                 }
-
-                if (tentative_doubles.len() + double_reg_args.len() <= 8)
-                    && (tentative_ints.len() + int_reg_args.len() <= int_regs_available)
-                {
-                    double_reg_args.extend(tentative_doubles);
-                    int_reg_args.extend(tentative_ints);
-                    use_stack = false;
+    
+                if use_stack {
+                    let mut offset = 0;
+                    for _ in classes {
+                        let operand = AsmOperand::PseudoMem(name_of_v.clone(), offset);
+                        stack_args.push((
+                            get_eightbyte_type(offset, struct_size),
+                            operand,
+                        ));
+                        offset += 8;
+                    }
                 }
             }
 
-            if use_stack {
-                let mut offset = 0;
-                for _ in classes {
-                    let operand = AsmOperand::PseudoMem(name_of_v.clone(), offset);
-                    stack_args.push((
-                        get_eightbyte_type(offset, struct_size),
-                        AsmNode::Operand(operand),
-                    ));
-                    offset += 8;
+            // Handle floating-point types
+            Type::Double => {
+                if double_reg_args.len() < 8 {
+                    double_reg_args.push(operand.clone());
+                } else {
+                    stack_args.push(typed_operand);
+                }
+            }
+
+            // Handle scalar types (integers, etc.)
+            _ => {
+                if int_reg_args.len() < int_regs_available {
+                    int_reg_args.push(typed_operand);
+                } else {
+                    stack_args.push(typed_operand);
                 }
             }
         }
