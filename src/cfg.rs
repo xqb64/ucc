@@ -45,7 +45,7 @@ pub enum NodeId {
 pub struct BasicBlock<V, I>
 where
     I: Clone + Instr,
-    V: Clone,
+    V: Clone + Debug,
 {
     pub id: NodeId,
     pub instructions: Vec<(V, I)>, // Tuple of value and instruction
@@ -58,7 +58,7 @@ where
 pub struct CFG<V, I>
 where
     I: Clone + Instr,
-    V: Clone,
+    V: Clone + Debug,
 {
     pub basic_blocks: Vec<(usize, BasicBlock<V, I>)>, // List of blocks indexed by ID
     pub entry_succs: Vec<NodeId>,                     // Successors of the entry node
@@ -95,6 +95,17 @@ where
         }
     }
 
+    pub fn get_preds(&self, node_id: &NodeId) -> Vec<NodeId> {
+        match node_id {
+            NodeId::Exit => self.exit_preds.clone(),
+            NodeId::Block(n) => {
+                let block = self.basic_blocks.iter().find(|(i, _)| *i == *n).unwrap();
+                block.1.preds.clone()
+            }
+            NodeId::Entry => vec![], // Entry node has no predecessors
+        }
+    }
+
     pub fn strip_annotations(self) -> CFG<(), I> {
         CFG {
             basic_blocks: self
@@ -123,14 +134,13 @@ where
         }
     }
 
-    pub fn initialize_annotation(self, dummy_val: ReachingCopies) -> CFG<ReachingCopies, I> {
-        // Initialize a single instruction with dummy_val
-        let initialize_instruction =
-            |(_, instr): (V, I)| -> (ReachingCopies, I) { (dummy_val.clone(), instr) };
-
+    pub fn initialize_annotation<T: Clone + Debug>(self, dummy_val: T) -> CFG<T, I> {
+        // Initialize a single instruction with the provided dummy_val
+        let initialize_instruction = |(_, instr): (V, I)| -> (T, I) { (dummy_val.clone(), instr) };
+    
         // Initialize a block by updating its instructions and value
         let initialize_block =
-            |(idx, block): (usize, BasicBlock<V, I>)| -> (usize, BasicBlock<ReachingCopies, I>) {
+            |(idx, block): (usize, BasicBlock<V, I>)| -> (usize, BasicBlock<T, I>) {
                 (
                     idx,
                     BasicBlock {
@@ -148,7 +158,7 @@ where
                     },
                 )
             };
-
+    
         // Apply the changes to each block in the CFG
         CFG {
             basic_blocks: self
@@ -161,7 +171,7 @@ where
             debug_label: self.debug_label,
         }
     }
-
+    
     pub fn update_basic_block(&mut self, block_idx: usize, new_block: BasicBlock<V, I>) {
         for (idx, block) in &mut self.basic_blocks {
             if *idx == block_idx {

@@ -1518,9 +1518,9 @@ impl Optimize for IRFunction {
 
             // cfg.print_as_graphviz();
 
-            // if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
-            //     cfg = dead_store_elimination(&mut cfg, &all_static_vars);
-            // }
+            if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
+                cfg = dead_store_elimination::<(), IRInstruction>(&mut aliased_vars, cfg);
+            }
 
             let optimized_function_body = cfg.cfg_to_instructions();
 
@@ -2548,5 +2548,263 @@ impl std::fmt::Debug for Cp {
         }
 
         write!(f, "{:?} = {:?}", extract(&self.dst), extract(&self.src))
+    }
+}
+
+fn dead_store_elimination<V: Clone + Debug, I: Clone + Debug + Instr>(
+    aliased_vars: &HashSet<String>,
+    cfg: cfg::CFG<(), IRInstruction>,
+) -> cfg::CFG<(), IRInstruction> {
+    let mut static_vars = HashSet::new();
+
+    for (k, v) in SYMBOL_TABLE.lock().unwrap().iter() {
+        match v.attrs {
+            IdentifierAttrs::StaticAttr { .. } => {
+                static_vars.insert(k.to_owned());
+            }
+            _ => {}
+        }
+    }
+
+    // Find live variables (this returns an annotated CFG with HashSet<String> as annotations)
+    let annotated_cfg = find_live_variables(&static_vars, aliased_vars, cfg);
+
+    // Rewrite the basic blocks to eliminate dead stores
+    let rewrite_block = |(idx, block): (usize, BasicBlock<HashSet<String>, IRInstruction>)| -> (usize, BasicBlock<HashSet<String>, IRInstruction>) {
+        let new_instructions = block
+            .instructions
+            .into_iter()
+            .filter(|instr| !is_dead_store(instr)) // Only keep non-dead-store instructions
+            .collect();
+
+        (
+            idx,
+            BasicBlock {
+                instructions: new_instructions,
+                preds: block.preds,
+                succs: block.succs,
+                value: block.value,
+                id: block.id,
+            },
+        )
+    };
+
+    // Map over the CFG and remove dead stores, then strip the annotations
+    cfg::CFG {
+        basic_blocks: annotated_cfg
+            .basic_blocks
+            .into_iter()
+            .map(rewrite_block)
+            .collect(),
+        ..annotated_cfg
+    }.strip_annotations() // Remove the annotations (HashSet<String>)
+}
+
+fn is_dead_store((live_vars, i): &(HashSet<String>, IRInstruction)) -> bool {
+    match i {
+        IRInstruction::Call { .. } | IRInstruction::Store { .. } => false,
+        _ => match get_dst(i) {
+            Some(IRValue::Var(v)) => !live_vars.contains(&v),
+            _ => false,
+        },
+    }
+}
+
+fn find_live_variables(
+    static_vars: &HashSet<String>,
+    aliased_vars: &HashSet<String>,
+    cfg: cfg::CFG<(), IRInstruction>,
+) -> cfg::CFG<HashSet<String>, IRInstruction> {
+    // Initialize the CFG with empty live variable sets
+    let mut starting_cfg = cfg.initialize_annotation(HashSet::new());
+
+    // Combine static variables and aliased variables
+    let static_and_aliased_vars = static_vars.union(aliased_vars).cloned().collect::<HashSet<_>>();
+
+    // Create the worklist by cloning the basic blocks
+    let mut worklist: Vec<(usize, BasicBlock<HashSet<String>, IRInstruction>)> =
+        starting_cfg.basic_blocks.clone();
+
+    // Process the worklist in a loop
+    while let Some((block_idx, blk)) = worklist.pop() {
+        // Save the old annotation (live variables)
+        let old_annotation = blk.value.clone();
+
+        // Calculate live variables at the exit of the block
+        let live_vars_at_exit = meet_dead_store(static_vars, &starting_cfg, &blk);
+
+        // Transfer function: propagate live variables through the block
+        let block = transfer_dead_store(&static_and_aliased_vars, blk.clone(), live_vars_at_exit);
+
+        // Update the CFG with the new block
+        starting_cfg.update_basic_block(block_idx, block.clone());
+
+        // Get the new live variable annotation
+        let new_annotation = starting_cfg.get_block_value(block_idx);
+
+        // If the live variables have changed, update the worklist with predecessors
+        if old_annotation != *new_annotation {
+            let block_predecessors = starting_cfg.get_preds(&blk.id);
+
+            for pred in block_predecessors {
+                match pred {
+                    NodeId::Block(_) => {
+                        let pred_block = starting_cfg.get_block_by_id(&pred);
+                        if !worklist.contains(&pred_block) {
+                            worklist.push(pred_block.clone());
+                        }
+                    }
+                    NodeId::Entry => continue,
+                    NodeId::Exit => panic!("Internal error: malformed CFG"),
+                }
+            }
+        }
+    }
+
+    starting_cfg
+}
+
+fn meet_dead_store(static_vars: &HashSet<String>, cfg: &cfg::CFG<HashSet<String>, IRInstruction>, block: &BasicBlock<HashSet<String>, IRInstruction>) -> HashSet<String> {
+    let mut live = HashSet::new();
+
+    for succ in &block.succs {
+        match succ {
+            NodeId::Entry => panic!("Internal error: malformed CFG"),
+            NodeId::Exit => {
+                live = live.union(static_vars).cloned().collect();
+            }
+            NodeId::Block(n) => {
+                live = live.union(&cfg.get_block_value(*n)).cloned().collect();
+            }
+        };
+    }
+
+    live
+}
+
+fn transfer_dead_store(
+    static_and_aliased_vars: &HashSet<String>,
+    block: BasicBlock<HashSet<String>, IRInstruction>,
+    end_live_variables: HashSet<String>,
+) -> BasicBlock<HashSet<String>, IRInstruction> {
+    let process_instr = |mut current_live_vars: HashSet<String>, (_, i): &(HashSet<String>, IRInstruction)| -> (HashSet<String>, (HashSet<String>, IRInstruction)) {
+        
+        let annotated_instr = (current_live_vars.clone(), i.clone());
+        
+        match i {
+            IRInstruction::Binary { op, lhs, rhs, dst } => {
+                current_live_vars.remove(&dst.to_string());
+                current_live_vars.insert(lhs.to_string());
+                current_live_vars.insert(rhs.to_string());
+            }
+            IRInstruction::Unary { op, dst, src } => {
+                current_live_vars.remove(&dst.to_string());
+                current_live_vars.insert(src.to_string());
+            }
+            IRInstruction::JumpIfZero { target, condition } | IRInstruction::JumpIfNotZero { target, condition } => {
+                current_live_vars.insert(condition.to_string());
+            }
+            IRInstruction::Copy { dst, src } => {
+                current_live_vars.remove(&dst.to_string());
+                current_live_vars.insert(src.to_string());
+            }
+            IRInstruction::Ret(Some(v)) => {
+                current_live_vars.insert(v.to_string());
+            }
+            IRInstruction::Call { dst, args, target } => {
+                if let Some(d) = dst {
+                    current_live_vars.remove(&d.to_string());
+                }
+                for arg in args {
+                    current_live_vars.insert(arg.to_string());
+                }
+                current_live_vars = current_live_vars
+                    .union(static_and_aliased_vars)
+                    .cloned()
+                    .collect();
+            }
+            IRInstruction::SignExtend { dst, src }
+            | IRInstruction::ZeroExtend { dst, src }
+            | IRInstruction::DoubleToInt { dst, src }
+            | IRInstruction::IntToDouble { dst, src }
+            | IRInstruction::DoubletoUInt { dst, src }
+            | IRInstruction::UIntToDouble { dst, src }
+            | IRInstruction::Truncate { dst, src } => {
+                current_live_vars.remove(&dst.to_string());
+                current_live_vars.insert(src.to_string());
+            }
+            IRInstruction::AddPtr { dst, ptr, index, scale } => {
+                current_live_vars.remove(&dst.to_string());
+                current_live_vars.insert(ptr.to_string());
+                current_live_vars.insert(index.to_string());
+            }
+            IRInstruction::GetAddress { src, dst } => {
+                current_live_vars.remove(&dst.to_string());
+            }
+            IRInstruction::Load { src_ptr, dst } => {
+                current_live_vars.remove(&dst.to_string());
+                current_live_vars.insert(src_ptr.to_string());
+                current_live_vars = current_live_vars
+                    .union(static_and_aliased_vars)
+                    .cloned()
+                    .collect();
+            }
+            IRInstruction::Store { src, dst_ptr } => {
+                current_live_vars.insert(src.to_string());
+                current_live_vars.insert(dst_ptr.to_string());
+            }
+            IRInstruction::CopyToOffset { src, dst, offset } => {
+                current_live_vars.insert(src.to_string());
+            }
+            IRInstruction::CopyFromOffset { src, dst, offset } => {
+                current_live_vars.remove(&dst.to_string());
+                current_live_vars.insert(src.to_string());
+            }
+            _ => {}
+        }
+
+        (current_live_vars.clone(), annotated_instr.clone())
+    };
+
+    let (incoming_live_vars, annotated_reversed_instructions): (
+        HashSet<String>,
+        Vec<(HashSet<String>, IRInstruction)>,
+    ) = block.instructions.iter().rev().fold((end_live_variables, Vec::new()), |(current_copies, mut annotated_instrs), instr| {
+            let (new_live_vars, annotated_instr) = process_instr(current_copies, instr);
+            annotated_instrs.push(annotated_instr);
+            (new_live_vars, annotated_instrs)
+        },
+    );
+
+    // Return the new block with updated instructions and value
+    BasicBlock {
+        instructions: annotated_reversed_instructions.into_iter().rev().collect(),
+        value: incoming_live_vars,
+        ..block.clone() // Keep other fields the same
+    }
+
+
+}
+
+impl ToString for IRValue {
+    fn to_string(&self) -> String {
+        match self {
+            IRValue::Constant(c) => c.to_string(),
+            IRValue::Var(v) => v.to_string(),
+        }
+    }
+}
+
+impl ToString for Const {
+    fn to_string(&self) -> String {
+        match self {
+            Const::Int(i) => i.to_string(),
+            Const::Long(l) => l.to_string(),
+            Const::UInt(u) => u.to_string(),
+            Const::ULong(ul) => ul.to_string(),
+            Const::Double(d) => d.to_string(),
+            Const::Char(c) => c.to_string(),
+            Const::UChar(uc) => uc.to_string(),
+        }
     }
 }
