@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Mutex};
+use std::{collections::{HashMap, HashSet}, sync::Mutex};
 
 use crate::{
     ir::{
@@ -162,7 +162,7 @@ pub enum AsmOperand {
     Indexed(AsmRegister, AsmRegister, isize),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
 pub enum AsmRegister {
     AX,
     CX,
@@ -1978,8 +1978,8 @@ impl ReplacePseudo for AsmFunction {
             .get(&self.name)
             .is_some_and(|f| match f {
                 AsmSymtabEntry::Function {
-                    defined: _,
                     returns_on_stack,
+                    ..
                 } => *returns_on_stack,
                 _ => false,
             })
@@ -3724,6 +3724,37 @@ fn returns_on_stack(name: &str) -> bool {
     }
 }
 
+fn classify_param_types(params: &[Type], return_on_stack: bool) -> Vec<AsmRegister> {
+    let f = |t: &Type| if is_scalar(t) { (t.to_owned(), AsmOperand::Pseudo("DUMMY".to_string() )) } else { (t.to_owned(), AsmOperand::PseudoMem("DUMMY".to_string(), 0)) };
+    
+    let int_regs: [AsmRegister; 6] = [
+        AsmRegister::DI,
+        AsmRegister::SI,
+        AsmRegister::DX,
+        AsmRegister::CX,
+        AsmRegister::R8,
+        AsmRegister::R9,
+    ];
+
+    let double_regs = [
+        AsmRegister::XMM0,
+        AsmRegister::XMM1,
+        AsmRegister::XMM2,
+        AsmRegister::XMM3,
+        AsmRegister::XMM4,
+        AsmRegister::XMM5,
+        AsmRegister::XMM6,
+        AsmRegister::XMM7,
+    ];
+    
+    let (ints, dbls, _) = classify_params_helper(&params.iter().map(f).collect::<Vec<_>>(), return_on_stack);
+    
+    let int_regs_final: Vec<_> = int_regs.iter().take(ints.len()).collect();
+    let double_regs_final: Vec<_> = double_regs.iter().take(dbls.len()).collect();
+
+    int_regs_final.iter().chain(double_regs_final.iter()).map(|x| x.to_owned().to_owned()).collect()
+}
+
 pub fn build_asm_symbol_table() {
     use crate::typechecker::is_complete;
 
@@ -3733,19 +3764,43 @@ pub fn build_asm_symbol_table() {
     for (identifier, symbol) in frontend_symtab.iter() {
         let entry = match symbol.attrs {
             IdentifierAttrs::FuncAttr { defined, .. } => {
-                let returns_on_stack = match &symbol._type {
-                    Type::Func { params: _, ret } => {
+                match &symbol._type {
+                    Type::Func { params, ret } => {
+                        // Check if the return type is complete or if it's void
                         if is_complete(&ret) || ret == &Type::Void.into() {
-                            returns_on_stack(identifier)
+                            // Classify return type (registers and whether it returns on the stack)
+                            let (return_regs, returns_on_stack) = classify_return_type(
+                                &IRValue::Var(identifier.to_string()), ret
+                            );
+    
+                            // Classify parameter types
+                            let param_regs = classify_param_types(params, returns_on_stack);
+    
+                            // Add the function to the assembly symbol table
+                            AsmSymtabEntry::Function {
+                                defined,
+                                bytes_required: 0, // Set the bytes required to 0 (can be updated if needed)
+                                returns_on_stack,
+                                callee_saved_regs_used: HashSet::new(), // Placeholder for callee-saved registers
+                                param_regs,
+                                return_regs,
+                            }
                         } else {
-                            false
+                            // The function has an incomplete return type or incomplete param types
+                            assert!(!defined);
+    
+                            // Add the function to the assembly symbol table with dummy values
+                            AsmSymtabEntry::Function {
+                                defined,
+                                bytes_required: 0,
+                                returns_on_stack: false,
+                                callee_saved_regs_used: HashSet::new(),
+                                param_regs: Vec::new(),
+                                return_regs: Vec::new(),
+                            }
                         }
                     }
                     _ => unreachable!(),
-                };
-                AsmSymtabEntry::Function {
-                    defined,
-                    returns_on_stack,
                 }
             }
             IdentifierAttrs::StaticAttr {
@@ -3854,6 +3909,10 @@ pub enum AsmSymtabEntry {
     Function {
         defined: bool,
         returns_on_stack: bool,
+        bytes_required: usize,
+        param_regs: Vec<AsmRegister>,
+        return_regs: Vec<AsmRegister>,
+        callee_saved_regs_used: HashSet<AsmRegister>,
     },
     Object {
         _type: AsmType,
@@ -4234,5 +4293,28 @@ fn copy_bytes_from_reg(
             });
         }
         offset += 1;
+    }
+}
+
+fn classify_return_type(retval: &IRValue, t: &Type) -> (Vec<AsmRegister>, bool) {
+    match t {
+        Type::Void => (vec![], false),
+        t => {
+            let asm_val = if is_scalar(t) {
+                AsmOperand::Pseudo("DUMMY".to_string())
+            } else {
+                AsmOperand::PseudoMem("DUMMY".to_string(), 0)
+            };
+
+            let (ints, dbls, return_on_stack) = classify_return_helper(retval, t, &asm_val);
+            if return_on_stack {
+                (vec![AsmRegister::AX], true)
+            } else {
+                let int_regs: Vec<AsmRegister> = vec![AsmRegister::AX, AsmRegister::DX].iter().take(ints.len()).cloned().collect();
+                let dbl_regs: Vec<AsmRegister> = vec![AsmRegister::XMM0, AsmRegister::XMM1].iter().take(dbls.len()).cloned().collect();
+
+                (int_regs.iter().chain(dbl_regs.iter()).cloned().collect(), false)
+            }
+        }
     }
 }
