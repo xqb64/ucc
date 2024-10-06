@@ -6,7 +6,7 @@ use structopt::StructOpt;
 
 use ucc::ir::Optimization;
 use ucc::{
-    codegen::{build_asm_symbol_table, AsmType, Codegen, Fixup, ReplacePseudo},
+    codegen::{build_asm_symbol_table, AsmType, Codegen, Fixup, ReplacePseudo, RegAlloc},
     emitter::Emit,
     ir::{convert_symbols_to_tacky, IRNode, Irfy, Optimize},
     lexer::{Lexer, Token},
@@ -105,7 +105,7 @@ fn run(opts: &Opt) -> Result<()> {
 
     build_asm_symbol_table();
 
-    let mut asm_prog = optimized_prog.codegen().replace_pseudo().fixup();
+    let mut asm_prog = optimized_prog.codegen().reg_alloc().replace_pseudo().fixup();
 
     if opts.codegen {
         println!("{:#?}", asm_prog);

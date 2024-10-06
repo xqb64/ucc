@@ -4348,3 +4348,41 @@ fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
         }
     }
 }
+
+pub trait RegAlloc {
+    fn reg_alloc(&mut self) -> Self;
+}
+
+impl RegAlloc for AsmProgram {
+    fn reg_alloc(&mut self) -> Self {
+        let mut functions = vec![];
+        for func in &mut self.functions {
+            functions.push(match func {
+                AsmNode::Function(f) => AsmNode::Function(f.reg_alloc()),
+                _ => unreachable!(),
+            });
+        }
+        AsmProgram { functions, static_constants: self.static_constants.clone(), static_vars: self.static_vars.clone() }
+    }
+}
+
+impl RegAlloc for AsmFunction {
+    fn reg_alloc(&mut self) -> Self {
+        AsmFunction {
+            name: self.name.clone(),
+            instructions: self.instructions.clone(),
+            global: self.global,
+            stack_space: self.stack_space,
+        }
+    }
+}
+
+impl RegAlloc for AsmNode {
+    fn reg_alloc(&mut self) -> Self {
+        match self {
+            AsmNode::Program(prog) => AsmNode::Program(prog.reg_alloc()),
+            AsmNode::Function(f) => AsmNode::Function(f.reg_alloc()),
+            _ => unreachable!(),
+        }
+    }
+}
