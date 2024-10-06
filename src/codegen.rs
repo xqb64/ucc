@@ -4368,9 +4368,15 @@ impl RegAlloc for AsmProgram {
 
 impl RegAlloc for AsmFunction {
     fn reg_alloc(&mut self) -> Self {
+        let interference_graph = build_interference_graph(&self.instructions);
+        add_spill_costs(interference_graph, &self.instructions);
+        color_graph(interference_graph);
+        let register_map = create_register_map(interference_graph);
+        let transformed_instructions = replace_pseudoregs(&self.instructions, &register_map);
+
         AsmFunction {
             name: self.name.clone(),
-            instructions: self.instructions.clone(),
+            instructions: transformed_instructions,
             global: self.global,
             stack_space: self.stack_space,
         }
