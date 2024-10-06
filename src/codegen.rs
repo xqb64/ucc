@@ -138,6 +138,7 @@ pub enum AsmInstruction {
     Push(AsmOperand),
     Call(String),
     Ret,
+    Pop(AsmRegister),
 }
 
 #[derive(Debug, Clone, PartialEq)]

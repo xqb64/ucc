@@ -471,6 +471,11 @@ impl Emit for AsmInstruction {
                 dst.emit(f, asm_type)?;
                 writeln!(f)?;
             }
+            AsmInstruction::Pop(reg) => {
+                write!(f, "popq ")?;
+                reg.emit(f, &mut AsmType::Quadword)?;
+                writeln!(f)?;
+            }
         }
 
         Ok(())
