@@ -137,7 +137,7 @@ where
     pub fn initialize_annotation<T: Clone + Debug>(self, dummy_val: T) -> CFG<T, I> {
         // Initialize a single instruction with the provided dummy_val
         let initialize_instruction = |(_, instr): (V, I)| -> (T, I) { (dummy_val.clone(), instr) };
-    
+
         // Initialize a block by updating its instructions and value
         let initialize_block =
             |(idx, block): (usize, BasicBlock<V, I>)| -> (usize, BasicBlock<T, I>) {
@@ -158,7 +158,7 @@ where
                     },
                 )
             };
-    
+
         // Apply the changes to each block in the CFG
         CFG {
             basic_blocks: self
@@ -171,7 +171,7 @@ where
             debug_label: self.debug_label,
         }
     }
-    
+
     pub fn update_basic_block(&mut self, block_idx: usize, new_block: BasicBlock<V, I>) {
         for (idx, block) in &mut self.basic_blocks {
             if *idx == block_idx {
@@ -272,33 +272,33 @@ where
         // First, collect the successors and predecessors that need to be updated
         let mut successors_to_update = Vec::new();
         let mut predecessors_to_update = Vec::new();
-    
+
         // Collect successors of the block
         self.update_successors(&block_id, |succs| {
             successors_to_update.extend(succs.clone()); // Clone the successors
             succs.clear(); // Clear all successors of the block
         });
-    
+
         // Collect predecessors of the block
         self.update_predecessors(&block_id, |preds| {
             predecessors_to_update.extend(preds.clone()); // Clone the predecessors
             preds.clear(); // Clear all predecessors of the block
         });
-    
+
         // Now update all the predecessors by removing the block from their successor lists
         for succ in &successors_to_update {
             self.update_predecessors(succ, |preds| {
                 preds.retain(|x| x != &block_id); // Remove block from predecessors
             });
         }
-    
+
         // Now update all the successors by removing the block from their predecessor lists
         for pred in &predecessors_to_update {
             self.update_successors(pred, |succs| {
                 succs.retain(|x| x != &block_id); // Remove block from successors
             });
         }
-    
+
         // Reconnect the block's predecessors to its successors, skipping the deleted block
         for pred in predecessors_to_update {
             for succ in &successors_to_update {
@@ -307,10 +307,10 @@ where
                 }
             }
         }
-    
+
         // Finally, remove the block from the basic blocks
         self.basic_blocks.retain(|(_, blk)| blk.id != block_id);
-    
+
         // If the entry node is affected, reconnect it to the first available block
         if block_id == NodeId::Block(0) {
             if let Some(block) = self.basic_blocks.first_mut() {
@@ -320,7 +320,7 @@ where
             }
         }
     }
-    
+
     fn update_predecessors<F>(&mut self, node_id: &NodeId, f: F)
     where
         F: FnOnce(&mut Vec<NodeId>),

@@ -1599,10 +1599,12 @@ fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
                             }
                             _ => panic!("Complement requires an integer type"),
                         },
-                        UnaryOp::Not => if is_zero(&src_val) {
-                            Const::Int(1)
-                        } else {
-                            Const::Int(0)
+                        UnaryOp::Not => {
+                            if is_zero(&src_val) {
+                                Const::Int(1)
+                            } else {
+                                Const::Int(0)
+                            }
                         }
                     };
                     optimized_instructions.push(IRInstruction::Copy {
@@ -2000,7 +2002,6 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
         .cloned()
         .collect();
 
-
     for block in blocks_to_remove {
         cfg.remove_block(block);
     }
@@ -2200,7 +2201,6 @@ fn transfer(
     let is_aliased = |var: &IRValue| var_is_aliased(aliased_vars, var);
 
     let process_instr = |current_copies: ReachingCopies, instr: &IRInstruction| {
-        
         let annotated_instr = (current_copies.clone(), instr.clone());
 
         let new_copies = match instr {
@@ -2213,7 +2213,10 @@ fn transfer(
                     current_copies
                 } else if same_type(src, dst) {
                     let updated = filter_updated(current_copies, dst);
-                    let new_copies = updated.add(Cp { src: src.clone(), dst: dst.clone() });
+                    let new_copies = updated.add(Cp {
+                        src: src.clone(),
+                        dst: dst.clone(),
+                    });
                     new_copies
                 } else {
                     filter_updated(current_copies, dst)
@@ -2225,19 +2228,15 @@ fn transfer(
                     None => current_copies,
                 };
 
-                copies_after_dst_filter
-                    .filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
+                copies_after_dst_filter.filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
             }
             IRInstruction::Store { .. } => {
-                current_copies
-                    .filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
+                current_copies.filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
             }
-            _ => {
-                match get_dst(instr) {
-                    Some(dst) => filter_updated(current_copies, &dst),
-                    None => current_copies,
-                }
-            }
+            _ => match get_dst(instr) {
+                Some(dst) => filter_updated(current_copies, &dst),
+                None => current_copies,
+            },
         };
 
         (new_copies, annotated_instr)
@@ -2246,7 +2245,9 @@ fn transfer(
     let (final_reaching_copies, annotated_instructions): (
         ReachingCopies,
         Vec<(ReachingCopies, IRInstruction)>,
-    ) = block.instructions.iter().fold((initial_reaching_copies, Vec::new()), |(current_copies, mut annotated_instrs), instr| {
+    ) = block.instructions.iter().fold(
+        (initial_reaching_copies, Vec::new()),
+        |(current_copies, mut annotated_instrs), instr| {
             let (new_copies, annotated_instr) = process_instr(current_copies, &instr.1);
             annotated_instrs.push(annotated_instr);
             (new_copies, annotated_instrs)
@@ -2386,7 +2387,13 @@ fn rewrite_instruction(
 ) -> Option<IRInstruction> {
     match instr {
         IRInstruction::Copy { src, dst } => {
-            if reaching_copies.mem(&Cp { src: src.clone(), dst: dst.clone() }) || reaching_copies.mem(&Cp { src: dst.clone(), dst: src.clone() }) {
+            if reaching_copies.mem(&Cp {
+                src: src.clone(),
+                dst: dst.clone(),
+            }) || reaching_copies.mem(&Cp {
+                src: dst.clone(),
+                dst: src.clone(),
+            }) {
                 return None;
             }
         }
@@ -2396,14 +2403,12 @@ fn rewrite_instruction(
     let replace = |op: &IRValue| -> IRValue {
         match op {
             IRValue::Constant(_) => op.clone(),
-            IRValue::Var(v) => {
-                reaching_copies
-                    .0
-                    .iter()
-                    .find(|cp| cp.dst == op.clone())
-                    .map(|cp| cp.src.clone())
-                    .unwrap_or(op.clone())
-            }
+            IRValue::Var(v) => reaching_copies
+                .0
+                .iter()
+                .find(|cp| cp.dst == op.clone())
+                .map(|cp| cp.src.clone())
+                .unwrap_or(op.clone()),
         }
     };
 
@@ -2598,7 +2603,8 @@ fn dead_store_elimination<V: Clone + Debug, I: Clone + Debug + Instr>(
             .map(rewrite_block)
             .collect(),
         ..annotated_cfg
-    }.strip_annotations() // Remove the annotations (HashSet<String>)
+    }
+    .strip_annotations() // Remove the annotations (HashSet<String>)
 }
 
 fn is_dead_store((live_vars, i): &(HashSet<String>, IRInstruction)) -> bool {
@@ -2620,7 +2626,10 @@ fn find_live_variables(
     let mut starting_cfg = cfg.initialize_annotation(HashSet::new());
 
     // Combine static variables and aliased variables
-    let static_and_aliased_vars = static_vars.union(aliased_vars).cloned().collect::<HashSet<_>>();
+    let static_and_aliased_vars = static_vars
+        .union(aliased_vars)
+        .cloned()
+        .collect::<HashSet<_>>();
 
     // Create the worklist by cloning the basic blocks
     let mut worklist: Vec<(usize, BasicBlock<HashSet<String>, IRInstruction>)> =
@@ -2665,7 +2674,11 @@ fn find_live_variables(
     starting_cfg
 }
 
-fn meet_dead_store(static_vars: &HashSet<String>, cfg: &cfg::CFG<HashSet<String>, IRInstruction>, block: &BasicBlock<HashSet<String>, IRInstruction>) -> HashSet<String> {
+fn meet_dead_store(
+    static_vars: &HashSet<String>,
+    cfg: &cfg::CFG<HashSet<String>, IRInstruction>,
+    block: &BasicBlock<HashSet<String>, IRInstruction>,
+) -> HashSet<String> {
     let mut live = HashSet::new();
 
     for succ in &block.succs {
@@ -2688,10 +2701,11 @@ fn transfer_dead_store(
     block: BasicBlock<HashSet<String>, IRInstruction>,
     end_live_variables: HashSet<String>,
 ) -> BasicBlock<HashSet<String>, IRInstruction> {
-    let process_instr = |mut current_live_vars: HashSet<String>, (_, i): &(HashSet<String>, IRInstruction)| -> (HashSet<String>, (HashSet<String>, IRInstruction)) {
-        
+    let process_instr = |mut current_live_vars: HashSet<String>,
+                         (_, i): &(HashSet<String>, IRInstruction)|
+     -> (HashSet<String>, (HashSet<String>, IRInstruction)) {
         let annotated_instr = (current_live_vars.clone(), i.clone());
-        
+
         match i {
             IRInstruction::Binary { op, lhs, rhs, dst } => {
                 current_live_vars.remove(&dst.to_string());
@@ -2702,7 +2716,8 @@ fn transfer_dead_store(
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(src.to_string());
             }
-            IRInstruction::JumpIfZero { target, condition } | IRInstruction::JumpIfNotZero { target, condition } => {
+            IRInstruction::JumpIfZero { target, condition }
+            | IRInstruction::JumpIfNotZero { target, condition } => {
                 current_live_vars.insert(condition.to_string());
             }
             IRInstruction::Copy { dst, src } => {
@@ -2734,7 +2749,12 @@ fn transfer_dead_store(
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(src.to_string());
             }
-            IRInstruction::AddPtr { dst, ptr, index, scale } => {
+            IRInstruction::AddPtr {
+                dst,
+                ptr,
+                index,
+                scale,
+            } => {
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(ptr.to_string());
                 current_live_vars.insert(index.to_string());
@@ -2770,7 +2790,9 @@ fn transfer_dead_store(
     let (incoming_live_vars, annotated_reversed_instructions): (
         HashSet<String>,
         Vec<(HashSet<String>, IRInstruction)>,
-    ) = block.instructions.iter().rev().fold((end_live_variables, Vec::new()), |(current_copies, mut annotated_instrs), instr| {
+    ) = block.instructions.iter().rev().fold(
+        (end_live_variables, Vec::new()),
+        |(current_copies, mut annotated_instrs), instr| {
             let (new_live_vars, annotated_instr) = process_instr(current_copies, instr);
             annotated_instrs.push(annotated_instr);
             (new_live_vars, annotated_instrs)
@@ -2783,8 +2805,6 @@ fn transfer_dead_store(
         value: incoming_live_vars,
         ..block.clone() // Keep other fields the same
     }
-
-
 }
 
 impl ToString for IRValue {

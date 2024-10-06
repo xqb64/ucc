@@ -1,4 +1,7 @@
-use std::{collections::{HashMap, HashSet}, sync::Mutex};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Mutex,
+};
 
 use crate::{
     ir::{
@@ -1215,7 +1218,8 @@ impl Codegen for IRInstruction {
                                 lhs: AsmOperand::Imm(8),
                                 rhs: AsmOperand::Register(AsmRegister::SP),
                             });
-                            instructions.extend(copy_bytes(stack_arg,
+                            instructions.extend(copy_bytes(
+                                stack_arg,
                                 &AsmOperand::Memory(AsmRegister::SP, 0),
                                 *size,
                             ));
@@ -1978,8 +1982,7 @@ impl ReplacePseudo for AsmFunction {
             .get(&self.name)
             .is_some_and(|f| match f {
                 AsmSymtabEntry::Function {
-                    returns_on_stack,
-                    ..
+                    returns_on_stack, ..
                 } => *returns_on_stack,
                 _ => false,
             })
@@ -3523,13 +3526,20 @@ pub enum AsmType {
     Bytearray { size: usize, alignment: usize },
 }
 
-fn classify_parameters(params: &[IRValue], return_on_stack: bool) -> (Vec<(AsmType, AsmOperand)>, Vec<AsmOperand>, Vec<(AsmType, AsmOperand)>) {
+fn classify_parameters(
+    params: &[IRValue],
+    return_on_stack: bool,
+) -> (
+    Vec<(AsmType, AsmOperand)>,
+    Vec<AsmOperand>,
+    Vec<(AsmType, AsmOperand)>,
+) {
     // Map parameters to their types and converted values
     let typed_params: Vec<(Type, AsmOperand)> = params
         .iter()
         .map(|v| (tacky_type(v), v.codegen().into()))
         .collect();
-    
+
     // Call the helper function
     classify_params_helper(&typed_params, return_on_stack)
 }
@@ -3537,7 +3547,11 @@ fn classify_parameters(params: &[IRValue], return_on_stack: bool) -> (Vec<(AsmTy
 fn classify_params_helper(
     typed_asm_vals: &[(Type, AsmOperand)],
     return_on_stack: bool,
-) -> (Vec<(AsmType, AsmOperand)>, Vec<AsmOperand>, Vec<(AsmType, AsmOperand)>) {
+) -> (
+    Vec<(AsmType, AsmOperand)>,
+    Vec<AsmOperand>,
+    Vec<(AsmType, AsmOperand)>,
+) {
     // Determine how many integer registers are available based on whether the return is on the stack
     let int_regs_available = if return_on_stack { 5 } else { 6 };
 
@@ -3557,23 +3571,23 @@ fn classify_params_helper(
                     Type::Struct { tag } => TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone(),
                     _ => unreachable!(),
                 };
-    
+
                 let classes = classify_structure(&struct_entry);
                 let mut use_stack = true;
-    
+
                 let struct_size = struct_entry.size;
-    
+
                 let name_of_v = match operand {
                     AsmOperand::PseudoMem(name, _) => name.clone(),
                     _ => unreachable!(),
                 };
-    
+
                 if classes[0] != Class::Memory {
                     let mut tentative_ints = vec![];
                     let mut tentative_doubles = vec![];
-    
+
                     let mut offset = 0;
-    
+
                     for class in &classes {
                         let operand = AsmOperand::PseudoMem(name_of_v.clone(), offset);
                         if class == &Class::Sse {
@@ -3584,7 +3598,7 @@ fn classify_params_helper(
                         }
                         offset += 8;
                     }
-    
+
                     if (tentative_doubles.len() + double_reg_args.len() <= 8)
                         && (tentative_ints.len() + int_reg_args.len() <= int_regs_available)
                     {
@@ -3593,15 +3607,12 @@ fn classify_params_helper(
                         use_stack = false;
                     }
                 }
-    
+
                 if use_stack {
                     let mut offset = 0;
                     for _ in classes {
                         let operand = AsmOperand::PseudoMem(name_of_v.clone(), offset);
-                        stack_args.push((
-                            get_eightbyte_type(offset, struct_size),
-                            operand,
-                        ));
+                        stack_args.push((get_eightbyte_type(offset, struct_size), operand));
                         offset += 8;
                     }
                 }
@@ -3725,8 +3736,14 @@ fn returns_on_stack(name: &str) -> bool {
 }
 
 fn classify_param_types(params: &[Type], return_on_stack: bool) -> Vec<AsmRegister> {
-    let f = |t: &Type| if is_scalar(t) { (t.to_owned(), AsmOperand::Pseudo("DUMMY".to_string() )) } else { (t.to_owned(), AsmOperand::PseudoMem("DUMMY".to_string(), 0)) };
-    
+    let f = |t: &Type| {
+        if is_scalar(t) {
+            (t.to_owned(), AsmOperand::Pseudo("DUMMY".to_string()))
+        } else {
+            (t.to_owned(), AsmOperand::PseudoMem("DUMMY".to_string(), 0))
+        }
+    };
+
     let int_regs: [AsmRegister; 6] = [
         AsmRegister::DI,
         AsmRegister::SI,
@@ -3746,13 +3763,18 @@ fn classify_param_types(params: &[Type], return_on_stack: bool) -> Vec<AsmRegist
         AsmRegister::XMM6,
         AsmRegister::XMM7,
     ];
-    
-    let (ints, dbls, _) = classify_params_helper(&params.iter().map(f).collect::<Vec<_>>(), return_on_stack);
-    
+
+    let (ints, dbls, _) =
+        classify_params_helper(&params.iter().map(f).collect::<Vec<_>>(), return_on_stack);
+
     let int_regs_final: Vec<_> = int_regs.iter().take(ints.len()).collect();
     let double_regs_final: Vec<_> = double_regs.iter().take(dbls.len()).collect();
 
-    int_regs_final.iter().chain(double_regs_final.iter()).map(|x| x.to_owned().to_owned()).collect()
+    int_regs_final
+        .iter()
+        .chain(double_regs_final.iter())
+        .map(|x| x.to_owned().to_owned())
+        .collect()
 }
 
 pub fn build_asm_symbol_table() {
@@ -3763,44 +3785,35 @@ pub fn build_asm_symbol_table() {
 
     for (identifier, symbol) in frontend_symtab.iter() {
         let entry = match symbol.attrs {
-            IdentifierAttrs::FuncAttr { defined, .. } => {
-                match &symbol._type {
-                    Type::Func { params, ret } => {
-                        // Check if the return type is complete or if it's void
-                        if is_complete(&ret) || ret == &Type::Void.into() {
-                            // Classify return type (registers and whether it returns on the stack)
-                            let (return_regs, returns_on_stack) = classify_return_type(ret);
-    
-                            // Classify parameter types
-                            let param_regs = classify_param_types(params, returns_on_stack);
-    
-                            // Add the function to the assembly symbol table
-                            AsmSymtabEntry::Function {
-                                defined,
-                                bytes_required: 0, // Set the bytes required to 0 (can be updated if needed)
-                                returns_on_stack,
-                                callee_saved_regs_used: HashSet::new(), // Placeholder for callee-saved registers
-                                param_regs,
-                                return_regs,
-                            }
-                        } else {
-                            // The function has an incomplete return type or incomplete param types
-                            assert!(!defined);
-    
-                            // Add the function to the assembly symbol table with dummy values
-                            AsmSymtabEntry::Function {
-                                defined,
-                                bytes_required: 0,
-                                returns_on_stack: false,
-                                callee_saved_regs_used: HashSet::new(),
-                                param_regs: Vec::new(),
-                                return_regs: Vec::new(),
-                            }
+            IdentifierAttrs::FuncAttr { defined, .. } => match &symbol._type {
+                Type::Func { params, ret } => {
+                    if is_complete(&ret) || ret == &Type::Void.into() {
+                        let (return_regs, returns_on_stack) = classify_return_type(ret);
+                        let param_regs = classify_param_types(params, returns_on_stack);
+
+                        AsmSymtabEntry::Function {
+                            defined,
+                            bytes_required: 0,
+                            returns_on_stack,
+                            callee_saved_regs_used: HashSet::new(),
+                            param_regs,
+                            return_regs,
+                        }
+                    } else {
+                        assert!(!defined);
+
+                        AsmSymtabEntry::Function {
+                            defined,
+                            bytes_required: 0,
+                            returns_on_stack: false,
+                            callee_saved_regs_used: HashSet::new(),
+                            param_regs: Vec::new(),
+                            return_regs: Vec::new(),
                         }
                     }
-                    _ => unreachable!(),
                 }
-            }
+                _ => unreachable!(),
+            },
             IdentifierAttrs::StaticAttr {
                 initial_value: _, ..
             } => {
@@ -4188,7 +4201,7 @@ fn classify_return_value(retval: &IRValue) -> (Vec<(AsmType, AsmOperand)>, Vec<A
 
 fn classify_return_helper(
     ret_type: &Type,
-    asm_retval: &AsmOperand
+    asm_retval: &AsmOperand,
 ) -> (Vec<(AsmType, AsmOperand)>, Vec<AsmOperand>, bool) {
     match ret_type {
         // Handling structure types
@@ -4203,14 +4216,14 @@ fn classify_return_helper(
             } else {
                 let mut int_retvals = vec![];
                 let mut double_retvals = vec![];
-    
+
                 let mut offset = 0;
-    
+
                 let name_of_retval = match asm_retval {
                     AsmOperand::PseudoMem(n, _) => n.clone(),
                     _ => unreachable!(),
                 };
-    
+
                 for class in classes {
                     let operand = AsmOperand::PseudoMem(name_of_retval.clone(), offset);
                     match class {
@@ -4225,15 +4238,13 @@ fn classify_return_helper(
                     }
                     offset += 8;
                 }
-    
+
                 return (int_retvals, double_retvals, false);
-            }    
+            }
         }
 
         // Handling floating-point return types
-        Type::Double => {
-            (vec![], vec![asm_retval.clone()], false)
-        }
+        Type::Double => (vec![], vec![asm_retval.clone()], false),
 
         // Handling other scalar types
         t => {
@@ -4242,7 +4253,6 @@ fn classify_return_helper(
         }
     }
 }
-
 
 fn convert_type(t: &Type) -> AsmType {
     match t {
@@ -4307,10 +4317,21 @@ fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
             if return_on_stack {
                 (vec![AsmRegister::AX], true)
             } else {
-                let int_regs: Vec<AsmRegister> = vec![AsmRegister::AX, AsmRegister::DX].iter().take(ints.len()).cloned().collect();
-                let dbl_regs: Vec<AsmRegister> = vec![AsmRegister::XMM0, AsmRegister::XMM1].iter().take(dbls.len()).cloned().collect();
+                let int_regs: Vec<AsmRegister> = vec![AsmRegister::AX, AsmRegister::DX]
+                    .iter()
+                    .take(ints.len())
+                    .cloned()
+                    .collect();
+                let dbl_regs: Vec<AsmRegister> = vec![AsmRegister::XMM0, AsmRegister::XMM1]
+                    .iter()
+                    .take(dbls.len())
+                    .cloned()
+                    .collect();
 
-                (int_regs.iter().chain(dbl_regs.iter()).cloned().collect(), false)
+                (
+                    int_regs.iter().chain(dbl_regs.iter()).cloned().collect(),
+                    false,
+                )
             }
         }
     }
