@@ -4347,15 +4347,15 @@ fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
 }
 
 pub trait RegAlloc {
-    fn reg_alloc(&mut self) -> Self;
+    fn reg_alloc(&mut self, aliased_pseudos: &HashSet<String>) -> Self;
 }
 
 impl RegAlloc for AsmProgram {
-    fn reg_alloc(&mut self) -> Self {
+    fn reg_alloc(&mut self, aliased_pseudos: &HashSet<String>) -> Self {
         let mut functions = vec![];
         for func in &mut self.functions {
             functions.push(match func {
-                AsmNode::Function(f) => AsmNode::Function(f.reg_alloc()),
+                AsmNode::Function(f) => AsmNode::Function(f.reg_alloc(aliased_pseudos)),
                 _ => unreachable!(),
             });
         }
@@ -4364,18 +4364,24 @@ impl RegAlloc for AsmProgram {
 }
 
 impl RegAlloc for AsmFunction {
-    fn reg_alloc(&mut self) -> Self {
-        let interference_graph = build_interference_graph(&self.name, &HashSet::new(), &self.instructions);
-        print_graphviz(&self.name, &interference_graph);
-        
-        let spilled_costs_graph = add_spill_costs(interference_graph, &self.instructions);
-        print_graphviz(&self.name, &spilled_costs_graph);
+    fn reg_alloc(&mut self, aliased_pseudos: &HashSet<String>) -> Self {
+        let static_vars = SYMBOL_TABLE.lock().unwrap().iter().filter(|(name, symbol)| match symbol.attrs { IdentifierAttrs::StaticAttr { .. } => true, _ => false }).map(|(name, symbol)| name.clone()).collect();
 
-        let colored_graph = color_graph(spilled_costs_graph);
-        print_graphviz(&self.name, &colored_graph);
+        let gp_graph = build_interference_graph(&self.name, &static_vars, aliased_pseudos, &self.instructions, GP_REGISTERS);
+        let gp_spilled_graph = add_spill_costs(gp_graph, &self.instructions);
+        let colored_gp_graph = color_graph(gp_spilled_graph, GP_REGISTERS.len());
+        let gp_register_map = make_register_map(&self.name, &colored_gp_graph, GP_REGISTERS, CALLER_SAVED_REGISTERS);
 
-        let register_map = make_register_map(&self.name, &colored_graph);
-        
+        // Allocate XMM Registers
+        let xmm_graph = build_interference_graph(&self.name, &static_vars, aliased_pseudos, &self.instructions, XMM_REGISTERS);
+        let xmm_spilled_graph = add_spill_costs(xmm_graph, &self.instructions);
+        let colored_xmm_graph = color_graph(xmm_spilled_graph, XMM_REGISTERS.len());
+        let xmm_register_map = make_register_map(&self.name, &colored_xmm_graph, XMM_REGISTERS, CALLER_SAVED_REGISTERS);
+
+        // Merge GP and XMM register maps
+        let mut register_map = gp_register_map;
+        register_map.extend(xmm_register_map);
+
         let transformed_instructions = replace_pseudoregs(&self.instructions, &register_map);
 
         AsmFunction {
@@ -4388,10 +4394,10 @@ impl RegAlloc for AsmFunction {
 }
 
 impl RegAlloc for AsmNode {
-    fn reg_alloc(&mut self) -> Self {
+    fn reg_alloc(&mut self, aliased_pseudos: &HashSet<String>) -> Self {
         match self {
-            AsmNode::Program(prog) => AsmNode::Program(prog.reg_alloc()),
-            AsmNode::Function(f) => AsmNode::Function(f.reg_alloc()),
+            AsmNode::Program(prog) => AsmNode::Program(prog.reg_alloc(aliased_pseudos)),
+            AsmNode::Function(f) => AsmNode::Function(f.reg_alloc(aliased_pseudos)),
             _ => unreachable!(),
         }
     }
@@ -4430,31 +4436,23 @@ fn mk_base_graph(all_hardregs: &HashSet<AsmOperand>) -> Graph {
 
 fn build_interference_graph(
     fn_name: &str,
+    static_vars: &HashSet<String>,
     aliased_pseudos: &HashSet<String>,
     instructions: &[AsmInstruction],
+    register_class: &[AsmRegister],
 ) -> Graph {
-    let all_hardregs = vec![
-        AsmRegister::AX,
-        AsmRegister::BX,
-        AsmRegister::CX,
-        AsmRegister::DX,
-        AsmRegister::SI,
-        AsmRegister::DI,
-        AsmRegister::R8,
-        AsmRegister::R9, 
-        AsmRegister::R12,
-        AsmRegister::R13,
-        AsmRegister::R14,
-        AsmRegister::R15].iter().map(|x| AsmOperand::Register(x.to_owned())).collect::<HashSet<AsmOperand>>();
+    let all_hardregs = register_class.iter()
+        .map(|x| AsmOperand::Register(x.clone()))
+        .collect::<HashSet<_>>();
 
     let mut graph = mk_base_graph(&all_hardregs);
 
-    add_pseudo_nodes(&mut graph, aliased_pseudos, instructions);
+    add_pseudo_nodes(&mut graph, aliased_pseudos, instructions, register_class);
 
-    let mut cfg: CFG<HashSet<AsmOperand>, AsmInstruction> = CFG::instructions_to_cfg("spam".to_string(), instructions.to_vec());
-    LivenessAnalysis::analyze(&fn_name, &mut cfg, &all_hardregs);
+    let cfg: CFG<(), AsmInstruction> = CFG::instructions_to_cfg("spam".to_string(), instructions.to_vec());
+    let mut analyzed_cfg = LivenessAnalysis::analyze(&fn_name, cfg, static_vars, aliased_pseudos, &all_hardregs);
 
-    add_edges(&mut cfg, &mut graph);
+    add_edges(&mut analyzed_cfg, &mut graph);
 
     graph
 }
@@ -4472,29 +4470,34 @@ fn add_edge(graph: &mut Graph, nd_id1: &AsmOperand, nd_id2: &AsmOperand) {
 }
 
 fn add_edges(liveness_cfg: &CFG<HashSet<AsmOperand>, AsmInstruction>, interference_graph: &mut Graph) {
-   for (idx, node) in &liveness_cfg.basic_blocks {
+    // Iterate over the basic blocks
+    for (idx, node) in &liveness_cfg.basic_blocks {
+        // Iterate over the instructions in the block
         for instr in &node.instructions {
+            // Get registers used and written in this instruction
             let (used, updated) = regs_used_and_written(&instr.1);
+            // Get the live registers at this point in the CFG
             let live_registers = liveness_cfg.get_block_value(*idx);
 
+            // For each register in the live set
             for l in live_registers.iter() {
+                // If it's a move instruction, ensure src is not interfering with itself
                 if let AsmInstruction::Mov { ref src, .. } = instr.1 {
                     if l == src {
                         continue;
                     }
                 }
 
+                // Now, add interference between the live register and all updated registers
                 for u in updated.iter() {
-                    if interference_graph.contains_key(l) && interference_graph.contains_key(u) {
-                        println!("adding edge");
+                    if l != u && interference_graph.contains_key(l) && interference_graph.contains_key(u) {
+                        // Add interference between the live register and the updated register
                         add_edge(interference_graph, l, u);
-                    } else {
-                        println!("not adding edge");
                     }
                 }
             }
         }
-   } 
+    }
 }
 
 type OperandSet = HashSet<AsmOperand>;
@@ -4531,11 +4534,11 @@ fn regs_used_and_written(instr: &AsmInstruction) -> (OperandSet, OperandSet) {
             let used = vec![
                 AsmOperand::Register(AsmRegister::DI),
                 AsmOperand::Register(AsmRegister::SI),
-            ]; // Example registers
+            ];
             let written = vec![
                 AsmOperand::Register(AsmRegister::AX),
                 AsmOperand::Register(AsmRegister::BX),
-            ]; // Example caller-saved registers
+            ];
             (used, written)
         }
         AsmInstruction::Lea { src, dst } => (vec![src.clone()], vec![dst.clone()]),
@@ -4550,10 +4553,10 @@ fn regs_used_and_written(instr: &AsmInstruction) -> (OperandSet, OperandSet) {
         _ => (vec![], vec![]),
     };
 
-    // Convert the operands used to a set of registers/pseudo-registers read
+    // Convert operands used to a set of registers/pseudo-registers read
     let regs_used_to_read = |opr: &AsmOperand| -> Vec<AsmOperand> {
         match opr {
-            AsmOperand::Pseudo(_) | AsmOperand::Register(_) => vec![opr.clone().clone()],
+            AsmOperand::Pseudo(_) | AsmOperand::Register(_) => vec![opr.clone()],
             AsmOperand::Memory(r, _) => vec![AsmOperand::Register(r.clone())],
             AsmOperand::Indexed(base, index, _) => vec![AsmOperand::Register(base.clone()), AsmOperand::Register(index.clone())],
             AsmOperand::Imm(_) | AsmOperand::Data(_, _) | AsmOperand::PseudoMem(_, _) => vec![],
@@ -4562,27 +4565,23 @@ fn regs_used_and_written(instr: &AsmInstruction) -> (OperandSet, OperandSet) {
 
     let regs_read1: Vec<AsmOperand> = ops_used.iter().flat_map(regs_used_to_read).collect();
 
-    // Convert operands written into a list of registers read/written (write may require read)
-    let regs_used_to_update = |opr: &AsmOperand| -> (Vec<AsmOperand>, Vec<AsmOperand>) {
+    // Convert operands written into a list of registers read or written
+    let regs_used_to_update = |opr: &AsmOperand| -> Vec<AsmOperand> {
         match opr {
-            AsmOperand::Pseudo(_) | AsmOperand::Register(_) => (vec![], vec![opr.clone().clone()]),
-            AsmOperand::Memory(r, _) => (vec![AsmOperand::Register(r.clone())], vec![]),
-            AsmOperand::Indexed(base, index, _) => (vec![AsmOperand::Register(base.clone()), AsmOperand::Register(index.clone())], vec![]),
-            AsmOperand::Imm(_) | AsmOperand::Data(_, _) | AsmOperand::PseudoMem(_, _) => (vec![], vec![]),
+            AsmOperand::Pseudo(_) | AsmOperand::Register(_) => vec![opr.clone()],
+            AsmOperand::Memory(r, _) => vec![AsmOperand::Register(r.clone())],
+            AsmOperand::Indexed(base, index, _) => vec![AsmOperand::Register(base.clone()), AsmOperand::Register(index.clone())],
+            AsmOperand::Imm(_) | AsmOperand::Data(_, _) | AsmOperand::PseudoMem(_, _) => vec![],
         }
     };
 
-    let (regs_read2, regs_written): (Vec<Vec<AsmOperand>>, Vec<Vec<AsmOperand>>) =
-        ops_written.iter().map(regs_used_to_update).unzip();
+    let regs_written: Vec<AsmOperand> = ops_written.iter().flat_map(regs_used_to_update).collect();
 
-    let concat_pair = |a: Vec<Vec<AsmOperand>>, b: Vec<Vec<AsmOperand>>| -> (Vec<AsmOperand>, Vec<AsmOperand>) {
-        (a.into_iter().flatten().collect(), b.into_iter().flatten().collect())
-    };
-
-    let (regs_read2, regs_written) = concat_pair(regs_read2, regs_written);
+    // Combine both lists of registers read
+    let regs_read = regs_read1;
 
     (
-        regs_read1.into_iter().chain(regs_read2.into_iter()).collect(),
+        regs_read.into_iter().collect(),
         regs_written.into_iter().collect(),
     )
 }
@@ -4590,61 +4589,115 @@ fn regs_used_and_written(instr: &AsmInstruction) -> (OperandSet, OperandSet) {
 struct LivenessAnalysis;
 
 impl LivenessAnalysis {
-    // The meet function
-    fn meet(block: &BasicBlock<HashSet<AsmOperand>, AsmInstruction>, cfg: &CFG<HashSet<AsmOperand>, AsmInstruction>, all_hardregs: &OperandSet) -> OperandSet {
-        let mut live_registers = HashSet::new();
+    fn meet(
+        fn_name: &str,
+        cfg: &CFG<HashSet<AsmOperand>, AsmInstruction>, 
+        block: &BasicBlock<HashSet<AsmOperand>, AsmInstruction>,
+        all_hardregs: &HashSet<AsmOperand>,
+    ) -> OperandSet {
+        let mut live_at_exit = OperandSet::new();
+    
+        let all_return_regs = match ASM_SYMBOL_TABLE.lock().unwrap().get(fn_name).unwrap() {
+            AsmSymtabEntry::Function { return_regs, .. } => return_regs.iter().map(|r| AsmOperand::Register(r.clone())).collect::<OperandSet>(),
+            _ => unreachable!(),
+        };
+        let return_regs = all_hardregs.intersection(&all_return_regs).cloned().collect::<OperandSet>();
+    
         for succ in &block.succs {
             match succ {
-                cfg::NodeId::Exit => {
-                    live_registers.insert(AsmOperand::Register(AsmRegister::AX));
-                }
-                cfg::NodeId::Entry => panic!("WAAAAAA"),
+                cfg::NodeId::Exit => live_at_exit.extend(return_regs.clone()),
+                cfg::NodeId::Entry => panic!("Internal error: malformed interference graph"),
                 cfg::NodeId::Block(id) => {
                     let succ_live_registers = cfg.get_block_value(*id);
-                    live_registers.extend(succ_live_registers.to_owned());
+                    live_at_exit = live_at_exit.union(&succ_live_registers).cloned().collect();
                 }
             }
         }
-
-        live_registers
+    
+        live_at_exit
     }
-
-    // The transfer function
-    fn transfer(block: &BasicBlock<HashSet<AsmOperand>, AsmInstruction>, mut end_live_regs: OperandSet) -> BasicBlock<HashSet<AsmOperand>, AsmInstruction> {
+    
+    fn transfer(
+        static_and_aliased_vars: &HashSet<String>,
+        block: &BasicBlock<HashSet<AsmOperand>, AsmInstruction>, 
+        end_live_regs: OperandSet
+    ) -> BasicBlock<HashSet<AsmOperand>, AsmInstruction> {
         let mut current_live_regs = end_live_regs.clone();
-        let mut annotated_instructions = vec![];
+        let mut annotated_instructions = Vec::new();
         
-        for instruction in block.instructions.iter().rev() {
-            annotated_instructions.push((current_live_regs.clone(), instruction.1.clone()));
-            let (regs_used, regs_written) = regs_used_and_written(&instruction.1);
-
-            for v in regs_written.iter() {
-                if let AsmOperand::Register(reg) = v {
-                    current_live_regs.remove(v);
-                }
-            }
-
-            for v in regs_used.iter() {
-                if let AsmOperand::Register(reg) = v {
-                    current_live_regs.insert(v.clone());
-                }
-            }
+        for (idx, instr) in block.instructions.iter().enumerate().rev() {
+            let (regs_used, regs_written) = regs_used_and_written(&instr.1);
+    
+            let without_killed: HashSet<_> = current_live_regs.difference(&regs_written).cloned().collect();
+            current_live_regs = without_killed.union(&regs_used).cloned().collect();
+    
+            annotated_instructions.push((current_live_regs.clone(), instr.1.clone()));
         }
-
+    
         BasicBlock {
-            instructions: annotated_instructions,
-            value: current_live_regs.clone(),
+            instructions: annotated_instructions.into_iter().rev().collect(),
+            value: current_live_regs,
             ..block.clone()
         }
+    }    
 
-
-    }
-
-    fn analyze(fn_name: &str, cfg: &mut cfg::CFG<OperandSet, AsmInstruction>, all_hardregs: &HashSet<AsmOperand>) {
-        for (idx, block) in cfg.basic_blocks.iter() {
-            let live_at_exit = Self::meet(block, cfg, all_hardregs);
-            Self::transfer(block, live_at_exit);
+    fn analyze(
+        fn_name: &str,
+        cfg: cfg::CFG<(), AsmInstruction>,
+        static_vars: &HashSet<String>,
+        aliased_vars: &HashSet<String>,
+        all_hardregs: &HashSet<AsmOperand>,
+    ) -> cfg::CFG<HashSet<AsmOperand>, AsmInstruction> {
+        // Initialize the CFG with empty live variable sets
+        let mut starting_cfg = cfg.initialize_annotation(HashSet::new());
+    
+        // Combine static variables and aliased variables
+        let static_and_aliased_vars = static_vars
+            .union(aliased_vars)
+            .cloned()
+            .collect::<HashSet<_>>();
+    
+        // Create the worklist by cloning the basic blocks
+        let mut worklist: Vec<(usize, BasicBlock<HashSet<AsmOperand>, AsmInstruction>)> =
+            starting_cfg.basic_blocks.clone();
+    
+        // Process the worklist in a loop
+        while let Some((block_idx, blk)) = worklist.pop() {
+            // Save the old annotation (live variables)
+            let old_annotation = blk.value.clone();
+    
+            // Calculate live variables at the exit of the block
+            let live_vars_at_exit = Self::meet(fn_name, &starting_cfg, &blk, all_hardregs);
+    
+            // Transfer function: propagate live variables through the block
+            let block = Self::transfer(&static_and_aliased_vars, &blk, live_vars_at_exit);
+    
+            // Update the CFG with the new block
+            starting_cfg.update_basic_block(block_idx, block.clone());
+    
+            // Get the new live variable annotation
+            let new_annotation = starting_cfg.get_block_value(block_idx);
+    
+            // If the live variables have changed, update the worklist with predecessors
+            if old_annotation != *new_annotation {
+                let block_predecessors = starting_cfg.get_preds(&blk.id);
+    
+                for pred in block_predecessors {
+                    match pred {
+                        cfg::NodeId::Block(_) => {
+                            let pred_block = starting_cfg.get_block_by_id(&pred);
+                            if !worklist.contains(&pred_block) {
+                                worklist.push(pred_block.clone());
+                            }
+                        }
+                        cfg::NodeId::Entry => continue,
+                        cfg::NodeId::Exit => panic!("Internal error: malformed CFG"),
+                    }
+                }
+            }
         }
+    
+        starting_cfg
     }
 }
 
@@ -4668,20 +4721,41 @@ fn get_operands(instr: &AsmInstruction) -> Vec<AsmOperand> {
     }
 }
 
-fn get_pseudo_nodes(aliased_pseudos: &HashSet<String>, instructions: &[AsmInstruction]) -> Vec<Node> {
-    // Helper function to convert operands to pseudo-registers
-    fn operands_to_pseudos(operand: &AsmOperand, aliased_pseudos: &HashSet<String>) -> Option<String> {
+fn get_pseudo_nodes(aliased_pseudos: &HashSet<String>, instructions: &[AsmInstruction], register_class: &[AsmRegister]) -> Vec<Node> {
+    fn is_pseudo_of_current_class(r: &str, register_class: &[AsmRegister]) -> bool {
+        // Retrieve the type of the pseudoregister from the symbol table
+        let symbol_entry = ASM_SYMBOL_TABLE.lock().unwrap().get(r).cloned();
+        
+        if let Some(AsmSymtabEntry::Object { _type, is_static, .. }) = symbol_entry {
+            // Ensure the pseudoregister is not static and matches the current register class
+            if !is_static {
+                match _type {
+                    AsmType::Double => {
+                        // Assuming Double types correspond to XMM registers
+                        // Adjust the condition based on your actual register classes
+                        register_class.contains(&AsmRegister::XMM0) // Example condition
+                    },
+                    _ => {
+                        // For GP registers, ensure it's not a Double type
+                        !register_class.contains(&AsmRegister::XMM0) // Example condition
+                    },
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    fn operands_to_pseudos(
+        operand: &AsmOperand,
+        aliased_pseudos: &HashSet<String>,
+        register_class: &[AsmRegister],
+    ) -> Option<String> {
         match operand {
             AsmOperand::Pseudo(r) => {
-                let t = ASM_SYMBOL_TABLE.lock().unwrap().get(r).unwrap().clone();
-                let (t, is_static) = match t {
-                    AsmSymtabEntry::Object { _type, is_static, .. } => (_type, is_static),
-                    _ => unreachable!(),
-                };
-                if t != AsmType::Double
-                    && !is_static
-                    && !aliased_pseudos.contains(r)
-                {
+                if is_pseudo_of_current_class(r, register_class) && !aliased_pseudos.contains(r) {
                     Some(r.clone())
                 } else {
                     None
@@ -4692,10 +4766,10 @@ fn get_pseudo_nodes(aliased_pseudos: &HashSet<String>, instructions: &[AsmInstru
     }
 
     // Function to extract pseudos from instructions
-    fn get_pseudos(instruction: &AsmInstruction, aliased_pseudos: &HashSet<String>) -> Vec<String> {
+    fn get_pseudos(instruction: &AsmInstruction, aliased_pseudos: &HashSet<String>, register_class: &[AsmRegister]) -> Vec<String> {
         get_operands(instruction)
             .iter()
-            .filter_map(|operand| operands_to_pseudos(operand, aliased_pseudos))
+            .filter_map(|operand| operands_to_pseudos(operand, aliased_pseudos, register_class))
             .collect()
     }
 
@@ -4713,7 +4787,7 @@ fn get_pseudo_nodes(aliased_pseudos: &HashSet<String>, instructions: &[AsmInstru
     // Extract and initialize pseudo nodes
     let pseudos = instructions
         .iter()
-        .flat_map(|instr| get_pseudos(instr, aliased_pseudos))
+        .flat_map(|instr| get_pseudos(instr, aliased_pseudos, register_class))
         .collect::<HashSet<_>>() // Collect into a set to ensure uniqueness
         .into_iter()
         .map(initialize_node)
@@ -4722,13 +4796,13 @@ fn get_pseudo_nodes(aliased_pseudos: &HashSet<String>, instructions: &[AsmInstru
     pseudos
 }
 
-// Function to add pseudo nodes to the graph
 fn add_pseudo_nodes(
     graph: &mut Graph,
     aliased_pseudos: &HashSet<String>,
     instructions: &[AsmInstruction],
+    register_class: &[AsmRegister],
 ) {
-    let pseudo_nodes = get_pseudo_nodes(aliased_pseudos, instructions);
+    let pseudo_nodes = get_pseudo_nodes(aliased_pseudos, instructions, register_class);
 
     for node in pseudo_nodes {
         graph.insert(node.id.clone(), node); // Insert node into the graph
@@ -4893,172 +4967,119 @@ fn add_spill_costs(
         })
         .collect()
 }
-fn color_graph(graph: HashMap<NodeId, Node>) -> HashMap<NodeId, Node> {
-    println!("Coloring graph");
 
-    fn recursive_color_graph(mut graph: HashMap<NodeId, Node>) -> HashMap<NodeId, Node> {
-        // Filter out the nodes that haven't been pruned
-        let remaining: Vec<Node> = graph
-            .values()
-            .filter(|nd| !nd.pruned)
-            .cloned() // Clone each node, instead of `to_owned()`
-            .collect();
+fn color_graph(
+    mut graph: Graph,
+    max_colors: usize,
+) -> Graph {
+    // Initialize a stack to keep track of the coloring order
+    let mut stack: Vec<NodeId> = Vec::new();
 
-        if remaining.is_empty() {
-            // We've pruned the whole graph, so we're done
-            return graph;
-        }
+    // Repeat until all nodes are pruned
+    while !graph.values().all(|nd| nd.pruned) {
+        // Find a node with degree less than max_colors
+        let node_opt = graph.values().find(|nd| {
+            !nd.pruned && nd.neighbors.iter().filter(|n| !graph.get(*n).unwrap().pruned).count() < max_colors
+        }).cloned();
 
-        // Function to check if a node is not pruned
-        let not_pruned = |nd_id: &NodeId| !graph.get(nd_id).unwrap().pruned;
+        match node_opt {
+            Some(node) => {
+                graph.get_mut(&node.id).unwrap().pruned = true;
+                stack.push(node.id.clone());
+            },
+            None => {
+                // Spill: Choose a node to spill based on spill_cost / degree
+                let spill_node = graph.values()
+                    .filter(|nd| !nd.pruned)
+                    .min_by(|a, b| {
+                        let a_degree = a.neighbors.iter().filter(|n| !graph.get(*n).unwrap().pruned).count();
+                        let b_degree = b.neighbors.iter().filter(|n| !graph.get(*n).unwrap().pruned).count();
+                        (a.spill_cost / a_degree as f64)
+                            .partial_cmp(&(b.spill_cost / b_degree as f64))
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                    .cloned()
+                    .expect("No nodes available to spill");
 
-        // Find the degree of a node by counting unpruned neighbors
-        let degree = |nd: &Node| {
-            nd.neighbors
-                .iter()
-                .filter(|&neighbor_id| not_pruned(neighbor_id))
-                .count()
-        };
-
-        // Find a node with degree less than `k`
-        let is_low_degree = |nd: &&Node| degree(nd) < 12;
-
-        // Find the next node to prune
-        let next_node = if let Some(next_node) = remaining.iter().find(is_low_degree) {
-            next_node.clone()
-        } else {
-            // If no low-degree node is found, choose the next node by spill metric
-            let spill_metric = |nd: &Node| nd.spill_cost / degree(nd) as f64;
-            let cmp = |nd1: &&Node, nd2: &&Node| spill_metric(nd1).partial_cmp(&spill_metric(nd2)).unwrap();
-
-            // Print spill info for debugging
-            for nd in &remaining {
-                println!(
-                    "Node {:?} has degree {}, spill cost {}, and metric {}",
-                    nd.id, degree(nd), nd.spill_cost, spill_metric(nd)
-                );
-            }
-
-            // Select the node with the minimal spill metric
-            let spilled = remaining.iter().min_by(cmp).unwrap();
-            println!("Spill candidate: {:?}", spilled.id);
-            spilled.clone()
-        };
-
-        // Mark the next node as pruned in the graph
-        graph.get_mut(&next_node.id).unwrap().pruned = true;
-
-        // Recursively color the pruned graph
-        let mut partly_colored = recursive_color_graph(graph.clone());
-
-        // Create a list of all colors (0..k)
-        let all_colors: Vec<usize> = (0..12).collect();
-
-        // Remove neighbor's color from the available colors
-        let available_colors = next_node
-            .neighbors
-            .iter()
-            .fold(all_colors, |mut remaining_colors, neighbor_id| {
-                if let Some(neighbor_nd) = partly_colored.get(neighbor_id) {
-                    if let Some(color) = neighbor_nd.color {
-                        remaining_colors.retain(|&col| col != color);
-                    }
-                }
-                remaining_colors
-            });
-
-        // Match available colors
-        if available_colors.is_empty() {
-            // No available colors, leave this node uncolored
-            partly_colored
-        } else {
-            let caller_saved_registers = vec![
-                AsmRegister::AX,
-                AsmRegister::CX,
-                AsmRegister::DX,
-                AsmRegister::SI,
-                AsmRegister::DI,
-                AsmRegister::R8,
-                AsmRegister::R9,
-            ];
-
-            // We found an available color!
-            let selected_color = match &next_node.id {
-                NodeId::Register(ref r) if !caller_saved_registers.contains(r) => {
-                    *available_colors.iter().max().unwrap()
-                }
-                _ => *available_colors.iter().min().unwrap(),
-            };
-
-            // Set the color of the node and un-prune it
-            partly_colored.get_mut(&next_node.id).unwrap().color = Some(selected_color);
-            partly_colored.get_mut(&next_node.id).unwrap().pruned = false;
-
-            partly_colored
+                graph.get_mut(&spill_node.id).unwrap().pruned = true;
+                stack.push(spill_node.id.clone());
+            },
         }
     }
 
-    recursive_color_graph(graph)
+    // Assign colors
+    while let Some(node_id) = stack.pop() {
+        let node = graph.get(&node_id).unwrap();
+        let mut used_colors = HashSet::new();
+
+        for neighbor_id in &node.neighbors {
+            if let Some(neighbor) = graph.get(neighbor_id) {
+                if let Some(color) = neighbor.color {
+                    used_colors.insert(color);
+                }
+            }
+        }
+
+        // Assign the smallest available color
+        let color = (0..max_colors).find(|c| !used_colors.contains(c));
+
+        if let Some(c) = color {
+            graph.get_mut(&node_id).unwrap().color = Some(c);
+        } else {
+            // Spill handling can be implemented here
+            // For simplicity, we'll leave it uncolored
+            graph.get_mut(&node_id).unwrap().color = None;
+        }
+    }
+
+    graph
 }
 
 fn make_register_map(
     fn_name: &str,
     graph: &HashMap<NodeId, Node>,
+    register_class: &[AsmRegister],
+    caller_saved_registers: &[AsmRegister],
 ) -> HashMap<String, AsmRegister> {
-    let caller_saved_registers = vec![
-        AsmRegister::AX,
-        AsmRegister::CX,
-        AsmRegister::DX,
-        AsmRegister::SI,
-        AsmRegister::DI,
-        AsmRegister::R8,
-        AsmRegister::R9,
-    ];
+    // Step 1: Map colors to hard registers
+    let mut color_map: HashMap<usize, AsmRegister> = HashMap::new();
 
-    dbg!(&graph);
-
-    let add_color = |n: &Node, color_map: &mut HashMap<usize, AsmRegister>| -> HashMap<usize, AsmRegister> {
-        match n.id {
-            NodeId::Register(reg) => {
-                if let Some(color) = n.color {
-                    color_map.insert(color, reg);
-                }
+    for node in graph.values() {
+        if let NodeId::Register(ref reg) = node.id {
+            if let Some(color) = node.color {
+                color_map.insert(color, reg.clone());
             }
-            _ => {},
         }
-        color_map.to_owned()
-    };
+    }
 
-    let color_map = graph.iter().fold(HashMap::new(), |mut color_map, (_, node)| {
-        add_color(node, &mut color_map)
-    });
-
-    dbg!(&color_map);
-
-    // Then build map from pseudoregisters to hard registers
-    let mut used_callee_saved: HashSet<AsmRegister> = HashSet::new();
+    // Step 2: Assign pseudoregisters to hard registers based on color
     let mut reg_map: HashMap<String, AsmRegister> = HashMap::new();
+    let mut used_callee_saved: HashSet<AsmRegister> = HashSet::new();
 
-    for (_, node) in graph.iter() {
+    for node in graph.values() {
         if let Node {
             id: NodeId::Pseudo(ref p),
             color: Some(c),
             ..
         } = node
         {
-            let hardreg = *color_map.get(c).unwrap();
+            if let Some(hardreg) = color_map.get(&c) {
+                // Determine if the hard register is callee-saved
+                if !caller_saved_registers.contains(hardreg) {
+                    used_callee_saved.insert(hardreg.clone());
+                }
 
-            // Add callee-saved registers to the set of used ones
-            if caller_saved_registers.contains(&hardreg) {
-                used_callee_saved.insert(hardreg);
+                println!("inserting into regmap {} -> {:?}", p, hardreg);
+                reg_map.insert(p.clone(), hardreg.clone());
+            } else {
+                // Handle uncolored nodes (potential spills)
+                // For simplicity, we'll skip them here, but you can implement spill handling
+                println!("Warning: Pseudoregister {} has no assigned hard register (potential spill)", p);
             }
-
-            println!("inserting into regmap {} -> {:?}", p, hardreg);
-            reg_map.insert(p.clone(), hardreg);
         }
     }
 
-    // Add the used callee-saved registers to the symbol table
+    // Step 3: Update the symbol table with used callee-saved registers
     if let Some(symbol) = ASM_SYMBOL_TABLE.lock().unwrap().get_mut(fn_name) {
         match symbol {
             AsmSymtabEntry::Function { ref mut callee_saved_regs_used, .. } => {
@@ -5067,7 +5088,7 @@ fn make_register_map(
             _ => unreachable!(),
         }
     }
-    
+
     reg_map
 }
 
@@ -5124,7 +5145,7 @@ where
         AsmInstruction::Binary { op, asm_type, lhs, rhs } => AsmInstruction::Binary { asm_type: asm_type, op: op, lhs: f(lhs), rhs: f(rhs) },
         AsmInstruction::Cmp { asm_type, lhs, rhs } => AsmInstruction::Cmp { asm_type, lhs: f(lhs), rhs: f(rhs) },
         AsmInstruction::Idiv { asm_type, operand } => AsmInstruction::Idiv { asm_type, operand: f(operand) },
-        AsmInstruction::Div { asm_type, operand } => AsmInstruction::Idiv { asm_type, operand: f(operand) },
+        AsmInstruction::Div { asm_type, operand } => AsmInstruction::Div { asm_type, operand: f(operand) },
         AsmInstruction::SetCC { condition, operand } => AsmInstruction::SetCC { condition, operand: f(operand) },
         AsmInstruction::Push(v) => AsmInstruction::Push(f(v)),
         AsmInstruction::Label(_) | AsmInstruction::Call(_) | AsmInstruction::Ret |
@@ -5132,3 +5153,46 @@ where
     }
 }
 
+// Define General-Purpose Registers (GP)
+const GP_REGISTERS: &[AsmRegister] = &[
+    AsmRegister::AX,
+    AsmRegister::BX,
+    AsmRegister::CX,
+    AsmRegister::DX,
+    AsmRegister::SI,
+    AsmRegister::DI,
+    AsmRegister::R8,
+    AsmRegister::R9,
+    AsmRegister::R12,
+    AsmRegister::R13,
+    AsmRegister::R14,
+    AsmRegister::R15,
+];
+
+// Define XMM Registers
+const XMM_REGISTERS: &[AsmRegister] = &[
+    AsmRegister::XMM0,
+    AsmRegister::XMM1,
+    AsmRegister::XMM2,
+    AsmRegister::XMM3,
+    AsmRegister::XMM4,
+    AsmRegister::XMM5,
+    AsmRegister::XMM6,
+    AsmRegister::XMM7,
+    AsmRegister::XMM8,
+    AsmRegister::XMM9,
+    AsmRegister::XMM10,
+    AsmRegister::XMM11,
+    AsmRegister::XMM12,
+    AsmRegister::XMM13,
+];
+
+const CALLER_SAVED_REGISTERS: &[AsmRegister] = &[
+    AsmRegister::AX,
+    AsmRegister::CX,
+    AsmRegister::DX,
+    AsmRegister::SI,
+    AsmRegister::DI,
+    AsmRegister::R8,
+    AsmRegister::R9,
+];

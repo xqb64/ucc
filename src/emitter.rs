@@ -395,7 +395,7 @@ impl Emit for AsmInstruction {
 
                 write!(f, "set{} ", suffix)?;
 
-                operand.emit(f, asm_type)?;
+                operand.emit(f, &mut AsmType::Byte)?;
 
                 writeln!(f)?;
             }

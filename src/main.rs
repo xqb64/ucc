@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::{collections::VecDeque, fs::File, path::PathBuf};
 
 use anyhow::{bail, Result};
 use structopt::StructOpt;
 
-use ucc::ir::Optimization;
+use ucc::ir::{IRInstruction, IRProgram, IRValue, Optimization};
 use ucc::{
     codegen::{build_asm_symbol_table, AsmType, Codegen, Fixup, ReplacePseudo, RegAlloc},
     emitter::Emit,
@@ -105,7 +105,43 @@ fn run(opts: &Opt) -> Result<()> {
 
     build_asm_symbol_table();
 
-    let mut asm_prog = optimized_prog.codegen().reg_alloc().replace_pseudo().fixup();
+    fn analyze_program(program: &IRProgram) -> HashSet<String> {
+        fn analyze(instrs: &[IRInstruction]) -> HashSet<String> {
+            instrs.iter()
+                .filter_map(|instr| match instr {
+                    IRInstruction::GetAddress { src, dst } => match &src {
+                        IRValue::Var(v) => Some(v.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect()
+        }
+        
+        
+        program.functions.iter()
+            .filter_map(|tl| match tl {
+                IRNode::Function(f) => {
+                    let vars = analyze(&f.body);
+                    if !vars.is_empty() {
+                        Some(vars)
+                    } else {
+                        None
+                    }
+                },
+                // Handle other top-level items if necessary
+                _ => None,
+            })
+            .fold(HashSet::new(), |mut acc, hs| {
+                acc.extend(hs);
+                acc
+            })
+    }
+    
+
+    let aliased_pseudos = analyze_program(&optimized_prog);
+
+    let mut asm_prog = optimized_prog.codegen().reg_alloc(&aliased_pseudos).replace_pseudo().fixup();
 
     if opts.codegen {
         println!("{:#?}", asm_prog);
