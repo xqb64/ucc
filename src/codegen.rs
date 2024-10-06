@@ -3769,9 +3769,7 @@ pub fn build_asm_symbol_table() {
                         // Check if the return type is complete or if it's void
                         if is_complete(&ret) || ret == &Type::Void.into() {
                             // Classify return type (registers and whether it returns on the stack)
-                            let (return_regs, returns_on_stack) = classify_return_type(
-                                &IRValue::Var(identifier.to_string()), ret
-                            );
+                            let (return_regs, returns_on_stack) = classify_return_type(ret);
     
                             // Classify parameter types
                             let param_regs = classify_param_types(params, returns_on_stack);
@@ -4185,11 +4183,10 @@ fn copy_bytes_to_reg(
 fn classify_return_value(retval: &IRValue) -> (Vec<(AsmType, AsmOperand)>, Vec<AsmOperand>, bool) {
     let t = tacky_type(retval);
     let val = retval.codegen().into();
-    classify_return_helper(retval, &t, &val)
+    classify_return_helper(&t, &val)
 }
 
 fn classify_return_helper(
-    retval: &IRValue,
     ret_type: &Type,
     asm_retval: &AsmOperand
 ) -> (Vec<(AsmType, AsmOperand)>, Vec<AsmOperand>, bool) {
@@ -4209,8 +4206,8 @@ fn classify_return_helper(
     
                 let mut offset = 0;
     
-                let name_of_retval = match retval {
-                    IRValue::Var(name) => name.clone(),
+                let name_of_retval = match asm_retval {
+                    AsmOperand::PseudoMem(n, _) => n.clone(),
                     _ => unreachable!(),
                 };
     
@@ -4296,7 +4293,7 @@ fn copy_bytes_from_reg(
     }
 }
 
-fn classify_return_type(retval: &IRValue, t: &Type) -> (Vec<AsmRegister>, bool) {
+fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
     match t {
         Type::Void => (vec![], false),
         t => {
@@ -4306,7 +4303,7 @@ fn classify_return_type(retval: &IRValue, t: &Type) -> (Vec<AsmRegister>, bool) 
                 AsmOperand::PseudoMem("DUMMY".to_string(), 0)
             };
 
-            let (ints, dbls, return_on_stack) = classify_return_helper(retval, t, &asm_val);
+            let (ints, dbls, return_on_stack) = classify_return_helper(t, &asm_val);
             if return_on_stack {
                 (vec![AsmRegister::AX], true)
             } else {
