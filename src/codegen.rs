@@ -4366,9 +4366,16 @@ impl RegAlloc for AsmProgram {
 impl RegAlloc for AsmFunction {
     fn reg_alloc(&mut self) -> Self {
         let interference_graph = build_interference_graph(&self.name, &HashSet::new(), &self.instructions);
+        print_graphviz(&self.name, &interference_graph);
+        
         let spilled_costs_graph = add_spill_costs(interference_graph, &self.instructions);
+        print_graphviz(&self.name, &spilled_costs_graph);
+
         let colored_graph = color_graph(spilled_costs_graph);
+        print_graphviz(&self.name, &colored_graph);
+
         let register_map = make_register_map(&self.name, &colored_graph);
+        
         let transformed_instructions = replace_pseudoregs(&self.instructions, &register_map);
 
         AsmFunction {
@@ -4441,17 +4448,13 @@ fn build_interference_graph(
         AsmRegister::R15].iter().map(|x| AsmOperand::Register(x.to_owned())).collect::<HashSet<AsmOperand>>();
 
     let mut graph = mk_base_graph(&all_hardregs);
-    print_graphviz(fn_name, &graph);
 
     add_pseudo_nodes(&mut graph, aliased_pseudos, instructions);
-    print_graphviz(fn_name, &graph);
-    dbg!(&graph);
 
     let mut cfg: CFG<HashSet<AsmOperand>, AsmInstruction> = CFG::instructions_to_cfg("spam".to_string(), instructions.to_vec());
     LivenessAnalysis::analyze(&fn_name, &mut cfg, &all_hardregs);
 
     add_edges(&mut cfg, &mut graph);
-    print_graphviz(fn_name, &graph);
 
     graph
 }
@@ -4482,8 +4485,11 @@ fn add_edges(liveness_cfg: &CFG<HashSet<AsmOperand>, AsmInstruction>, interferen
                 }
 
                 for u in updated.iter() {
-                    if (interference_graph.contains_key(l) && interference_graph.contains_key(u)) {
+                    if interference_graph.contains_key(l) && interference_graph.contains_key(u) {
+                        println!("adding edge");
                         add_edge(interference_graph, l, u);
+                    } else {
+                        println!("not adding edge");
                     }
                 }
             }
@@ -4713,8 +4719,6 @@ fn get_pseudo_nodes(aliased_pseudos: &HashSet<String>, instructions: &[AsmInstru
         .map(initialize_node)
         .collect();
 
-    dbg!(&pseudos);
-
     pseudos
 }
 
@@ -4889,15 +4893,15 @@ fn add_spill_costs(
         })
         .collect()
 }
-
 fn color_graph(graph: HashMap<NodeId, Node>) -> HashMap<NodeId, Node> {
-    // Recursively color the graph
+    println!("Coloring graph");
+
     fn recursive_color_graph(mut graph: HashMap<NodeId, Node>) -> HashMap<NodeId, Node> {
         // Filter out the nodes that haven't been pruned
         let remaining: Vec<Node> = graph
             .values()
             .filter(|nd| !nd.pruned)
-            .map(|x| x.to_owned())
+            .cloned() // Clone each node, instead of `to_owned()`
             .collect();
 
         if remaining.is_empty() {
@@ -4942,28 +4946,26 @@ fn color_graph(graph: HashMap<NodeId, Node>) -> HashMap<NodeId, Node> {
         };
 
         // Mark the next node as pruned in the graph
-        graph.entry(next_node.clone().id).and_modify(|nd| nd.pruned = true);
+        graph.get_mut(&next_node.id).unwrap().pruned = true;
 
         // Recursively color the pruned graph
-        let partly_colored = recursive_color_graph(graph.clone());
+        let mut partly_colored = recursive_color_graph(graph.clone());
 
         // Create a list of all colors (0..k)
         let all_colors: Vec<usize> = (0..12).collect();
 
         // Remove neighbor's color from the available colors
-        let remove_neighbor_color = |mut remaining_colors: Vec<usize>, neighbor_id: &NodeId| {
-            if let Some(neighbor_nd) = partly_colored.get(neighbor_id) {
-                if let Some(color) = neighbor_nd.color {
-                    remaining_colors.retain(|&col| col != color);
-                }
-            }
-            remaining_colors
-        };
-
         let available_colors = next_node
             .neighbors
             .iter()
-            .fold(all_colors, remove_neighbor_color);
+            .fold(all_colors, |mut remaining_colors, neighbor_id| {
+                if let Some(neighbor_nd) = partly_colored.get(neighbor_id) {
+                    if let Some(color) = neighbor_nd.color {
+                        remaining_colors.retain(|&col| col != color);
+                    }
+                }
+                remaining_colors
+            });
 
         // Match available colors
         if available_colors.is_empty() {
@@ -4981,26 +4983,24 @@ fn color_graph(graph: HashMap<NodeId, Node>) -> HashMap<NodeId, Node> {
             ];
 
             // We found an available color!
-            let selected_color = match next_node.id {
-                AsmOperand::Register(ref r) if !caller_saved_registers.contains(r) => *available_colors.iter().max().unwrap(),
+            let selected_color = match &next_node.id {
+                NodeId::Register(ref r) if !caller_saved_registers.contains(r) => {
+                    *available_colors.iter().max().unwrap()
+                }
                 _ => *available_colors.iter().min().unwrap(),
             };
 
             // Set the color of the node and un-prune it
-            graph.entry(next_node.id).and_modify(|nd| {
-                nd.pruned = false;
-                nd.color = Some(selected_color);
-            });
+            partly_colored.get_mut(&next_node.id).unwrap().color = Some(selected_color);
+            partly_colored.get_mut(&next_node.id).unwrap().pruned = false;
 
-            graph
+            partly_colored
         }
     }
 
-    // Start recursive coloring
     recursive_color_graph(graph)
 }
 
-// Assuming `Node`, `NodeId`, `RegSet`, `AsmRegister`, `R`, and other necessary types are already defined
 fn make_register_map(
     fn_name: &str,
     graph: &HashMap<NodeId, Node>,
@@ -5015,16 +5015,25 @@ fn make_register_map(
         AsmRegister::R9,
     ];
 
-    // First build map from colors to hard registers
-    let mut colors_to_regs: HashMap<usize, AsmRegister> = HashMap::new();
-    
-    for (nd_id, node) in graph.iter() {
-        if let AsmOperand::Register(r) = nd_id {
-            if let Some(color) = node.color {
-                colors_to_regs.insert(color, *r);
+    dbg!(&graph);
+
+    let add_color = |n: &Node, color_map: &mut HashMap<usize, AsmRegister>| -> HashMap<usize, AsmRegister> {
+        match n.id {
+            NodeId::Register(reg) => {
+                if let Some(color) = n.color {
+                    color_map.insert(color, reg);
+                }
             }
+            _ => {},
         }
-    }
+        color_map.to_owned()
+    };
+
+    let color_map = graph.iter().fold(HashMap::new(), |mut color_map, (_, node)| {
+        add_color(node, &mut color_map)
+    });
+
+    dbg!(&color_map);
 
     // Then build map from pseudoregisters to hard registers
     let mut used_callee_saved: HashSet<AsmRegister> = HashSet::new();
@@ -5037,14 +5046,14 @@ fn make_register_map(
             ..
         } = node
         {
-            let hardreg = *colors_to_regs.get(c).unwrap();
+            let hardreg = *color_map.get(c).unwrap();
 
             // Add callee-saved registers to the set of used ones
             if caller_saved_registers.contains(&hardreg) {
                 used_callee_saved.insert(hardreg);
             }
 
-            // Add the pseudo-register to the reg_map
+            println!("inserting into regmap {} -> {:?}", p, hardreg);
             reg_map.insert(p.clone(), hardreg);
         }
     }
@@ -5058,7 +5067,7 @@ fn make_register_map(
             _ => unreachable!(),
         }
     }
-
+    
     reg_map
 }
 
@@ -5066,12 +5075,12 @@ fn replace_pseudoregs(
     instructions: &Vec<AsmInstruction>,
     reg_map: &HashMap<String, AsmRegister>,
 ) -> Vec<AsmInstruction> {
-    // Closure to replace pseudoregisters with corresponding hard registers
     let replace_op = |op: AsmOperand| -> AsmOperand {
         match op {
             AsmOperand::Pseudo(ref p) => {
                 // Try to replace the pseudoreg with a hard register
                 if let Some(&hardreg) = reg_map.get(p) {
+                    println!("replacing");
                     AsmOperand::Register(hardreg)
                 } else {
                     op
@@ -5081,7 +5090,6 @@ fn replace_pseudoregs(
         }
     };
 
-    // Apply the replacement to all instructions and clean up moves
     cleanup_movs(instructions.into_iter().map(|instr| replace_ops(|instr| replace_op(instr), instr.to_owned())).collect())
 }
 
