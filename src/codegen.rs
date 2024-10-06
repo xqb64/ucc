@@ -168,6 +168,7 @@ pub enum AsmOperand {
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
 pub enum AsmRegister {
     AX,
+    BX,
     CX,
     DX,
     DI,
@@ -176,6 +177,10 @@ pub enum AsmRegister {
     R9,
     R10,
     R11,
+    R12,
+    R13,
+    R14,
+    R15,
     BP,
     SP,
     XMM0,
@@ -186,6 +191,12 @@ pub enum AsmRegister {
     XMM5,
     XMM6,
     XMM7,
+    XMM8,
+    XMM9,
+    XMM10,
+    XMM11,
+    XMM12,
+    XMM13,
     XMM14,
     XMM15,
 }
