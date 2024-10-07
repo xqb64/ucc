@@ -3639,25 +3639,33 @@ impl Fixup for AsmFunction {
                     _ => instructions.push(instr.clone()),
                 },
                 AsmInstruction::Ret => {
+                    // Generate restoration instructions for callee-saved registers
                     let restore_regs: Vec<AsmInstruction> = callee_saved_args
                         .iter()
-                        .collect::<Vec<_>>()
-                        .iter()
-                        .rev() // Reverse the order to match `List.rev_map`
-                        .map(|r| {
+                        .rev() // Reverse to restore in the opposite order of saving
+                        .flat_map(|r| {
                             if !is_xmm(r) {
-                                AsmInstruction::Pop(r.clone().clone())
+                                // For non-XMM registers, use Pop
+                                vec![AsmInstruction::Pop(r.clone())]
                             } else {
-                                AsmInstruction::Binary {
-                                    asm_type: AsmType::Quadword,
-                                    op: AsmBinaryOp::Add,
-                                    lhs: AsmOperand::Imm(8),
-                                    rhs: AsmOperand::Register(AsmRegister::SP),
-                                }
+                                // For XMM registers, use Mov to restore and Add to adjust SP
+                                vec![
+                                    AsmInstruction::Mov {
+                                        asm_type: AsmType::Quadword,
+                                        src: AsmOperand::Memory(AsmRegister::SP, 0), // Assuming memory operand syntax
+                                        dst: AsmOperand::Register(r.clone()),
+                                    },
+                                    AsmInstruction::Binary {
+                                        asm_type: AsmType::Quadword,
+                                        op: AsmBinaryOp::Add,
+                                        lhs: AsmOperand::Imm(8),
+                                        rhs: AsmOperand::Register(AsmRegister::SP),
+                                    },
+                                ]
                             }
                         })
                         .collect();
-
+                
                     instructions.extend(restore_regs);
                     instructions.push(AsmInstruction::Ret);
                 }
