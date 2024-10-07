@@ -2074,6 +2074,7 @@ impl Fixup for AsmProgram {
 impl Fixup for AsmFunction {
     fn fixup(&mut self, callee_saved_args: &BTreeSet<AsmRegister>) -> AsmFunction {
         let mut instructions = vec![];
+        let mut instructions_setup = vec![];
 
         fn round_away_from_zero(n: i64, x: i64) -> i64 {
             if n == 0 {
@@ -2104,16 +2105,21 @@ impl Fixup for AsmFunction {
             }
         }
 
-        instructions.push(emit_stack_adjustment(self.stack_space, callee_saved_args.len()));
+        instructions_setup.push(emit_stack_adjustment(self.stack_space, callee_saved_args.len()));
 
         let save_reg = |r: &AsmRegister| AsmInstruction::Push(AsmOperand::Register(r.clone()));
 
         for reg in callee_saved_args {
-            instructions.push(save_reg(reg));
+            instructions_setup.push(save_reg(reg));
         }
+
+        self.instructions.splice(0..0, instructions_setup);
 
         for instr in &mut self.instructions {
             match instr {
+                AsmInstruction::Pop(reg) if is_xmm(&reg) => {
+                    instructions.push(AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Add, lhs: AsmOperand::Imm(8), rhs: AsmOperand::Register(AsmRegister::SP) });
+                }
                 AsmInstruction::Lea { src, dst } => match dst {
                     AsmOperand::Memory(AsmRegister::BP, _)
                     | AsmOperand::Memory(_, _)
@@ -3525,7 +3531,7 @@ impl Fixup for AsmFunction {
                         .collect::<Vec<_>>()
                         .iter()
                         .rev() // Reverse the order to match `List.rev_map`
-                        .map(|r| AsmInstruction::Pop(r.clone().clone()))
+                        .map(|r| if !is_xmm(r) { AsmInstruction::Pop(r.clone().clone()) } else { AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Add, lhs: AsmOperand::Imm(8), rhs: AsmOperand::Register(AsmRegister::SP) } })
                         .collect();
 
                     instructions.extend(restore_regs);
