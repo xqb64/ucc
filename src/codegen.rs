@@ -2722,6 +2722,26 @@ impl Fixup for AsmFunction {
                         },
                     ]);
                 }
+                AsmInstruction::Binary { asm_type: AsmType::Double, op, lhs, rhs } => {
+                    instructions.extend(vec![
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Double,
+                            src: rhs.clone(),
+                            dst: AsmOperand::Register(AsmRegister::XMM15),
+                        },
+                        AsmInstruction::Binary {
+                            asm_type: AsmType::Double,
+                            op: *op,
+                            lhs: lhs.clone(),
+                            rhs: AsmOperand::Register(AsmRegister::XMM15),
+                        },
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Double,
+                            src: AsmOperand::Register(AsmRegister::XMM15),
+                            dst: rhs.clone(),
+                        },
+                    ]);
+                }
                 AsmInstruction::Binary {
                     op,
                     lhs,
