@@ -2131,6 +2131,8 @@ impl Fixup for AsmFunction {
 
         self.instructions.splice(0..0, instructions_setup);
 
+        println!("{:#?}", self.instructions);
+
         for instr in &mut self.instructions {
             match instr {
                 AsmInstruction::Pop(reg) if is_xmm(&reg) => {
@@ -2612,6 +2614,31 @@ impl Fixup for AsmFunction {
                             op: *op,
                             lhs: AsmOperand::Register(AsmRegister::R10),
                             rhs: rhs.clone(),
+                        },
+                    ]);
+                }
+                AsmInstruction::Binary {
+                    asm_type: AsmType::Quadword,
+                    op,
+                    lhs,
+                    rhs: AsmOperand::Imm(imm),
+                } if is_large(*imm)
+                    && matches!(
+                        op,
+                        AsmBinaryOp::Add | AsmBinaryOp::Sub | AsmBinaryOp::And | AsmBinaryOp::Or
+                    ) =>
+                {
+                    instructions.extend(vec![
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Quadword,
+                            src: AsmOperand::Imm(*imm),
+                            dst: AsmOperand::Register(AsmRegister::R10),
+                        },
+                        AsmInstruction::Binary {
+                            asm_type: AsmType::Quadword,
+                            op: *op,
+                            lhs: lhs.clone(),
+                            rhs: AsmOperand::Register(AsmRegister::R10),
                         },
                     ]);
                 }
