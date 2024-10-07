@@ -4884,6 +4884,11 @@ fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass)
             vec![AsmOperand::Register(AsmRegister::DX)],
         ),
         AsmInstruction::Call(func_name) => {
+            let all_hardregs = match register_class {
+                RegisterClass::GP => GP_REGISTERS,
+                RegisterClass::XMM => XMM_REGISTERS,
+            };
+
             // Dynamically fetch used registers based on the called function's parameters
             let used_regs = {
                 let table = ASM_SYMBOL_TABLE.lock().unwrap();
@@ -4891,7 +4896,7 @@ fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass)
                     match entry {
                         AsmSymtabEntry::Function { param_regs, .. } => param_regs
                             .iter()
-                            .filter(|r| GP_REGISTERS.contains(&r))
+                            .filter(|r| all_hardregs.contains(r))
                             .cloned()
                             .map(AsmOperand::Register)
                             .collect::<Vec<_>>(),
@@ -4905,16 +4910,11 @@ fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass)
             };
 
             let regs = match register_class {
-                RegisterClass::GP => GP_REGISTERS,
-                RegisterClass::XMM => XMM_REGISTERS,
+                RegisterClass::GP => GP_CALLER_SAVED_REGISTERS,
+                RegisterClass::XMM => XMM_CALLER_SAVED_REGISTERS,
             };
 
-            let written_regs = regs
-                .iter()
-                .map(|r| AsmOperand::Register(r.clone()))
-                .collect::<Vec<_>>();
-
-            (used_regs, written_regs)
+            (used_regs, regs.iter().map(|r| AsmOperand::Register(*r)).collect())
         }
         AsmInstruction::Lea { src, dst } => (vec![src.clone()], vec![dst.clone()]),
         AsmInstruction::Jmp { .. }
