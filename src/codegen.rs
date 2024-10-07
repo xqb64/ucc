@@ -5481,10 +5481,7 @@ fn make_register_map(
         } = node
         {
             if let Some(hardreg) = colors_to_regs.get(c) {
-                let regs = match register_class {
-                    RegisterClass::GP => GP_REGISTERS,
-                    RegisterClass::XMM => XMM_REGISTERS,
-                };
+                let regs = get_caller_saved_registers(register_class);
                 if !regs.contains(hardreg) {
                     used_callee_saved.insert(hardreg.clone());
                 }

@@ -1689,7 +1689,7 @@ fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
                 src: IRValue::Constant(konst),
                 dst,
             } => {
-                optimized_instructions.extend(evaluate_cast(konst, dst));
+                optimized_instructions.extend(dbg!(evaluate_cast(konst, dst)));
             }
             _ => {
                 optimized_instructions.push(instr.clone());
@@ -1948,7 +1948,7 @@ fn is_zero(konst: &Const) -> bool {
         Const::Long(val) => *val == 0,
         Const::UInt(val) => *val == 0,
         Const::ULong(val) => *val == 0,
-        Const::Double(val) => *val == 0.0,
+        Const::Double(val) => *val == 0.0,  // -0.0?
         Const::Char(val) => *val == 0,
         Const::UChar(val) => *val == 0,
     }

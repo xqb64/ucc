@@ -13,7 +13,7 @@ use crate::{
     },
 };
 use anyhow::{bail, Result};
-use std::{cmp::max, collections::BTreeMap, sync::Mutex};
+use std::{any::Any, cmp::{max, Ordering}, collections::BTreeMap, sync::Mutex};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Symbol {
@@ -1853,7 +1853,7 @@ pub enum InitialValue {
     NoInitializer,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum StaticInit {
     Int(i32),
     Long(i64),
@@ -1865,6 +1865,24 @@ pub enum StaticInit {
     String(String, bool),
     Pointer(String),
     Zero(usize),
+}
+
+impl PartialEq for StaticInit {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (StaticInit::Int(i1), StaticInit::Int(i2)) => i1 == i2,
+            (StaticInit::Long(l1), StaticInit::Long(l2)) => l1 == l2,
+            (StaticInit::UInt(u1), StaticInit::UInt(u2)) => u1 == u2,
+            (StaticInit::ULong(ul1), StaticInit::ULong(ul2)) => ul1 == ul2,
+            (StaticInit::Double(d1), StaticInit::Double(d2)) => d1 == d2 || d1.total_cmp(d2) == Ordering::Equal,
+            (StaticInit::Char(c1), StaticInit::Char(c2)) => c1 == c2,
+            (StaticInit::UChar(uc1), StaticInit::UChar(uc2)) => uc1 == uc2,
+            (StaticInit::String(s1, b1), StaticInit::String(s2, b2)) => s1 == s2 && b1 == b2,
+            (StaticInit::Pointer(p1), StaticInit::Pointer(p2)) => p1 == p2,
+            (StaticInit::Zero(z1), StaticInit::Zero(z2)) => z1 == z2,
+            (a, b) => a.type_id().cmp(&b.type_id()) == Ordering::Equal,
+        }
+    }
 }
 
 pub fn is_scalar(t: &Type) -> bool {
