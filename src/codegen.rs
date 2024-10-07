@@ -4853,7 +4853,6 @@ fn add_edges(
 
 type OperandSet = BTreeSet<AsmOperand>;
 
-// Function to get the registers used and written in an instruction
 fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass) -> (OperandSet, OperandSet) {
     let (ops_used, ops_written) = match instr {
         AsmInstruction::Mov { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
@@ -4861,9 +4860,7 @@ fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass)
         AsmInstruction::MovZeroExtend { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
         AsmInstruction::Cvtsi2sd { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
         AsmInstruction::Cvttsd2si { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
-        AsmInstruction::Binary { lhs, rhs, .. } => {
-            (vec![lhs.clone(), rhs.clone()], vec![rhs.clone()])
-        }
+        AsmInstruction::Binary { lhs, rhs, .. } => (vec![lhs.clone(), rhs.clone()], vec![rhs.clone()]),
         AsmInstruction::Unary { operand, .. } => (vec![operand.clone()], vec![operand.clone()]),
         AsmInstruction::Cmp { lhs, rhs, .. } => (vec![lhs.clone(), rhs.clone()], vec![]),
         AsmInstruction::SetCC { operand, .. } => (vec![], vec![operand.clone()]),
@@ -4889,7 +4886,6 @@ fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass)
                 RegisterClass::XMM => XMM_REGISTERS,
             };
 
-            // Dynamically fetch used registers based on the called function's parameters
             let used_regs = {
                 let table = ASM_SYMBOL_TABLE.lock().unwrap();
                 if let Some(entry) = table.get(func_name) {
@@ -4900,9 +4896,7 @@ fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass)
                             .cloned()
                             .map(AsmOperand::Register)
                             .collect::<Vec<_>>(),
-                        _ => {
-                            vec![]
-                        }
+                        _ => vec![],
                     }
                 } else {
                     vec![]
@@ -4928,7 +4922,7 @@ fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass)
     let regs_used_to_read = |opr: &AsmOperand| -> Vec<AsmOperand> {
         match opr {
             AsmOperand::Pseudo(_) | AsmOperand::Register(_) => vec![opr.clone()],
-            AsmOperand::Memory(r, _) => vec![AsmOperand::Register(r.clone())],
+            AsmOperand::Memory(base, _) => vec![AsmOperand::Register(base.clone())],
             AsmOperand::Indexed(base, index, _) => vec![
                 AsmOperand::Register(base.clone()),
                 AsmOperand::Register(index.clone()),
@@ -4936,27 +4930,39 @@ fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass)
             AsmOperand::Imm(_) | AsmOperand::Data(_, _) | AsmOperand::PseudoMem(_, _) => vec![],
         }
     };
-
-    let regs_read1: Vec<AsmOperand> = ops_used.iter().flat_map(regs_used_to_read).collect();
 
     // Convert operands written into a list of registers read or written
-    let regs_used_to_update = |opr: &AsmOperand| -> Vec<AsmOperand> {
+    let regs_used_to_update = |opr: &AsmOperand| -> (Vec<AsmOperand>, Vec<AsmOperand>) {
         match opr {
-            AsmOperand::Pseudo(_) | AsmOperand::Register(_) => vec![opr.clone()],
-            AsmOperand::Memory(r, _) => vec![AsmOperand::Register(r.clone())],
-            AsmOperand::Indexed(base, index, _) => vec![
-                AsmOperand::Register(base.clone()),
-                AsmOperand::Register(index.clone()),
-            ],
-            AsmOperand::Imm(_) | AsmOperand::Data(_, _) | AsmOperand::PseudoMem(_, _) => vec![],
+            AsmOperand::Pseudo(_) | AsmOperand::Register(_) => (vec![], vec![opr.clone()]),
+            AsmOperand::Memory(base, _) => (vec![AsmOperand::Register(base.clone())], vec![]),
+            AsmOperand::Indexed(base, index, _) => (
+                vec![
+                    AsmOperand::Register(base.clone()),
+                    AsmOperand::Register(index.clone()),
+                ],
+                vec![]
+            ),
+            AsmOperand::Imm(_) | AsmOperand::Data(_, _) | AsmOperand::PseudoMem(_, _) => (vec![], vec![]),
         }
     };
 
-    let regs_written: Vec<AsmOperand> = ops_written.iter().flat_map(regs_used_to_update).collect();
+    // Apply `regs_used_to_read` to the list of operands that are used
+    let regs_read1: Vec<AsmOperand> = ops_used.iter().flat_map(regs_used_to_read).collect();
+
+    // Apply `regs_used_to_update` to the list of operands that are written
+    let (regs_read2, regs_written): (Vec<_>, Vec<_>) = ops_written
+        .iter()
+        .map(regs_used_to_update)
+        .unzip();
+
+    let regs_read2 = regs_read2.into_iter().flatten().collect::<Vec<_>>();
+    let regs_written = regs_written.into_iter().flatten().collect::<Vec<_>>();
 
     // Combine both lists of registers read
-    let regs_read = regs_read1;
+    let regs_read = [regs_read1, regs_read2].concat();
 
+    // Return the read and written registers as `OperandSet`
     (
         regs_read.into_iter().collect(),
         regs_written.into_iter().collect(),
