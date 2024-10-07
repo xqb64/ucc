@@ -5123,27 +5123,15 @@ fn make_register_map(
     register_class: &[AsmRegister],
     caller_saved_registers: &[AsmRegister],
 ) -> HashMap<String, AsmRegister> {
-    // Step 1: Map colors to hard registers using register_class
+    // Step 1: Map colors to hard registers
     let mut color_map: HashMap<usize, AsmRegister> = HashMap::new();
 
-    // Assign unique colors based on the index in register_class
-    for (color, hardreg) in register_class.iter().enumerate() {
-        if color_map.contains_key(&color) {
-            eprintln!(
-                "Error: Duplicate color {} for register {:?}.",
-                color, hardreg
-            );
-            // Handle duplication as needed, e.g., panic or continue
-            // For now, we'll continue
-            continue;
+    for node in graph.values() {
+        if let NodeId::Register(ref reg) = node.id {
+            if let Some(color) = node.color {
+                color_map.insert(color, reg.clone());
+            }
         }
-        color_map.insert(color, hardreg.clone());
-    }
-
-    // Debug: Print the color_map
-    println!("Color Map:");
-    for (color, reg) in &color_map {
-        println!("Color {} -> Register {:?}", color, reg);
     }
 
     // Step 2: Assign pseudoregisters to hard registers based on color
@@ -5163,47 +5151,24 @@ fn make_register_map(
                     used_callee_saved.insert(hardreg.clone());
                 }
 
-                println!("Inserting into reg_map: {} -> {:?}", p, hardreg);
+                println!("inserting into regmap {} -> {:?}", p, hardreg);
                 reg_map.insert(p.clone(), hardreg.clone());
             } else {
                 // Handle uncolored nodes (potential spills)
                 // For simplicity, we'll skip them here, but you can implement spill handling
-                println!(
-                    "Warning: Pseudoregister '{}' has no assigned hard register (potential spill)",
-                    p
-                );
+                println!("Warning: Pseudoregister {} has no assigned hard register (potential spill)", p);
             }
         }
     }
 
     // Step 3: Update the symbol table with used callee-saved registers
-    let mut symbol_table = ASM_SYMBOL_TABLE.lock().unwrap();
-    if let Some(symbol) = symbol_table.get_mut(fn_name) {
+    if let Some(symbol) = ASM_SYMBOL_TABLE.lock().unwrap().get_mut(fn_name) {
         match symbol {
-            AsmSymtabEntry::Function {
-                ref mut callee_saved_regs_used,
-                ..
-            } => {
-                callee_saved_regs_used.extend(used_callee_saved.clone());
-                println!(
-                    "Updated callee_saved_regs_used for function '{}': {:?}",
-                    fn_name, callee_saved_regs_used
-                );
+            AsmSymtabEntry::Function { ref mut callee_saved_regs_used, .. } => {
+                callee_saved_regs_used.extend(used_callee_saved);
             }
-            _ => {
-                eprintln!(
-                    "Error: Symbol '{}' is not a function or cannot have callee-saved registers.",
-                    fn_name
-                );
-                // Handle as needed, e.g., panic or skip
-            }
+            _ => unreachable!(),
         }
-    } else {
-        eprintln!(
-            "Error: Function '{}' not found in ASM_SYMBOL_TABLE.",
-            fn_name
-        );
-        // Handle as needed, e.g., insert a new entry or panic
     }
 
     reg_map
