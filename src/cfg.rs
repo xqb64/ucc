@@ -1,5 +1,5 @@
-use std::fmt::Debug;
 use crate::ir::make_temporary;
+use std::fmt::Debug;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SimpleInstr {

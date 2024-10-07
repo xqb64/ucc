@@ -4,12 +4,17 @@ use std::{
 };
 
 use crate::{
-    cfg::{self, BasicBlock, Instr, SimpleInstr, CFG}, ir::{
+    cfg::{self, BasicBlock, Instr, SimpleInstr, CFG},
+    ir::{
         make_temporary, BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRStaticConstant,
         IRStaticVariable, IRValue, UnaryOp,
-    }, lexer::Const, parser::Type, typechecker::{
-        get_common_type, get_signedness, get_size_of_type, is_scalar, IdentifierAttrs, MemberEntry, StaticInit, CURRENT_FN_RETURNS_ON_STACK, SYMBOL_TABLE, TYPE_TABLE
-    }
+    },
+    lexer::Const,
+    parser::Type,
+    typechecker::{
+        get_common_type, get_signedness, get_size_of_type, is_scalar, IdentifierAttrs, MemberEntry,
+        StaticInit, CURRENT_FN_RETURNS_ON_STACK, SYMBOL_TABLE, TYPE_TABLE,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2051,7 +2056,12 @@ impl Fixup for AsmProgram {
                 _ => unreachable!(),
             };
 
-            let symbol = ASM_SYMBOL_TABLE.lock().unwrap().get(&func_name).cloned().unwrap();
+            let symbol = ASM_SYMBOL_TABLE
+                .lock()
+                .unwrap()
+                .get(&func_name)
+                .cloned()
+                .unwrap();
             let callee_saved_args = match symbol {
                 AsmSymtabEntry::Function {
                     callee_saved_regs_used,
@@ -2080,23 +2090,26 @@ impl Fixup for AsmFunction {
             if n == 0 {
                 panic!("`n` must be a non-zero integer.");
             }
-        
+
             match x {
                 x if x % n == 0 => x,
                 x if x < 0 => x - n - (x % n),
                 x => x + n - (x % n),
             }
         }
-        
-        fn emit_stack_adjustment(bytes_for_locals: usize, callee_saved_count: usize) -> AsmInstruction {
+
+        fn emit_stack_adjustment(
+            bytes_for_locals: usize,
+            callee_saved_count: usize,
+        ) -> AsmInstruction {
             let callee_saved_bytes = 8 * callee_saved_count;
-        
+
             let total_stack_bytes = callee_saved_bytes + bytes_for_locals;
-        
+
             let adjusted_stack_bytes = round_away_from_zero(16, total_stack_bytes as i64);
-        
+
             let stack_adjustment = (adjusted_stack_bytes - callee_saved_bytes as i64) as i64;
-        
+
             AsmInstruction::Binary {
                 op: AsmBinaryOp::Sub,
                 asm_type: AsmType::Quadword,
@@ -2105,7 +2118,10 @@ impl Fixup for AsmFunction {
             }
         }
 
-        instructions_setup.push(emit_stack_adjustment(self.stack_space, callee_saved_args.len()));
+        instructions_setup.push(emit_stack_adjustment(
+            self.stack_space,
+            callee_saved_args.len(),
+        ));
 
         let save_reg = |r: &AsmRegister| AsmInstruction::Push(AsmOperand::Register(r.clone()));
 
@@ -2118,7 +2134,12 @@ impl Fixup for AsmFunction {
         for instr in &mut self.instructions {
             match instr {
                 AsmInstruction::Pop(reg) if is_xmm(&reg) => {
-                    instructions.push(AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Add, lhs: AsmOperand::Imm(8), rhs: AsmOperand::Register(AsmRegister::SP) });
+                    instructions.push(AsmInstruction::Binary {
+                        asm_type: AsmType::Quadword,
+                        op: AsmBinaryOp::Add,
+                        lhs: AsmOperand::Imm(8),
+                        rhs: AsmOperand::Register(AsmRegister::SP),
+                    });
                 }
                 AsmInstruction::Lea { src, dst } => match dst {
                     AsmOperand::Memory(AsmRegister::BP, _)
@@ -2569,36 +2590,111 @@ impl Fixup for AsmFunction {
                     }
                     _ => instructions.push(instr.clone()),
                 },
-                AsmInstruction::Binary { asm_type: AsmType::Quadword, op, lhs: AsmOperand::Imm(imm), rhs } if is_large(*imm) && matches!(op, AsmBinaryOp::Add | AsmBinaryOp::Sub | AsmBinaryOp::And | AsmBinaryOp::Or) => {
+                AsmInstruction::Binary {
+                    asm_type: AsmType::Quadword,
+                    op,
+                    lhs: AsmOperand::Imm(imm),
+                    rhs,
+                } if is_large(*imm)
+                    && matches!(
+                        op,
+                        AsmBinaryOp::Add | AsmBinaryOp::Sub | AsmBinaryOp::And | AsmBinaryOp::Or
+                    ) =>
+                {
                     instructions.extend(vec![
-                        AsmInstruction::Mov { asm_type: AsmType::Quadword, src: AsmOperand::Imm(*imm), dst: AsmOperand::Register(AsmRegister::R10) },
-                        AsmInstruction::Binary { asm_type: AsmType::Quadword, op: *op, lhs: AsmOperand::Register(AsmRegister::R10), rhs: rhs.clone() },
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Quadword,
+                            src: AsmOperand::Imm(*imm),
+                            dst: AsmOperand::Register(AsmRegister::R10),
+                        },
+                        AsmInstruction::Binary {
+                            asm_type: AsmType::Quadword,
+                            op: *op,
+                            lhs: AsmOperand::Register(AsmRegister::R10),
+                            rhs: rhs.clone(),
+                        },
                     ]);
                 }
-                AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Mul, lhs: AsmOperand::Imm(imm), rhs  } if is_large(*imm) && matches!(rhs, AsmOperand::Memory(_, _) | AsmOperand::Data(_, _)) => {
+                AsmInstruction::Binary {
+                    asm_type: AsmType::Quadword,
+                    op: AsmBinaryOp::Mul,
+                    lhs: AsmOperand::Imm(imm),
+                    rhs,
+                } if is_large(*imm)
+                    && matches!(rhs, AsmOperand::Memory(_, _) | AsmOperand::Data(_, _)) =>
+                {
                     // Rewrite both operands
                     instructions.extend(vec![
-                        AsmInstruction::Mov { asm_type: AsmType::Quadword, src: AsmOperand::Imm(*imm), dst: AsmOperand::Register(AsmRegister::R10) },
-                        AsmInstruction::Mov { asm_type: AsmType::Quadword, src: rhs.clone(), dst: AsmOperand::Register(AsmRegister::R11) },
-                        AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Mul, lhs: AsmOperand::Register(AsmRegister::R10), rhs: AsmOperand::Register(AsmRegister::R11) },
-                        AsmInstruction::Mov { asm_type: AsmType::Quadword, src: AsmOperand::Register(AsmRegister::R11), dst: rhs.clone() },
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Quadword,
+                            src: AsmOperand::Imm(*imm),
+                            dst: AsmOperand::Register(AsmRegister::R10),
+                        },
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Quadword,
+                            src: rhs.clone(),
+                            dst: AsmOperand::Register(AsmRegister::R11),
+                        },
+                        AsmInstruction::Binary {
+                            asm_type: AsmType::Quadword,
+                            op: AsmBinaryOp::Mul,
+                            lhs: AsmOperand::Register(AsmRegister::R10),
+                            rhs: AsmOperand::Register(AsmRegister::R11),
+                        },
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Quadword,
+                            src: AsmOperand::Register(AsmRegister::R11),
+                            dst: rhs.clone(),
+                        },
                     ]);
-                },
-                AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Mul, lhs: AsmOperand::Imm(imm), rhs } if is_large(*imm) => {
+                }
+                AsmInstruction::Binary {
+                    asm_type: AsmType::Quadword,
+                    op: AsmBinaryOp::Mul,
+                    lhs: AsmOperand::Imm(imm),
+                    rhs,
+                } if is_large(*imm) => {
                     // Just rewrite src
                     instructions.extend(vec![
-                        AsmInstruction::Mov { asm_type: AsmType::Quadword, src: AsmOperand::Imm(*imm), dst: AsmOperand::Register(AsmRegister::R10) },
-                        AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Mul, lhs: AsmOperand::Register(AsmRegister::R10), rhs: rhs.clone() },
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Quadword,
+                            src: AsmOperand::Imm(*imm),
+                            dst: AsmOperand::Register(AsmRegister::R10),
+                        },
+                        AsmInstruction::Binary {
+                            asm_type: AsmType::Quadword,
+                            op: AsmBinaryOp::Mul,
+                            lhs: AsmOperand::Register(AsmRegister::R10),
+                            rhs: rhs.clone(),
+                        },
                     ]);
-                },
-                AsmInstruction::Binary { asm_type, op: AsmBinaryOp::Mul, lhs, rhs } if matches!(rhs, AsmOperand::Memory(_, _) | AsmOperand::Data(_, _)) => {
+                }
+                AsmInstruction::Binary {
+                    asm_type,
+                    op: AsmBinaryOp::Mul,
+                    lhs,
+                    rhs,
+                } if matches!(rhs, AsmOperand::Memory(_, _) | AsmOperand::Data(_, _)) => {
                     // Rewrite dst only
                     instructions.extend(vec![
-                        AsmInstruction::Mov { asm_type: *asm_type, src: rhs.clone(), dst: AsmOperand::Register(AsmRegister::R11) },
-                        AsmInstruction::Binary { asm_type: *asm_type, op: AsmBinaryOp::Mul, lhs: lhs.clone(), rhs: AsmOperand::Register(AsmRegister::R11) },
-                        AsmInstruction::Mov { asm_type: *asm_type, src: AsmOperand::Register(AsmRegister::R11), dst: rhs.clone() },
+                        AsmInstruction::Mov {
+                            asm_type: *asm_type,
+                            src: rhs.clone(),
+                            dst: AsmOperand::Register(AsmRegister::R11),
+                        },
+                        AsmInstruction::Binary {
+                            asm_type: *asm_type,
+                            op: AsmBinaryOp::Mul,
+                            lhs: lhs.clone(),
+                            rhs: AsmOperand::Register(AsmRegister::R11),
+                        },
+                        AsmInstruction::Mov {
+                            asm_type: *asm_type,
+                            src: AsmOperand::Register(AsmRegister::R11),
+                            dst: rhs.clone(),
+                        },
                     ]);
-                },                
+                }
                 AsmInstruction::Binary {
                     op,
                     lhs,
@@ -3068,27 +3164,20 @@ impl Fixup for AsmFunction {
                     src,
                     dst_type,
                     dst,
-                } => match dst {
-                    AsmOperand::Memory(_, _)
-                    | AsmOperand::Data(_, _)
-                    | AsmOperand::Indexed(_, _, _) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::R11),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: *dst_type,
-                                src: AsmOperand::Register(AsmRegister::R11),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    _ => {
-                        instructions.push(instr.clone());
-                    }
-                },
+                } => {
+                    instructions.extend(vec![
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Longword,
+                            src: src.clone(),
+                            dst: AsmOperand::Register(AsmRegister::R11),
+                        },
+                        AsmInstruction::Mov {
+                            asm_type: *dst_type,
+                            src: AsmOperand::Register(AsmRegister::R11),
+                            dst: dst.clone(),
+                        },
+                    ]);
+                }
                 AsmInstruction::Cmp {
                     asm_type: AsmType::Double,
                     lhs: _,
@@ -3355,23 +3444,20 @@ impl Fixup for AsmFunction {
                         instructions.push(instr.clone());
                     }
                 }
-                AsmInstruction::Push(AsmOperand::Register(reg)) if is_xmm(reg) => {
-                    instructions.extend(
-                        vec![
-                            AsmInstruction::Binary {
-                                asm_type: AsmType::Quadword,
-                                op: AsmBinaryOp::Sub,
-                                lhs: AsmOperand::Imm(8),
-                                rhs: AsmOperand::Register(AsmRegister::SP),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: AsmOperand::Register(*reg),
-                                dst: AsmOperand::Memory(AsmRegister::SP, 0),
-                            },
-                        ]
-                    )
-                }
+                AsmInstruction::Push(AsmOperand::Register(reg)) if is_xmm(reg) => instructions
+                    .extend(vec![
+                        AsmInstruction::Binary {
+                            asm_type: AsmType::Quadword,
+                            op: AsmBinaryOp::Sub,
+                            lhs: AsmOperand::Imm(8),
+                            rhs: AsmOperand::Register(AsmRegister::SP),
+                        },
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Quadword,
+                            src: AsmOperand::Register(*reg),
+                            dst: AsmOperand::Memory(AsmRegister::SP, 0),
+                        },
+                    ]),
                 AsmInstruction::Cvttsd2si { asm_type, src, dst } => match (&src, &dst, *asm_type) {
                     (
                         AsmOperand::Memory(AsmRegister::BP, _),
@@ -3531,12 +3617,22 @@ impl Fixup for AsmFunction {
                         .collect::<Vec<_>>()
                         .iter()
                         .rev() // Reverse the order to match `List.rev_map`
-                        .map(|r| if !is_xmm(r) { AsmInstruction::Pop(r.clone().clone()) } else { AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Add, lhs: AsmOperand::Imm(8), rhs: AsmOperand::Register(AsmRegister::SP) } })
+                        .map(|r| {
+                            if !is_xmm(r) {
+                                AsmInstruction::Pop(r.clone().clone())
+                            } else {
+                                AsmInstruction::Binary {
+                                    asm_type: AsmType::Quadword,
+                                    op: AsmBinaryOp::Add,
+                                    lhs: AsmOperand::Imm(8),
+                                    rhs: AsmOperand::Register(AsmRegister::SP),
+                                }
+                            }
+                        })
                         .collect();
 
                     instructions.extend(restore_regs);
                     instructions.push(AsmInstruction::Ret);
-                    
                 }
                 _ => instructions.push(instr.clone()),
             }
@@ -3586,7 +3682,25 @@ impl Fixup for Vec<AsmInstruction> {
 }
 
 fn is_xmm(r: &AsmRegister) -> bool {
-    matches!(r, AsmRegister::XMM0 | AsmRegister::XMM1 | AsmRegister::XMM2 | AsmRegister::XMM3 | AsmRegister::XMM4 | AsmRegister::XMM5 | AsmRegister::XMM6 | AsmRegister::XMM7 | AsmRegister::XMM8 | AsmRegister::XMM9 | AsmRegister::XMM10 | AsmRegister::XMM11 | AsmRegister::XMM12 | AsmRegister::XMM13 | AsmRegister::XMM14 | AsmRegister::XMM15)
+    matches!(
+        r,
+        AsmRegister::XMM0
+            | AsmRegister::XMM1
+            | AsmRegister::XMM2
+            | AsmRegister::XMM3
+            | AsmRegister::XMM4
+            | AsmRegister::XMM5
+            | AsmRegister::XMM6
+            | AsmRegister::XMM7
+            | AsmRegister::XMM8
+            | AsmRegister::XMM9
+            | AsmRegister::XMM10
+            | AsmRegister::XMM11
+            | AsmRegister::XMM12
+            | AsmRegister::XMM13
+            | AsmRegister::XMM14
+            | AsmRegister::XMM15
+    )
 }
 
 fn is_large(n: i64) -> bool {
@@ -4483,17 +4597,36 @@ impl RegAlloc for AsmProgram {
                 _ => unreachable!(),
             });
         }
-        AsmProgram { functions, static_constants: self.static_constants.clone(), static_vars: self.static_vars.clone() }
+        AsmProgram {
+            functions,
+            static_constants: self.static_constants.clone(),
+            static_vars: self.static_vars.clone(),
+        }
     }
 }
 
 impl RegAlloc for AsmFunction {
     fn reg_alloc(&mut self, aliased_pseudos: &BTreeSet<String>) -> Self {
-        let static_vars = SYMBOL_TABLE.lock().unwrap().iter().filter(|(name, symbol)| match symbol.attrs { IdentifierAttrs::StaticAttr { .. } => true, _ => false }).map(|(name, symbol)| name.clone()).collect();
+        let static_vars = SYMBOL_TABLE
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(name, symbol)| match symbol.attrs {
+                IdentifierAttrs::StaticAttr { .. } => true,
+                _ => false,
+            })
+            .map(|(name, symbol)| name.clone())
+            .collect();
 
-        let gp_graph = build_interference_graph(&self.name, &static_vars, aliased_pseudos, &self.instructions, GP_REGISTERS);
+        let gp_graph = build_interference_graph(
+            &self.name,
+            &static_vars,
+            aliased_pseudos,
+            &self.instructions,
+            GP_REGISTERS,
+        );
         // print_graphviz(&self.name, &gp_graph);
-        
+
         let gp_spilled_graph = add_spill_costs(gp_graph, &self.instructions);
         // print_graphviz(&self.name, &gp_spilled_graph);
 
@@ -4503,7 +4636,13 @@ impl RegAlloc for AsmFunction {
         let gp_register_map = make_register_map(&self.name, &colored_gp_graph);
 
         // Allocate XMM Registers
-        let xmm_graph = build_interference_graph(&self.name, &static_vars, aliased_pseudos, &self.instructions, XMM_REGISTERS);
+        let xmm_graph = build_interference_graph(
+            &self.name,
+            &static_vars,
+            aliased_pseudos,
+            &self.instructions,
+            XMM_REGISTERS,
+        );
         let xmm_spilled_graph = add_spill_costs(xmm_graph, &self.instructions);
         let colored_xmm_graph = color_graph(xmm_spilled_graph, XMM_REGISTERS.len());
         let xmm_register_map = make_register_map(&self.name, &colored_xmm_graph);
@@ -4552,7 +4691,11 @@ fn mk_base_graph(all_hardregs: &BTreeSet<AsmOperand>) -> Graph {
     for r in all_hardregs.iter() {
         let node = Node {
             id: r.clone(),
-            neighbors: all_hardregs.iter().filter(|reg| reg != &r).map(|x| x.to_owned()).collect(),
+            neighbors: all_hardregs
+                .iter()
+                .filter(|reg| reg != &r)
+                .map(|x| x.to_owned())
+                .collect(),
             spill_cost: f64::INFINITY,
             color: None,
             pruned: false,
@@ -4571,7 +4714,8 @@ fn build_interference_graph(
     instructions: &[AsmInstruction],
     register_class: &[AsmRegister],
 ) -> Graph {
-    let all_hardregs = register_class.iter()
+    let all_hardregs = register_class
+        .iter()
         .map(|x| AsmOperand::Register(x.clone()))
         .collect::<BTreeSet<_>>();
 
@@ -4579,8 +4723,10 @@ fn build_interference_graph(
 
     add_pseudo_nodes(&mut graph, aliased_pseudos, instructions, register_class);
 
-    let cfg: CFG<(), AsmInstruction> = CFG::instructions_to_cfg("spam".to_string(), instructions.to_vec());
-    let mut analyzed_cfg = LivenessAnalysis::analyze(&fn_name, cfg, static_vars, aliased_pseudos, &all_hardregs);
+    let cfg: CFG<(), AsmInstruction> =
+        CFG::instructions_to_cfg("spam".to_string(), instructions.to_vec());
+    let mut analyzed_cfg =
+        LivenessAnalysis::analyze(&fn_name, cfg, static_vars, aliased_pseudos, &all_hardregs);
 
     add_edges(&mut analyzed_cfg, &mut graph);
 
@@ -4597,7 +4743,10 @@ fn add_edge(graph: &mut Graph, nd_id1: &AsmOperand, nd_id2: &AsmOperand) {
     }
 }
 
-fn add_edges(liveness_cfg: &CFG<BTreeSet<AsmOperand>, AsmInstruction>, interference_graph: &mut Graph) {
+fn add_edges(
+    liveness_cfg: &CFG<BTreeSet<AsmOperand>, AsmInstruction>,
+    interference_graph: &mut Graph,
+) {
     // Iterate over all basic blocks
     for (_, block) in &liveness_cfg.basic_blocks {
         // Iterate over all instructions in the block
@@ -4647,7 +4796,9 @@ fn regs_used_and_written(instr: &AsmInstruction) -> (OperandSet, OperandSet) {
         AsmInstruction::MovZeroExtend { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
         AsmInstruction::Cvtsi2sd { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
         AsmInstruction::Cvttsd2si { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
-        AsmInstruction::Binary { lhs, rhs, .. } => (vec![lhs.clone(), rhs.clone()], vec![rhs.clone()]),
+        AsmInstruction::Binary { lhs, rhs, .. } => {
+            (vec![lhs.clone(), rhs.clone()], vec![rhs.clone()])
+        }
         AsmInstruction::Unary { operand, .. } => (vec![operand.clone()], vec![operand.clone()]),
         AsmInstruction::Cmp { lhs, rhs, .. } => (vec![lhs.clone(), rhs.clone()], vec![]),
         AsmInstruction::SetCC { operand, .. } => (vec![], vec![operand.clone()]),
@@ -4673,13 +4824,12 @@ fn regs_used_and_written(instr: &AsmInstruction) -> (OperandSet, OperandSet) {
                 let table = ASM_SYMBOL_TABLE.lock().unwrap();
                 if let Some(entry) = table.get(func_name) {
                     match entry {
-                        AsmSymtabEntry::Function { param_regs, .. } => {
-                            param_regs.iter()
-                                .filter(|r| GP_REGISTERS.contains(&r))
-                                .cloned()
-                                .map(AsmOperand::Register)
-                                .collect::<Vec<_>>()
-                        }
+                        AsmSymtabEntry::Function { param_regs, .. } => param_regs
+                            .iter()
+                            .filter(|r| GP_REGISTERS.contains(&r))
+                            .cloned()
+                            .map(AsmOperand::Register)
+                            .collect::<Vec<_>>(),
                         _ => {
                             vec![]
                         }
@@ -4689,7 +4839,8 @@ fn regs_used_and_written(instr: &AsmInstruction) -> (OperandSet, OperandSet) {
                 }
             };
 
-            let written_regs = CALLER_SAVED_REGISTERS.iter()
+            let written_regs = CALLER_SAVED_REGISTERS
+                .iter()
                 .map(|r| AsmOperand::Register(r.clone()))
                 .collect::<Vec<_>>();
 
@@ -4708,7 +4859,10 @@ fn regs_used_and_written(instr: &AsmInstruction) -> (OperandSet, OperandSet) {
         match opr {
             AsmOperand::Pseudo(_) | AsmOperand::Register(_) => vec![opr.clone()],
             AsmOperand::Memory(r, _) => vec![AsmOperand::Register(r.clone())],
-            AsmOperand::Indexed(base, index, _) => vec![AsmOperand::Register(base.clone()), AsmOperand::Register(index.clone())],
+            AsmOperand::Indexed(base, index, _) => vec![
+                AsmOperand::Register(base.clone()),
+                AsmOperand::Register(index.clone()),
+            ],
             AsmOperand::Imm(_) | AsmOperand::Data(_, _) | AsmOperand::PseudoMem(_, _) => vec![],
         }
     };
@@ -4720,7 +4874,10 @@ fn regs_used_and_written(instr: &AsmInstruction) -> (OperandSet, OperandSet) {
         match opr {
             AsmOperand::Pseudo(_) | AsmOperand::Register(_) => vec![opr.clone()],
             AsmOperand::Memory(r, _) => vec![AsmOperand::Register(r.clone())],
-            AsmOperand::Indexed(base, index, _) => vec![AsmOperand::Register(base.clone()), AsmOperand::Register(index.clone())],
+            AsmOperand::Indexed(base, index, _) => vec![
+                AsmOperand::Register(base.clone()),
+                AsmOperand::Register(index.clone()),
+            ],
             AsmOperand::Imm(_) | AsmOperand::Data(_, _) | AsmOperand::PseudoMem(_, _) => vec![],
         }
     };
@@ -4741,18 +4898,24 @@ struct LivenessAnalysis;
 impl LivenessAnalysis {
     fn meet(
         fn_name: &str,
-        cfg: &CFG<BTreeSet<AsmOperand>, AsmInstruction>, 
+        cfg: &CFG<BTreeSet<AsmOperand>, AsmInstruction>,
         block: &BasicBlock<BTreeSet<AsmOperand>, AsmInstruction>,
         all_hardregs: &BTreeSet<AsmOperand>,
     ) -> OperandSet {
         let mut live_at_exit = OperandSet::new();
-    
+
         let all_return_regs = match ASM_SYMBOL_TABLE.lock().unwrap().get(fn_name).unwrap() {
-            AsmSymtabEntry::Function { return_regs, .. } => return_regs.iter().map(|r| AsmOperand::Register(r.clone())).collect::<OperandSet>(),
+            AsmSymtabEntry::Function { return_regs, .. } => return_regs
+                .iter()
+                .map(|r| AsmOperand::Register(r.clone()))
+                .collect::<OperandSet>(),
             _ => unreachable!(),
         };
-        let return_regs = all_hardregs.intersection(&all_return_regs).cloned().collect::<OperandSet>();
-    
+        let return_regs = all_hardregs
+            .intersection(&all_return_regs)
+            .cloned()
+            .collect::<OperandSet>();
+
         for succ in &block.succs {
             match succ {
                 cfg::NodeId::Exit => live_at_exit.extend(return_regs.clone()),
@@ -4763,33 +4926,36 @@ impl LivenessAnalysis {
                 }
             }
         }
-    
+
         live_at_exit
     }
-    
+
     fn transfer(
         static_and_aliased_vars: &BTreeSet<String>,
-        block: &BasicBlock<BTreeSet<AsmOperand>, AsmInstruction>, 
-        end_live_regs: OperandSet
+        block: &BasicBlock<BTreeSet<AsmOperand>, AsmInstruction>,
+        end_live_regs: OperandSet,
     ) -> BasicBlock<BTreeSet<AsmOperand>, AsmInstruction> {
         let mut current_live_regs = end_live_regs.clone();
         let mut annotated_instructions = Vec::new();
-        
+
         for (idx, instr) in block.instructions.iter().enumerate().rev() {
             let (regs_used, regs_written) = regs_used_and_written(&instr.1);
-    
-            let without_killed: BTreeSet<_> = current_live_regs.difference(&regs_written).cloned().collect();
+
+            let without_killed: BTreeSet<_> = current_live_regs
+                .difference(&regs_written)
+                .cloned()
+                .collect();
             current_live_regs = without_killed.union(&regs_used).cloned().collect();
-    
+
             annotated_instructions.push((current_live_regs.clone(), instr.1.clone()));
         }
-    
+
         BasicBlock {
             instructions: annotated_instructions.into_iter().rev().collect(),
             value: current_live_regs,
             ..block.clone()
         }
-    }    
+    }
 
     fn analyze(
         fn_name: &str,
@@ -4800,38 +4966,38 @@ impl LivenessAnalysis {
     ) -> cfg::CFG<BTreeSet<AsmOperand>, AsmInstruction> {
         // Initialize the CFG with empty live variable sets
         let mut starting_cfg = cfg.initialize_annotation(BTreeSet::new());
-    
+
         // Combine static variables and aliased variables
         let static_and_aliased_vars = static_vars
             .union(aliased_vars)
             .cloned()
             .collect::<BTreeSet<_>>();
-    
+
         // Create the worklist by cloning the basic blocks
         let mut worklist: Vec<(usize, BasicBlock<BTreeSet<AsmOperand>, AsmInstruction>)> =
             starting_cfg.basic_blocks.clone();
-    
+
         // Process the worklist in a loop
         while let Some((block_idx, blk)) = worklist.pop() {
             // Save the old annotation (live variables)
             let old_annotation = blk.value.clone();
-    
+
             // Calculate live variables at the exit of the block
             let live_vars_at_exit = Self::meet(fn_name, &starting_cfg, &blk, all_hardregs);
-    
+
             // Transfer function: propagate live variables through the block
             let block = Self::transfer(&static_and_aliased_vars, &blk, live_vars_at_exit);
-    
+
             // Update the CFG with the new block
             starting_cfg.update_basic_block(block_idx, block.clone());
-    
+
             // Get the new live variable annotation
             let new_annotation = starting_cfg.get_block_value(block_idx);
-    
+
             // If the live variables have changed, update the worklist with predecessors
             if old_annotation != *new_annotation {
                 let block_predecessors = starting_cfg.get_preds(&blk.id);
-    
+
                 for pred in block_predecessors {
                     match pred {
                         cfg::NodeId::Block(_) => {
@@ -4846,11 +5012,10 @@ impl LivenessAnalysis {
                 }
             }
         }
-    
+
         starting_cfg
     }
 }
-
 
 fn get_operands(instr: &AsmInstruction) -> Vec<AsmOperand> {
     match instr {
@@ -4871,13 +5036,23 @@ fn get_operands(instr: &AsmInstruction) -> Vec<AsmOperand> {
     }
 }
 
-fn pseudo_is_current_type(op: &AsmOperand, register_class: &[AsmRegister], aliased_pseudos: &BTreeSet<String>) -> Option<String> {
+fn pseudo_is_current_type(
+    op: &AsmOperand,
+    register_class: &[AsmRegister],
+    aliased_pseudos: &BTreeSet<String>,
+) -> Option<String> {
     match op {
         AsmOperand::Pseudo(pseudo) => {
             if register_class.contains(&AsmRegister::AX) {
                 match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
-                    AsmSymtabEntry::Object { _type, is_static, is_constant } => {
-                        if _type != &AsmType::Double && !(*is_static || aliased_pseudos.contains(pseudo)) {
+                    AsmSymtabEntry::Object {
+                        _type,
+                        is_static,
+                        is_constant,
+                    } => {
+                        if _type != &AsmType::Double
+                            && !(*is_static || aliased_pseudos.contains(pseudo))
+                        {
                             return Some(pseudo.clone());
                         } else {
                             return None;
@@ -4887,9 +5062,15 @@ fn pseudo_is_current_type(op: &AsmOperand, register_class: &[AsmRegister], alias
                 }
             } else if register_class.contains(&AsmRegister::XMM0) {
                 match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
-                    AsmSymtabEntry::Object { _type, is_static, is_constant } => {
-                        if _type == &AsmType::Double && !(*is_static || aliased_pseudos.contains(pseudo)) {
-                            return Some(pseudo.clone())
+                    AsmSymtabEntry::Object {
+                        _type,
+                        is_static,
+                        is_constant,
+                    } => {
+                        if _type == &AsmType::Double
+                            && !(*is_static || aliased_pseudos.contains(pseudo))
+                        {
+                            return Some(pseudo.clone());
                         } else {
                             return None;
                         }
@@ -4898,11 +5079,11 @@ fn pseudo_is_current_type(op: &AsmOperand, register_class: &[AsmRegister], alias
                 }
             } else {
                 None
-            }        
+            }
         }
         _ => None,
     }
- }
+}
 
 fn get_pseudo_nodes(
     aliased_pseudos: &BTreeSet<String>,
@@ -4960,7 +5141,9 @@ impl std::fmt::Display for AsmOperand {
             }
             AsmOperand::Pseudo(pseudo) => write!(f, "{}", pseudo),
             AsmOperand::Memory(base, offset) => write!(f, "Memory({}, {})", base, offset),
-            AsmOperand::Indexed(base, index, scale) => write!(f, "Indexed({}, {}, {})", base, index, scale),
+            AsmOperand::Indexed(base, index, scale) => {
+                write!(f, "Indexed({}, {}, {})", base, index, scale)
+            }
             AsmOperand::Imm(imm) => write!(f, "Imm({})", imm),
             AsmOperand::Data(data, size) => write!(f, "Data({}, {})", data, size),
             AsmOperand::PseudoMem(name, offset) => write!(f, "PseudoMem({}, {})", name, offset),
@@ -4988,7 +5171,7 @@ fn print_graphviz(fn_name: &str, graph: &Graph) {
 
     // Iterate over the nodes in the graph
     for (key, node) in graph {
-        let node_id = &node.id;  // Assuming node has an `id` field
+        let node_id = &node.id; // Assuming node has an `id` field
 
         let color = match node.color {
             Some(c) => format!("[color=red, style=filled, fillcolor=\"/set312/{}\"]", c),
@@ -4999,7 +5182,8 @@ fn print_graphviz(fn_name: &str, graph: &Graph) {
 
         // Write edges (neighbors) for each node
         for neighbor in &node.neighbors {
-            writeln!(file, " \"{}\" -- \"{}\";", node_id, neighbor).expect("Failed to write edge to DOT file");
+            writeln!(file, " \"{}\" -- \"{}\";", node_id, neighbor)
+                .expect("Failed to write edge to DOT file");
         }
     }
 
@@ -5026,7 +5210,6 @@ fn print_graphviz(fn_name: &str, graph: &Graph) {
     }
 }
 
-
 impl Instr for AsmInstruction {
     fn simplify(&self) -> SimpleInstr {
         match self {
@@ -5050,8 +5233,7 @@ impl Instr for AsmInstruction {
 
     fn is_jump(&self) -> bool {
         match self {
-            AsmInstruction::Jmp {..}
-            | AsmInstruction::JmpCC { .. } => true,
+            AsmInstruction::Jmp { .. } | AsmInstruction::JmpCC { .. } => true,
             _ => false,
         }
     }
@@ -5109,32 +5291,47 @@ fn add_spill_costs(
         .collect()
 }
 
-fn color_graph(
-    mut graph: Graph,
-    max_colors: usize,
-) -> Graph {
+fn color_graph(mut graph: Graph, max_colors: usize) -> Graph {
     // Initialize a stack to keep track of the coloring order
     let mut stack: Vec<NodeId> = Vec::new();
 
     // Repeat until all nodes are pruned
     while !graph.values().all(|nd| nd.pruned) {
         // Find a node with degree less than max_colors
-        let node_opt = graph.values().find(|nd| {
-            !nd.pruned && nd.neighbors.iter().filter(|n| !graph.get(*n).unwrap().pruned).count() < max_colors
-        }).cloned();
+        let node_opt = graph
+            .values()
+            .find(|nd| {
+                !nd.pruned
+                    && nd
+                        .neighbors
+                        .iter()
+                        .filter(|n| !graph.get(*n).unwrap().pruned)
+                        .count()
+                        < max_colors
+            })
+            .cloned();
 
         match node_opt {
             Some(node) => {
                 graph.get_mut(&node.id).unwrap().pruned = true;
                 stack.push(node.id.clone());
-            },
+            }
             None => {
                 // Spill: Choose a node to spill based on spill_cost / degree
-                let spill_node = graph.values()
+                let spill_node = graph
+                    .values()
                     .filter(|nd| !nd.pruned)
                     .min_by(|a, b| {
-                        let a_degree = a.neighbors.iter().filter(|n| !graph.get(*n).unwrap().pruned).count();
-                        let b_degree = b.neighbors.iter().filter(|n| !graph.get(*n).unwrap().pruned).count();
+                        let a_degree = a
+                            .neighbors
+                            .iter()
+                            .filter(|n| !graph.get(*n).unwrap().pruned)
+                            .count();
+                        let b_degree = b
+                            .neighbors
+                            .iter()
+                            .filter(|n| !graph.get(*n).unwrap().pruned)
+                            .count();
                         (a.spill_cost / a_degree as f64)
                             .partial_cmp(&(b.spill_cost / b_degree as f64))
                             .unwrap_or(std::cmp::Ordering::Equal)
@@ -5144,7 +5341,7 @@ fn color_graph(
 
                 graph.get_mut(&spill_node.id).unwrap().pruned = true;
                 stack.push(spill_node.id.clone());
-            },
+            }
         }
     }
 
@@ -5238,7 +5435,11 @@ fn make_register_map(
 
     // Step 3: Update the symbol table with used callee-saved registers
     if let Some(func) = ASM_SYMBOL_TABLE.lock().unwrap().get_mut(fn_name) {
-        if let AsmSymtabEntry::Function { ref mut callee_saved_regs_used, .. } = func {
+        if let AsmSymtabEntry::Function {
+            ref mut callee_saved_regs_used,
+            ..
+        } = func
+        {
             callee_saved_regs_used.extend(used_callee_saved);
         }
     }
@@ -5246,7 +5447,6 @@ fn make_register_map(
     // Return the register map
     reg_map
 }
-
 
 fn replace_pseudoregs(
     instructions: &Vec<AsmInstruction>,
@@ -5266,7 +5466,12 @@ fn replace_pseudoregs(
         }
     };
 
-    cleanup_movs(instructions.into_iter().map(|instr| replace_ops(|instr| replace_op(instr), instr.to_owned())).collect())
+    cleanup_movs(
+        instructions
+            .into_iter()
+            .map(|instr| replace_ops(|instr| replace_op(instr), instr.to_owned()))
+            .collect(),
+    )
 }
 
 fn cleanup_movs(instructions: Vec<AsmInstruction>) -> Vec<AsmInstruction> {
@@ -5290,21 +5495,92 @@ where
     F: Fn(AsmOperand) -> AsmOperand,
 {
     match instr {
-        AsmInstruction::Mov { asm_type, src, dst } => AsmInstruction::Mov { asm_type, src: f(src), dst: f(dst) },
-        AsmInstruction::Movsx { src, src_type, dst, dst_type } => AsmInstruction::Movsx { src_type: src_type, src: f(src), dst_type: dst_type, dst: f(dst) },
-        AsmInstruction::MovZeroExtend { src, src_type, dst, dst_type } => AsmInstruction::MovZeroExtend { src_type: src_type, src: f(src), dst_type: dst_type, dst: f(dst) },
-        AsmInstruction::Lea { src, dst } => AsmInstruction::Lea { src: f(src), dst: f(dst) },
-        AsmInstruction::Cvttsd2si { asm_type, src, dst } => AsmInstruction::Cvttsd2si { asm_type, src: f(src), dst: f(dst) },
-        AsmInstruction::Cvtsi2sd {asm_type, src, dst } => AsmInstruction::Cvtsi2sd { asm_type, src: f(src), dst: f(dst) },
-        AsmInstruction::Unary { op, asm_type, operand} => AsmInstruction::Unary { op, asm_type, operand: f(operand) },
-        AsmInstruction::Binary { op, asm_type, lhs, rhs } => AsmInstruction::Binary { asm_type: asm_type, op: op, lhs: f(lhs), rhs: f(rhs) },
-        AsmInstruction::Cmp { asm_type, lhs, rhs } => AsmInstruction::Cmp { asm_type, lhs: f(lhs), rhs: f(rhs) },
-        AsmInstruction::Idiv { asm_type, operand } => AsmInstruction::Idiv { asm_type, operand: f(operand) },
-        AsmInstruction::Div { asm_type, operand } => AsmInstruction::Div { asm_type, operand: f(operand) },
-        AsmInstruction::SetCC { condition, operand } => AsmInstruction::SetCC { condition, operand: f(operand) },
+        AsmInstruction::Mov { asm_type, src, dst } => AsmInstruction::Mov {
+            asm_type,
+            src: f(src),
+            dst: f(dst),
+        },
+        AsmInstruction::Movsx {
+            src,
+            src_type,
+            dst,
+            dst_type,
+        } => AsmInstruction::Movsx {
+            src_type: src_type,
+            src: f(src),
+            dst_type: dst_type,
+            dst: f(dst),
+        },
+        AsmInstruction::MovZeroExtend {
+            src,
+            src_type,
+            dst,
+            dst_type,
+        } => AsmInstruction::MovZeroExtend {
+            src_type: src_type,
+            src: f(src),
+            dst_type: dst_type,
+            dst: f(dst),
+        },
+        AsmInstruction::Lea { src, dst } => AsmInstruction::Lea {
+            src: f(src),
+            dst: f(dst),
+        },
+        AsmInstruction::Cvttsd2si { asm_type, src, dst } => AsmInstruction::Cvttsd2si {
+            asm_type,
+            src: f(src),
+            dst: f(dst),
+        },
+        AsmInstruction::Cvtsi2sd { asm_type, src, dst } => AsmInstruction::Cvtsi2sd {
+            asm_type,
+            src: f(src),
+            dst: f(dst),
+        },
+        AsmInstruction::Unary {
+            op,
+            asm_type,
+            operand,
+        } => AsmInstruction::Unary {
+            op,
+            asm_type,
+            operand: f(operand),
+        },
+        AsmInstruction::Binary {
+            op,
+            asm_type,
+            lhs,
+            rhs,
+        } => AsmInstruction::Binary {
+            asm_type: asm_type,
+            op: op,
+            lhs: f(lhs),
+            rhs: f(rhs),
+        },
+        AsmInstruction::Cmp { asm_type, lhs, rhs } => AsmInstruction::Cmp {
+            asm_type,
+            lhs: f(lhs),
+            rhs: f(rhs),
+        },
+        AsmInstruction::Idiv { asm_type, operand } => AsmInstruction::Idiv {
+            asm_type,
+            operand: f(operand),
+        },
+        AsmInstruction::Div { asm_type, operand } => AsmInstruction::Div {
+            asm_type,
+            operand: f(operand),
+        },
+        AsmInstruction::SetCC { condition, operand } => AsmInstruction::SetCC {
+            condition,
+            operand: f(operand),
+        },
         AsmInstruction::Push(v) => AsmInstruction::Push(f(v)),
-        AsmInstruction::Label(_) | AsmInstruction::Call(_) | AsmInstruction::Ret |
-        AsmInstruction::Cdq { .. } | AsmInstruction::Jmp { .. } | AsmInstruction::JmpCC { .. } | _ => instr,
+        AsmInstruction::Label(_)
+        | AsmInstruction::Call(_)
+        | AsmInstruction::Ret
+        | AsmInstruction::Cdq { .. }
+        | AsmInstruction::Jmp { .. }
+        | AsmInstruction::JmpCC { .. }
+        | _ => instr,
     }
 }
 

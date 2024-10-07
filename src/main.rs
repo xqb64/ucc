@@ -6,7 +6,7 @@ use structopt::StructOpt;
 
 use ucc::ir::{IRInstruction, IRProgram, IRValue, Optimization};
 use ucc::{
-    codegen::{build_asm_symbol_table, AsmType, Codegen, Fixup, ReplacePseudo, RegAlloc},
+    codegen::{build_asm_symbol_table, AsmType, Codegen, Fixup, RegAlloc, ReplacePseudo},
     emitter::Emit,
     ir::{convert_symbols_to_tacky, IRNode, Irfy, Optimize},
     lexer::{Lexer, Token},
@@ -107,7 +107,8 @@ fn run(opts: &Opt) -> Result<()> {
 
     fn analyze_program(program: &IRProgram) -> BTreeSet<String> {
         fn analyze(instrs: &[IRInstruction]) -> BTreeSet<String> {
-            instrs.iter()
+            instrs
+                .iter()
                 .filter_map(|instr| match instr {
                     IRInstruction::GetAddress { src, dst } => match &src {
                         IRValue::Var(v) => Some(v.clone()),
@@ -117,9 +118,10 @@ fn run(opts: &Opt) -> Result<()> {
                 })
                 .collect()
         }
-        
-        
-        program.functions.iter()
+
+        program
+            .functions
+            .iter()
             .filter_map(|tl| match tl {
                 IRNode::Function(f) => {
                     let vars = analyze(&f.body);
@@ -128,7 +130,7 @@ fn run(opts: &Opt) -> Result<()> {
                     } else {
                         None
                     }
-                },
+                }
                 // Handle other top-level items if necessary
                 _ => None,
             })
@@ -137,11 +139,14 @@ fn run(opts: &Opt) -> Result<()> {
                 acc
             })
     }
-    
 
     let aliased_pseudos = analyze_program(&optimized_prog);
 
-    let mut asm_prog = optimized_prog.codegen().reg_alloc(&aliased_pseudos).replace_pseudo().fixup(&BTreeSet::new());
+    let mut asm_prog = optimized_prog
+        .codegen()
+        .reg_alloc(&aliased_pseudos)
+        .replace_pseudo()
+        .fixup(&BTreeSet::new());
 
     if opts.codegen {
         println!("{:#?}", asm_prog);

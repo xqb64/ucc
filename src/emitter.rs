@@ -432,11 +432,15 @@ impl Emit for AsmInstruction {
             } => {
                 let suffix = match (&src_type, &dst_type) {
                     (AsmType::Longword, AsmType::Longword) => "l",
+                    (AsmType::Longword, AsmType::Quadword) => "l",
                     (AsmType::Byte, AsmType::Longword) => "zbl",
                     (AsmType::Byte, AsmType::Quadword) => "zbq",
                     (AsmType::Quadword, AsmType::Byte) => "zqb",
                     (AsmType::Longword, AsmType::Byte) => "zlb",
-                    _ => unreachable!(),
+                    _ => {
+                        dbg!(src_type, dst_type);
+                        unreachable!()
+                    }
                 };
 
                 write!(f, "mov{} ", suffix)?;
