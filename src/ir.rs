@@ -1353,6 +1353,9 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                         _type: entry._type.clone(),
                         global,
                         init: vec![match &entry._type {
+                            Type::Char => StaticInit::Char(0),
+                            Type::SChar => StaticInit::Char(0),
+                            Type::UChar => StaticInit::UChar(0),
                             Type::Int => StaticInit::Int(0),
                             Type::Long => StaticInit::Long(0),
                             Type::Ulong => StaticInit::ULong(0),
@@ -1365,7 +1368,10 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                             Type::Struct { tag } => {
                                 StaticInit::Zero(TYPE_TABLE.lock().unwrap().get(tag).unwrap().size)
                             }
-                            _ => unimplemented!(),
+                            _ => {
+                                dbg!(&entry);
+                                unimplemented!()
+                            }
                         }],
                     }))
                 }
