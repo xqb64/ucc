@@ -4658,7 +4658,7 @@ impl RegAlloc for AsmFunction {
             &static_vars,
             aliased_pseudos,
             &self.instructions,
-            GP_REGISTERS,
+            &RegisterClass::GP,
         );
         // print_graphviz(&self.name, &gp_graph);
 
@@ -4668,7 +4668,7 @@ impl RegAlloc for AsmFunction {
         let colored_gp_graph = color_graph(gp_spilled_graph, GP_REGISTERS.len());
         // print_graphviz(&self.name, &colored_gp_graph);
 
-        let gp_register_map = make_register_map(&self.name, &colored_gp_graph);
+        let gp_register_map = make_register_map(&self.name, &colored_gp_graph, &RegisterClass::GP);
 
         // Allocate XMM Registers
         let xmm_graph = build_interference_graph(
@@ -4676,11 +4676,11 @@ impl RegAlloc for AsmFunction {
             &static_vars,
             aliased_pseudos,
             &self.instructions,
-            XMM_REGISTERS,
+            &RegisterClass::XMM,
         );
         let xmm_spilled_graph = add_spill_costs(xmm_graph, &self.instructions);
         let colored_xmm_graph = color_graph(xmm_spilled_graph, XMM_REGISTERS.len());
-        let xmm_register_map = make_register_map(&self.name, &colored_xmm_graph);
+        let xmm_register_map = make_register_map(&self.name, &colored_xmm_graph, &RegisterClass::XMM);
 
         // Merge GP and XMM register maps
         let mut register_map = gp_register_map;
@@ -4747,12 +4747,12 @@ fn build_interference_graph(
     static_vars: &BTreeSet<String>,
     aliased_pseudos: &BTreeSet<String>,
     instructions: &[AsmInstruction],
-    register_class: &[AsmRegister],
+    register_class: &RegisterClass,
 ) -> Graph {
-    let all_hardregs = register_class
-        .iter()
-        .map(|x| AsmOperand::Register(x.clone()))
-        .collect::<BTreeSet<_>>();
+    let all_hardregs = match register_class {
+        RegisterClass::GP => GP_REGISTERS.iter().map(|x| AsmOperand::Register(*x)).collect(),
+        RegisterClass::XMM => XMM_REGISTERS.iter().map(|x| AsmOperand::Register(*x)).collect(),
+    };
 
     let mut graph = mk_base_graph(&all_hardregs);
 
@@ -4761,9 +4761,9 @@ fn build_interference_graph(
     let cfg: CFG<(), AsmInstruction> =
         CFG::instructions_to_cfg("spam".to_string(), instructions.to_vec());
     let mut analyzed_cfg =
-        LivenessAnalysis::analyze(&fn_name, cfg, static_vars, aliased_pseudos, &all_hardregs);
+        LivenessAnalysis::analyze(&fn_name, cfg, static_vars, aliased_pseudos, &all_hardregs, register_class);
 
-    add_edges(&mut analyzed_cfg, &mut graph);
+    add_edges(&mut analyzed_cfg, &mut graph, register_class);
 
     graph
 }
@@ -4781,13 +4781,14 @@ fn add_edge(graph: &mut Graph, nd_id1: &AsmOperand, nd_id2: &AsmOperand) {
 fn add_edges(
     liveness_cfg: &CFG<BTreeSet<AsmOperand>, AsmInstruction>,
     interference_graph: &mut Graph,
+    register_class: &RegisterClass,
 ) {
     // Iterate over all basic blocks
     for (_, block) in &liveness_cfg.basic_blocks {
         // Iterate over all instructions in the block
         for (live_after_instr, instr) in &block.instructions {
             // Obtain the registers used and written by the instruction
-            let (_unused, updated_regs) = regs_used_and_written(instr);
+            let (_unused, updated_regs) = regs_used_and_written(instr, register_class);
 
             // Define a closure to handle each live register
             let mut handle_livereg = |l: &AsmOperand| {
@@ -4824,7 +4825,7 @@ fn add_edges(
 type OperandSet = BTreeSet<AsmOperand>;
 
 // Function to get the registers used and written in an instruction
-fn regs_used_and_written(instr: &AsmInstruction) -> (OperandSet, OperandSet) {
+fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass) -> (OperandSet, OperandSet) {
     let (ops_used, ops_written) = match instr {
         AsmInstruction::Mov { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
         AsmInstruction::Movsx { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
@@ -4874,7 +4875,12 @@ fn regs_used_and_written(instr: &AsmInstruction) -> (OperandSet, OperandSet) {
                 }
             };
 
-            let written_regs = CALLER_SAVED_REGISTERS
+            let regs = match register_class {
+                RegisterClass::GP => GP_REGISTERS,
+                RegisterClass::XMM => XMM_REGISTERS,
+            };
+
+            let written_regs = regs
                 .iter()
                 .map(|r| AsmOperand::Register(r.clone()))
                 .collect::<Vec<_>>();
@@ -4969,12 +4975,13 @@ impl LivenessAnalysis {
         static_and_aliased_vars: &BTreeSet<String>,
         block: &BasicBlock<BTreeSet<AsmOperand>, AsmInstruction>,
         end_live_regs: OperandSet,
+        register_class: &RegisterClass
     ) -> BasicBlock<BTreeSet<AsmOperand>, AsmInstruction> {
         let mut current_live_regs = end_live_regs.clone();
         let mut annotated_instructions = Vec::new();
 
         for (idx, instr) in block.instructions.iter().enumerate().rev() {
-            let (regs_used, regs_written) = regs_used_and_written(&instr.1);
+            let (regs_used, regs_written) = regs_used_and_written(&instr.1, register_class);
 
             let without_killed: BTreeSet<_> = current_live_regs
                 .difference(&regs_written)
@@ -4998,6 +5005,7 @@ impl LivenessAnalysis {
         static_vars: &BTreeSet<String>,
         aliased_vars: &BTreeSet<String>,
         all_hardregs: &BTreeSet<AsmOperand>,
+        register_class: &RegisterClass
     ) -> cfg::CFG<BTreeSet<AsmOperand>, AsmInstruction> {
         // Initialize the CFG with empty live variable sets
         let mut starting_cfg = cfg.initialize_annotation(BTreeSet::new());
@@ -5021,7 +5029,7 @@ impl LivenessAnalysis {
             let live_vars_at_exit = Self::meet(fn_name, &starting_cfg, &blk, all_hardregs);
 
             // Transfer function: propagate live variables through the block
-            let block = Self::transfer(&static_and_aliased_vars, &blk, live_vars_at_exit);
+            let block = Self::transfer(&static_and_aliased_vars, &blk, live_vars_at_exit, register_class);
 
             // Update the CFG with the new block
             starting_cfg.update_basic_block(block_idx, block.clone());
@@ -5073,12 +5081,12 @@ fn get_operands(instr: &AsmInstruction) -> Vec<AsmOperand> {
 
 fn pseudo_is_current_type(
     op: &AsmOperand,
-    register_class: &[AsmRegister],
+    register_class: &RegisterClass,
     aliased_pseudos: &BTreeSet<String>,
 ) -> Option<String> {
     match op {
         AsmOperand::Pseudo(pseudo) => {
-            if register_class.contains(&AsmRegister::AX) {
+            if register_class == &RegisterClass::GP {
                 match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
                     AsmSymtabEntry::Object {
                         _type,
@@ -5095,7 +5103,7 @@ fn pseudo_is_current_type(
                     }
                     _ => None,
                 }
-            } else if register_class.contains(&AsmRegister::XMM0) {
+            } else if register_class == &RegisterClass::XMM {
                 match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
                     AsmSymtabEntry::Object {
                         _type,
@@ -5123,7 +5131,7 @@ fn pseudo_is_current_type(
 fn get_pseudo_nodes(
     aliased_pseudos: &BTreeSet<String>,
     instructions: &[AsmInstruction],
-    register_class: &[AsmRegister],
+    register_class: &RegisterClass,
 ) -> Vec<Node> {
     fn initialize_node(pseudo: String) -> Node {
         Node {
@@ -5157,7 +5165,7 @@ fn add_pseudo_nodes(
     graph: &mut Graph,
     aliased_pseudos: &BTreeSet<String>,
     instructions: &[AsmInstruction],
-    register_class: &[AsmRegister],
+    register_class: &RegisterClass,
 ) {
     let pseudo_nodes = get_pseudo_nodes(aliased_pseudos, instructions, register_class);
 
@@ -5415,6 +5423,7 @@ type StringMap = BTreeMap<String, AsmRegister>;
 fn make_register_map(
     fn_name: &str,
     graph: &BTreeMap<NodeId, Node>,
+    register_class: &RegisterClass,
 ) -> BTreeMap<String, AsmRegister> {
     // Step 1: Build map from colors to hard registers
     let mut colors_to_regs: IntMap = BTreeMap::new();
@@ -5452,7 +5461,11 @@ fn make_register_map(
         } = node
         {
             if let Some(hardreg) = colors_to_regs.get(c) {
-                if !CALLER_SAVED_REGISTERS.contains(hardreg) {
+                let regs = match register_class {
+                    RegisterClass::GP => GP_REGISTERS,
+                    RegisterClass::XMM => XMM_REGISTERS,
+                };
+                if !regs.contains(hardreg) {
                     used_callee_saved.insert(hardreg.clone());
                 }
 
@@ -5651,7 +5664,8 @@ const XMM_REGISTERS: &[AsmRegister] = &[
     AsmRegister::XMM13,
 ];
 
-const CALLER_SAVED_REGISTERS: &[AsmRegister] = &[
+// General-Purpose Caller-Saved Registers
+const GP_CALLER_SAVED_REGISTERS: &[AsmRegister] = &[
     AsmRegister::AX,
     AsmRegister::CX,
     AsmRegister::DX,
@@ -5660,3 +5674,34 @@ const CALLER_SAVED_REGISTERS: &[AsmRegister] = &[
     AsmRegister::R8,
     AsmRegister::R9,
 ];
+
+// XMM Caller-Saved Registers
+const XMM_CALLER_SAVED_REGISTERS: &[AsmRegister] = &[
+    AsmRegister::XMM0,
+    AsmRegister::XMM1,
+    AsmRegister::XMM2,
+    AsmRegister::XMM3,
+    AsmRegister::XMM4,
+    AsmRegister::XMM5,
+    AsmRegister::XMM6,
+    AsmRegister::XMM7,
+    AsmRegister::XMM8,
+    AsmRegister::XMM9,
+    AsmRegister::XMM10,
+    AsmRegister::XMM11,
+    AsmRegister::XMM12,
+    AsmRegister::XMM13,
+];
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum RegisterClass {
+    GP,
+    XMM,
+}
+
+fn get_caller_saved_registers(register_class: &RegisterClass) -> &[AsmRegister] {
+    match register_class {
+        RegisterClass::GP => GP_CALLER_SAVED_REGISTERS,
+        RegisterClass::XMM => XMM_CALLER_SAVED_REGISTERS,
+    }
+}
