@@ -8,8 +8,7 @@ use crate::{
         make_temporary, BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRStaticConstant,
         IRStaticVariable, IRValue, UnaryOp,
     }, lexer::Const, parser::Type, typechecker::{
-        get_common_type, get_signedness, get_size_of_type, is_scalar, IdentifierAttrs, MemberEntry,
-        StaticInit, CURRENT_FN_RETURNS_ON_STACK, SYMBOL_TABLE, TYPE_TABLE,
+        get_common_type, get_signedness, get_size_of_type, is_scalar, round_up, IdentifierAttrs, MemberEntry, StaticInit, CURRENT_FN_RETURNS_ON_STACK, SYMBOL_TABLE, TYPE_TABLE
     }
 };
 
@@ -2026,15 +2025,15 @@ impl ReplacePseudo for AsmFunction {
 }
 
 pub trait Fixup {
-    fn fixup(&mut self) -> Self;
+    fn fixup(&mut self, callee_saved_args: &HashSet<AsmRegister>) -> Self;
 }
 
 impl Fixup for AsmNode {
-    fn fixup(&mut self) -> Self {
+    fn fixup(&mut self, callee_saved_args: &HashSet<AsmRegister>) -> Self {
         match self {
-            AsmNode::Program(prog) => AsmNode::Program(prog.fixup()),
-            AsmNode::Function(func) => AsmNode::Function(func.fixup()),
-            AsmNode::Instructions(instrs) => AsmNode::Instructions(instrs.fixup()),
+            AsmNode::Program(prog) => AsmNode::Program(prog.fixup(callee_saved_args)),
+            AsmNode::Function(func) => AsmNode::Function(func.fixup(callee_saved_args)),
+            AsmNode::Instructions(instrs) => AsmNode::Instructions(instrs.fixup(callee_saved_args)),
             AsmNode::Operand(op) => AsmNode::Operand(op.clone()),
             AsmNode::StaticVariable(static_var) => AsmNode::StaticVariable(static_var.clone()),
             AsmNode::StaticConstant(static_const) => AsmNode::StaticConstant(static_const.clone()),
@@ -2043,11 +2042,25 @@ impl Fixup for AsmNode {
 }
 
 impl Fixup for AsmProgram {
-    fn fixup(&mut self) -> AsmProgram {
+    fn fixup(&mut self, _callee_saved_args: &HashSet<AsmRegister>) -> AsmProgram {
         let mut functions = vec![];
 
         for func in &mut self.functions {
-            functions.push(func.fixup());
+            let func_name = match func {
+                AsmNode::Function(f) => f.name.clone(),
+                _ => unreachable!(),
+            };
+
+            let symbol = ASM_SYMBOL_TABLE.lock().unwrap().get(&func_name).cloned().unwrap();
+            let callee_saved_args = match symbol {
+                AsmSymtabEntry::Function {
+                    callee_saved_regs_used,
+                    ..
+                } => callee_saved_regs_used,
+                _ => unreachable!(),
+            };
+    
+            functions.push(func.fixup(&callee_saved_args));
         }
 
         AsmProgram {
@@ -2059,8 +2072,34 @@ impl Fixup for AsmProgram {
 }
 
 impl Fixup for AsmFunction {
-    fn fixup(&mut self) -> AsmFunction {
+    fn fixup(&mut self, callee_saved_args: &HashSet<AsmRegister>) -> AsmFunction {
         let mut instructions = vec![];
+
+
+        fn emit_stack_adjustment(bytes_for_locals: usize, callee_saved_count: usize) -> AsmInstruction {
+            let callee_saved_bytes = 8 * callee_saved_count;
+        
+            let total_stack_bytes = callee_saved_bytes + bytes_for_locals;
+        
+            let adjusted_stack_bytes = round_up(16, total_stack_bytes);
+        
+            let stack_adjustment = (adjusted_stack_bytes - callee_saved_bytes) as i64;
+        
+            AsmInstruction::Binary {
+                op: AsmBinaryOp::Sub,
+                asm_type: AsmType::Quadword,
+                lhs: AsmOperand::Imm(stack_adjustment),
+                rhs: AsmOperand::Register(AsmRegister::SP),
+            }
+        }
+
+        instructions.push(emit_stack_adjustment(self.stack_space, callee_saved_args.len()));
+
+        let save_reg = |r: &AsmRegister| AsmInstruction::Push(AsmOperand::Register(r.clone()));
+
+        for reg in callee_saved_args {
+            instructions.push(save_reg(reg));
+        }
 
         for instr in &mut self.instructions {
             match instr {
@@ -3422,6 +3461,19 @@ impl Fixup for AsmFunction {
                     }
                     _ => instructions.push(instr.clone()),
                 },
+                AsmInstruction::Ret => {
+                    let restore_regs: Vec<AsmInstruction> = callee_saved_args
+                        .iter()
+                        .collect::<Vec<_>>()
+                        .iter()
+                        .rev() // Reverse the order to match `List.rev_map`
+                        .map(|r| AsmInstruction::Pop(r.clone().clone()))
+                        .collect();
+
+                    instructions.extend(restore_regs);
+                    instructions.push(AsmInstruction::Ret);
+                    
+                }
                 _ => instructions.push(instr.clone()),
             }
         }
@@ -3436,7 +3488,7 @@ impl Fixup for AsmFunction {
 }
 
 impl Fixup for Vec<AsmInstruction> {
-    fn fixup(&mut self) -> Vec<AsmInstruction> {
+    fn fixup(&mut self, _callee_saved_args: &HashSet<AsmRegister>) -> Vec<AsmInstruction> {
         let mut instructions = vec![];
 
         for instr in self {
@@ -4368,13 +4420,13 @@ impl RegAlloc for AsmFunction {
         let static_vars = SYMBOL_TABLE.lock().unwrap().iter().filter(|(name, symbol)| match symbol.attrs { IdentifierAttrs::StaticAttr { .. } => true, _ => false }).map(|(name, symbol)| name.clone()).collect();
 
         let gp_graph = build_interference_graph(&self.name, &static_vars, aliased_pseudos, &self.instructions, GP_REGISTERS);
-        print_graphviz(&self.name, &gp_graph);
+        // print_graphviz(&self.name, &gp_graph);
         
         let gp_spilled_graph = add_spill_costs(gp_graph, &self.instructions);
-        print_graphviz(&self.name, &gp_spilled_graph);
+        // print_graphviz(&self.name, &gp_spilled_graph);
 
         let colored_gp_graph = color_graph(gp_spilled_graph, GP_REGISTERS.len());
-        print_graphviz(&self.name, &colored_gp_graph);
+        // print_graphviz(&self.name, &colored_gp_graph);
 
         let gp_register_map = make_register_map(&self.name, &colored_gp_graph, GP_REGISTERS, CALLER_SAVED_REGISTERS);
 
@@ -4820,8 +4872,6 @@ fn add_pseudo_nodes(
     register_class: &[AsmRegister],
 ) {
     let pseudo_nodes = get_pseudo_nodes(aliased_pseudos, instructions, register_class);
-
-    dbg!(&pseudo_nodes);
 
     for node in pseudo_nodes {
         graph.insert(node.id.clone(), node); // Insert node into the graph

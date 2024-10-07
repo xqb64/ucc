@@ -141,7 +141,7 @@ fn run(opts: &Opt) -> Result<()> {
 
     let aliased_pseudos = analyze_program(&optimized_prog);
 
-    let mut asm_prog = optimized_prog.codegen().reg_alloc(&aliased_pseudos).replace_pseudo().fixup();
+    let mut asm_prog = optimized_prog.codegen().reg_alloc(&aliased_pseudos).replace_pseudo().fixup(&HashSet::new());
 
     if opts.codegen {
         println!("{:#?}", asm_prog);

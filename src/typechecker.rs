@@ -92,7 +92,7 @@ fn alignment(t: &Type) -> usize {
     }
 }
 
-fn round_up(value: usize, alignment: usize) -> usize {
+pub fn round_up(value: usize, alignment: usize) -> usize {
     (value + alignment - 1) & !(alignment - 1)
 }
 
