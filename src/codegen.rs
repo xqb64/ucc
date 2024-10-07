@@ -3319,6 +3319,23 @@ impl Fixup for AsmFunction {
                         instructions.push(instr.clone());
                     }
                 }
+                AsmInstruction::Push(AsmOperand::Register(reg)) if is_xmm(reg) => {
+                    instructions.extend(
+                        vec![
+                            AsmInstruction::Binary {
+                                asm_type: AsmType::Quadword,
+                                op: AsmBinaryOp::Sub,
+                                lhs: AsmOperand::Imm(8),
+                                rhs: AsmOperand::Register(AsmRegister::SP),
+                            },
+                            AsmInstruction::Mov {
+                                asm_type: AsmType::Quadword,
+                                src: AsmOperand::Register(*reg),
+                                dst: AsmOperand::Memory(AsmRegister::SP, 0),
+                            },
+                        ]
+                    )
+                }
                 AsmInstruction::Cvttsd2si { asm_type, src, dst } => match (&src, &dst, *asm_type) {
                     (
                         AsmOperand::Memory(AsmRegister::BP, _),
@@ -3530,6 +3547,10 @@ impl Fixup for Vec<AsmInstruction> {
 
         instructions
     }
+}
+
+fn is_xmm(r: &AsmRegister) -> bool {
+    matches!(r, AsmRegister::XMM0 | AsmRegister::XMM1 | AsmRegister::XMM2 | AsmRegister::XMM3 | AsmRegister::XMM4 | AsmRegister::XMM5 | AsmRegister::XMM6 | AsmRegister::XMM7 | AsmRegister::XMM8 | AsmRegister::XMM9 | AsmRegister::XMM10 | AsmRegister::XMM11 | AsmRegister::XMM12 | AsmRegister::XMM13 | AsmRegister::XMM14 | AsmRegister::XMM15)
 }
 
 impl From<AsmNode> for AsmFunction {
