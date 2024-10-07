@@ -1369,7 +1369,6 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                                 StaticInit::Zero(TYPE_TABLE.lock().unwrap().get(tag).unwrap().size)
                             }
                             _ => {
-                                dbg!(&entry);
                                 unimplemented!()
                             }
                         }],
@@ -1689,7 +1688,7 @@ fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
                 src: IRValue::Constant(konst),
                 dst,
             } => {
-                optimized_instructions.extend(dbg!(evaluate_cast(konst, dst)));
+                optimized_instructions.extend(evaluate_cast(konst, dst));
             }
             _ => {
                 optimized_instructions.push(instr.clone());
@@ -2215,7 +2214,6 @@ fn transfer(
                     src: dst.clone(),
                     dst: src.clone(),
                 }) {
-                    println!("current_copies");
                     current_copies
                 } else if same_type(src, dst) {
                     let updated = filter_updated(current_copies, dst);
@@ -2307,23 +2305,11 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
 
         let (block_idx, blk) = worklist.remove(0);
 
-        println!("block: {}", block_idx);
-
-        println!("ident: {:?}", ident);
-
-        // starting_cfg.print_as_graphviz();
-
         let old_annotation = blk.value.clone();
-
-        println!("old_annotation: {:?}", old_annotation);
 
         let incoming_copies = meet(&ident, &starting_cfg, &blk);
 
-        println!("incoming_copies: {:?}", incoming_copies);
-
         let block = transfer(aliased_vars, &blk, incoming_copies);
-
-        println!("block after transfer: {:?}", block.value);
 
         starting_cfg.update_basic_block(block_idx, block);
 

@@ -2131,8 +2131,6 @@ impl Fixup for AsmFunction {
 
         self.instructions.splice(0..0, instructions_setup);
 
-        println!("{:#?}", self.instructions);
-
         for instr in &mut self.instructions {
             match instr {
                 AsmInstruction::Pop(reg) if is_xmm(&reg) => {
@@ -2167,6 +2165,7 @@ impl Fixup for AsmFunction {
                     dst,
                 } => match (&src, &dst) {
                     (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
+                        println!("Data, Data");
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Double,
@@ -2181,6 +2180,7 @@ impl Fixup for AsmFunction {
                         ]);
                     }
                     (AsmOperand::Memory(_, _), AsmOperand::Data(_, _)) => {
+                        println!("Memory, Data");
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Double,
@@ -2195,6 +2195,7 @@ impl Fixup for AsmFunction {
                         ]);
                     }
                     (AsmOperand::Data(_, _), AsmOperand::Memory(_, _)) => {
+                        println!("Data, Memory");
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Double,
@@ -2209,6 +2210,7 @@ impl Fixup for AsmFunction {
                         ]);
                     }
                     (AsmOperand::Memory(_, _), AsmOperand::Memory(_, _)) => {
+                        println!("Memory, Memory");
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Double,
@@ -2222,7 +2224,10 @@ impl Fixup for AsmFunction {
                             },
                         ]);
                     }
-                    _ => instructions.push(instr.clone()),
+                    _ => {
+                        println!("Cloning: {:?}", instr.clone());
+                        instructions.push(instr.clone());
+                    }
                 },
                 AsmInstruction::Mov {
                     asm_type: AsmType::Quadword,
@@ -2650,7 +2655,6 @@ impl Fixup for AsmFunction {
                 } if is_large(*imm)
                     && matches!(rhs, AsmOperand::Memory(_, _) | AsmOperand::Data(_, _)) =>
                 {
-                    // Rewrite both operands
                     instructions.extend(vec![
                         AsmInstruction::Mov {
                             asm_type: AsmType::Quadword,
@@ -2681,7 +2685,6 @@ impl Fixup for AsmFunction {
                     lhs: AsmOperand::Imm(imm),
                     rhs,
                 } if is_large(*imm) => {
-                    // Just rewrite src
                     instructions.extend(vec![
                         AsmInstruction::Mov {
                             asm_type: AsmType::Quadword,
@@ -2702,22 +2705,26 @@ impl Fixup for AsmFunction {
                     lhs,
                     rhs,
                 } if matches!(rhs, AsmOperand::Memory(_, _) | AsmOperand::Data(_, _)) => {
-                    // Rewrite dst only
+                    let scratch = if asm_type == &AsmType::Double {
+                        AsmOperand::Register(AsmRegister::XMM15)
+                    } else {
+                        AsmOperand::Register(AsmRegister::R11)
+                    };
                     instructions.extend(vec![
                         AsmInstruction::Mov {
                             asm_type: *asm_type,
                             src: rhs.clone(),
-                            dst: AsmOperand::Register(AsmRegister::R11),
+                            dst: scratch.clone(),
                         },
                         AsmInstruction::Binary {
                             asm_type: *asm_type,
                             op: AsmBinaryOp::Mul,
                             lhs: lhs.clone(),
-                            rhs: AsmOperand::Register(AsmRegister::R11),
+                            rhs: scratch.clone(),
                         },
                         AsmInstruction::Mov {
                             asm_type: *asm_type,
-                            src: AsmOperand::Register(AsmRegister::R11),
+                            src: scratch.clone(),
                             dst: rhs.clone(),
                         },
                     ]);
@@ -3022,7 +3029,9 @@ impl Fixup for AsmFunction {
                                     ]);
                                 }
                             }
-                            _ => instructions.push(instr.clone()),
+                            _ => {
+                                instructions.push(instr.clone());
+                            }
                         }
                     }
                     AsmBinaryOp::Xor => match (&lhs, &rhs) {
@@ -5225,7 +5234,6 @@ fn print_graphviz(fn_name: &str, graph: &Graph) {
     let mut file = match std::fs::File::create(&dot_filename) {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("Failed to create DOT file: {}", e);
             return;
         }
     };
@@ -5463,12 +5471,6 @@ fn make_register_map(
         }
     }
 
-    // Debug: Print the colors_to_regs map
-    println!("Color Map:");
-    for (color, reg) in &colors_to_regs {
-        println!("  Color {} -> Register {:?}", color, reg);
-    }
-
     // Step 2: Build map from pseudoregisters to hard registers
     let mut used_callee_saved: RegSet = BTreeSet::new();
     let mut reg_map: StringMap = BTreeMap::new();
@@ -5487,13 +5489,6 @@ fn make_register_map(
                 }
 
                 reg_map.insert(p.clone(), hardreg.clone());
-
-                println!("Inserting into reg_map: {} -> {:?}", p, hardreg);
-            } else {
-                println!(
-                    "Warning: Pseudoregister '{}' has no assigned hard register (potential spill)",
-                    p
-                );
             }
         }
     }

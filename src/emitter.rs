@@ -438,7 +438,6 @@ impl Emit for AsmInstruction {
                     (AsmType::Quadword, AsmType::Byte) => "zqb",
                     (AsmType::Longword, AsmType::Byte) => "zlb",
                     _ => {
-                        dbg!(src_type, dst_type);
                         unreachable!()
                     }
                 };

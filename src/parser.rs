@@ -186,8 +186,6 @@ impl Parser {
 
     fn parse_var_or_fn_decl(&mut self) -> Result<BlockItem> {
         let specifier_list = self.consume_while_specifier();
-        println!("specifier_list: {:?}", specifier_list);
-
         let (base_type, storage_class) = self.parse_type_and_storage_specifiers(&specifier_list)?;
 
         let declarator = self.parse_declarator()?;
@@ -579,7 +577,6 @@ impl Parser {
                 Token::Static => Some(StorageClass::Static),
                 Token::Extern => Some(StorageClass::Extern),
                 _ => {
-                    println!("{:?}", storage_classes);
                     unreachable!()
                 }
             }

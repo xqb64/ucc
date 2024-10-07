@@ -456,7 +456,6 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             let mut static_inits = vec![];
 
             for init_elem in compound_init {
-                println!("current init_elem: {:?}", init_elem);
                 let member = struct_def.members[i].clone();
                 if member.offset != current_offset {
                     static_inits.push(StaticInit::Zero(member.offset - current_offset));

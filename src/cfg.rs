@@ -514,7 +514,6 @@ where
 
         writeln!(file, "}}").unwrap();
 
-        println!("running dot command");
         // Convert the dot file to png
         std::process::Command::new("dot")
             .arg("-Tpng")
