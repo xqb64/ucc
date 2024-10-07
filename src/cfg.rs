@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-
+use std::collections::BTreeMap;
 use crate::ir::make_temporary;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,7 +34,7 @@ impl dyn Instr {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum NodeId {
     Entry,
     Block(usize), // Block ID is represented by an index
@@ -349,10 +349,10 @@ where
     }
 
     fn add_all_edges(&mut self) {
-        use std::collections::HashMap;
+        use std::collections::BTreeMap;
 
         // Create a map from labels to block IDs
-        let mut label_map = HashMap::new();
+        let mut label_map = BTreeMap::new();
         for (_, block) in &self.basic_blocks {
             if let SimpleInstr::Label(lbl) = block.instructions[0].1.simplify() {
                 label_map.insert(lbl.clone(), block.id.clone());

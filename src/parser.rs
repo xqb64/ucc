@@ -1,6 +1,6 @@
 use crate::lexer::{Const, Token};
 use anyhow::{bail, Result};
-use std::collections::{HashSet, VecDeque};
+use std::collections::{BTreeSet, VecDeque};
 
 pub struct Parser {
     pub tokens: VecDeque<Token>,
@@ -518,7 +518,7 @@ impl Parser {
             [Token::Char, Token::Unsigned] => Ok(Type::UChar),
             _ => {
                 // Check for invalid specifiers
-                let unique_specifiers: HashSet<_> = sorted_specifiers.iter().collect();
+                let unique_specifiers: BTreeSet<_> = sorted_specifiers.iter().collect();
                 if sorted_specifiers.is_empty()
                     || unique_specifiers.len() != sorted_specifiers.len()
                     || sorted_specifiers.contains(&Token::Double)

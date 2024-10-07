@@ -13,7 +13,7 @@ use crate::{
     },
 };
 use anyhow::{bail, Result};
-use std::{cmp::max, collections::HashMap, sync::Mutex};
+use std::{cmp::max, collections::BTreeMap, sync::Mutex};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Symbol {
@@ -36,8 +36,8 @@ pub struct MemberEntry {
 }
 
 lazy_static::lazy_static! {
-    pub static ref SYMBOL_TABLE: Mutex<HashMap<String, Symbol>> = Mutex::new(HashMap::new());
-    pub static ref TYPE_TABLE: Mutex<HashMap<String, StructEntry>> = Mutex::new(HashMap::new());
+    pub static ref SYMBOL_TABLE: Mutex<BTreeMap<String, Symbol>> = Mutex::new(BTreeMap::new());
+    pub static ref TYPE_TABLE: Mutex<BTreeMap<String, StructEntry>> = Mutex::new(BTreeMap::new());
     pub static ref CURRENT_FN_RETURNS_ON_STACK: Mutex<isize> = Mutex::new(0);
 }
 
@@ -97,14 +97,14 @@ pub fn round_up(value: usize, alignment: usize) -> usize {
 }
 
 fn validate_struct_definition(definition: &mut StructDeclaration) -> Result<()> {
-    use std::collections::HashSet;
+    use std::collections::BTreeSet;
 
     let tag = &definition.tag;
 
     if TYPE_TABLE.lock().unwrap().contains_key(tag) {
         panic!("Structure was already declared");
     } else {
-        let mut member_names = HashSet::new();
+        let mut member_names = BTreeSet::new();
 
         for member in &definition.members {
             let member_name = &member.name;

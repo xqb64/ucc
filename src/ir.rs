@@ -1418,7 +1418,7 @@ impl Optimize for IRProgram {
     }
 }
 
-fn address_taken_analysis(instrs: &[IRInstruction]) -> HashSet<String> {
+fn address_taken_analysis(instrs: &[IRInstruction]) -> BTreeSet<String> {
     let addr_taken = |instr: &IRInstruction| -> Option<String> {
         match instr {
             IRInstruction::GetAddress { src, dst: _ } => {
@@ -1948,10 +1948,10 @@ fn is_zero(konst: &Const) -> bool {
     }
 }
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 // Module aliases and utility sets
-type NodeSet = HashSet<NodeId>;
+type NodeSet = BTreeSet<NodeId>;
 
 // DFS to find reachable blocks
 pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
@@ -1974,7 +1974,7 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
         }
     }
 
-    let mut reachable_block_ids = HashSet::new();
+    let mut reachable_block_ids = BTreeSet::new();
     dfs(cfg, &mut reachable_block_ids, NodeId::Entry);
 
     let mut edges_to_remove = vec![];
@@ -2116,11 +2116,11 @@ pub struct Cp {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct ReachingCopies(HashSet<Cp>);
+pub struct ReachingCopies(BTreeSet<Cp>);
 
 impl ReachingCopies {
     pub fn new() -> Self {
-        ReachingCopies(HashSet::new())
+        ReachingCopies(BTreeSet::new())
     }
 
     pub fn intersection(self, other: &ReachingCopies) -> ReachingCopies {
@@ -2158,7 +2158,7 @@ fn is_static(var: &str) -> bool {
     }
 }
 
-fn var_is_aliased(aliased_vars: &HashSet<String>, v: &IRValue) -> bool {
+fn var_is_aliased(aliased_vars: &BTreeSet<String>, v: &IRValue) -> bool {
     match v {
         IRValue::Constant(_) => false,
         IRValue::Var(var) => aliased_vars.contains(var) || is_static(var),
@@ -2194,7 +2194,7 @@ fn get_dst(instr: &IRInstruction) -> Option<IRValue> {
 }
 
 fn transfer(
-    aliased_vars: &HashSet<String>,
+    aliased_vars: &BTreeSet<String>,
     block: &BasicBlock<ReachingCopies, IRInstruction>,
     initial_reaching_copies: ReachingCopies,
 ) -> BasicBlock<ReachingCopies, IRInstruction> {
@@ -2285,7 +2285,7 @@ fn meet(
 }
 
 fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
-    aliased_vars: &HashSet<String>,
+    aliased_vars: &BTreeSet<String>,
     cfg: cfg::CFG<(), IRInstruction>,
 ) -> cfg::CFG<ReachingCopies, IRInstruction> {
     let ident = collect_all_copies(&cfg);
@@ -2344,7 +2344,7 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
 }
 
 fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(
-    aliased_vars: &HashSet<String>,
+    aliased_vars: &BTreeSet<String>,
     cfg: cfg::CFG<(), IRInstruction>,
 ) -> cfg::CFG<(), IRInstruction> {
     let annotated_cfg = find_reaching_copies::<(), IRInstruction>(aliased_vars, cfg);
@@ -2558,10 +2558,10 @@ impl std::fmt::Debug for Cp {
 }
 
 fn dead_store_elimination<V: Clone + Debug, I: Clone + Debug + Instr>(
-    aliased_vars: &HashSet<String>,
+    aliased_vars: &BTreeSet<String>,
     cfg: cfg::CFG<(), IRInstruction>,
 ) -> cfg::CFG<(), IRInstruction> {
-    let mut static_vars = HashSet::new();
+    let mut static_vars = BTreeSet::new();
 
     for (k, v) in SYMBOL_TABLE.lock().unwrap().iter() {
         match v.attrs {
@@ -2572,11 +2572,11 @@ fn dead_store_elimination<V: Clone + Debug, I: Clone + Debug + Instr>(
         }
     }
 
-    // Find live variables (this returns an annotated CFG with HashSet<String> as annotations)
+    // Find live variables (this returns an annotated CFG with BTreeSet<String> as annotations)
     let annotated_cfg = find_live_variables(&static_vars, aliased_vars, cfg);
 
     // Rewrite the basic blocks to eliminate dead stores
-    let rewrite_block = |(idx, block): (usize, BasicBlock<HashSet<String>, IRInstruction>)| -> (usize, BasicBlock<HashSet<String>, IRInstruction>) {
+    let rewrite_block = |(idx, block): (usize, BasicBlock<BTreeSet<String>, IRInstruction>)| -> (usize, BasicBlock<BTreeSet<String>, IRInstruction>) {
         let new_instructions = block
             .instructions
             .into_iter()
@@ -2604,10 +2604,10 @@ fn dead_store_elimination<V: Clone + Debug, I: Clone + Debug + Instr>(
             .collect(),
         ..annotated_cfg
     }
-    .strip_annotations() // Remove the annotations (HashSet<String>)
+    .strip_annotations() // Remove the annotations (BTreeSet<String>)
 }
 
-fn is_dead_store((live_vars, i): &(HashSet<String>, IRInstruction)) -> bool {
+fn is_dead_store((live_vars, i): &(BTreeSet<String>, IRInstruction)) -> bool {
     match i {
         IRInstruction::Call { .. } | IRInstruction::Store { .. } => false,
         _ => match get_dst(i) {
@@ -2618,21 +2618,21 @@ fn is_dead_store((live_vars, i): &(HashSet<String>, IRInstruction)) -> bool {
 }
 
 fn find_live_variables(
-    static_vars: &HashSet<String>,
-    aliased_vars: &HashSet<String>,
+    static_vars: &BTreeSet<String>,
+    aliased_vars: &BTreeSet<String>,
     cfg: cfg::CFG<(), IRInstruction>,
-) -> cfg::CFG<HashSet<String>, IRInstruction> {
+) -> cfg::CFG<BTreeSet<String>, IRInstruction> {
     // Initialize the CFG with empty live variable sets
-    let mut starting_cfg = cfg.initialize_annotation(HashSet::new());
+    let mut starting_cfg = cfg.initialize_annotation(BTreeSet::new());
 
     // Combine static variables and aliased variables
     let static_and_aliased_vars = static_vars
         .union(aliased_vars)
         .cloned()
-        .collect::<HashSet<_>>();
+        .collect::<BTreeSet<_>>();
 
     // Create the worklist by cloning the basic blocks
-    let mut worklist: Vec<(usize, BasicBlock<HashSet<String>, IRInstruction>)> =
+    let mut worklist: Vec<(usize, BasicBlock<BTreeSet<String>, IRInstruction>)> =
         starting_cfg.basic_blocks.clone();
 
     // Process the worklist in a loop
@@ -2675,11 +2675,11 @@ fn find_live_variables(
 }
 
 fn meet_dead_store(
-    static_vars: &HashSet<String>,
-    cfg: &cfg::CFG<HashSet<String>, IRInstruction>,
-    block: &BasicBlock<HashSet<String>, IRInstruction>,
-) -> HashSet<String> {
-    let mut live = HashSet::new();
+    static_vars: &BTreeSet<String>,
+    cfg: &cfg::CFG<BTreeSet<String>, IRInstruction>,
+    block: &BasicBlock<BTreeSet<String>, IRInstruction>,
+) -> BTreeSet<String> {
+    let mut live = BTreeSet::new();
 
     for succ in &block.succs {
         match succ {
@@ -2697,13 +2697,13 @@ fn meet_dead_store(
 }
 
 fn transfer_dead_store(
-    static_and_aliased_vars: &HashSet<String>,
-    block: BasicBlock<HashSet<String>, IRInstruction>,
-    end_live_variables: HashSet<String>,
-) -> BasicBlock<HashSet<String>, IRInstruction> {
-    let process_instr = |mut current_live_vars: HashSet<String>,
-                         (_, i): &(HashSet<String>, IRInstruction)|
-     -> (HashSet<String>, (HashSet<String>, IRInstruction)) {
+    static_and_aliased_vars: &BTreeSet<String>,
+    block: BasicBlock<BTreeSet<String>, IRInstruction>,
+    end_live_variables: BTreeSet<String>,
+) -> BasicBlock<BTreeSet<String>, IRInstruction> {
+    let process_instr = |mut current_live_vars: BTreeSet<String>,
+                         (_, i): &(BTreeSet<String>, IRInstruction)|
+     -> (BTreeSet<String>, (BTreeSet<String>, IRInstruction)) {
         let annotated_instr = (current_live_vars.clone(), i.clone());
 
         match i {
@@ -2788,8 +2788,8 @@ fn transfer_dead_store(
     };
 
     let (incoming_live_vars, annotated_reversed_instructions): (
-        HashSet<String>,
-        Vec<(HashSet<String>, IRInstruction)>,
+        BTreeSet<String>,
+        Vec<(BTreeSet<String>, IRInstruction)>,
     ) = block.instructions.iter().rev().fold(
         (end_live_variables, Vec::new()),
         |(current_copies, mut annotated_instrs), instr| {

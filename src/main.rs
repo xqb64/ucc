@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::{collections::VecDeque, fs::File, path::PathBuf};
 
 use anyhow::{bail, Result};
@@ -54,8 +54,8 @@ fn run(opts: &Opt) -> Result<()> {
         std::process::exit(0);
     }
 
-    let mut variable_map = HashMap::new();
-    let mut struct_map = HashMap::new();
+    let mut variable_map = BTreeMap::new();
+    let mut struct_map = BTreeMap::new();
 
     let cooked_ast = raw_ast
         .resolve(&mut variable_map, &mut struct_map)?
@@ -105,8 +105,8 @@ fn run(opts: &Opt) -> Result<()> {
 
     build_asm_symbol_table();
 
-    fn analyze_program(program: &IRProgram) -> HashSet<String> {
-        fn analyze(instrs: &[IRInstruction]) -> HashSet<String> {
+    fn analyze_program(program: &IRProgram) -> BTreeSet<String> {
+        fn analyze(instrs: &[IRInstruction]) -> BTreeSet<String> {
             instrs.iter()
                 .filter_map(|instr| match instr {
                     IRInstruction::GetAddress { src, dst } => match &src {
@@ -132,7 +132,7 @@ fn run(opts: &Opt) -> Result<()> {
                 // Handle other top-level items if necessary
                 _ => None,
             })
-            .fold(HashSet::new(), |mut acc, hs| {
+            .fold(BTreeSet::new(), |mut acc, hs| {
                 acc.extend(hs);
                 acc
             })
@@ -141,7 +141,7 @@ fn run(opts: &Opt) -> Result<()> {
 
     let aliased_pseudos = analyze_program(&optimized_prog);
 
-    let mut asm_prog = optimized_prog.codegen().reg_alloc(&aliased_pseudos).replace_pseudo().fixup(&HashSet::new());
+    let mut asm_prog = optimized_prog.codegen().reg_alloc(&aliased_pseudos).replace_pseudo().fixup(&BTreeSet::new());
 
     if opts.codegen {
         println!("{:#?}", asm_prog);

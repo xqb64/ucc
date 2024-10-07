@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     sync::Mutex,
 };
 
@@ -151,7 +151,7 @@ pub enum ConditionCode {
     BE,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum AsmOperand {
     Imm(i64),
     Pseudo(String),
@@ -162,7 +162,7 @@ pub enum AsmOperand {
     Indexed(AsmRegister, AsmRegister, isize),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
 pub enum AsmRegister {
     AX,
     BX,
@@ -2025,11 +2025,11 @@ impl ReplacePseudo for AsmFunction {
 }
 
 pub trait Fixup {
-    fn fixup(&mut self, callee_saved_args: &HashSet<AsmRegister>) -> Self;
+    fn fixup(&mut self, callee_saved_args: &BTreeSet<AsmRegister>) -> Self;
 }
 
 impl Fixup for AsmNode {
-    fn fixup(&mut self, callee_saved_args: &HashSet<AsmRegister>) -> Self {
+    fn fixup(&mut self, callee_saved_args: &BTreeSet<AsmRegister>) -> Self {
         match self {
             AsmNode::Program(prog) => AsmNode::Program(prog.fixup(callee_saved_args)),
             AsmNode::Function(func) => AsmNode::Function(func.fixup(callee_saved_args)),
@@ -2042,7 +2042,7 @@ impl Fixup for AsmNode {
 }
 
 impl Fixup for AsmProgram {
-    fn fixup(&mut self, _callee_saved_args: &HashSet<AsmRegister>) -> AsmProgram {
+    fn fixup(&mut self, _callee_saved_args: &BTreeSet<AsmRegister>) -> AsmProgram {
         let mut functions = vec![];
 
         for func in &mut self.functions {
@@ -2074,7 +2074,7 @@ impl Fixup for AsmProgram {
 }
 
 impl Fixup for AsmFunction {
-    fn fixup(&mut self, callee_saved_args: &HashSet<AsmRegister>) -> AsmFunction {
+    fn fixup(&mut self, callee_saved_args: &BTreeSet<AsmRegister>) -> AsmFunction {
         let mut instructions = vec![];
 
         fn round_away_from_zero(n: i64, x: i64) -> i64 {
@@ -3501,7 +3501,7 @@ impl Fixup for AsmFunction {
 }
 
 impl Fixup for Vec<AsmInstruction> {
-    fn fixup(&mut self, _callee_saved_args: &HashSet<AsmRegister>) -> Vec<AsmInstruction> {
+    fn fixup(&mut self, _callee_saved_args: &BTreeSet<AsmRegister>) -> Vec<AsmInstruction> {
         let mut instructions = vec![];
 
         for instr in self {
@@ -3869,7 +3869,7 @@ pub fn build_asm_symbol_table() {
                             defined,
                             bytes_required: 0,
                             returns_on_stack,
-                            callee_saved_regs_used: HashSet::new(),
+                            callee_saved_regs_used: BTreeSet::new(),
                             param_regs,
                             return_regs,
                         }
@@ -3880,7 +3880,7 @@ pub fn build_asm_symbol_table() {
                             defined,
                             bytes_required: 0,
                             returns_on_stack: false,
-                            callee_saved_regs_used: HashSet::new(),
+                            callee_saved_regs_used: BTreeSet::new(),
                             param_regs: Vec::new(),
                             return_regs: Vec::new(),
                         }
@@ -3997,7 +3997,7 @@ pub enum AsmSymtabEntry {
         bytes_required: usize,
         param_regs: Vec<AsmRegister>,
         return_regs: Vec<AsmRegister>,
-        callee_saved_regs_used: HashSet<AsmRegister>,
+        callee_saved_regs_used: BTreeSet<AsmRegister>,
     },
     Object {
         _type: AsmType,
@@ -4012,14 +4012,14 @@ pub struct StackPosition(pub i64);
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarToStackPos {
     last_used_stack_pos: StackPosition,
-    var_to_stack_pos: HashMap<String, StackPosition>,
+    var_to_stack_pos: BTreeMap<String, StackPosition>,
 }
 
 impl Default for VarToStackPos {
     fn default() -> Self {
         Self {
             last_used_stack_pos: StackPosition(0),
-            var_to_stack_pos: HashMap::new(),
+            var_to_stack_pos: BTreeMap::new(),
         }
     }
 }
@@ -4111,7 +4111,7 @@ impl Alignment {
 }
 
 lazy_static::lazy_static! {
-    pub static ref ASM_SYMBOL_TABLE: Mutex<HashMap<String, AsmSymtabEntry>> = Mutex::new(HashMap::new());
+    pub static ref ASM_SYMBOL_TABLE: Mutex<BTreeMap<String, AsmSymtabEntry>> = Mutex::new(BTreeMap::new());
     static ref VAR_TO_STACK_POS: Mutex<VarToStackPos> = Mutex::new(VarToStackPos::default());
 }
 
@@ -4412,11 +4412,11 @@ fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
 }
 
 pub trait RegAlloc {
-    fn reg_alloc(&mut self, aliased_pseudos: &HashSet<String>) -> Self;
+    fn reg_alloc(&mut self, aliased_pseudos: &BTreeSet<String>) -> Self;
 }
 
 impl RegAlloc for AsmProgram {
-    fn reg_alloc(&mut self, aliased_pseudos: &HashSet<String>) -> Self {
+    fn reg_alloc(&mut self, aliased_pseudos: &BTreeSet<String>) -> Self {
         let mut functions = vec![];
         for func in &mut self.functions {
             functions.push(match func {
@@ -4429,7 +4429,7 @@ impl RegAlloc for AsmProgram {
 }
 
 impl RegAlloc for AsmFunction {
-    fn reg_alloc(&mut self, aliased_pseudos: &HashSet<String>) -> Self {
+    fn reg_alloc(&mut self, aliased_pseudos: &BTreeSet<String>) -> Self {
         let static_vars = SYMBOL_TABLE.lock().unwrap().iter().filter(|(name, symbol)| match symbol.attrs { IdentifierAttrs::StaticAttr { .. } => true, _ => false }).map(|(name, symbol)| name.clone()).collect();
 
         let gp_graph = build_interference_graph(&self.name, &static_vars, aliased_pseudos, &self.instructions, GP_REGISTERS);
@@ -4441,13 +4441,13 @@ impl RegAlloc for AsmFunction {
         let colored_gp_graph = color_graph(gp_spilled_graph, GP_REGISTERS.len());
         // print_graphviz(&self.name, &colored_gp_graph);
 
-        let gp_register_map = make_register_map(&self.name, &colored_gp_graph, GP_REGISTERS, CALLER_SAVED_REGISTERS);
+        let gp_register_map = make_register_map(&self.name, &colored_gp_graph);
 
         // Allocate XMM Registers
         let xmm_graph = build_interference_graph(&self.name, &static_vars, aliased_pseudos, &self.instructions, XMM_REGISTERS);
         let xmm_spilled_graph = add_spill_costs(xmm_graph, &self.instructions);
         let colored_xmm_graph = color_graph(xmm_spilled_graph, XMM_REGISTERS.len());
-        let xmm_register_map = make_register_map(&self.name, &colored_xmm_graph, XMM_REGISTERS, CALLER_SAVED_REGISTERS);
+        let xmm_register_map = make_register_map(&self.name, &colored_xmm_graph);
 
         // Merge GP and XMM register maps
         let mut register_map = gp_register_map;
@@ -4465,7 +4465,7 @@ impl RegAlloc for AsmFunction {
 }
 
 impl RegAlloc for AsmNode {
-    fn reg_alloc(&mut self, aliased_pseudos: &HashSet<String>) -> Self {
+    fn reg_alloc(&mut self, aliased_pseudos: &BTreeSet<String>) -> Self {
         match self {
             AsmNode::Program(prog) => AsmNode::Program(prog.reg_alloc(aliased_pseudos)),
             AsmNode::Function(f) => AsmNode::Function(f.reg_alloc(aliased_pseudos)),
@@ -4479,16 +4479,16 @@ type NodeId = AsmOperand;
 #[derive(Debug, Clone, PartialEq)]
 struct Node {
     id: NodeId,
-    neighbors: HashSet<AsmOperand>,
+    neighbors: BTreeSet<AsmOperand>,
     spill_cost: f64,
     color: Option<usize>,
     pruned: bool,
 }
 
-type Graph = HashMap<NodeId, Node>;
+type Graph = BTreeMap<NodeId, Node>;
 
-fn mk_base_graph(all_hardregs: &HashSet<AsmOperand>) -> Graph {
-    let mut graph = HashMap::new();
+fn mk_base_graph(all_hardregs: &BTreeSet<AsmOperand>) -> Graph {
+    let mut graph = BTreeMap::new();
 
     for r in all_hardregs.iter() {
         let node = Node {
@@ -4507,14 +4507,14 @@ fn mk_base_graph(all_hardregs: &HashSet<AsmOperand>) -> Graph {
 
 fn build_interference_graph(
     fn_name: &str,
-    static_vars: &HashSet<String>,
-    aliased_pseudos: &HashSet<String>,
+    static_vars: &BTreeSet<String>,
+    aliased_pseudos: &BTreeSet<String>,
     instructions: &[AsmInstruction],
     register_class: &[AsmRegister],
 ) -> Graph {
     let all_hardregs = register_class.iter()
         .map(|x| AsmOperand::Register(x.clone()))
-        .collect::<HashSet<_>>();
+        .collect::<BTreeSet<_>>();
 
     let mut graph = mk_base_graph(&all_hardregs);
 
@@ -4538,7 +4538,7 @@ fn add_edge(graph: &mut Graph, nd_id1: &AsmOperand, nd_id2: &AsmOperand) {
     }
 }
 
-fn add_edges(liveness_cfg: &CFG<HashSet<AsmOperand>, AsmInstruction>, interference_graph: &mut Graph) {
+fn add_edges(liveness_cfg: &CFG<BTreeSet<AsmOperand>, AsmInstruction>, interference_graph: &mut Graph) {
     // Iterate over all basic blocks
     for (_, block) in &liveness_cfg.basic_blocks {
         // Iterate over all instructions in the block
@@ -4578,7 +4578,7 @@ fn add_edges(liveness_cfg: &CFG<HashSet<AsmOperand>, AsmInstruction>, interferen
     }
 }
 
-type OperandSet = HashSet<AsmOperand>;
+type OperandSet = BTreeSet<AsmOperand>;
 
 // Function to get the registers used and written in an instruction
 fn regs_used_and_written(instr: &AsmInstruction) -> (OperandSet, OperandSet) {
@@ -4682,9 +4682,9 @@ struct LivenessAnalysis;
 impl LivenessAnalysis {
     fn meet(
         fn_name: &str,
-        cfg: &CFG<HashSet<AsmOperand>, AsmInstruction>, 
-        block: &BasicBlock<HashSet<AsmOperand>, AsmInstruction>,
-        all_hardregs: &HashSet<AsmOperand>,
+        cfg: &CFG<BTreeSet<AsmOperand>, AsmInstruction>, 
+        block: &BasicBlock<BTreeSet<AsmOperand>, AsmInstruction>,
+        all_hardregs: &BTreeSet<AsmOperand>,
     ) -> OperandSet {
         let mut live_at_exit = OperandSet::new();
     
@@ -4709,17 +4709,17 @@ impl LivenessAnalysis {
     }
     
     fn transfer(
-        static_and_aliased_vars: &HashSet<String>,
-        block: &BasicBlock<HashSet<AsmOperand>, AsmInstruction>, 
+        static_and_aliased_vars: &BTreeSet<String>,
+        block: &BasicBlock<BTreeSet<AsmOperand>, AsmInstruction>, 
         end_live_regs: OperandSet
-    ) -> BasicBlock<HashSet<AsmOperand>, AsmInstruction> {
+    ) -> BasicBlock<BTreeSet<AsmOperand>, AsmInstruction> {
         let mut current_live_regs = end_live_regs.clone();
         let mut annotated_instructions = Vec::new();
         
         for (idx, instr) in block.instructions.iter().enumerate().rev() {
             let (regs_used, regs_written) = regs_used_and_written(&instr.1);
     
-            let without_killed: HashSet<_> = current_live_regs.difference(&regs_written).cloned().collect();
+            let without_killed: BTreeSet<_> = current_live_regs.difference(&regs_written).cloned().collect();
             current_live_regs = without_killed.union(&regs_used).cloned().collect();
     
             annotated_instructions.push((current_live_regs.clone(), instr.1.clone()));
@@ -4735,21 +4735,21 @@ impl LivenessAnalysis {
     fn analyze(
         fn_name: &str,
         cfg: cfg::CFG<(), AsmInstruction>,
-        static_vars: &HashSet<String>,
-        aliased_vars: &HashSet<String>,
-        all_hardregs: &HashSet<AsmOperand>,
-    ) -> cfg::CFG<HashSet<AsmOperand>, AsmInstruction> {
+        static_vars: &BTreeSet<String>,
+        aliased_vars: &BTreeSet<String>,
+        all_hardregs: &BTreeSet<AsmOperand>,
+    ) -> cfg::CFG<BTreeSet<AsmOperand>, AsmInstruction> {
         // Initialize the CFG with empty live variable sets
-        let mut starting_cfg = cfg.initialize_annotation(HashSet::new());
+        let mut starting_cfg = cfg.initialize_annotation(BTreeSet::new());
     
         // Combine static variables and aliased variables
         let static_and_aliased_vars = static_vars
             .union(aliased_vars)
             .cloned()
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
     
         // Create the worklist by cloning the basic blocks
-        let mut worklist: Vec<(usize, BasicBlock<HashSet<AsmOperand>, AsmInstruction>)> =
+        let mut worklist: Vec<(usize, BasicBlock<BTreeSet<AsmOperand>, AsmInstruction>)> =
             starting_cfg.basic_blocks.clone();
     
         // Process the worklist in a loop
@@ -4812,7 +4812,7 @@ fn get_operands(instr: &AsmInstruction) -> Vec<AsmOperand> {
     }
 }
 
-fn pseudo_is_current_type(op: &AsmOperand, register_class: &[AsmRegister], aliased_pseudos: &HashSet<String>) -> Option<String> {
+fn pseudo_is_current_type(op: &AsmOperand, register_class: &[AsmRegister], aliased_pseudos: &BTreeSet<String>) -> Option<String> {
     match op {
         AsmOperand::Pseudo(pseudo) => {
             if register_class.contains(&AsmRegister::AX) {
@@ -4846,7 +4846,7 @@ fn pseudo_is_current_type(op: &AsmOperand, register_class: &[AsmRegister], alias
  }
 
 fn get_pseudo_nodes(
-    aliased_pseudos: &HashSet<String>,
+    aliased_pseudos: &BTreeSet<String>,
     instructions: &[AsmInstruction],
     register_class: &[AsmRegister],
 ) -> Vec<Node> {
@@ -4880,7 +4880,7 @@ fn get_pseudo_nodes(
 
 fn add_pseudo_nodes(
     graph: &mut Graph,
-    aliased_pseudos: &HashSet<String>,
+    aliased_pseudos: &BTreeSet<String>,
     instructions: &[AsmInstruction],
     register_class: &[AsmRegister],
 ) {
@@ -5007,11 +5007,11 @@ impl Instr for AsmInstruction {
 
 // Assuming `AsmInstruction`, `AsmOperand`, `Pseudo`, `Node`, and `Graph` are already defined
 fn add_spill_costs(
-    graph: HashMap<NodeId, Node>,
+    graph: BTreeMap<NodeId, Node>,
     instructions: &[AsmInstruction],
-) -> HashMap<NodeId, Node> {
+) -> BTreeMap<NodeId, Node> {
     // Increment the count for a pseudo, or set it to 1 if not present
-    let incr_count = |counts: &mut HashMap<String, usize>, pseudo: &str| {
+    let incr_count = |counts: &mut BTreeMap<String, usize>, pseudo: &str| {
         *counts.entry(pseudo.to_string()).or_insert(0) += 1;
     };
 
@@ -5031,7 +5031,7 @@ fn add_spill_costs(
         .collect();
 
     // Create a map from pseudoregs to counts - this may include pseudos that aren't in the interference graph
-    let mut count_map: HashMap<String, usize> = HashMap::new();
+    let mut count_map: BTreeMap<String, usize> = BTreeMap::new();
     for pseudo in pseudos {
         incr_count(&mut count_map, &pseudo);
     }
@@ -5092,7 +5092,7 @@ fn color_graph(
     // Assign colors
     while let Some(node_id) = stack.pop() {
         let node = graph.get(&node_id).unwrap();
-        let mut used_colors = HashSet::new();
+        let mut used_colors = BTreeSet::new();
 
         for neighbor_id in &node.neighbors {
             if let Some(neighbor) = graph.get(neighbor_id) {
@@ -5117,26 +5117,41 @@ fn color_graph(
     graph
 }
 
+type IntMap = BTreeMap<usize, AsmRegister>;
+type RegSet = BTreeSet<AsmRegister>;
+type StringMap = BTreeMap<String, AsmRegister>;
+
 fn make_register_map(
     fn_name: &str,
-    graph: &HashMap<NodeId, Node>,
-    register_class: &[AsmRegister],
-    caller_saved_registers: &[AsmRegister],
-) -> HashMap<String, AsmRegister> {
-    // Step 1: Map colors to hard registers
-    let mut color_map: HashMap<usize, AsmRegister> = HashMap::new();
+    graph: &BTreeMap<NodeId, Node>,
+) -> BTreeMap<String, AsmRegister> {
+    // Step 1: Build map from colors to hard registers
+    let mut colors_to_regs: IntMap = BTreeMap::new();
 
-    for node in graph.values() {
-        if let NodeId::Register(ref reg) = node.id {
-            if let Some(color) = node.color {
-                color_map.insert(color, reg.clone());
+    for (nd_id, node) in graph.iter() {
+        match nd_id {
+            NodeId::Register(r) => {
+                if let Some(color) = node.color {
+                    // Insert color -> register into colors_to_regs
+                    // In Rust, BTreeMap::insert replaces existing entries, but colors are unique
+                    colors_to_regs.insert(color, r.clone());
+                }
+            }
+            _ => {
+                // Ignore other NodeId variants
             }
         }
     }
 
-    // Step 2: Assign pseudoregisters to hard registers based on color
-    let mut reg_map: HashMap<String, AsmRegister> = HashMap::new();
-    let mut used_callee_saved: HashSet<AsmRegister> = HashSet::new();
+    // Debug: Print the colors_to_regs map
+    println!("Color Map:");
+    for (color, reg) in &colors_to_regs {
+        println!("  Color {} -> Register {:?}", color, reg);
+    }
+
+    // Step 2: Build map from pseudoregisters to hard registers
+    let mut used_callee_saved: RegSet = BTreeSet::new();
+    let mut reg_map: StringMap = BTreeMap::new();
 
     for node in graph.values() {
         if let Node {
@@ -5145,38 +5160,44 @@ fn make_register_map(
             ..
         } = node
         {
-            if let Some(hardreg) = color_map.get(&c) {
-                // Determine if the hard register is callee-saved
-                if !caller_saved_registers.contains(hardreg) {
+            // Find the corresponding hard register for the color
+            if let Some(hardreg) = colors_to_regs.get(c) {
+                // Determine if the hard register is caller-saved
+                if !CALLER_SAVED_REGISTERS.contains(hardreg) {
                     used_callee_saved.insert(hardreg.clone());
                 }
 
-                println!("inserting into regmap {} -> {:?}", p, hardreg);
+                // Insert pseudoregister -> hard register into reg_map
                 reg_map.insert(p.clone(), hardreg.clone());
+
+                // Debug: Print the mapping
+                println!("Inserting into reg_map: {} -> {:?}", p, hardreg);
             } else {
-                // Handle uncolored nodes (potential spills)
-                // For simplicity, we'll skip them here, but you can implement spill handling
-                println!("Warning: Pseudoregister {} has no assigned hard register (potential spill)", p);
+                // Handle the case where color is not found (potential spill)
+                println!(
+                    "Warning: Pseudoregister '{}' has no assigned hard register (potential spill)",
+                    p
+                );
+                // You can choose to handle spills here
             }
         }
     }
 
     // Step 3: Update the symbol table with used callee-saved registers
-    if let Some(symbol) = ASM_SYMBOL_TABLE.lock().unwrap().get_mut(fn_name) {
-        match symbol {
-            AsmSymtabEntry::Function { ref mut callee_saved_regs_used, .. } => {
-                callee_saved_regs_used.extend(used_callee_saved);
-            }
-            _ => unreachable!(),
+    if let Some(func) = ASM_SYMBOL_TABLE.lock().unwrap().get_mut(fn_name) {
+        if let AsmSymtabEntry::Function { ref mut callee_saved_regs_used, .. } = func {
+            callee_saved_regs_used.extend(used_callee_saved);
         }
     }
 
+    // Return the register map
     reg_map
 }
 
+
 fn replace_pseudoregs(
     instructions: &Vec<AsmInstruction>,
-    reg_map: &HashMap<String, AsmRegister>,
+    reg_map: &BTreeMap<String, AsmRegister>,
 ) -> Vec<AsmInstruction> {
     let replace_op = |op: AsmOperand| -> AsmOperand {
         match op {
