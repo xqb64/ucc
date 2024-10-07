@@ -5115,59 +5115,43 @@ fn get_operands(instr: &AsmInstruction) -> Vec<AsmOperand> {
 }
 
 fn pseudo_is_current_type(
-    op: &AsmOperand,
+    pseudo: &str,
     register_class: &RegisterClass,
-    aliased_pseudos: &BTreeSet<String>,
-) -> Option<String> {
-    match op {
-        AsmOperand::Pseudo(pseudo) => {
-            if register_class == &RegisterClass::GP {
-                match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
-                    AsmSymtabEntry::Object {
-                        _type,
-                        is_static,
-                        is_constant,
-                    } => {
-                        if _type != &AsmType::Double
-                            && !(*is_static || aliased_pseudos.contains(pseudo))
-                        {
-                            return Some(pseudo.clone());
-                        } else {
-                            return None;
-                        }
-                    }
-                    _ => None,
-                }
-            } else if register_class == &RegisterClass::XMM {
-                match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
-                    AsmSymtabEntry::Object {
-                        _type,
-                        is_static,
-                        is_constant,
-                    } => {
-                        if _type == &AsmType::Double
-                            && !(*is_static || aliased_pseudos.contains(pseudo))
-                        {
-                            return Some(pseudo.clone());
-                        } else {
-                            return None;
-                        }
-                    }
-                    _ => None,
-                }
-            } else {
-                None
+) -> bool {
+    if register_class == &RegisterClass::GP {
+        match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
+            AsmSymtabEntry::Object {
+                _type,
+                is_static,
+                is_constant,
+            } => {
+                return _type != &AsmType::Double;
             }
+            _ => false,
         }
-        _ => None,
+    } else if register_class == &RegisterClass::XMM {
+        match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
+            AsmSymtabEntry::Object {
+                _type,
+                is_static,
+                is_constant,
+            } => {
+                return _type == &AsmType::Double;
+            }
+            _ => false,
+        }
+    } else {
+        false
     }
 }
 
+ 
 fn get_pseudo_nodes(
     aliased_pseudos: &BTreeSet<String>,
     instructions: &[AsmInstruction],
     register_class: &RegisterClass,
 ) -> Vec<Node> {
+    // Helper to initialize a node for a pseudo-register
     fn initialize_node(pseudo: String) -> Node {
         Node {
             id: NodeId::Pseudo(pseudo),
@@ -5178,12 +5162,39 @@ fn get_pseudo_nodes(
         }
     }
 
+    fn is_static(pseudo: &str) -> bool {
+        match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
+            AsmSymtabEntry::Object {
+                _type,
+                is_static,
+                is_constant: _,
+            } => *is_static,
+            _ => false,
+        }
+    }
+
+    // Helper function to check if the operand is a pseudo of the current type
+    fn pseudo_is_valid(
+        pseudo: &String,
+        register_class: &RegisterClass,
+        aliased_pseudos: &BTreeSet<String>,
+    ) -> bool {
+        // Assume `pseudo_is_current_type` and `is_static` are helper functions
+        pseudo_is_current_type(pseudo, register_class) && !is_static(pseudo) && !aliased_pseudos.contains(pseudo)
+    }
+
+    // Extract and filter pseudo-registers from the instructions
     let mut pseudos: Vec<String> = instructions
         .iter()
         .flat_map(|instr| {
             get_operands(instr)
                 .iter()
-                .filter_map(|op| pseudo_is_current_type(op, register_class, aliased_pseudos))
+                .filter_map(|op| match op {
+                    AsmOperand::Pseudo(r) if pseudo_is_valid(r, register_class, aliased_pseudos) => {
+                        Some(r.clone())
+                    }
+                    _ => None,
+                })
                 .collect::<Vec<_>>()
         })
         .collect();
@@ -5195,6 +5206,7 @@ fn get_pseudo_nodes(
     // Initialize nodes for each unique pseudo-register
     pseudos.into_iter().map(initialize_node).collect()
 }
+
 
 fn add_pseudo_nodes(
     graph: &mut Graph,
