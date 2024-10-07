@@ -2059,6 +2059,8 @@ impl Fixup for AsmProgram {
                 } => callee_saved_regs_used,
                 _ => unreachable!(),
             };
+
+            dbg!(&callee_saved_args);
     
             functions.push(func.fixup(&callee_saved_args));
         }
@@ -2075,15 +2077,26 @@ impl Fixup for AsmFunction {
     fn fixup(&mut self, callee_saved_args: &HashSet<AsmRegister>) -> AsmFunction {
         let mut instructions = vec![];
 
-
+        fn round_away_from_zero(n: i64, x: i64) -> i64 {
+            if n == 0 {
+                panic!("`n` must be a non-zero integer.");
+            }
+        
+            match x {
+                x if x % n == 0 => x,
+                x if x < 0 => x - n - (x % n),
+                x => x + n - (x % n),
+            }
+        }
+        
         fn emit_stack_adjustment(bytes_for_locals: usize, callee_saved_count: usize) -> AsmInstruction {
             let callee_saved_bytes = 8 * callee_saved_count;
         
             let total_stack_bytes = callee_saved_bytes + bytes_for_locals;
         
-            let adjusted_stack_bytes = round_up(16, total_stack_bytes);
+            let adjusted_stack_bytes = round_away_from_zero(16, total_stack_bytes as i64);
         
-            let stack_adjustment = (adjusted_stack_bytes - callee_saved_bytes) as i64;
+            let stack_adjustment = (adjusted_stack_bytes - callee_saved_bytes as i64) as i64;
         
             AsmInstruction::Binary {
                 op: AsmBinaryOp::Sub,
@@ -5110,15 +5123,27 @@ fn make_register_map(
     register_class: &[AsmRegister],
     caller_saved_registers: &[AsmRegister],
 ) -> HashMap<String, AsmRegister> {
-    // Step 1: Map colors to hard registers
+    // Step 1: Map colors to hard registers using register_class
     let mut color_map: HashMap<usize, AsmRegister> = HashMap::new();
 
-    for node in graph.values() {
-        if let NodeId::Register(ref reg) = node.id {
-            if let Some(color) = node.color {
-                color_map.insert(color, reg.clone());
-            }
+    // Assign unique colors based on the index in register_class
+    for (color, hardreg) in register_class.iter().enumerate() {
+        if color_map.contains_key(&color) {
+            eprintln!(
+                "Error: Duplicate color {} for register {:?}.",
+                color, hardreg
+            );
+            // Handle duplication as needed, e.g., panic or continue
+            // For now, we'll continue
+            continue;
         }
+        color_map.insert(color, hardreg.clone());
+    }
+
+    // Debug: Print the color_map
+    println!("Color Map:");
+    for (color, reg) in &color_map {
+        println!("Color {} -> Register {:?}", color, reg);
     }
 
     // Step 2: Assign pseudoregisters to hard registers based on color
@@ -5138,24 +5163,47 @@ fn make_register_map(
                     used_callee_saved.insert(hardreg.clone());
                 }
 
-                println!("inserting into regmap {} -> {:?}", p, hardreg);
+                println!("Inserting into reg_map: {} -> {:?}", p, hardreg);
                 reg_map.insert(p.clone(), hardreg.clone());
             } else {
                 // Handle uncolored nodes (potential spills)
                 // For simplicity, we'll skip them here, but you can implement spill handling
-                println!("Warning: Pseudoregister {} has no assigned hard register (potential spill)", p);
+                println!(
+                    "Warning: Pseudoregister '{}' has no assigned hard register (potential spill)",
+                    p
+                );
             }
         }
     }
 
     // Step 3: Update the symbol table with used callee-saved registers
-    if let Some(symbol) = ASM_SYMBOL_TABLE.lock().unwrap().get_mut(fn_name) {
+    let mut symbol_table = ASM_SYMBOL_TABLE.lock().unwrap();
+    if let Some(symbol) = symbol_table.get_mut(fn_name) {
         match symbol {
-            AsmSymtabEntry::Function { ref mut callee_saved_regs_used, .. } => {
-                callee_saved_regs_used.extend(used_callee_saved);
+            AsmSymtabEntry::Function {
+                ref mut callee_saved_regs_used,
+                ..
+            } => {
+                callee_saved_regs_used.extend(used_callee_saved.clone());
+                println!(
+                    "Updated callee_saved_regs_used for function '{}': {:?}",
+                    fn_name, callee_saved_regs_used
+                );
             }
-            _ => unreachable!(),
+            _ => {
+                eprintln!(
+                    "Error: Symbol '{}' is not a function or cannot have callee-saved registers.",
+                    fn_name
+                );
+                // Handle as needed, e.g., panic or skip
+            }
         }
+    } else {
+        eprintln!(
+            "Error: Function '{}' not found in ASM_SYMBOL_TABLE.",
+            fn_name
+        );
+        // Handle as needed, e.g., insert a new entry or panic
     }
 
     reg_map
