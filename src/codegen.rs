@@ -4694,7 +4694,7 @@ impl RegAlloc for AsmFunction {
         let gp_spilled_graph = add_spill_costs(gp_graph, &self.instructions);
         // print_graphviz(&self.name, &gp_spilled_graph);
 
-        let colored_gp_graph = color_graph(gp_spilled_graph, GP_REGISTERS.len());
+        let colored_gp_graph = color_graph(gp_spilled_graph, GP_REGISTERS.len(), &RegisterClass::GP);
         // print_graphviz(&self.name, &colored_gp_graph);
 
         let gp_register_map = make_register_map(&self.name, &colored_gp_graph, &RegisterClass::GP);
@@ -4708,7 +4708,7 @@ impl RegAlloc for AsmFunction {
             &RegisterClass::XMM,
         );
         let xmm_spilled_graph = add_spill_costs(xmm_graph, &self.instructions);
-        let colored_xmm_graph = color_graph(xmm_spilled_graph, XMM_REGISTERS.len());
+        let colored_xmm_graph = color_graph(xmm_spilled_graph, XMM_REGISTERS.len(), &RegisterClass::XMM);
         let xmm_register_map = make_register_map(&self.name, &colored_xmm_graph, &RegisterClass::XMM);
 
         // Merge GP and XMM register maps
@@ -5368,9 +5368,11 @@ fn add_spill_costs(
         .collect()
 }
 
-fn color_graph(mut graph: Graph, max_colors: usize) -> Graph {
+use std::collections::VecDeque;
+
+fn color_graph(mut graph: Graph, max_colors: usize, register_class: &RegisterClass) -> Graph {
     // Initialize a stack to keep track of the coloring order
-    let mut stack: Vec<NodeId> = Vec::new();
+    let mut stack: VecDeque<NodeId> = VecDeque::new();
 
     // Repeat until all nodes are pruned
     while !graph.values().all(|nd| nd.pruned) {
@@ -5391,7 +5393,7 @@ fn color_graph(mut graph: Graph, max_colors: usize) -> Graph {
         match node_opt {
             Some(node) => {
                 graph.get_mut(&node.id).unwrap().pruned = true;
-                stack.push(node.id.clone());
+                stack.push_back(node.id.clone());
             }
             None => {
                 // Spill: Choose a node to spill based on spill_cost / degree
@@ -5417,16 +5419,17 @@ fn color_graph(mut graph: Graph, max_colors: usize) -> Graph {
                     .expect("No nodes available to spill");
 
                 graph.get_mut(&spill_node.id).unwrap().pruned = true;
-                stack.push(spill_node.id.clone());
+                stack.push_back(spill_node.id.clone());
             }
         }
     }
 
     // Assign colors
-    while let Some(node_id) = stack.pop() {
+    while let Some(node_id) = stack.pop_back() {
         let node = graph.get(&node_id).unwrap();
         let mut used_colors = BTreeSet::new();
 
+        // Collect colors used by the neighbors
         for neighbor_id in &node.neighbors {
             if let Some(neighbor) = graph.get(neighbor_id) {
                 if let Some(color) = neighbor.color {
@@ -5435,20 +5438,37 @@ fn color_graph(mut graph: Graph, max_colors: usize) -> Graph {
             }
         }
 
-        // Assign the smallest available color
-        let color = (0..max_colors).find(|c| !used_colors.contains(c));
+        // Get all available colors by removing the used colors
+        let mut available_colors: Vec<usize> = (0..max_colors).collect();
+        available_colors.retain(|c| !used_colors.contains(c));
 
-        if let Some(c) = color {
-            graph.get_mut(&node_id).unwrap().color = Some(c);
+        if !available_colors.is_empty() {
+            if let NodeId::Register(reg) = &node_id {
+                let caller_saved_regs = get_caller_saved_registers(register_class);
+
+                if caller_saved_regs.contains(reg) {
+                    // Assign the lowest color for caller-saved registers
+                    graph.get_mut(&node_id).unwrap().color = Some(*available_colors.iter().min().unwrap());
+                } else {
+                    // Assign the highest color for callee-saved registers
+                    graph.get_mut(&node_id).unwrap().color = Some(*available_colors.iter().max().unwrap());
+                }
+            } else {
+                // Default: Assign the lowest available color
+                graph.get_mut(&node_id).unwrap().color = Some(*available_colors.iter().min().unwrap());
+            }
         } else {
-            // Spill handling can be implemented here
-            // For simplicity, we'll leave it uncolored
+            // In case no colors are available, the node remains uncolored (could be a spill)
             graph.get_mut(&node_id).unwrap().color = None;
         }
+
+        // Reset the pruned flag, since we've assigned a color
+        graph.get_mut(&node_id).unwrap().pruned = false;
     }
 
     graph
 }
+
 
 type IntMap = BTreeMap<usize, AsmRegister>;
 type RegSet = BTreeSet<AsmRegister>;
