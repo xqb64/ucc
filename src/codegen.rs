@@ -2563,6 +2563,36 @@ impl Fixup for AsmFunction {
                     }
                     _ => instructions.push(instr.clone()),
                 },
+                AsmInstruction::Binary { asm_type: AsmType::Quadword, op, lhs: AsmOperand::Imm(imm), rhs } if is_large(*imm) && matches!(op, AsmBinaryOp::Add | AsmBinaryOp::Sub | AsmBinaryOp::And | AsmBinaryOp::Or) => {
+                    instructions.extend(vec![
+                        AsmInstruction::Mov { asm_type: AsmType::Quadword, src: AsmOperand::Imm(*imm), dst: AsmOperand::Register(AsmRegister::R10) },
+                        AsmInstruction::Binary { asm_type: AsmType::Quadword, op: *op, lhs: AsmOperand::Register(AsmRegister::R10), rhs: rhs.clone() },
+                    ]);
+                }
+                AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Mul, lhs: AsmOperand::Imm(imm), rhs  } if is_large(*imm) && matches!(rhs, AsmOperand::Memory(_, _) | AsmOperand::Data(_, _)) => {
+                    // Rewrite both operands
+                    instructions.extend(vec![
+                        AsmInstruction::Mov { asm_type: AsmType::Quadword, src: AsmOperand::Imm(*imm), dst: AsmOperand::Register(AsmRegister::R10) },
+                        AsmInstruction::Mov { asm_type: AsmType::Quadword, src: rhs.clone(), dst: AsmOperand::Register(AsmRegister::R11) },
+                        AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Mul, lhs: AsmOperand::Register(AsmRegister::R10), rhs: AsmOperand::Register(AsmRegister::R11) },
+                        AsmInstruction::Mov { asm_type: AsmType::Quadword, src: AsmOperand::Register(AsmRegister::R11), dst: rhs.clone() },
+                    ]);
+                },
+                AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Mul, lhs: AsmOperand::Imm(imm), rhs } if is_large(*imm) => {
+                    // Just rewrite src
+                    instructions.extend(vec![
+                        AsmInstruction::Mov { asm_type: AsmType::Quadword, src: AsmOperand::Imm(*imm), dst: AsmOperand::Register(AsmRegister::R10) },
+                        AsmInstruction::Binary { asm_type: AsmType::Quadword, op: AsmBinaryOp::Mul, lhs: AsmOperand::Register(AsmRegister::R10), rhs: rhs.clone() },
+                    ]);
+                },
+                AsmInstruction::Binary { asm_type, op: AsmBinaryOp::Mul, lhs, rhs } if matches!(rhs, AsmOperand::Memory(_, _) | AsmOperand::Data(_, _)) => {
+                    // Rewrite dst only
+                    instructions.extend(vec![
+                        AsmInstruction::Mov { asm_type: *asm_type, src: rhs.clone(), dst: AsmOperand::Register(AsmRegister::R11) },
+                        AsmInstruction::Binary { asm_type: *asm_type, op: AsmBinaryOp::Mul, lhs: lhs.clone(), rhs: AsmOperand::Register(AsmRegister::R11) },
+                        AsmInstruction::Mov { asm_type: *asm_type, src: AsmOperand::Register(AsmRegister::R11), dst: rhs.clone() },
+                    ]);
+                },                
                 AsmInstruction::Binary {
                     op,
                     lhs,
@@ -3551,6 +3581,10 @@ impl Fixup for Vec<AsmInstruction> {
 
 fn is_xmm(r: &AsmRegister) -> bool {
     matches!(r, AsmRegister::XMM0 | AsmRegister::XMM1 | AsmRegister::XMM2 | AsmRegister::XMM3 | AsmRegister::XMM4 | AsmRegister::XMM5 | AsmRegister::XMM6 | AsmRegister::XMM7 | AsmRegister::XMM8 | AsmRegister::XMM9 | AsmRegister::XMM10 | AsmRegister::XMM11 | AsmRegister::XMM12 | AsmRegister::XMM13 | AsmRegister::XMM14 | AsmRegister::XMM15)
+}
+
+fn is_large(n: i64) -> bool {
+    n > i32::MAX as i64 || n < i32::MIN as i64
 }
 
 impl From<AsmNode> for AsmFunction {
