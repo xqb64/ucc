@@ -5016,6 +5016,8 @@ impl LivenessAnalysis {
         let mut annotated_instructions = Vec::new();
 
         for (idx, instr) in block.instructions.iter().enumerate().rev() {
+            annotated_instructions.push((current_live_regs.clone(), instr.1.clone()));
+            
             let (regs_used, regs_written) = regs_used_and_written(&instr.1, register_class);
 
             let without_killed: BTreeSet<_> = current_live_regs
@@ -5023,8 +5025,6 @@ impl LivenessAnalysis {
                 .cloned()
                 .collect();
             current_live_regs = without_killed.union(&regs_used).cloned().collect();
-
-            annotated_instructions.push((current_live_regs.clone(), instr.1.clone()));
         }
 
         BasicBlock {
