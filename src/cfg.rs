@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::collections::BTreeMap;
 use crate::ir::make_temporary;
 
 #[derive(Clone, Debug, PartialEq, Eq)]

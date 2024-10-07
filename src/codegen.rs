@@ -8,7 +8,7 @@ use crate::{
         make_temporary, BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRStaticConstant,
         IRStaticVariable, IRValue, UnaryOp,
     }, lexer::Const, parser::Type, typechecker::{
-        get_common_type, get_signedness, get_size_of_type, is_scalar, round_up, IdentifierAttrs, MemberEntry, StaticInit, CURRENT_FN_RETURNS_ON_STACK, SYMBOL_TABLE, TYPE_TABLE
+        get_common_type, get_signedness, get_size_of_type, is_scalar, IdentifierAttrs, MemberEntry, StaticInit, CURRENT_FN_RETURNS_ON_STACK, SYMBOL_TABLE, TYPE_TABLE
     }
 };
 
@@ -330,7 +330,7 @@ impl Codegen for IRFunction {
 
         let mut instructions = vec![];
 
-        instructions.push(AsmInstruction::AllocateStack(0));
+        // instructions.push(AsmInstruction::AllocateStack(0));
 
         let (int_reg_params, double_reg_params, stack_params) =
             classify_parameters(&params_as_tacky, return_on_stack);
@@ -2060,8 +2060,6 @@ impl Fixup for AsmProgram {
                 _ => unreachable!(),
             };
 
-            dbg!(&callee_saved_args);
-    
             functions.push(func.fixup(&callee_saved_args));
         }
 
@@ -5160,25 +5158,19 @@ fn make_register_map(
             ..
         } = node
         {
-            // Find the corresponding hard register for the color
             if let Some(hardreg) = colors_to_regs.get(c) {
-                // Determine if the hard register is caller-saved
                 if !CALLER_SAVED_REGISTERS.contains(hardreg) {
                     used_callee_saved.insert(hardreg.clone());
                 }
 
-                // Insert pseudoregister -> hard register into reg_map
                 reg_map.insert(p.clone(), hardreg.clone());
 
-                // Debug: Print the mapping
                 println!("Inserting into reg_map: {} -> {:?}", p, hardreg);
             } else {
-                // Handle the case where color is not found (potential spill)
                 println!(
                     "Warning: Pseudoregister '{}' has no assigned hard register (potential spill)",
                     p
                 );
-                // You can choose to handle spills here
             }
         }
     }
@@ -5204,7 +5196,6 @@ fn replace_pseudoregs(
             AsmOperand::Pseudo(ref p) => {
                 // Try to replace the pseudoreg with a hard register
                 if let Some(&hardreg) = reg_map.get(p) {
-                    println!("replacing");
                     AsmOperand::Register(hardreg)
                 } else {
                     op
@@ -5256,7 +5247,6 @@ where
     }
 }
 
-// Define General-Purpose Registers (GP)
 const GP_REGISTERS: &[AsmRegister] = &[
     AsmRegister::AX,
     AsmRegister::BX,
@@ -5272,7 +5262,6 @@ const GP_REGISTERS: &[AsmRegister] = &[
     AsmRegister::R15,
 ];
 
-// Define XMM Registers
 const XMM_REGISTERS: &[AsmRegister] = &[
     AsmRegister::XMM0,
     AsmRegister::XMM1,

@@ -148,11 +148,11 @@ impl Emit for AsmFunction {
     fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         writeln!(f, ".section .text")?;
 
-        if let Some(instr) = self.instructions.get_mut(0) {
-            *instr = AsmInstruction::AllocateStack(self.stack_space);
-        } else {
-            self.instructions.remove(0);
-        }
+        // if let Some(instr) = self.instructions.get_mut(0) {
+        //     *instr = AsmInstruction::AllocateStack(self.stack_space);
+        // } else {
+        //     self.instructions.remove(0);
+        // }
 
         if self.global {
             writeln!(f, "\t.globl {}", self.name)?;
