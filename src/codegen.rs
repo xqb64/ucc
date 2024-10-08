@@ -4691,7 +4691,7 @@ impl RegAlloc for AsmFunction {
                 &RegisterClass::GP,
             );
 
-            let mut coalesced_regs = coalesce(&mut gp_graph, &self.instructions);
+            let mut coalesced_regs = coalesce(&mut gp_graph, &self.instructions, &RegisterClass::GP);
             if coalesced_regs.nothing_was_coalesced() {
                 break gp_graph;
             }
@@ -4717,14 +4717,14 @@ impl RegAlloc for AsmFunction {
                 &RegisterClass::XMM,
             );
 
-            let mut coalesced_regs = coalesce(&mut xmm_graph, &self.instructions);
+            let mut coalesced_regs = coalesce(&mut xmm_graph, &self.instructions, &RegisterClass::XMM);
             if coalesced_regs.nothing_was_coalesced() {
                 break xmm_graph;
             }
 
             self.instructions = rewrite_coalesced(self.instructions.clone(), &mut coalesced_regs)            
         };
-        
+
         let xmm_spilled_graph = add_spill_costs(xmm_graph, &self.instructions);
         let colored_xmm_graph = color_graph(xmm_spilled_graph, XMM_REGISTERS.len(), &RegisterClass::XMM);
         let xmm_register_map = make_register_map(&self.name, &colored_xmm_graph, &RegisterClass::XMM);
@@ -5810,7 +5810,7 @@ impl<T: Ord + Clone> DisjointSet<T> {
     }
 }
 
-fn coalesce(graph: &mut Graph, instructions: &[AsmInstruction]) -> DisjointSet<AsmOperand> {
+fn coalesce(graph: &mut Graph, instructions: &[AsmInstruction], register_class: &RegisterClass) -> DisjointSet<AsmOperand> {
     let mut coalesced_regs = DisjointSet::new();
     
     for i in instructions {
@@ -5830,7 +5830,7 @@ fn coalesce(graph: &mut Graph, instructions: &[AsmInstruction]) -> DisjointSet<A
                                 // if src and dst are not pruned
                                 if !src_node.pruned && !dst_node.pruned {
                                     // if src and dst are not colored
-                                    if conservative_coalesceable(graph, src.clone(), dst.clone()) {
+                                    if conservative_coalesceable(graph, src.clone(), dst.clone(), register_class) {
                                         // Coalesce src and dst
                                         
                                         let to_keep;
@@ -5914,21 +5914,26 @@ fn remove_edge(graph: &mut Graph, x: &AsmOperand, y: &AsmOperand) {
     y_node.neighbors.remove(x);
 }
 
-fn conservative_coalesceable(graph: &mut Graph, src: AsmOperand, dst: AsmOperand) -> bool {
-    if briggs_test(graph, &src, &dst) {
+fn conservative_coalesceable(graph: &mut Graph, src: AsmOperand, dst: AsmOperand, register_class: &RegisterClass) -> bool {
+    if briggs_test(graph, &src, &dst, register_class) {
         return true;
     }
     if let AsmOperand::Register(reg) = src {
-        return george_test(graph, src, dst);
+        return george_test(graph, src, dst, register_class);
     }
     if let AsmOperand::Register(reg) = dst {
-        return george_test(graph, dst, src);
+        return george_test(graph, dst, src, register_class);
     }
     false
 }
 
-fn briggs_test(graph: &mut Graph, src: &AsmOperand, dst: &AsmOperand) -> bool {
+fn briggs_test(graph: &mut Graph, src: &AsmOperand, dst: &AsmOperand, register_class: &RegisterClass) -> bool {
     let mut significant_neighbors = 0;
+
+    let k = match register_class {
+        RegisterClass::GP => GP_REGISTERS.len(),
+        RegisterClass::XMM => XMM_REGISTERS.len(),
+    };
 
     let x_node = graph.get(&src).unwrap();
     let y_node = graph.get(&dst).unwrap();
@@ -5945,16 +5950,21 @@ fn briggs_test(graph: &mut Graph, src: &AsmOperand, dst: &AsmOperand) -> bool {
             degree -= 1;
         }
 
-        if degree >= 12 {
+        if degree >= k {
             significant_neighbors += 1;
         }
     }
 
-    significant_neighbors < 12
+    significant_neighbors < k
 }
 
-fn george_test(graph: &mut Graph, hardreg: AsmOperand, pseudoreg: AsmOperand) -> bool {
+fn george_test(graph: &mut Graph, hardreg: AsmOperand, pseudoreg: AsmOperand, register_class: &RegisterClass) -> bool {
     let pseudo_node = graph.get(&pseudoreg).unwrap();
+
+    let k = match register_class {
+        RegisterClass::GP => GP_REGISTERS.len(),
+        RegisterClass::XMM => XMM_REGISTERS.len(),
+    };
 
     for n in pseudo_node.neighbors.iter() {
         let neighbor_node = graph.get(&n).unwrap();
@@ -5962,7 +5972,7 @@ fn george_test(graph: &mut Graph, hardreg: AsmOperand, pseudoreg: AsmOperand) ->
             continue;
         }
 
-        if neighbor_node.neighbors.len() < 12 {
+        if neighbor_node.neighbors.len() < k {
             continue;
         }
 
