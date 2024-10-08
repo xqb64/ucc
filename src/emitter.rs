@@ -488,7 +488,7 @@ impl Emit for AsmInstruction {
 impl Emit for AsmOperand {
     fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         match self {
-            AsmOperand::Imm(n) => write!(f, "${}", *n as i64)?,
+            AsmOperand::Imm(n) => write!(f, "${}", { *n })?,
             AsmOperand::Register(reg) => reg.emit(f, asm_type)?,
             AsmOperand::Pseudo(_) => unreachable!(),
             AsmOperand::Data(identifier, offset) => write!(

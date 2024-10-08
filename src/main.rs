@@ -110,12 +110,10 @@ fn run(opts: &Opt) -> Result<()> {
             instrs
                 .iter()
                 .filter_map(|instr| match instr {
-                    IRInstruction::GetAddress { src, dst: _ } => match &src {
-                        IRValue::Var(v) => Some(v.clone()),
-                        _ => None,
-                    },
+                    IRInstruction::GetAddress { src: IRValue::Var(v), dst: _ } => Some(v.clone()),
                     _ => None,
-                })
+                    }
+                )
                 .collect()
         }
 

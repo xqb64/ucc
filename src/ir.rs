@@ -649,13 +649,13 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
 
             match inner_object {
                 ExpResult::PlainOperand(IRValue::Var(v)) => {
-                    return ExpResult::SubObject {
+                    ExpResult::SubObject {
                         base: v,
                         offset: member_offset,
                     }
                 }
                 ExpResult::SubObject { base, offset } => {
-                    return ExpResult::SubObject {
+                    ExpResult::SubObject {
                         base,
                         offset: offset + member_offset,
                     }
@@ -670,7 +670,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                         dst: dst_ptr.clone(),
                     };
                     instructions.push(instr);
-                    return ExpResult::DereferencedPointer(dst_ptr);
+                    ExpResult::DereferencedPointer(dst_ptr)
                 }
                 _ => unreachable!(),
             }
@@ -1466,19 +1466,11 @@ impl Instr for IRInstruction {
     }
 
     fn is_jump(&self) -> bool {
-        match self {
-            IRInstruction::Jump(_)
-            | IRInstruction::JumpIfZero { .. }
-            | IRInstruction::JumpIfNotZero { .. } => true,
-            _ => false,
-        }
+        matches!(self, IRInstruction::Jump(_) | IRInstruction::JumpIfZero { .. } | IRInstruction::JumpIfNotZero { .. })
     }
 
     fn is_label(&self) -> bool {
-        match self {
-            IRInstruction::Label(_) => true,
-            _ => false,
-        }
+        matches!(self, IRInstruction::Label(_))
     }
 }
 
@@ -1491,14 +1483,13 @@ impl Optimize for IRFunction {
         // let all_static_vars = find_all_static_variables();
 
         loop {
-            let mut aliased_vars = address_taken_analysis(&self.body);
+            let aliased_vars = address_taken_analysis(&self.body);
 
-            let post_constant_folding;
-            if enabled_optimizations.contains(&Optimization::ConstantFolding) {
-                post_constant_folding = constant_folding(&self.body);
+            let post_constant_folding = if enabled_optimizations.contains(&Optimization::ConstantFolding) {
+                constant_folding(&self.body)
             } else {
-                post_constant_folding = self.body.clone();
-            }
+                self.body.clone()
+            };
 
             let mut cfg: cfg::CFG<(), IRInstruction> =
                 cfg::CFG::<(), IRInstruction>::instructions_to_cfg(
@@ -1517,14 +1508,14 @@ impl Optimize for IRFunction {
 
             // Reannotate the cfg with ReachingCopies for copy propagation
             if enabled_optimizations.contains(&Optimization::CopyPropagation) {
-                cfg = copy_propagation::<(), IRInstruction>(&mut aliased_vars, cfg);
+                cfg = copy_propagation(&aliased_vars, cfg);
                 // Call copy propagation
             }
 
             // cfg.print_as_graphviz();
 
             if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
-                cfg = dead_store_elimination::<(), IRInstruction>(&mut aliased_vars, cfg);
+                cfg = dead_store_elimination(&aliased_vars, cfg);
             }
 
             let optimized_function_body = cfg.cfg_to_instructions();
@@ -1791,7 +1782,7 @@ fn const_convert(konst: &Const, dst_type: &Type) -> Result<Const> {
             Const::Long(val) => Ok(Const::Char(*val as i8)),
             Const::UInt(val) => Ok(Const::Char(*val as i8)),
             Const::ULong(val) => Ok(Const::Char(*val as i8)),
-            Const::Char(val) => Ok(Const::Char(*val as i8)),
+            Const::Char(val) => Ok(Const::Char(*val)),
             Const::UChar(val) => Ok(Const::Char(*val as i8)),
             Const::Double(val) => Ok(Const::Char(*val as i8)),
         },
@@ -1799,7 +1790,7 @@ fn const_convert(konst: &Const, dst_type: &Type) -> Result<Const> {
             Const::Int(val) => Ok(Const::ULong(*val as u64)),
             Const::Long(val) => Ok(Const::ULong(*val as u64)),
             Const::UInt(val) => Ok(Const::ULong(*val as u64)),
-            Const::ULong(val) => Ok(Const::ULong(*val as u64)),
+            Const::ULong(val) => Ok(Const::ULong(*val)),
             Const::Double(val) => Ok(Const::ULong(*val as u64)),
             Const::Char(val) => Ok(Const::ULong(*val as u64)),
             Const::UChar(val) => Ok(Const::ULong(*val as u64)),
@@ -2029,7 +2020,7 @@ pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(
         .map(|(idx, (n, blk))| {
             if idx == cfg.basic_blocks.len() - 1 {
                 // Do not modify the last block
-                (n.clone(), blk.clone())
+                (*n, blk.clone())
             } else {
                 match blk.instructions.last() {
                     Some((_, instr)) if instr.is_jump() => {
@@ -2038,12 +2029,12 @@ pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(
                             // Useless jump, drop the last instruction
                             let mut new_blk = blk.clone();
                             drop_last(&mut new_blk.instructions);
-                            (n.clone(), new_blk)
+                            (*n, new_blk)
                         } else {
-                            (n.clone(), blk.clone())
+                            (*n, blk.clone())
                         }
                     }
-                    _ => (n.clone(), blk.clone()),
+                    _ => (*n, blk.clone()),
                 }
             }
         })
@@ -2075,11 +2066,11 @@ pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(
                         // Remove the label
                         let mut new_blk = blk.clone();
                         new_blk.instructions.remove(0);
-                        return (n.clone(), new_blk);
+                        return (*n, new_blk);
                     }
                 }
             }
-            (n.clone(), blk.clone())
+            (*n, blk.clone())
         })
         .collect();
 
@@ -2123,6 +2114,12 @@ pub struct Cp {
 #[derive(Clone, PartialEq, Eq)]
 pub struct ReachingCopies(BTreeSet<Cp>);
 
+impl Default for ReachingCopies {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ReachingCopies {
     pub fn new() -> Self {
         ReachingCopies(BTreeSet::new())
@@ -2146,7 +2143,7 @@ impl ReachingCopies {
     where
         F: Fn(&Cp) -> bool,
     {
-        ReachingCopies(self.0.iter().filter(|&cp| f(&cp)).cloned().collect())
+        ReachingCopies(self.0.iter().filter(|&cp| f(cp)).cloned().collect())
     }
 }
 
@@ -2157,10 +2154,7 @@ fn same_type(v1: &IRValue, v2: &IRValue) -> bool {
 }
 
 fn is_static(var: &str) -> bool {
-    match SYMBOL_TABLE.lock().unwrap().get(var).unwrap().attrs {
-        IdentifierAttrs::StaticAttr { .. } => true,
-        _ => false,
-    }
+    matches!(SYMBOL_TABLE.lock().unwrap().get(var).unwrap().attrs, IdentifierAttrs::StaticAttr { .. })
 }
 
 fn var_is_aliased(aliased_vars: &BTreeSet<String>, v: &IRValue) -> bool {
@@ -2217,11 +2211,11 @@ fn transfer(
                     current_copies
                 } else if same_type(src, dst) {
                     let updated = filter_updated(current_copies, dst);
-                    let new_copies = updated.add(Cp {
+                    
+                    updated.add(Cp {
                         src: src.clone(),
                         dst: dst.clone(),
-                    });
-                    new_copies
+                    })
                 } else {
                     filter_updated(current_copies, dst)
                 }
@@ -2281,7 +2275,7 @@ fn meet(
                 let v = cfg.get_block_value(*n);
                 println!("v: {:?}", v);
                 println!("incoming: {:?}", incoming);
-                incoming = incoming.intersection(&v);
+                incoming = incoming.intersection(v);
                 println!("RESULT: {:?}", incoming);
             }
             _ => panic!("Internal error"),
@@ -2290,7 +2284,7 @@ fn meet(
     incoming
 }
 
-fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
+fn find_reaching_copies(
     aliased_vars: &BTreeSet<String>,
     cfg: cfg::CFG<(), IRInstruction>,
 ) -> cfg::CFG<ReachingCopies, IRInstruction> {
@@ -2338,11 +2332,11 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
     starting_cfg
 }
 
-fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(
+fn copy_propagation(
     aliased_vars: &BTreeSet<String>,
     cfg: cfg::CFG<(), IRInstruction>,
 ) -> cfg::CFG<(), IRInstruction> {
-    let annotated_cfg = find_reaching_copies::<(), IRInstruction>(aliased_vars, cfg);
+    let annotated_cfg = find_reaching_copies(aliased_vars, cfg);
 
     // annotated_cfg.print_as_graphviz();
 
@@ -2380,19 +2374,16 @@ fn rewrite_instruction(
     reaching_copies: &ReachingCopies,
     instr: &IRInstruction,
 ) -> Option<IRInstruction> {
-    match instr {
-        IRInstruction::Copy { src, dst } => {
-            if reaching_copies.mem(&Cp {
-                src: src.clone(),
-                dst: dst.clone(),
-            }) || reaching_copies.mem(&Cp {
-                src: dst.clone(),
-                dst: src.clone(),
-            }) {
-                return None;
-            }
+    if let IRInstruction::Copy { src, dst } = instr {
+        if reaching_copies.mem(&Cp {
+            src: src.clone(),
+            dst: dst.clone(),
+        }) || reaching_copies.mem(&Cp {
+            src: dst.clone(),
+            dst: src.clone(),
+        }) {
+            return None;
         }
-        _ => {}
     }
 
     let replace = |op: &IRValue| -> IRValue {
@@ -2423,7 +2414,7 @@ fn rewrite_instruction(
             op: *op,
             dst: dst.clone(),
         }),
-        IRInstruction::Ret(v) => Some(IRInstruction::Ret(v.as_ref().map(|v| replace(v)))),
+        IRInstruction::Ret(v) => Some(IRInstruction::Ret(v.as_ref().map(replace))),
         IRInstruction::JumpIfZero { condition, target } => Some(IRInstruction::JumpIfZero {
             condition: replace(condition),
             target: target.clone(),
@@ -2463,14 +2454,14 @@ fn rewrite_instruction(
         IRInstruction::CopyToOffset { src, dst, offset } => Some(IRInstruction::CopyToOffset {
             src: replace(src),
             dst: dst.clone(),
-            offset: offset.clone(),
+            offset: *offset,
         }),
         IRInstruction::CopyFromOffset { src, dst, offset } => {
             match replace(&IRValue::Var(src.to_owned())) {
                 IRValue::Var(new_src) => Some(IRInstruction::CopyFromOffset {
                     src: new_src,
                     dst: dst.clone(),
-                    offset: offset.clone(),
+                    offset: *offset,
                 }),
                 _ => panic!("internal error"),
             }
@@ -2495,7 +2486,7 @@ fn rewrite_instruction(
             dst_ptr: dst_ptr.clone(),
         }),
         IRInstruction::Call { target, args, dst } => {
-            let new_args = args.iter().map(|arg| replace(arg)).collect();
+            let new_args = args.iter().map(replace).collect();
             Some(IRInstruction::Call {
                 target: target.clone(),
                 args: new_args,
@@ -2512,7 +2503,7 @@ fn collect_all_copies(cfg: &cfg::CFG<(), IRInstruction>) -> ReachingCopies {
     for (_, block) in &cfg.basic_blocks {
         for (_, instr) in &block.instructions {
             if let IRInstruction::Copy { src, dst } = instr {
-                if same_type(&src, &dst) {
+                if same_type(src, dst) {
                     copies = copies.add(Cp {
                         src: src.clone(),
                         dst: dst.clone(),
@@ -2552,18 +2543,15 @@ impl std::fmt::Debug for Cp {
     }
 }
 
-fn dead_store_elimination<V: Clone + Debug, I: Clone + Debug + Instr>(
+fn dead_store_elimination(
     aliased_vars: &BTreeSet<String>,
     cfg: cfg::CFG<(), IRInstruction>,
 ) -> cfg::CFG<(), IRInstruction> {
     let mut static_vars = BTreeSet::new();
 
     for (k, v) in SYMBOL_TABLE.lock().unwrap().iter() {
-        match v.attrs {
-            IdentifierAttrs::StaticAttr { .. } => {
-                static_vars.insert(k.to_owned());
-            }
-            _ => {}
+        if let IdentifierAttrs::StaticAttr { .. } = v.attrs {
+            static_vars.insert(k.to_owned());
         }
     }
 
@@ -2683,7 +2671,7 @@ fn meet_dead_store(
                 live = live.union(static_vars).cloned().collect();
             }
             NodeId::Block(n) => {
-                live = live.union(&cfg.get_block_value(*n)).cloned().collect();
+                live = live.union(cfg.get_block_value(*n)).cloned().collect();
             }
         };
     }

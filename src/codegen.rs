@@ -365,7 +365,7 @@ impl Codegen for IRFunction {
 
             match param_type {
                 AsmType::Bytearray { size, alignment: _ } => {
-                    copy_bytes_from_reg(&reg, &param, *size, &mut instructions);
+                    copy_bytes_from_reg(&reg, param, *size, &mut instructions);
                 }
                 _ => {
                     let instr = AsmInstruction::Mov {
@@ -627,33 +627,29 @@ impl Codegen for IRInstruction {
                     let int_return_registers = [AsmRegister::AX, AsmRegister::DX];
                     let double_return_registers = [AsmRegister::XMM0, AsmRegister::XMM1];
 
-                    let mut reg_index = 0;
-                    for (t, op) in int_retvals {
+                    for (reg_index, (t, op)) in int_retvals.iter().enumerate() {
                         let r = int_return_registers[reg_index];
                         match t {
                             AsmType::Bytearray { size, alignment: _ } => {
-                                copy_bytes_to_reg(op, r, size, &mut instructions);
+                                copy_bytes_to_reg(op.to_owned(), r, *size, &mut instructions);
                             }
                             _ => {
                                 instructions.push(AsmInstruction::Mov {
-                                    asm_type: t,
-                                    src: op,
+                                    asm_type: *t,
+                                    src: op.clone(),
                                     dst: AsmOperand::Register(r),
                                 });
                             }
                         }
-                        reg_index += 1;
                     }
 
-                    let mut reg_index = 0;
-                    for op in double_retvals {
+                    for (reg_index, op) in double_retvals.iter().enumerate() {
                         let r = double_return_registers[reg_index];
                         instructions.push(AsmInstruction::Mov {
                             asm_type: AsmType::Double,
-                            src: op,
+                            src: op.clone(),
                             dst: AsmOperand::Register(r),
                         });
-                        reg_index += 1;
                     }
                 }
 
@@ -1217,7 +1213,7 @@ impl Codegen for IRInstruction {
 
                     instructions.push(AsmInstruction::Mov {
                         asm_type: AsmType::Double,
-                        src: reg_arg.into(),
+                        src: reg_arg,
                         dst: AsmOperand::Register(reg),
                     });
                 }
@@ -1239,16 +1235,16 @@ impl Codegen for IRInstruction {
                         }
                         _ => match stack_arg {
                             AsmOperand::Imm(_) | AsmOperand::Register(_) => {
-                                instructions.push(AsmInstruction::Push(stack_arg.clone().into()));
+                                instructions.push(AsmInstruction::Push(stack_arg.clone()));
                             }
                             _ => {
                                 if arg_type == &AsmType::Quadword || arg_type == &AsmType::Double {
                                     instructions
-                                        .push(AsmInstruction::Push(stack_arg.clone().into()));
+                                        .push(AsmInstruction::Push(stack_arg.clone()));
                                 } else {
                                     instructions.push(AsmInstruction::Mov {
                                         asm_type: *arg_type,
-                                        src: stack_arg.clone().into(),
+                                        src: stack_arg.clone(),
                                         dst: AsmOperand::Register(AsmRegister::AX),
                                     });
                                     instructions.push(AsmInstruction::Push(AsmOperand::Register(
@@ -1271,35 +1267,30 @@ impl Codegen for IRInstruction {
                     let int_return_registers = [AsmRegister::AX, AsmRegister::DX];
                     let double_return_registers = [AsmRegister::XMM0, AsmRegister::XMM1];
 
-                    let mut reg_index = 0;
-
-                    for (t, op) in int_dests {
+                    for (reg_index, (t, op)) in int_dests.iter().enumerate() {
                         let r = int_return_registers[reg_index];
                         match t {
                             AsmType::Bytearray { size, alignment: _ } => {
-                                copy_bytes_from_reg(&r, &op, size, &mut instructions);
+                                copy_bytes_from_reg(&r, op, *size, &mut instructions);
                             }
                             _ => {
                                 instructions.push(AsmInstruction::Mov {
-                                    asm_type: t.clone(),
-                                    src: AsmOperand::Register(r.clone()),
-                                    dst: op.into(),
+                                    asm_type: *t,
+                                    src: AsmOperand::Register(r),
+                                    dst: op.clone(),
                                 });
                             }
                         }
-                        reg_index += 1;
                     }
 
                     // retrieve values in xmm registers
-                    let mut reg_index = 0;
-                    for op in double_dests {
+                    for (reg_index, op) in double_dests.iter().enumerate() {
                         let r = double_return_registers[reg_index];
                         instructions.push(AsmInstruction::Mov {
                             asm_type: AsmType::Double,
-                            src: AsmOperand::Register(r.clone()),
-                            dst: op.into(),
+                            src: AsmOperand::Register(r),
+                            dst: op.clone(),
                         });
-                        reg_index += 1;
                     }
                 }
 
@@ -1569,7 +1560,7 @@ impl Codegen for IRInstruction {
                 }
             }
             IRInstruction::Load { src_ptr, dst } => {
-                let t = tacky_type(&dst);
+                let t = tacky_type(dst);
                 if is_scalar(&t) {
                     AsmNode::Instructions(vec![
                         AsmInstruction::Mov {
@@ -1602,7 +1593,7 @@ impl Codegen for IRInstruction {
                 }
             }
             IRInstruction::Store { src, dst_ptr } => {
-                let t = tacky_type(&src);
+                let t = tacky_type(src);
 
                 if is_scalar(&t) {
                     AsmNode::Instructions(vec![
@@ -1705,7 +1696,7 @@ impl Codegen for IRInstruction {
             IRInstruction::CopyToOffset { src, dst, offset } => {
                 let type_of_src = get_asm_type(src);
 
-                let t = tacky_type(&src);
+                let t = tacky_type(src);
 
                 if is_scalar(&t) {
                     AsmNode::Instructions(vec![AsmInstruction::Mov {
@@ -1725,7 +1716,7 @@ impl Codegen for IRInstruction {
             IRInstruction::CopyFromOffset { src, offset, dst } => {
                 let type_of_dst = get_asm_type(dst);
 
-                let t = tacky_type(&dst);
+                let t = tacky_type(dst);
 
                 if is_scalar(&t) {
                     AsmNode::Instructions(vec![AsmInstruction::Mov {
@@ -2108,7 +2099,7 @@ impl Fixup for AsmFunction {
 
             let adjusted_stack_bytes = round_away_from_zero(16, total_stack_bytes as i64);
 
-            let stack_adjustment = (adjusted_stack_bytes - callee_saved_bytes as i64) as i64;
+            let stack_adjustment = adjusted_stack_bytes - callee_saved_bytes as i64;
 
             AsmInstruction::Binary {
                 op: AsmBinaryOp::Sub,
@@ -2123,7 +2114,7 @@ impl Fixup for AsmFunction {
             callee_saved_args.len(),
         ));
 
-        let save_reg = |r: &AsmRegister| AsmInstruction::Push(AsmOperand::Register(r.clone()));
+        let save_reg = |r: &AsmRegister| AsmInstruction::Push(AsmOperand::Register(*r));
 
         for reg in callee_saved_args {
             instructions_setup.push(save_reg(reg));
@@ -2133,7 +2124,7 @@ impl Fixup for AsmFunction {
 
         for instr in &mut self.instructions {
             match instr {
-                AsmInstruction::Pop(reg) if is_xmm(&reg) => {
+                AsmInstruction::Pop(reg) if is_xmm(reg) => {
                     instructions.push(AsmInstruction::Binary {
                         asm_type: AsmType::Quadword,
                         op: AsmBinaryOp::Add,
@@ -3686,14 +3677,14 @@ impl Fixup for AsmFunction {
                         .flat_map(|r| {
                             if !is_xmm(r) {
                                 // For non-XMM registers, use Pop
-                                vec![AsmInstruction::Pop(r.clone())]
+                                vec![AsmInstruction::Pop(*r)]
                             } else {
                                 // For XMM registers, use Mov to restore and Add to adjust SP
                                 vec![
                                     AsmInstruction::Mov {
                                         asm_type: AsmType::Quadword,
                                         src: AsmOperand::Memory(AsmRegister::SP, 0), // Assuming memory operand syntax
-                                        dst: AsmOperand::Register(r.clone()),
+                                        dst: AsmOperand::Register(*r),
                                     },
                                     AsmInstruction::Binary {
                                         asm_type: AsmType::Quadword,
@@ -4046,10 +4037,8 @@ fn returns_on_stack(name: &str) -> bool {
                     .cloned()
                     .unwrap()
                     .clone();
-                match classify_structure(&struct_entry).as_slice() {
-                    [Class::Memory, ..] => true,
-                    _ => false,
-                }
+
+                matches!(classify_structure(&struct_entry).as_slice(), [Class::Memory, ..])
             }
             _ => false,
         },
@@ -4109,7 +4098,7 @@ pub fn build_asm_symbol_table() {
         let entry = match symbol.attrs {
             IdentifierAttrs::FuncAttr { defined, .. } => match &symbol._type {
                 Type::Func { params, ret } => {
-                    if is_complete(&ret) || ret == &Type::Void.into() {
+                    if is_complete(ret) || ret == &Type::Void.into() {
                         let (return_regs, returns_on_stack) = classify_return_type(ret);
                         let param_regs = classify_param_types(params, returns_on_stack);
 
@@ -4462,7 +4451,7 @@ fn classify_structure(struct_entry: &StructEntry) -> Vec<Class> {
             return vec![Class::Integer, Class::Sse];
         }
 
-        return vec![Class::Integer, Class::Integer];
+        vec![Class::Integer, Class::Integer]
     } else if first == &Type::Double {
         return vec![Class::Sse];
     } else {
@@ -4508,7 +4497,7 @@ fn copy_bytes_to_reg(
                 asm_type: AsmType::Quadword,
                 op: AsmBinaryOp::Shl,
                 lhs: AsmOperand::Imm(8),
-                rhs: AsmOperand::Register(dst_reg.clone()),
+                rhs: AsmOperand::Register(dst_reg),
             });
         }
         offset -= 1;
@@ -4534,7 +4523,7 @@ fn classify_return_helper(
             let struct_size = struct_entry.size;
 
             if classes[0] == Class::Memory {
-                return (vec![], vec![], true);
+                (vec![], vec![], true)
             } else {
                 let mut int_retvals = vec![];
                 let mut double_retvals = vec![];
@@ -4561,7 +4550,7 @@ fn classify_return_helper(
                     offset += 8;
                 }
 
-                return (int_retvals, double_retvals, false);
+                (int_retvals, double_retvals, false)
             }
         }
 
@@ -4610,7 +4599,7 @@ fn copy_bytes_from_reg(
         let dst_byte = add_offset(offset, dst_op);
         instructions.push(AsmInstruction::Mov {
             asm_type: AsmType::Byte,
-            src: AsmOperand::Register(src_reg.clone()),
+            src: AsmOperand::Register(*src_reg),
             dst: dst_byte,
         });
         if offset < byte_count - 1 {
@@ -4618,7 +4607,7 @@ fn copy_bytes_from_reg(
                 asm_type: AsmType::Quadword,
                 op: AsmBinaryOp::ShrTwoOp,
                 lhs: AsmOperand::Imm(8),
-                rhs: AsmOperand::Register(src_reg.clone()),
+                rhs: AsmOperand::Register(*src_reg),
             });
         }
         offset += 1;
@@ -4639,12 +4628,12 @@ fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
             if return_on_stack {
                 (vec![AsmRegister::AX], true)
             } else {
-                let int_regs: Vec<AsmRegister> = vec![AsmRegister::AX, AsmRegister::DX]
+                let int_regs: Vec<AsmRegister> = [AsmRegister::AX, AsmRegister::DX]
                     .iter()
                     .take(ints.len())
                     .cloned()
                     .collect();
-                let dbl_regs: Vec<AsmRegister> = vec![AsmRegister::XMM0, AsmRegister::XMM1]
+                let dbl_regs: Vec<AsmRegister> = [AsmRegister::XMM0, AsmRegister::XMM1]
                     .iter()
                     .take(dbls.len())
                     .cloned()
@@ -4815,14 +4804,14 @@ fn build_interference_graph(
 
     let cfg: CFG<(), AsmInstruction> =
         CFG::instructions_to_cfg("spam".to_string(), instructions.to_vec());
-    let mut analyzed_cfg = LivenessAnalysis::analyze(
-        &fn_name,
+    let analyzed_cfg = LivenessAnalysis::analyze(
+        fn_name,
         cfg,
         &all_hardregs,
         register_class,
     );
 
-    add_edges(&mut analyzed_cfg, &mut graph, register_class);
+    add_edges(&analyzed_cfg, &mut graph, register_class);
 
     graph
 }
@@ -4852,10 +4841,7 @@ fn add_edges(
             // Define a closure to handle each live register
             let mut handle_livereg = |l: &AsmOperand| {
                 // Check if the instruction is a `Mov` where src == l
-                let is_mov_src = match instr {
-                    AsmInstruction::Mov { src, .. } if src == l => true,
-                    _ => false,
-                };
+                let is_mov_src = matches!(instr,  AsmInstruction::Mov { src, .. } if src == l);
 
                 if is_mov_src {
                     // Do nothing for this case
@@ -4960,10 +4946,10 @@ fn regs_used_and_written(
     let regs_used_to_read = |opr: &AsmOperand| -> Vec<AsmOperand> {
         match opr {
             AsmOperand::Pseudo(_) | AsmOperand::Register(_) => vec![opr.clone()],
-            AsmOperand::Memory(base, _) => vec![AsmOperand::Register(base.clone())],
+            AsmOperand::Memory(base, _) => vec![AsmOperand::Register(*base)],
             AsmOperand::Indexed(base, index, _) => vec![
-                AsmOperand::Register(base.clone()),
-                AsmOperand::Register(index.clone()),
+                AsmOperand::Register(*base),
+                AsmOperand::Register(*index),
             ],
             AsmOperand::Imm(_) | AsmOperand::Data(_, _) | AsmOperand::PseudoMem(_, _) => vec![],
         }
@@ -4973,11 +4959,11 @@ fn regs_used_and_written(
     let regs_used_to_update = |opr: &AsmOperand| -> (Vec<AsmOperand>, Vec<AsmOperand>) {
         match opr {
             AsmOperand::Pseudo(_) | AsmOperand::Register(_) => (vec![], vec![opr.clone()]),
-            AsmOperand::Memory(base, _) => (vec![AsmOperand::Register(base.clone())], vec![]),
+            AsmOperand::Memory(base, _) => (vec![AsmOperand::Register(*base)], vec![]),
             AsmOperand::Indexed(base, index, _) => (
                 vec![
-                    AsmOperand::Register(base.clone()),
-                    AsmOperand::Register(index.clone()),
+                    AsmOperand::Register(*base),
+                    AsmOperand::Register(*index),
                 ],
                 vec![],
             ),
@@ -5021,7 +5007,7 @@ impl LivenessAnalysis {
         let all_return_regs = match ASM_SYMBOL_TABLE.lock().unwrap().get(fn_name).unwrap() {
             AsmSymtabEntry::Function { return_regs, .. } => return_regs
                 .iter()
-                .map(|r| AsmOperand::Register(r.clone()))
+                .map(|r| AsmOperand::Register(*r))
                 .collect::<OperandSet>(),
             _ => unreachable!(),
         };
@@ -5036,7 +5022,7 @@ impl LivenessAnalysis {
                 cfg::NodeId::Entry => panic!("Internal error: malformed interference graph"),
                 cfg::NodeId::Block(id) => {
                     let succ_live_registers = cfg.get_block_value(*id);
-                    live_at_exit = live_at_exit.union(&succ_live_registers).cloned().collect();
+                    live_at_exit = live_at_exit.union(succ_live_registers).cloned().collect();
                 }
             }
         }
@@ -5155,7 +5141,7 @@ fn pseudo_is_current_type(pseudo: &str, register_class: &RegisterClass) -> bool 
                 is_static: _,
                 is_constant: _,
             } => {
-                return _type != &AsmType::Double;
+                _type != &AsmType::Double
             }
             _ => false,
         }
@@ -5292,7 +5278,7 @@ fn print_graphviz(fn_name: &str, graph: &Graph) {
     writeln!(file, "graph {} {{", fn_name).expect("Failed to write to DOT file");
 
     // Iterate over the nodes in the graph
-    for (_, node) in graph {
+    for node in graph.values() {
         let node_id = &node.id; // Assuming node has an `id` field
 
         // let color = match node.color {
@@ -5348,23 +5334,17 @@ impl Instr for AsmInstruction {
             AsmInstruction::Label(lbl) => format!("Label({})", lbl),
             AsmInstruction::JmpCC { target, .. } => format!("ConditionalJump({})", target),
             AsmInstruction::Jmp { target } => format!("UnconditionalJump({})", target),
-            AsmInstruction::Ret => format!("Return"),
+            AsmInstruction::Ret => "Return".to_string(),
             _ => format!("{:?}", self),
         }
     }
 
     fn is_jump(&self) -> bool {
-        match self {
-            AsmInstruction::Jmp { .. } | AsmInstruction::JmpCC { .. } => true,
-            _ => false,
-        }
+        matches!(self, AsmInstruction::Jmp { .. } | AsmInstruction::JmpCC { .. })
     }
 
     fn is_label(&self) -> bool {
-        match self {
-            AsmInstruction::Label(_) => true,
-            _ => false,
-        }
+        matches!(self, AsmInstruction::Label(_))
     }
 }
 
@@ -5535,7 +5515,7 @@ fn make_register_map(
                 if let Some(color) = node.color {
                     // Insert color -> register into colors_to_regs
                     // In Rust, BTreeMap::insert replaces existing entries, but colors are unique
-                    colors_to_regs.insert(color, r.clone());
+                    colors_to_regs.insert(color, *r);
                 }
             }
             _ => {
@@ -5558,23 +5538,20 @@ fn make_register_map(
             if let Some(hardreg) = colors_to_regs.get(c) {
                 let regs = get_caller_saved_registers(register_class);
                 if !regs.contains(hardreg) {
-                    used_callee_saved.insert(hardreg.clone());
+                    used_callee_saved.insert(*hardreg);
                 }
 
-                reg_map.insert(p.clone(), hardreg.clone());
+                reg_map.insert(p.clone(), *hardreg);
             }
         }
     }
 
     // Step 3: Update the symbol table with used callee-saved registers
-    if let Some(func) = ASM_SYMBOL_TABLE.lock().unwrap().get_mut(fn_name) {
-        if let AsmSymtabEntry::Function {
-            ref mut callee_saved_regs_used,
-            ..
-        } = func
-        {
-            callee_saved_regs_used.extend(used_callee_saved);
-        }
+    if let Some(AsmSymtabEntry::Function {
+        ref mut callee_saved_regs_used,
+        ..
+    }) = ASM_SYMBOL_TABLE.lock().unwrap().get_mut(fn_name) {
+        callee_saved_regs_used.extend(used_callee_saved);
     }
 
     // Return the register map
@@ -5582,7 +5559,7 @@ fn make_register_map(
 }
 
 fn replace_pseudoregs(
-    instructions: &Vec<AsmInstruction>,
+    instructions: &[AsmInstruction],
     reg_map: &BTreeMap<String, AsmRegister>,
 ) -> Vec<AsmInstruction> {
     let replace_op = |op: AsmOperand| -> AsmOperand {
@@ -5601,8 +5578,8 @@ fn replace_pseudoregs(
 
     cleanup_movs(
         instructions
-            .into_iter()
-            .map(|instr| replace_ops(|instr| replace_op(instr), instr.to_owned()))
+            .iter()
+            .map(|instr| replace_ops(replace_op, instr.to_owned()))
             .collect(),
     )
 }
@@ -5610,10 +5587,7 @@ fn replace_pseudoregs(
 fn cleanup_movs(instructions: Vec<AsmInstruction>) -> Vec<AsmInstruction> {
     // Check if a move instruction is redundant (i.e., src and dst are the same)
     let is_redundant_mov = |instr: &AsmInstruction| -> bool {
-        match instr {
-            AsmInstruction::Mov { src, dst, .. } if src == dst => true,
-            _ => false,
-        }
+        matches!(instr, AsmInstruction::Mov { src, dst, .. } if src == dst)
     };
 
     // Filter out redundant move instructions
@@ -5639,9 +5613,9 @@ where
             dst,
             dst_type,
         } => AsmInstruction::Movsx {
-            src_type: src_type,
+            src_type,
             src: f(src),
-            dst_type: dst_type,
+            dst_type,
             dst: f(dst),
         },
         AsmInstruction::MovZeroExtend {
@@ -5650,9 +5624,9 @@ where
             dst,
             dst_type,
         } => AsmInstruction::MovZeroExtend {
-            src_type: src_type,
+            src_type,
             src: f(src),
-            dst_type: dst_type,
+            dst_type,
             dst: f(dst),
         },
         AsmInstruction::Lea { src, dst } => AsmInstruction::Lea {
@@ -5684,8 +5658,8 @@ where
             lhs,
             rhs,
         } => AsmInstruction::Binary {
-            asm_type: asm_type,
-            op: op,
+            asm_type,
+            op,
             lhs: f(lhs),
             rhs: f(rhs),
         },
@@ -5843,39 +5817,37 @@ fn coalesce(
                 // if src is in the graph
                 if let Some(src_node) = graph.get(&src) {
                     // if dst is in the graph
-                    if let Some(_) = graph.get(&dst) {
+                    if graph.get(&dst).is_some() {
                         // if src and dst are not the same
                         if src != dst {
                             // if src and dst are not neighbors
-                            if !src_node.neighbors.contains(&dst) {
-                                if conservative_coalesceable(
+                            if !src_node.neighbors.contains(&dst) && conservative_coalesceable(
                                     graph,
                                     src.clone(),
                                     dst.clone(),
                                     register_class,
                                 ) {
-                                    // Coalesce src and dst
+                                // Coalesce src and dst
 
-                                    let to_keep;
-                                    let to_merge;
-                                    if let AsmOperand::Register(reg) = src {
-                                        if GP_REGISTERS.contains(&reg)
-                                            || XMM_REGISTERS.contains(&reg)
-                                        {
-                                            to_keep = src;
-                                            to_merge = dst;
-                                        } else {
-                                            to_keep = dst;
-                                            to_merge = src;
-                                        }
+                                let to_keep;
+                                let to_merge;
+                                if let AsmOperand::Register(reg) = src {
+                                    if GP_REGISTERS.contains(&reg)
+                                        || XMM_REGISTERS.contains(&reg)
+                                    {
+                                        to_keep = src;
+                                        to_merge = dst;
                                     } else {
                                         to_keep = dst;
                                         to_merge = src;
                                     }
-
-                                    coalesced_regs.union(to_merge.clone(), to_keep.clone());
-                                    update_graph(graph, to_merge, to_keep);
+                                } else {
+                                    to_keep = dst;
+                                    to_merge = src;
                                 }
+
+                                coalesced_regs.union(to_merge.clone(), to_keep.clone());
+                                update_graph(graph, to_merge, to_keep);
                             }
                         }
                     }
@@ -5928,8 +5900,8 @@ fn update_graph(graph: &mut Graph, x: AsmOperand, y: AsmOperand) {
     let node_to_remove = graph.get(&x).unwrap().clone();
 
     for neighbor in node_to_remove.neighbors.iter() {
-        add_edge(graph, &y, &neighbor);
-        remove_edge(graph, &x, &neighbor);
+        add_edge(graph, &y, neighbor);
+        remove_edge(graph, &x, neighbor);
     }
 
     graph.remove(&x);
@@ -5973,8 +5945,8 @@ fn briggs_test(
         RegisterClass::XMM => XMM_REGISTERS.len(),
     };
 
-    let x_node = graph.get(&src).unwrap();
-    let y_node = graph.get(&dst).unwrap();
+    let x_node = graph.get(src).unwrap();
+    let y_node = graph.get(dst).unwrap();
 
     let mut combined_neighbors = x_node.neighbors.iter().collect::<BTreeSet<_>>();
     combined_neighbors = combined_neighbors
@@ -5983,11 +5955,11 @@ fn briggs_test(
         .collect::<BTreeSet<_>>();
 
     for n in combined_neighbors {
-        let neighbor_node = graph.get(&n).unwrap();
+        let neighbor_node = graph.get(n).unwrap();
         let mut degree = neighbor_node.neighbors.len();
 
         // if are neighbors n,x and n,y
-        if neighbor_node.neighbors.contains(&src) && neighbor_node.neighbors.contains(&dst) {
+        if neighbor_node.neighbors.contains(src) && neighbor_node.neighbors.contains(dst) {
             degree -= 1;
         }
 
@@ -6013,7 +5985,7 @@ fn george_test(
     };
 
     for n in pseudo_node.neighbors.iter() {
-        let neighbor_node = graph.get(&n).unwrap();
+        let neighbor_node = graph.get(n).unwrap();
         if neighbor_node.neighbors.contains(&hardreg) {
             continue;
         }

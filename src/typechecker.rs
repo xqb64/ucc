@@ -163,7 +163,7 @@ impl Typecheck for StructDeclaration {
             let m = MemberEntry {
                 name: member.name.clone(),
                 _type: member._type.clone(),
-                offset: member_offset as usize,
+                offset: member_offset,
             };
 
             member_entries.push(m);
@@ -456,11 +456,10 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             }
 
             let mut current_offset = 0;
-            let mut i = 0;
 
             let mut static_inits = vec![];
 
-            for init_elem in compound_init {
+            for (i, init_elem) in compound_init.iter().enumerate() {
                 let member = struct_def.members[i].clone();
                 if member.offset != current_offset {
                     static_inits.push(StaticInit::Zero(member.offset - current_offset));
@@ -470,8 +469,6 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 static_inits.extend(more_static_inits);
 
                 current_offset = member.offset + get_size_of_type(&member._type);
-
-                i += 1;
             }
 
             if struct_def.size != current_offset {
@@ -605,13 +602,10 @@ impl Typecheck for FunctionDeclaration {
                 _ => unreachable!(),
             };
 
-            match &**ret_type {
-                Type::Struct { tag } => {
-                    if !TYPE_TABLE.lock().unwrap().contains_key(tag) {
-                        bail!("Function return type is incomplete");
-                    }
+            if let Type::Struct { tag } = &**ret_type {
+                if !TYPE_TABLE.lock().unwrap().contains_key(tag) {
+                    bail!("Function return type is incomplete");
                 }
-                _ => {}
             }
         }
 
@@ -1575,8 +1569,8 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
                     if !struct_def
                         .members
-                        .to_vec()
-                        .into_iter()
+                        .iter()
+                        .cloned()
                         .any(|m| m.name == *member)
                     {
                         bail!("Unknown member in struct");
@@ -1585,10 +1579,8 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     // find the type of the member
                     let member_def = struct_def
                         .members
-                        .to_vec()
-                        .into_iter()
-                        .find(|m| m.name == *member)
-                        .unwrap();
+                        .iter()
+                        .find(|&m| m.name == *member).cloned().unwrap();
 
                     Ok(Expression::Dot(DotExpression {
                         structure: Box::new(typed_structure),
@@ -1612,8 +1604,8 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
                         if !struct_def
                             .members
-                            .to_vec()
-                            .into_iter()
+                            .iter()
+                            .cloned()
                             .any(|m| m.name == *member)
                         {
                             bail!("Unknown member in struct");
@@ -1622,7 +1614,6 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                         // find the type of the member
                         let member_def = struct_def
                             .members
-                            .to_vec()
                             .into_iter()
                             .find(|m| m.name == *member)
                             .unwrap();
@@ -1902,11 +1893,7 @@ pub fn is_complete(t: &Type) -> bool {
     match t {
         Type::Void => false,
         Type::Struct { tag } => {
-            if TYPE_TABLE.lock().unwrap().contains_key(tag) {
-                true
-            } else {
-                false
-            }
+            TYPE_TABLE.lock().unwrap().contains_key(tag)
         }
         _ => true,
     }
