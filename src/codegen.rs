@@ -5820,13 +5820,13 @@ fn coalesce(graph: &mut Graph, instructions: &[AsmInstruction], register_class: 
                 let dst = coalesced_regs.find(dst.clone());
 
                 // if src is in the graph
-                if let Some(src_node) = graph.get(&NodeId::Pseudo(src.to_string())) {
+                if let Some(src_node) = graph.get(&src) {
                     // if dst is in the graph
-                    if let Some(dst_node) = graph.get(&NodeId::Pseudo(dst.to_string())) {
+                    if let Some(dst_node) = graph.get(&dst) {
                         // if src and dst are not the same
                         if src != dst {
                             // if src and dst are not neighbors
-                            if !src_node.neighbors.contains(&NodeId::Pseudo(dst.to_string())) {
+                            if !src_node.neighbors.contains(&dst) {
                                 // if src and dst are not pruned
                                 if !src_node.pruned && !dst_node.pruned {
                                     // if src and dst are not colored
