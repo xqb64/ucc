@@ -1239,8 +1239,7 @@ impl Codegen for IRInstruction {
                             }
                             _ => {
                                 if arg_type == &AsmType::Quadword || arg_type == &AsmType::Double {
-                                    instructions
-                                        .push(AsmInstruction::Push(stack_arg.clone()));
+                                    instructions.push(AsmInstruction::Push(stack_arg.clone()));
                                 } else {
                                     instructions.push(AsmInstruction::Mov {
                                         asm_type: *arg_type,
@@ -4038,7 +4037,10 @@ fn returns_on_stack(name: &str) -> bool {
                     .unwrap()
                     .clone();
 
-                matches!(classify_structure(&struct_entry).as_slice(), [Class::Memory, ..])
+                matches!(
+                    classify_structure(&struct_entry).as_slice(),
+                    [Class::Memory, ..]
+                )
             }
             _ => false,
         },
@@ -4804,12 +4806,7 @@ fn build_interference_graph(
 
     let cfg: CFG<(), AsmInstruction> =
         CFG::instructions_to_cfg("spam".to_string(), instructions.to_vec());
-    let analyzed_cfg = LivenessAnalysis::analyze(
-        fn_name,
-        cfg,
-        &all_hardregs,
-        register_class,
-    );
+    let analyzed_cfg = LivenessAnalysis::analyze(fn_name, cfg, &all_hardregs, register_class);
 
     add_edges(&analyzed_cfg, &mut graph, register_class);
 
@@ -4947,10 +4944,9 @@ fn regs_used_and_written(
         match opr {
             AsmOperand::Pseudo(_) | AsmOperand::Register(_) => vec![opr.clone()],
             AsmOperand::Memory(base, _) => vec![AsmOperand::Register(*base)],
-            AsmOperand::Indexed(base, index, _) => vec![
-                AsmOperand::Register(*base),
-                AsmOperand::Register(*index),
-            ],
+            AsmOperand::Indexed(base, index, _) => {
+                vec![AsmOperand::Register(*base), AsmOperand::Register(*index)]
+            }
             AsmOperand::Imm(_) | AsmOperand::Data(_, _) | AsmOperand::PseudoMem(_, _) => vec![],
         }
     };
@@ -4961,10 +4957,7 @@ fn regs_used_and_written(
             AsmOperand::Pseudo(_) | AsmOperand::Register(_) => (vec![], vec![opr.clone()]),
             AsmOperand::Memory(base, _) => (vec![AsmOperand::Register(*base)], vec![]),
             AsmOperand::Indexed(base, index, _) => (
-                vec![
-                    AsmOperand::Register(*base),
-                    AsmOperand::Register(*index),
-                ],
+                vec![AsmOperand::Register(*base), AsmOperand::Register(*index)],
                 vec![],
             ),
             AsmOperand::Imm(_) | AsmOperand::Data(_, _) | AsmOperand::PseudoMem(_, _) => {
@@ -5079,11 +5072,7 @@ impl LivenessAnalysis {
             let live_vars_at_exit = Self::meet(fn_name, &starting_cfg, &blk, all_hardregs);
 
             // Transfer function: propagate live variables through the block
-            let block = Self::transfer(
-                &blk,
-                live_vars_at_exit,
-                register_class,
-            );
+            let block = Self::transfer(&blk, live_vars_at_exit, register_class);
 
             // Update the CFG with the new block
             starting_cfg.update_basic_block(block_idx, block.clone());
@@ -5140,9 +5129,7 @@ fn pseudo_is_current_type(pseudo: &str, register_class: &RegisterClass) -> bool 
                 _type,
                 is_static: _,
                 is_constant: _,
-            } => {
-                _type != &AsmType::Double
-            }
+            } => _type != &AsmType::Double,
             _ => false,
         }
     } else if register_class == &RegisterClass::XMM {
@@ -5340,7 +5327,10 @@ impl Instr for AsmInstruction {
     }
 
     fn is_jump(&self) -> bool {
-        matches!(self, AsmInstruction::Jmp { .. } | AsmInstruction::JmpCC { .. })
+        matches!(
+            self,
+            AsmInstruction::Jmp { .. } | AsmInstruction::JmpCC { .. }
+        )
     }
 
     fn is_label(&self) -> bool {
@@ -5550,7 +5540,8 @@ fn make_register_map(
     if let Some(AsmSymtabEntry::Function {
         ref mut callee_saved_regs_used,
         ..
-    }) = ASM_SYMBOL_TABLE.lock().unwrap().get_mut(fn_name) {
+    }) = ASM_SYMBOL_TABLE.lock().unwrap().get_mut(fn_name)
+    {
         callee_saved_regs_used.extend(used_callee_saved);
     }
 
@@ -5810,7 +5801,11 @@ fn coalesce(
 
     for i in instructions {
         match i {
-            AsmInstruction::Mov { asm_type: _, src, dst } => {
+            AsmInstruction::Mov {
+                asm_type: _,
+                src,
+                dst,
+            } => {
                 let src = coalesced_regs.find(src.clone());
                 let dst = coalesced_regs.find(dst.clone());
 
@@ -5821,20 +5816,20 @@ fn coalesce(
                         // if src and dst are not the same
                         if src != dst {
                             // if src and dst are not neighbors
-                            if !src_node.neighbors.contains(&dst) && conservative_coalesceable(
+                            if !src_node.neighbors.contains(&dst)
+                                && conservative_coalesceable(
                                     graph,
                                     src.clone(),
                                     dst.clone(),
                                     register_class,
-                                ) {
+                                )
+                            {
                                 // Coalesce src and dst
 
                                 let to_keep;
                                 let to_merge;
                                 if let AsmOperand::Register(reg) = src {
-                                    if GP_REGISTERS.contains(&reg)
-                                        || XMM_REGISTERS.contains(&reg)
-                                    {
+                                    if GP_REGISTERS.contains(&reg) || XMM_REGISTERS.contains(&reg) {
                                         to_keep = src;
                                         to_merge = dst;
                                     } else {

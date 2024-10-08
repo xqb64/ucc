@@ -648,18 +648,14 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             let inner_object = emit_tacky(structure, instructions);
 
             match inner_object {
-                ExpResult::PlainOperand(IRValue::Var(v)) => {
-                    ExpResult::SubObject {
-                        base: v,
-                        offset: member_offset,
-                    }
-                }
-                ExpResult::SubObject { base, offset } => {
-                    ExpResult::SubObject {
-                        base,
-                        offset: offset + member_offset,
-                    }
-                }
+                ExpResult::PlainOperand(IRValue::Var(v)) => ExpResult::SubObject {
+                    base: v,
+                    offset: member_offset,
+                },
+                ExpResult::SubObject { base, offset } => ExpResult::SubObject {
+                    base,
+                    offset: offset + member_offset,
+                },
                 ExpResult::DereferencedPointer(ptr) => {
                     let type_of_e = get_type(e);
                     let dst_ptr = make_tacky_variable(&Type::Pointer(type_of_e.to_owned().into()));
@@ -1466,7 +1462,12 @@ impl Instr for IRInstruction {
     }
 
     fn is_jump(&self) -> bool {
-        matches!(self, IRInstruction::Jump(_) | IRInstruction::JumpIfZero { .. } | IRInstruction::JumpIfNotZero { .. })
+        matches!(
+            self,
+            IRInstruction::Jump(_)
+                | IRInstruction::JumpIfZero { .. }
+                | IRInstruction::JumpIfNotZero { .. }
+        )
     }
 
     fn is_label(&self) -> bool {
@@ -1485,11 +1486,12 @@ impl Optimize for IRFunction {
         loop {
             let aliased_vars = address_taken_analysis(&self.body);
 
-            let post_constant_folding = if enabled_optimizations.contains(&Optimization::ConstantFolding) {
-                constant_folding(&self.body)
-            } else {
-                self.body.clone()
-            };
+            let post_constant_folding =
+                if enabled_optimizations.contains(&Optimization::ConstantFolding) {
+                    constant_folding(&self.body)
+                } else {
+                    self.body.clone()
+                };
 
             let mut cfg: cfg::CFG<(), IRInstruction> =
                 cfg::CFG::<(), IRInstruction>::instructions_to_cfg(
@@ -2154,7 +2156,10 @@ fn same_type(v1: &IRValue, v2: &IRValue) -> bool {
 }
 
 fn is_static(var: &str) -> bool {
-    matches!(SYMBOL_TABLE.lock().unwrap().get(var).unwrap().attrs, IdentifierAttrs::StaticAttr { .. })
+    matches!(
+        SYMBOL_TABLE.lock().unwrap().get(var).unwrap().attrs,
+        IdentifierAttrs::StaticAttr { .. }
+    )
 }
 
 fn var_is_aliased(aliased_vars: &BTreeSet<String>, v: &IRValue) -> bool {
@@ -2211,7 +2216,7 @@ fn transfer(
                     current_copies
                 } else if same_type(src, dst) {
                     let updated = filter_updated(current_copies, dst);
-                    
+
                     updated.add(Cp {
                         src: src.clone(),
                         dst: dst.clone(),
@@ -2690,7 +2695,12 @@ fn transfer_dead_store(
         let annotated_instr = (current_live_vars.clone(), i.clone());
 
         match i {
-            IRInstruction::Binary { op: _, lhs, rhs, dst } => {
+            IRInstruction::Binary {
+                op: _,
+                lhs,
+                rhs,
+                dst,
+            } => {
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(lhs.to_string());
                 current_live_vars.insert(rhs.to_string());
@@ -2699,8 +2709,14 @@ fn transfer_dead_store(
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(src.to_string());
             }
-            IRInstruction::JumpIfZero { target: _, condition }
-            | IRInstruction::JumpIfNotZero { target: _, condition } => {
+            IRInstruction::JumpIfZero {
+                target: _,
+                condition,
+            }
+            | IRInstruction::JumpIfNotZero {
+                target: _,
+                condition,
+            } => {
                 current_live_vars.insert(condition.to_string());
             }
             IRInstruction::Copy { dst, src } => {
@@ -2710,7 +2726,11 @@ fn transfer_dead_store(
             IRInstruction::Ret(Some(v)) => {
                 current_live_vars.insert(v.to_string());
             }
-            IRInstruction::Call { dst, args, target: _ } => {
+            IRInstruction::Call {
+                dst,
+                args,
+                target: _,
+            } => {
                 if let Some(d) = dst {
                     current_live_vars.remove(&d.to_string());
                 }
@@ -2757,10 +2777,18 @@ fn transfer_dead_store(
                 current_live_vars.insert(src.to_string());
                 current_live_vars.insert(dst_ptr.to_string());
             }
-            IRInstruction::CopyToOffset { src, dst: _, offset: _ } => {
+            IRInstruction::CopyToOffset {
+                src,
+                dst: _,
+                offset: _,
+            } => {
                 current_live_vars.insert(src.to_string());
             }
-            IRInstruction::CopyFromOffset { src, dst, offset: _ } => {
+            IRInstruction::CopyFromOffset {
+                src,
+                dst,
+                offset: _,
+            } => {
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(src.to_string());
             }

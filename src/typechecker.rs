@@ -1580,7 +1580,9 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     let member_def = struct_def
                         .members
                         .iter()
-                        .find(|&m| m.name == *member).cloned().unwrap();
+                        .find(|&m| m.name == *member)
+                        .cloned()
+                        .unwrap();
 
                     Ok(Expression::Dot(DotExpression {
                         structure: Box::new(typed_structure),
@@ -1892,9 +1894,7 @@ pub fn is_scalar(t: &Type) -> bool {
 pub fn is_complete(t: &Type) -> bool {
     match t {
         Type::Void => false,
-        Type::Struct { tag } => {
-            TYPE_TABLE.lock().unwrap().contains_key(tag)
-        }
+        Type::Struct { tag } => TYPE_TABLE.lock().unwrap().contains_key(tag),
         _ => true,
     }
 }
