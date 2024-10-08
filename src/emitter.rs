@@ -170,7 +170,7 @@ impl Emit for AsmFunction {
 }
 
 impl Emit for AsmInstruction {
-    fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
+    fn emit(&mut self, f: &mut File, _asm_type: &mut AsmType) -> Result<()> {
         if let AsmInstruction::Label(_) = self {
         } else {
             write!(f, "\t")?;

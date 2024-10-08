@@ -17,22 +17,6 @@ pub trait Instr {
     fn is_label(&self) -> bool;
 }
 
-impl dyn Instr {
-    fn is_jump(&self) -> bool {
-        match self.simplify() {
-            SimpleInstr::ConditionalJump(_) | SimpleInstr::UnconditionalJump(..) => true,
-            _ => false,
-        }
-    }
-
-    fn is_label(&self) -> bool {
-        match self.simplify() {
-            SimpleInstr::Label(_) => true,
-            _ => false,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum NodeId {
     Entry,

@@ -1931,7 +1931,7 @@ impl std::ops::Not for Const {
     }
 }
 
-use std::{fmt::Debug, process::id};
+use std::fmt::Debug;
 
 fn unreachable_code_elimination<V: Clone + Debug, I: Debug + Instr + Clone>(
     cfg: &mut cfg::CFG<V, I>,
@@ -1986,7 +1986,7 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
     let mut blocks_to_remove = vec![];
 
     // Filter out unreachable blocks
-    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg
+    let _: Vec<(usize, BasicBlock<V, I>)> = cfg
         .basic_blocks
         .iter()
         .filter(|(_, blk)| {
@@ -2093,7 +2093,7 @@ pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
 ) -> &mut cfg::CFG<V, I> {
     let mut blocks_to_remove = Vec::new();
 
-    let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg
+    let _: Vec<(usize, BasicBlock<V, I>)> = cfg
         .basic_blocks
         .iter()
         .filter(|(_, blk)| {
@@ -2398,7 +2398,7 @@ fn rewrite_instruction(
     let replace = |op: &IRValue| -> IRValue {
         match op {
             IRValue::Constant(_) => op.clone(),
-            IRValue::Var(v) => reaching_copies
+            IRValue::Var(_) => reaching_copies
                 .0
                 .iter()
                 .find(|cp| cp.dst == op.clone())
@@ -2702,17 +2702,17 @@ fn transfer_dead_store(
         let annotated_instr = (current_live_vars.clone(), i.clone());
 
         match i {
-            IRInstruction::Binary { op, lhs, rhs, dst } => {
+            IRInstruction::Binary { op: _, lhs, rhs, dst } => {
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(lhs.to_string());
                 current_live_vars.insert(rhs.to_string());
             }
-            IRInstruction::Unary { op, dst, src } => {
+            IRInstruction::Unary { op: _, dst, src } => {
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(src.to_string());
             }
-            IRInstruction::JumpIfZero { target, condition }
-            | IRInstruction::JumpIfNotZero { target, condition } => {
+            IRInstruction::JumpIfZero { target: _, condition }
+            | IRInstruction::JumpIfNotZero { target: _, condition } => {
                 current_live_vars.insert(condition.to_string());
             }
             IRInstruction::Copy { dst, src } => {
@@ -2722,7 +2722,7 @@ fn transfer_dead_store(
             IRInstruction::Ret(Some(v)) => {
                 current_live_vars.insert(v.to_string());
             }
-            IRInstruction::Call { dst, args, target } => {
+            IRInstruction::Call { dst, args, target: _ } => {
                 if let Some(d) = dst {
                     current_live_vars.remove(&d.to_string());
                 }
@@ -2748,13 +2748,13 @@ fn transfer_dead_store(
                 dst,
                 ptr,
                 index,
-                scale,
+                scale: _,
             } => {
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(ptr.to_string());
                 current_live_vars.insert(index.to_string());
             }
-            IRInstruction::GetAddress { src, dst } => {
+            IRInstruction::GetAddress { src: _, dst } => {
                 current_live_vars.remove(&dst.to_string());
             }
             IRInstruction::Load { src_ptr, dst } => {
@@ -2769,10 +2769,10 @@ fn transfer_dead_store(
                 current_live_vars.insert(src.to_string());
                 current_live_vars.insert(dst_ptr.to_string());
             }
-            IRInstruction::CopyToOffset { src, dst, offset } => {
+            IRInstruction::CopyToOffset { src, dst: _, offset: _ } => {
                 current_live_vars.insert(src.to_string());
             }
-            IRInstruction::CopyFromOffset { src, dst, offset } => {
+            IRInstruction::CopyFromOffset { src, dst, offset: _ } => {
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(src.to_string());
             }

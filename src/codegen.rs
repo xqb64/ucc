@@ -2599,9 +2599,9 @@ impl Fixup for AsmFunction {
                 },
                 AsmInstruction::Binary {
                     asm_type: AsmType::Double,
-                    op,
-                    lhs,
-                    rhs: AsmOperand::Register(reg),
+                    op: _,
+                    lhs: _,
+                    rhs: AsmOperand::Register(_),
                 } => instructions.extend(vec![instr.clone()]),
                 AsmInstruction::Binary {
                     asm_type: AsmType::Double,
@@ -3888,7 +3888,7 @@ fn classify_params_helper(
 
         match tacky_t {
             // Handle structure types
-            Type::Struct { tag } => {
+            Type::Struct { .. } => {
                 let struct_entry = match tacky_t {
                     Type::Struct { tag } => TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone(),
                     _ => unreachable!(),
@@ -4682,21 +4682,9 @@ impl RegAlloc for AsmProgram {
 
 impl RegAlloc for AsmFunction {
     fn reg_alloc(&mut self, aliased_pseudos: &BTreeSet<String>) -> Self {
-        let static_vars = SYMBOL_TABLE
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|(name, symbol)| match symbol.attrs {
-                IdentifierAttrs::StaticAttr { .. } => true,
-                _ => false,
-            })
-            .map(|(name, symbol)| name.clone())
-            .collect();
-
         let gp_graph = loop {
             let mut gp_graph = build_interference_graph(
                 &self.name,
-                &static_vars,
                 aliased_pseudos,
                 &self.instructions,
                 &RegisterClass::GP,
@@ -4724,7 +4712,6 @@ impl RegAlloc for AsmFunction {
         let xmm_graph = loop {
             let mut xmm_graph = build_interference_graph(
                 &self.name,
-                &static_vars,
                 aliased_pseudos,
                 &self.instructions,
                 &RegisterClass::XMM,
@@ -4807,7 +4794,6 @@ fn mk_base_graph(all_hardregs: &BTreeSet<AsmOperand>) -> Graph {
 
 fn build_interference_graph(
     fn_name: &str,
-    static_vars: &BTreeSet<String>,
     aliased_pseudos: &BTreeSet<String>,
     instructions: &[AsmInstruction],
     register_class: &RegisterClass,
@@ -4832,8 +4818,6 @@ fn build_interference_graph(
     let mut analyzed_cfg = LivenessAnalysis::analyze(
         &fn_name,
         cfg,
-        static_vars,
-        aliased_pseudos,
         &all_hardregs,
         register_class,
     );
@@ -5061,7 +5045,6 @@ impl LivenessAnalysis {
     }
 
     fn transfer(
-        static_and_aliased_vars: &BTreeSet<String>,
         block: &BasicBlock<BTreeSet<AsmOperand>, AsmInstruction>,
         end_live_regs: OperandSet,
         register_class: &RegisterClass,
@@ -5069,7 +5052,7 @@ impl LivenessAnalysis {
         let mut current_live_regs = end_live_regs.clone();
         let mut annotated_instructions = Vec::new();
 
-        for (idx, instr) in block.instructions.iter().enumerate().rev() {
+        for (_, instr) in block.instructions.iter().enumerate().rev() {
             annotated_instructions.push((current_live_regs.clone(), instr.1.clone()));
 
             let (regs_used, regs_written) = regs_used_and_written(&instr.1, register_class);
@@ -5091,19 +5074,11 @@ impl LivenessAnalysis {
     fn analyze(
         fn_name: &str,
         cfg: cfg::CFG<(), AsmInstruction>,
-        static_vars: &BTreeSet<String>,
-        aliased_vars: &BTreeSet<String>,
         all_hardregs: &BTreeSet<AsmOperand>,
         register_class: &RegisterClass,
     ) -> cfg::CFG<BTreeSet<AsmOperand>, AsmInstruction> {
         // Initialize the CFG with empty live variable sets
         let mut starting_cfg = cfg.initialize_annotation(BTreeSet::new());
-
-        // Combine static variables and aliased variables
-        let static_and_aliased_vars = static_vars
-            .union(aliased_vars)
-            .cloned()
-            .collect::<BTreeSet<_>>();
 
         // Create the worklist by cloning the basic blocks
         let mut worklist: Vec<(usize, BasicBlock<BTreeSet<AsmOperand>, AsmInstruction>)> =
@@ -5119,7 +5094,6 @@ impl LivenessAnalysis {
 
             // Transfer function: propagate live variables through the block
             let block = Self::transfer(
-                &static_and_aliased_vars,
                 &blk,
                 live_vars_at_exit,
                 register_class,
@@ -5178,8 +5152,8 @@ fn pseudo_is_current_type(pseudo: &str, register_class: &RegisterClass) -> bool 
         match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
             AsmSymtabEntry::Object {
                 _type,
-                is_static,
-                is_constant,
+                is_static: _,
+                is_constant: _,
             } => {
                 return _type != &AsmType::Double;
             }
@@ -5189,8 +5163,8 @@ fn pseudo_is_current_type(pseudo: &str, register_class: &RegisterClass) -> bool 
         match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
             AsmSymtabEntry::Object {
                 _type,
-                is_static,
-                is_constant,
+                is_static: _,
+                is_constant: _,
             } => {
                 return _type == &AsmType::Double;
             }
@@ -5299,6 +5273,7 @@ impl std::fmt::Display for AsmOperand {
     }
 }
 
+#[allow(dead_code)]
 fn print_graphviz(fn_name: &str, graph: &Graph) {
     use std::io::Write;
 
@@ -5309,7 +5284,7 @@ fn print_graphviz(fn_name: &str, graph: &Graph) {
     // Open a file for writing the Graphviz DOT format
     let mut file = match std::fs::File::create(&dot_filename) {
         Ok(f) => f,
-        Err(e) => {
+        Err(_) => {
             return;
         }
     };
@@ -5317,13 +5292,13 @@ fn print_graphviz(fn_name: &str, graph: &Graph) {
     writeln!(file, "graph {} {{", fn_name).expect("Failed to write to DOT file");
 
     // Iterate over the nodes in the graph
-    for (key, node) in graph {
+    for (_, node) in graph {
         let node_id = &node.id; // Assuming node has an `id` field
 
-        let color = match node.color {
-            Some(c) => format!("[color=red, style=filled, fillcolor=\"/set312/{}\"]", c),
-            None => String::new(),
-        };
+        // let color = match node.color {
+        //     Some(c) => format!("[color=red, style=filled, fillcolor=\"/set312/{}\"]", c),
+        //     None => String::new(),
+        // };
 
         writeln!(file, "  \"{}\";", node_id).expect("Failed to write node to DOT file");
 
@@ -5861,14 +5836,14 @@ fn coalesce(
 
     for i in instructions {
         match i {
-            AsmInstruction::Mov { asm_type, src, dst } => {
+            AsmInstruction::Mov { asm_type: _, src, dst } => {
                 let src = coalesced_regs.find(src.clone());
                 let dst = coalesced_regs.find(dst.clone());
 
                 // if src is in the graph
                 if let Some(src_node) = graph.get(&src) {
                     // if dst is in the graph
-                    if let Some(dst_node) = graph.get(&dst) {
+                    if let Some(_) = graph.get(&dst) {
                         // if src and dst are not the same
                         if src != dst {
                             // if src and dst are not neighbors
@@ -5976,10 +5951,10 @@ fn conservative_coalesceable(
     if briggs_test(graph, &src, &dst, register_class) {
         return true;
     }
-    if let AsmOperand::Register(reg) = src {
+    if let AsmOperand::Register(_) = src {
         return george_test(graph, src, dst, register_class);
     }
-    if let AsmOperand::Register(reg) = dst {
+    if let AsmOperand::Register(_) = dst {
         return george_test(graph, dst, src, register_class);
     }
     false
