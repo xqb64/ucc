@@ -4682,13 +4682,22 @@ impl RegAlloc for AsmFunction {
             .map(|(name, symbol)| name.clone())
             .collect();
 
-        let gp_graph = build_interference_graph(
-            &self.name,
-            &static_vars,
-            aliased_pseudos,
-            &self.instructions,
-            &RegisterClass::GP,
-        );
+        let gp_graph = loop {
+            let mut gp_graph = build_interference_graph(
+                &self.name,
+                &static_vars,
+                aliased_pseudos,
+                &self.instructions,
+                &RegisterClass::GP,
+            );
+
+            let mut coalesced_regs = coalesce(&mut gp_graph, &self.instructions);
+            if coalesced_regs.nothing_was_coalesced() {
+                break gp_graph;
+            }
+
+            self.instructions = rewrite_coalesced(self.instructions.clone(), &mut coalesced_regs)
+        };
         // print_graphviz(&self.name, &gp_graph);
 
         let gp_spilled_graph = add_spill_costs(gp_graph, &self.instructions);
@@ -4699,14 +4708,23 @@ impl RegAlloc for AsmFunction {
 
         let gp_register_map = make_register_map(&self.name, &colored_gp_graph, &RegisterClass::GP);
 
-        // Allocate XMM Registers
-        let xmm_graph = build_interference_graph(
-            &self.name,
-            &static_vars,
-            aliased_pseudos,
-            &self.instructions,
-            &RegisterClass::XMM,
-        );
+        let xmm_graph = loop {
+            let mut xmm_graph = build_interference_graph(
+                &self.name,
+                &static_vars,
+                aliased_pseudos,
+                &self.instructions,
+                &RegisterClass::XMM,
+            );
+
+            let mut coalesced_regs = coalesce(&mut xmm_graph, &self.instructions);
+            if coalesced_regs.nothing_was_coalesced() {
+                break xmm_graph;
+            }
+
+            self.instructions = rewrite_coalesced(self.instructions.clone(), &mut coalesced_regs)            
+        };
+        
         let xmm_spilled_graph = add_spill_costs(xmm_graph, &self.instructions);
         let colored_xmm_graph = color_graph(xmm_spilled_graph, XMM_REGISTERS.len(), &RegisterClass::XMM);
         let xmm_register_map = make_register_map(&self.name, &colored_xmm_graph, &RegisterClass::XMM);
