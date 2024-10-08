@@ -1947,7 +1947,7 @@ fn is_zero(konst: &Const) -> bool {
         Const::Long(val) => *val == 0,
         Const::UInt(val) => *val == 0,
         Const::ULong(val) => *val == 0,
-        Const::Double(val) => *val == 0.0,  // -0.0?
+        Const::Double(val) => *val == 0.0, // -0.0?
         Const::Char(val) => *val == 0,
         Const::UChar(val) => *val == 0,
     }
@@ -2228,9 +2228,7 @@ fn transfer(
             }
             IRInstruction::Call { dst, .. } => {
                 let copies_after_dst_filter = match dst {
-                    Some(d) => {
-                        filter_updated(current_copies, d)
-                    }
+                    Some(d) => filter_updated(current_copies, d),
                     None => current_copies,
                 };
 
@@ -2377,7 +2375,6 @@ fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(
 
     transformed_cfg.strip_annotations()
 }
-
 
 fn rewrite_instruction(
     reaching_copies: &ReachingCopies,

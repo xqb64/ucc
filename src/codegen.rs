@@ -2597,12 +2597,18 @@ impl Fixup for AsmFunction {
                     }
                     _ => instructions.push(instr.clone()),
                 },
-                AsmInstruction::Binary { asm_type: AsmType::Double, op, lhs, rhs: AsmOperand::Register(reg) } => {
-                    instructions.extend(vec![
-                        instr.clone()
-                    ])
-                }
-                AsmInstruction::Binary { asm_type: AsmType::Double, op, lhs, rhs } => {
+                AsmInstruction::Binary {
+                    asm_type: AsmType::Double,
+                    op,
+                    lhs,
+                    rhs: AsmOperand::Register(reg),
+                } => instructions.extend(vec![instr.clone()]),
+                AsmInstruction::Binary {
+                    asm_type: AsmType::Double,
+                    op,
+                    lhs,
+                    rhs,
+                } => {
                     instructions.extend(vec![
                         AsmInstruction::Mov {
                             asm_type: AsmType::Double,
@@ -3699,7 +3705,7 @@ impl Fixup for AsmFunction {
                             }
                         })
                         .collect();
-                
+
                     instructions.extend(restore_regs);
                     instructions.push(AsmInstruction::Ret);
                 }
@@ -4696,7 +4702,8 @@ impl RegAlloc for AsmFunction {
                 &RegisterClass::GP,
             );
 
-            let mut coalesced_regs = coalesce(&mut gp_graph, &self.instructions, &RegisterClass::GP);
+            let mut coalesced_regs =
+                coalesce(&mut gp_graph, &self.instructions, &RegisterClass::GP);
             if coalesced_regs.nothing_was_coalesced() {
                 break gp_graph;
             }
@@ -4708,7 +4715,8 @@ impl RegAlloc for AsmFunction {
         let gp_spilled_graph = add_spill_costs(gp_graph, &self.instructions);
         // print_graphviz(&self.name, &gp_spilled_graph);
 
-        let colored_gp_graph = color_graph(gp_spilled_graph, GP_REGISTERS.len(), &RegisterClass::GP);
+        let colored_gp_graph =
+            color_graph(gp_spilled_graph, GP_REGISTERS.len(), &RegisterClass::GP);
         // print_graphviz(&self.name, &colored_gp_graph);
 
         let gp_register_map = make_register_map(&self.name, &colored_gp_graph, &RegisterClass::GP);
@@ -4722,17 +4730,20 @@ impl RegAlloc for AsmFunction {
                 &RegisterClass::XMM,
             );
 
-            let mut coalesced_regs = coalesce(&mut xmm_graph, &self.instructions, &RegisterClass::XMM);
+            let mut coalesced_regs =
+                coalesce(&mut xmm_graph, &self.instructions, &RegisterClass::XMM);
             if coalesced_regs.nothing_was_coalesced() {
                 break xmm_graph;
             }
 
-            self.instructions = rewrite_coalesced(self.instructions.clone(), &mut coalesced_regs)            
+            self.instructions = rewrite_coalesced(self.instructions.clone(), &mut coalesced_regs)
         };
 
         let xmm_spilled_graph = add_spill_costs(xmm_graph, &self.instructions);
-        let colored_xmm_graph = color_graph(xmm_spilled_graph, XMM_REGISTERS.len(), &RegisterClass::XMM);
-        let xmm_register_map = make_register_map(&self.name, &colored_xmm_graph, &RegisterClass::XMM);
+        let colored_xmm_graph =
+            color_graph(xmm_spilled_graph, XMM_REGISTERS.len(), &RegisterClass::XMM);
+        let xmm_register_map =
+            make_register_map(&self.name, &colored_xmm_graph, &RegisterClass::XMM);
 
         // Merge GP and XMM register maps
         let mut register_map = gp_register_map;
@@ -4802,8 +4813,14 @@ fn build_interference_graph(
     register_class: &RegisterClass,
 ) -> Graph {
     let all_hardregs = match register_class {
-        RegisterClass::GP => GP_REGISTERS.iter().map(|x| AsmOperand::Register(*x)).collect(),
-        RegisterClass::XMM => XMM_REGISTERS.iter().map(|x| AsmOperand::Register(*x)).collect(),
+        RegisterClass::GP => GP_REGISTERS
+            .iter()
+            .map(|x| AsmOperand::Register(*x))
+            .collect(),
+        RegisterClass::XMM => XMM_REGISTERS
+            .iter()
+            .map(|x| AsmOperand::Register(*x))
+            .collect(),
     };
 
     let mut graph = mk_base_graph(&all_hardregs);
@@ -4812,8 +4829,14 @@ fn build_interference_graph(
 
     let cfg: CFG<(), AsmInstruction> =
         CFG::instructions_to_cfg("spam".to_string(), instructions.to_vec());
-    let mut analyzed_cfg =
-        LivenessAnalysis::analyze(&fn_name, cfg, static_vars, aliased_pseudos, &all_hardregs, register_class);
+    let mut analyzed_cfg = LivenessAnalysis::analyze(
+        &fn_name,
+        cfg,
+        static_vars,
+        aliased_pseudos,
+        &all_hardregs,
+        register_class,
+    );
 
     add_edges(&mut analyzed_cfg, &mut graph, register_class);
 
@@ -4876,14 +4899,19 @@ fn add_edges(
 
 type OperandSet = BTreeSet<AsmOperand>;
 
-fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass) -> (OperandSet, OperandSet) {
+fn regs_used_and_written(
+    instr: &AsmInstruction,
+    register_class: &RegisterClass,
+) -> (OperandSet, OperandSet) {
     let (ops_used, ops_written) = match instr {
         AsmInstruction::Mov { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
         AsmInstruction::Movsx { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
         AsmInstruction::MovZeroExtend { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
         AsmInstruction::Cvtsi2sd { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
         AsmInstruction::Cvttsd2si { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
-        AsmInstruction::Binary { lhs, rhs, .. } => (vec![lhs.clone(), rhs.clone()], vec![rhs.clone()]),
+        AsmInstruction::Binary { lhs, rhs, .. } => {
+            (vec![lhs.clone(), rhs.clone()], vec![rhs.clone()])
+        }
         AsmInstruction::Unary { operand, .. } => (vec![operand.clone()], vec![operand.clone()]),
         AsmInstruction::Cmp { lhs, rhs, .. } => (vec![lhs.clone(), rhs.clone()], vec![]),
         AsmInstruction::SetCC { operand, .. } => (vec![], vec![operand.clone()]),
@@ -4931,7 +4959,10 @@ fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass)
                 RegisterClass::XMM => XMM_CALLER_SAVED_REGISTERS,
             };
 
-            (used_regs, regs.iter().map(|r| AsmOperand::Register(*r)).collect())
+            (
+                used_regs,
+                regs.iter().map(|r| AsmOperand::Register(*r)).collect(),
+            )
         }
         AsmInstruction::Lea { src, dst } => (vec![src.clone()], vec![dst.clone()]),
         AsmInstruction::Jmp { .. }
@@ -4964,9 +4995,11 @@ fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass)
                     AsmOperand::Register(base.clone()),
                     AsmOperand::Register(index.clone()),
                 ],
-                vec![]
+                vec![],
             ),
-            AsmOperand::Imm(_) | AsmOperand::Data(_, _) | AsmOperand::PseudoMem(_, _) => (vec![], vec![]),
+            AsmOperand::Imm(_) | AsmOperand::Data(_, _) | AsmOperand::PseudoMem(_, _) => {
+                (vec![], vec![])
+            }
         }
     };
 
@@ -4974,10 +5007,8 @@ fn regs_used_and_written(instr: &AsmInstruction, register_class: &RegisterClass)
     let regs_read1: Vec<AsmOperand> = ops_used.iter().flat_map(regs_used_to_read).collect();
 
     // Apply `regs_used_to_update` to the list of operands that are written
-    let (regs_read2, regs_written): (Vec<_>, Vec<_>) = ops_written
-        .iter()
-        .map(regs_used_to_update)
-        .unzip();
+    let (regs_read2, regs_written): (Vec<_>, Vec<_>) =
+        ops_written.iter().map(regs_used_to_update).unzip();
 
     let regs_read2 = regs_read2.into_iter().flatten().collect::<Vec<_>>();
     let regs_written = regs_written.into_iter().flatten().collect::<Vec<_>>();
@@ -5033,14 +5064,14 @@ impl LivenessAnalysis {
         static_and_aliased_vars: &BTreeSet<String>,
         block: &BasicBlock<BTreeSet<AsmOperand>, AsmInstruction>,
         end_live_regs: OperandSet,
-        register_class: &RegisterClass
+        register_class: &RegisterClass,
     ) -> BasicBlock<BTreeSet<AsmOperand>, AsmInstruction> {
         let mut current_live_regs = end_live_regs.clone();
         let mut annotated_instructions = Vec::new();
 
         for (idx, instr) in block.instructions.iter().enumerate().rev() {
             annotated_instructions.push((current_live_regs.clone(), instr.1.clone()));
-            
+
             let (regs_used, regs_written) = regs_used_and_written(&instr.1, register_class);
 
             let without_killed: BTreeSet<_> = current_live_regs
@@ -5063,7 +5094,7 @@ impl LivenessAnalysis {
         static_vars: &BTreeSet<String>,
         aliased_vars: &BTreeSet<String>,
         all_hardregs: &BTreeSet<AsmOperand>,
-        register_class: &RegisterClass
+        register_class: &RegisterClass,
     ) -> cfg::CFG<BTreeSet<AsmOperand>, AsmInstruction> {
         // Initialize the CFG with empty live variable sets
         let mut starting_cfg = cfg.initialize_annotation(BTreeSet::new());
@@ -5087,7 +5118,12 @@ impl LivenessAnalysis {
             let live_vars_at_exit = Self::meet(fn_name, &starting_cfg, &blk, all_hardregs);
 
             // Transfer function: propagate live variables through the block
-            let block = Self::transfer(&static_and_aliased_vars, &blk, live_vars_at_exit, register_class);
+            let block = Self::transfer(
+                &static_and_aliased_vars,
+                &blk,
+                live_vars_at_exit,
+                register_class,
+            );
 
             // Update the CFG with the new block
             starting_cfg.update_basic_block(block_idx, block.clone());
@@ -5137,10 +5173,7 @@ fn get_operands(instr: &AsmInstruction) -> Vec<AsmOperand> {
     }
 }
 
-fn pseudo_is_current_type(
-    pseudo: &str,
-    register_class: &RegisterClass,
-) -> bool {
+fn pseudo_is_current_type(pseudo: &str, register_class: &RegisterClass) -> bool {
     if register_class == &RegisterClass::GP {
         match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
             AsmSymtabEntry::Object {
@@ -5168,7 +5201,6 @@ fn pseudo_is_current_type(
     }
 }
 
- 
 fn get_pseudo_nodes(
     aliased_pseudos: &BTreeSet<String>,
     instructions: &[AsmInstruction],
@@ -5203,7 +5235,9 @@ fn get_pseudo_nodes(
         aliased_pseudos: &BTreeSet<String>,
     ) -> bool {
         // Assume `pseudo_is_current_type` and `is_static` are helper functions
-        pseudo_is_current_type(pseudo, register_class) && !is_static(pseudo) && !aliased_pseudos.contains(pseudo)
+        pseudo_is_current_type(pseudo, register_class)
+            && !is_static(pseudo)
+            && !aliased_pseudos.contains(pseudo)
     }
 
     // Extract and filter pseudo-registers from the instructions
@@ -5213,7 +5247,9 @@ fn get_pseudo_nodes(
             get_operands(instr)
                 .iter()
                 .filter_map(|op| match op {
-                    AsmOperand::Pseudo(r) if pseudo_is_valid(r, register_class, aliased_pseudos) => {
+                    AsmOperand::Pseudo(r)
+                        if pseudo_is_valid(r, register_class, aliased_pseudos) =>
+                    {
                         Some(r.clone())
                     }
                     _ => None,
@@ -5229,7 +5265,6 @@ fn get_pseudo_nodes(
     // Initialize nodes for each unique pseudo-register
     pseudos.into_iter().map(initialize_node).collect()
 }
-
 
 fn add_pseudo_nodes(
     graph: &mut Graph,
@@ -5483,14 +5518,17 @@ fn color_graph(mut graph: Graph, max_colors: usize, register_class: &RegisterCla
 
                 if caller_saved_regs.contains(reg) {
                     // Assign the lowest color for caller-saved registers
-                    graph.get_mut(&node_id).unwrap().color = Some(*available_colors.iter().min().unwrap());
+                    graph.get_mut(&node_id).unwrap().color =
+                        Some(*available_colors.iter().min().unwrap());
                 } else {
                     // Assign the highest color for callee-saved registers
-                    graph.get_mut(&node_id).unwrap().color = Some(*available_colors.iter().max().unwrap());
+                    graph.get_mut(&node_id).unwrap().color =
+                        Some(*available_colors.iter().max().unwrap());
                 }
             } else {
                 // Default: Assign the lowest available color
-                graph.get_mut(&node_id).unwrap().color = Some(*available_colors.iter().min().unwrap());
+                graph.get_mut(&node_id).unwrap().color =
+                    Some(*available_colors.iter().min().unwrap());
             }
         } else {
             // In case no colors are available, the node remains uncolored (could be a spill)
@@ -5503,7 +5541,6 @@ fn color_graph(mut graph: Graph, max_colors: usize, register_class: &RegisterCla
 
     graph
 }
-
 
 type IntMap = BTreeMap<usize, AsmRegister>;
 type RegSet = BTreeSet<AsmRegister>;
@@ -5781,7 +5818,7 @@ fn get_caller_saved_registers(register_class: &RegisterClass) -> &[AsmRegister] 
 
 #[derive(Debug, PartialEq, Clone)]
 struct DisjointSet<T: Ord + Clone> {
-    reg_map: BTreeMap<T, T>,  // Map to store the parent of each element
+    reg_map: BTreeMap<T, T>, // Map to store the parent of each element
 }
 
 impl<T: Ord + Clone> DisjointSet<T> {
@@ -5815,9 +5852,13 @@ impl<T: Ord + Clone> DisjointSet<T> {
     }
 }
 
-fn coalesce(graph: &mut Graph, instructions: &[AsmInstruction], register_class: &RegisterClass) -> DisjointSet<AsmOperand> {
+fn coalesce(
+    graph: &mut Graph,
+    instructions: &[AsmInstruction],
+    register_class: &RegisterClass,
+) -> DisjointSet<AsmOperand> {
     let mut coalesced_regs = DisjointSet::new();
-    
+
     for i in instructions {
         match i {
             AsmInstruction::Mov { asm_type, src, dst } => {
@@ -5832,14 +5873,20 @@ fn coalesce(graph: &mut Graph, instructions: &[AsmInstruction], register_class: 
                         if src != dst {
                             // if src and dst are not neighbors
                             if !src_node.neighbors.contains(&dst) {
-
-                                if conservative_coalesceable(graph, src.clone(), dst.clone(), register_class) {
+                                if conservative_coalesceable(
+                                    graph,
+                                    src.clone(),
+                                    dst.clone(),
+                                    register_class,
+                                ) {
                                     // Coalesce src and dst
-                                    
+
                                     let to_keep;
                                     let to_merge;
                                     if let AsmOperand::Register(reg) = src {
-                                        if GP_REGISTERS.contains(&reg) || XMM_REGISTERS.contains(&reg) {
+                                        if GP_REGISTERS.contains(&reg)
+                                            || XMM_REGISTERS.contains(&reg)
+                                        {
                                             to_keep = src;
                                             to_merge = dst;
                                         } else {
@@ -5868,7 +5915,7 @@ fn coalesce(graph: &mut Graph, instructions: &[AsmInstruction], register_class: 
 
 fn rewrite_coalesced(
     instructions: Vec<AsmInstruction>,
-    coalesced_regs: &mut DisjointSet<AsmOperand>
+    coalesced_regs: &mut DisjointSet<AsmOperand>,
 ) -> Vec<AsmInstruction> {
     // Closure to rewrite an individual instruction
     let mut rewrite_instruction = |instr: &AsmInstruction| -> Option<AsmInstruction> {
@@ -5880,7 +5927,11 @@ fn rewrite_coalesced(
                 if new_src == new_dst {
                     None
                 } else {
-                    Some(AsmInstruction::Mov { asm_type: asm_type.to_owned(), src: new_src, dst: new_dst })
+                    Some(AsmInstruction::Mov {
+                        asm_type: asm_type.to_owned(),
+                        src: new_src,
+                        dst: new_dst,
+                    })
                 }
             }
             // Handle other instructions by replacing their operands using coalesced_regs.find
@@ -5916,7 +5967,12 @@ fn remove_edge(graph: &mut Graph, x: &AsmOperand, y: &AsmOperand) {
     y_node.neighbors.remove(x);
 }
 
-fn conservative_coalesceable(graph: &mut Graph, src: AsmOperand, dst: AsmOperand, register_class: &RegisterClass) -> bool {
+fn conservative_coalesceable(
+    graph: &mut Graph,
+    src: AsmOperand,
+    dst: AsmOperand,
+    register_class: &RegisterClass,
+) -> bool {
     if briggs_test(graph, &src, &dst, register_class) {
         return true;
     }
@@ -5929,7 +5985,12 @@ fn conservative_coalesceable(graph: &mut Graph, src: AsmOperand, dst: AsmOperand
     false
 }
 
-fn briggs_test(graph: &mut Graph, src: &AsmOperand, dst: &AsmOperand, register_class: &RegisterClass) -> bool {
+fn briggs_test(
+    graph: &mut Graph,
+    src: &AsmOperand,
+    dst: &AsmOperand,
+    register_class: &RegisterClass,
+) -> bool {
     let mut significant_neighbors = 0;
 
     let k = match register_class {
@@ -5941,7 +6002,10 @@ fn briggs_test(graph: &mut Graph, src: &AsmOperand, dst: &AsmOperand, register_c
     let y_node = graph.get(&dst).unwrap();
 
     let mut combined_neighbors = x_node.neighbors.iter().collect::<BTreeSet<_>>();
-    combined_neighbors = combined_neighbors.union(&y_node.neighbors.iter().collect::<BTreeSet<_>>()).cloned().collect::<BTreeSet<_>>();
+    combined_neighbors = combined_neighbors
+        .union(&y_node.neighbors.iter().collect::<BTreeSet<_>>())
+        .cloned()
+        .collect::<BTreeSet<_>>();
 
     for n in combined_neighbors {
         let neighbor_node = graph.get(&n).unwrap();
@@ -5960,7 +6024,12 @@ fn briggs_test(graph: &mut Graph, src: &AsmOperand, dst: &AsmOperand, register_c
     significant_neighbors < k
 }
 
-fn george_test(graph: &mut Graph, hardreg: AsmOperand, pseudoreg: AsmOperand, register_class: &RegisterClass) -> bool {
+fn george_test(
+    graph: &mut Graph,
+    hardreg: AsmOperand,
+    pseudoreg: AsmOperand,
+    register_class: &RegisterClass,
+) -> bool {
     let pseudo_node = graph.get(&pseudoreg).unwrap();
 
     let k = match register_class {
@@ -5980,6 +6049,6 @@ fn george_test(graph: &mut Graph, hardreg: AsmOperand, pseudoreg: AsmOperand, re
 
         return false;
     }
-    
+
     true
 }

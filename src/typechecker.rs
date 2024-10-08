@@ -13,7 +13,12 @@ use crate::{
     },
 };
 use anyhow::{bail, Result};
-use std::{any::Any, cmp::{max, Ordering}, collections::BTreeMap, sync::Mutex};
+use std::{
+    any::Any,
+    cmp::{max, Ordering},
+    collections::BTreeMap,
+    sync::Mutex,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Symbol {
@@ -1873,7 +1878,9 @@ impl PartialEq for StaticInit {
             (StaticInit::Long(l1), StaticInit::Long(l2)) => l1 == l2,
             (StaticInit::UInt(u1), StaticInit::UInt(u2)) => u1 == u2,
             (StaticInit::ULong(ul1), StaticInit::ULong(ul2)) => ul1 == ul2,
-            (StaticInit::Double(d1), StaticInit::Double(d2)) => d1 == d2 || d1.total_cmp(d2) == Ordering::Equal,
+            (StaticInit::Double(d1), StaticInit::Double(d2)) => {
+                d1 == d2 || d1.total_cmp(d2) == Ordering::Equal
+            }
             (StaticInit::Char(c1), StaticInit::Char(c2)) => c1 == c2,
             (StaticInit::UChar(uc1), StaticInit::UChar(uc2)) => uc1 == uc2,
             (StaticInit::String(s1, b1), StaticInit::String(s2, b2)) => s1 == s2 && b1 == b2,
