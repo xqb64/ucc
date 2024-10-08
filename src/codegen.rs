@@ -5827,30 +5827,27 @@ fn coalesce(graph: &mut Graph, instructions: &[AsmInstruction], register_class: 
                         if src != dst {
                             // if src and dst are not neighbors
                             if !src_node.neighbors.contains(&dst) {
-                                // if src and dst are not pruned
-                                if !src_node.pruned && !dst_node.pruned {
-                                    // if src and dst are not colored
-                                    if conservative_coalesceable(graph, src.clone(), dst.clone(), register_class) {
-                                        // Coalesce src and dst
-                                        
-                                        let to_keep;
-                                        let to_merge;
-                                        if let AsmOperand::Register(reg) = src {
-                                            if GP_REGISTERS.contains(&reg) || XMM_REGISTERS.contains(&reg) {
-                                                to_keep = src;
-                                                to_merge = dst;
-                                            } else {
-                                                to_keep = dst;
-                                                to_merge = src;
-                                            }
+
+                                if conservative_coalesceable(graph, src.clone(), dst.clone(), register_class) {
+                                    // Coalesce src and dst
+                                    
+                                    let to_keep;
+                                    let to_merge;
+                                    if let AsmOperand::Register(reg) = src {
+                                        if GP_REGISTERS.contains(&reg) || XMM_REGISTERS.contains(&reg) {
+                                            to_keep = src;
+                                            to_merge = dst;
                                         } else {
                                             to_keep = dst;
                                             to_merge = src;
                                         }
-
-                                        coalesced_regs.union(to_merge.clone(), to_keep.clone());
-                                        update_graph(graph, to_merge, to_keep);
+                                    } else {
+                                        to_keep = dst;
+                                        to_merge = src;
                                     }
+
+                                    coalesced_regs.union(to_merge.clone(), to_keep.clone());
+                                    update_graph(graph, to_merge, to_keep);
                                 }
                             }
                         }
