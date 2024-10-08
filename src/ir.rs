@@ -1931,7 +1931,7 @@ impl std::ops::Not for Const {
     }
 }
 
-use std::fmt::Debug;
+use std::{fmt::Debug, process::id};
 
 fn unreachable_code_elimination<V: Clone + Debug, I: Debug + Instr + Clone>(
     cfg: &mut cfg::CFG<V, I>,
@@ -2228,7 +2228,9 @@ fn transfer(
             }
             IRInstruction::Call { dst, .. } => {
                 let copies_after_dst_filter = match dst {
-                    Some(d) => filter_updated(current_copies, d),
+                    Some(d) => {
+                        filter_updated(current_copies, d)
+                    }
                     None => current_copies,
                 };
 
@@ -2279,8 +2281,10 @@ fn meet(
             }
             NodeId::Block(n) => {
                 let v = cfg.get_block_value(*n);
-
+                println!("v: {:?}", v);
+                println!("incoming: {:?}", incoming);
                 incoming = incoming.intersection(&v);
+                println!("RESULT: {:?}", incoming);
             }
             _ => panic!("Internal error"),
         }
@@ -2293,6 +2297,7 @@ fn find_reaching_copies<V: Clone + Debug, I: Clone + Debug + Instr>(
     cfg: cfg::CFG<(), IRInstruction>,
 ) -> cfg::CFG<ReachingCopies, IRInstruction> {
     let ident = collect_all_copies(&cfg);
+
     let mut starting_cfg = cfg.initialize_annotation(ident.clone());
 
     let mut worklist: Vec<(usize, BasicBlock<ReachingCopies, IRInstruction>)> =
@@ -2372,6 +2377,7 @@ fn copy_propagation<V: Clone + Debug, I: Clone + Debug + Instr>(
 
     transformed_cfg.strip_annotations()
 }
+
 
 fn rewrite_instruction(
     reaching_copies: &ReachingCopies,
