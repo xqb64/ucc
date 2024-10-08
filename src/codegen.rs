@@ -5588,9 +5588,9 @@ fn cleanup_movs(instructions: Vec<AsmInstruction>) -> Vec<AsmInstruction> {
         .collect()
 }
 
-fn replace_ops<F>(f: F, instr: AsmInstruction) -> AsmInstruction
+fn replace_ops<F>(mut f: F, instr: AsmInstruction) -> AsmInstruction
 where
-    F: Fn(AsmOperand) -> AsmOperand,
+    F: FnMut(AsmOperand) -> AsmOperand,
 {
     match instr {
         AsmInstruction::Mov { asm_type, src, dst } => AsmInstruction::Mov {
@@ -5754,4 +5754,202 @@ fn get_caller_saved_registers(register_class: &RegisterClass) -> &[AsmRegister] 
         RegisterClass::GP => GP_CALLER_SAVED_REGISTERS,
         RegisterClass::XMM => XMM_CALLER_SAVED_REGISTERS,
     }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+struct DisjointSet<T: Ord + Clone> {
+    reg_map: BTreeMap<T, T>,  // Map to store the parent of each element
+}
+
+impl<T: Ord + Clone> DisjointSet<T> {
+    // ❶ Initialize an empty disjoint set
+    pub fn new() -> Self {
+        Self {
+            reg_map: BTreeMap::new(),
+        }
+    }
+
+    // ❷ Union operation: Add an entry (x -> y) in the map
+    pub fn union(&mut self, x: T, y: T) {
+        self.reg_map.insert(x, y);
+    }
+
+    // ❸ Find operation: Find the root of 'r' with path compression
+    pub fn find(&mut self, r: T) -> T {
+        if let Some(parent) = self.reg_map.get(&r).cloned() {
+            // ❹ Recursively find the root and apply path compression
+            let root = self.find(parent.clone());
+            self.reg_map.insert(r.clone(), root.clone()); // Path compression
+            root
+        } else {
+            r // If 'r' is not in the map, it is its own root
+        }
+    }
+
+    // ❺ Check if the reg_map is empty (meaning nothing was coalesced)
+    pub fn nothing_was_coalesced(&self) -> bool {
+        self.reg_map.is_empty()
+    }
+}
+
+fn coalesce(graph: &mut Graph, instructions: &[AsmInstruction]) -> DisjointSet<AsmOperand> {
+    let mut coalesced_regs = DisjointSet::new();
+    
+    for i in instructions {
+        match i {
+            AsmInstruction::Mov { asm_type, src, dst } => {
+                let src = coalesced_regs.find(src.clone());
+                let dst = coalesced_regs.find(dst.clone());
+
+                // if src is in the graph
+                if let Some(src_node) = graph.get(&NodeId::Pseudo(src.to_string())) {
+                    // if dst is in the graph
+                    if let Some(dst_node) = graph.get(&NodeId::Pseudo(dst.to_string())) {
+                        // if src and dst are not the same
+                        if src != dst {
+                            // if src and dst are not neighbors
+                            if !src_node.neighbors.contains(&NodeId::Pseudo(dst.to_string())) {
+                                // if src and dst are not pruned
+                                if !src_node.pruned && !dst_node.pruned {
+                                    // if src and dst are not colored
+                                    if conservative_coalesceable(graph, src.clone(), dst.clone()) {
+                                        // Coalesce src and dst
+                                        
+                                        let to_keep;
+                                        let to_merge;
+                                        if let AsmOperand::Register(reg) = src {
+                                            if GP_REGISTERS.contains(&reg) || XMM_REGISTERS.contains(&reg) {
+                                                to_keep = src;
+                                                to_merge = dst;
+                                            } else {
+                                                to_keep = dst;
+                                                to_merge = src;
+                                            }
+                                        } else {
+                                            to_keep = dst;
+                                            to_merge = src;
+                                        }
+
+                                        coalesced_regs.union(to_merge.clone(), to_keep.clone());
+                                        update_graph(graph, to_merge, to_keep);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => continue,
+        }
+    }
+
+    coalesced_regs.clone()
+}
+
+fn rewrite_coalesced(
+    instructions: Vec<AsmInstruction>,
+    coalesced_regs: &mut DisjointSet<AsmOperand>
+) -> Vec<AsmInstruction> {
+    // Closure to rewrite an individual instruction
+    let mut rewrite_instruction = |instr: &AsmInstruction| -> Option<AsmInstruction> {
+        match instr {
+            AsmInstruction::Mov { asm_type, src, dst } => {
+                let new_src = coalesced_regs.find(src.clone());
+                let new_dst = coalesced_regs.find(dst.clone());
+                // Remove move if the source and destination are the same
+                if new_src == new_dst {
+                    None
+                } else {
+                    Some(AsmInstruction::Mov { asm_type: asm_type.to_owned(), src: new_src, dst: new_dst })
+                }
+            }
+            // Handle other instructions by replacing their operands using coalesced_regs.find
+            _ => Some(replace_ops(
+                |x| coalesced_regs.find(x.clone()), // Inline the closure to avoid double borrowing
+                instr.clone(),
+            )),
+        }
+    };
+
+    // Filter and map instructions, removing redundant moves
+    instructions
+        .into_iter()
+        .filter_map(|x| rewrite_instruction(&x))
+        .collect()
+}
+
+fn update_graph(graph: &mut Graph, x: AsmOperand, y: AsmOperand) {
+    let node_to_remove = graph.get(&x).unwrap().clone();
+
+    for neighbor in node_to_remove.neighbors.iter() {
+        add_edge(graph, &y, &neighbor);
+        remove_edge(graph, &x, &neighbor);
+    }
+
+    graph.remove(&x);
+}
+
+fn remove_edge(graph: &mut Graph, x: &AsmOperand, y: &AsmOperand) {
+    let x_node = graph.get_mut(x).unwrap();
+    x_node.neighbors.remove(y);
+    let y_node = graph.get_mut(y).unwrap();
+    y_node.neighbors.remove(x);
+}
+
+fn conservative_coalesceable(graph: &mut Graph, src: AsmOperand, dst: AsmOperand) -> bool {
+    if briggs_test(graph, &src, &dst) {
+        return true;
+    }
+    if let AsmOperand::Register(reg) = src {
+        return george_test(graph, src, dst);
+    }
+    if let AsmOperand::Register(reg) = dst {
+        return george_test(graph, dst, src);
+    }
+    false
+}
+
+fn briggs_test(graph: &mut Graph, src: &AsmOperand, dst: &AsmOperand) -> bool {
+    let mut significant_neighbors = 0;
+
+    let x_node = graph.get(&src).unwrap();
+    let y_node = graph.get(&dst).unwrap();
+
+    let mut combined_neighbors = x_node.neighbors.iter().collect::<BTreeSet<_>>();
+    combined_neighbors = combined_neighbors.union(&y_node.neighbors.iter().collect::<BTreeSet<_>>()).cloned().collect::<BTreeSet<_>>();
+
+    for n in combined_neighbors {
+        let neighbor_node = graph.get(&n).unwrap();
+        let mut degree = neighbor_node.neighbors.len();
+
+        // if are neighbors n,x and n,y
+        if neighbor_node.neighbors.contains(&src) && neighbor_node.neighbors.contains(&dst) {
+            degree -= 1;
+        }
+
+        if degree >= 12 {
+            significant_neighbors += 1;
+        }
+    }
+
+    significant_neighbors < 12
+}
+
+fn george_test(graph: &mut Graph, hardreg: AsmOperand, pseudoreg: AsmOperand) -> bool {
+    let pseudo_node = graph.get(&pseudoreg).unwrap();
+
+    for n in pseudo_node.neighbors.iter() {
+        let neighbor_node = graph.get(&n).unwrap();
+        if neighbor_node.neighbors.contains(&hardreg) {
+            continue;
+        }
+
+        if neighbor_node.neighbors.len() < 12 {
+            continue;
+        }
+
+        return false;
+    }
+    
+    true
 }
