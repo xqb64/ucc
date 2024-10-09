@@ -10,7 +10,7 @@ use crate::{
     },
     lexer::Const,
     parser::ast::Type,
-    typechecker::{
+    semantics::typechecker::{
         get_common_type, get_signedness, get_size_of_type, is_scalar, IdentifierAttrs, MemberEntry,
         StaticInit, CURRENT_FN_RETURNS_ON_STACK, SYMBOL_TABLE, TYPE_TABLE,
     },
@@ -2046,7 +2046,7 @@ fn classify_param_types(params: &[Type], return_on_stack: bool) -> Vec<AsmRegist
 }
 
 pub fn build_asm_symbol_table() {
-    use crate::typechecker::is_complete;
+    use crate::semantics::typechecker::is_complete;
 
     let frontend_symtab = SYMBOL_TABLE.lock().unwrap().clone();
     let mut asm_symbol_table = ASM_SYMBOL_TABLE.lock().unwrap();
@@ -2372,7 +2372,7 @@ pub enum Class {
     Integer,
 }
 
-use crate::typechecker::StructEntry;
+use crate::semantics::typechecker::StructEntry;
 
 fn classify_structure(struct_entry: &StructEntry) -> Vec<Class> {
     let mut size: isize = struct_entry.size as isize;

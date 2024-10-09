@@ -4,7 +4,7 @@ use crate::{
         AsmStaticConstant, AsmStaticVariable, AsmSymtabEntry, AsmType, AsmUnaryOp, ConditionCode,
         ASM_SYMBOL_TABLE,
     },
-    typechecker::StaticInit,
+    semantics::typechecker::StaticInit,
 };
 use anyhow::Result;
 use regex::Regex;

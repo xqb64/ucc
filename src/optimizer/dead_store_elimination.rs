@@ -1,6 +1,6 @@
 use crate::cfg::{self, BasicBlock, NodeId};
 use crate::ir::{get_dst, IRInstruction, IRValue};
-use crate::typechecker::{IdentifierAttrs, SYMBOL_TABLE};
+use crate::semantics::typechecker::{IdentifierAttrs, SYMBOL_TABLE};
 use std::collections::BTreeSet;
 
 pub fn dead_store_elimination(

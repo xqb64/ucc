@@ -10,7 +10,7 @@ use crate::{
         SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression,
         Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement,
     },
-    typechecker::{
+    semantics::typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
         IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE, TYPE_TABLE,
     },

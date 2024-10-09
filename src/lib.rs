@@ -2,13 +2,15 @@ pub mod cfg;
 pub mod emitter;
 pub mod ir;
 pub mod lexer;
-pub mod loop_label;
 pub mod parser {
     pub mod ast;
     pub mod recursive_descent;
 }
-pub mod resolver;
-pub mod typechecker;
+pub mod semantics {
+    pub mod loop_label;
+    pub mod resolver;
+    pub mod typechecker;
+}
 pub mod optimizer {
     pub mod constant_folding;
     pub mod copy_propagation;

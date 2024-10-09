@@ -14,9 +14,9 @@ use ucc::{
     emitter::Emit,
     ir::{convert_symbols_to_tacky, IRNode, Irfy, Optimize},
     lexer::{Lexer, Token},
-    loop_label::LoopLabel,
-    resolver::Resolve,
-    typechecker::Typecheck,
+    semantics::loop_label::LoopLabel,
+    semantics::resolver::Resolve,
+    semantics::typechecker::Typecheck,
 };
 
 fn main() {

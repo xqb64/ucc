@@ -3,8 +3,8 @@ use crate::codegen::gen::{
     AsmFunction, AsmInstruction, AsmNode, AsmOperand, AsmProgram, AsmRegister, AsmStaticConstant,
     AsmStaticVariable, AsmSymtabEntry, ASM_SYMBOL_TABLE, VAR_TO_STACK_POS,
 };
-use crate::typechecker::IdentifierAttrs;
-use crate::typechecker::SYMBOL_TABLE;
+use crate::semantics::typechecker::IdentifierAttrs;
+use crate::semantics::typechecker::SYMBOL_TABLE;
 
 pub trait ReplacePseudo {
     fn replace_pseudo(&self) -> Self;
