@@ -1,5 +1,8 @@
+use crate::codegen::gen::{
+    AsmBinaryOp, AsmFunction, AsmInstruction, AsmNode, AsmOperand, AsmProgram, AsmRegister,
+    AsmSymtabEntry, AsmType, ASM_SYMBOL_TABLE,
+};
 use std::collections::BTreeSet;
-use crate::codegen::gen::{AsmRegister, AsmSymtabEntry, AsmOperand, AsmNode, AsmProgram, ASM_SYMBOL_TABLE, AsmFunction, AsmInstruction, AsmBinaryOp, AsmType};
 
 pub trait Fixup {
     fn fixup(&mut self, callee_saved_args: &BTreeSet<AsmRegister>) -> Self;

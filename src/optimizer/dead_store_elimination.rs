@@ -1,8 +1,7 @@
 use crate::cfg::{self, BasicBlock, NodeId};
-use crate::ir::{IRInstruction, IRValue, get_dst};
+use crate::ir::{get_dst, IRInstruction, IRValue};
+use crate::typechecker::{IdentifierAttrs, SYMBOL_TABLE};
 use std::collections::BTreeSet;
-use crate::typechecker::{SYMBOL_TABLE, IdentifierAttrs};
-
 
 pub fn dead_store_elimination(
     aliased_vars: &BTreeSet<String>,
@@ -22,7 +21,7 @@ pub fn dead_store_elimination(
         let new_instructions = block
             .instructions
             .into_iter()
-            .filter(|instr| !is_dead_store(instr)) 
+            .filter(|instr| !is_dead_store(instr))
             .collect();
 
         (

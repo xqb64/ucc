@@ -1464,10 +1464,9 @@ impl Instr for IRInstruction {
 impl Optimize for IRFunction {
     fn optimize(&mut self, enabled_optimizations: Vec<Optimization>) -> Self {
         use crate::optimizer::{
-            unreachable_code_elimination::unreachable_code_elimination,
-            copy_propagation::copy_propagation,
+            constant_folding::constant_folding, copy_propagation::copy_propagation,
             dead_store_elimination::dead_store_elimination,
-            constant_folding::constant_folding,
+            unreachable_code_elimination::unreachable_code_elimination,
         };
 
         if self.body.is_empty() {

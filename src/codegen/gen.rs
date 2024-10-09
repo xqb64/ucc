@@ -1735,7 +1735,6 @@ lazy_static::lazy_static! {
     pub static ref STATIC_CONSTANTS: Mutex<Vec<AsmStaticConstant>> = Mutex::new(Vec::new());
 }
 
-
 impl From<AsmNode> for AsmFunction {
     fn from(node: AsmNode) -> AsmFunction {
         match node {

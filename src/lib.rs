@@ -10,14 +10,14 @@ pub mod parser {
 pub mod resolver;
 pub mod typechecker;
 pub mod optimizer {
-    pub mod copy_propagation;
-    pub mod unreachable_code_elimination;
-    pub mod dead_store_elimination;
     pub mod constant_folding;
+    pub mod copy_propagation;
+    pub mod dead_store_elimination;
+    pub mod unreachable_code_elimination;
 }
 pub mod codegen {
+    pub mod fixup;
     pub mod gen;
     pub mod regalloc;
-    pub mod fixup;
     pub mod replace_pseudo;
 }

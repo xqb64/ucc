@@ -7,10 +7,10 @@ use structopt::StructOpt;
 use ucc::ir::{IRInstruction, IRProgram, IRValue, Optimization};
 use ucc::parser::recursive_descent::Parser;
 use ucc::{
-    codegen::gen::{build_asm_symbol_table, AsmType, Codegen},
-    codegen::replace_pseudo::ReplacePseudo,
     codegen::fixup::Fixup,
+    codegen::gen::{build_asm_symbol_table, AsmType, Codegen},
     codegen::regalloc::RegAlloc,
+    codegen::replace_pseudo::ReplacePseudo,
     emitter::Emit,
     ir::{convert_symbols_to_tacky, IRNode, Irfy, Optimize},
     lexer::{Lexer, Token},

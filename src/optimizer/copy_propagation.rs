@@ -1,10 +1,9 @@
-use crate::ir::{IRInstruction, IRValue, get_dst};
-use crate::codegen::gen::tacky_type;
-use crate::typechecker::{get_signedness, SYMBOL_TABLE, IdentifierAttrs};
-use std::collections::BTreeSet;
 use crate::cfg::{self, BasicBlock, NodeId};
+use crate::codegen::gen::tacky_type;
+use crate::ir::{get_dst, IRInstruction, IRValue};
 use crate::lexer::Const;
-
+use crate::typechecker::{get_signedness, IdentifierAttrs, SYMBOL_TABLE};
+use std::collections::BTreeSet;
 
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Cp {

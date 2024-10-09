@@ -1,6 +1,6 @@
-use std::fmt::Debug;
+use crate::cfg::{self, BasicBlock, Instr, NodeId};
 use std::collections::BTreeSet;
-use crate::cfg::{self, BasicBlock, NodeId, Instr};
+use std::fmt::Debug;
 
 type NodeSet = BTreeSet<NodeId>;
 
