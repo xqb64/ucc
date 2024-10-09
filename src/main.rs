@@ -131,7 +131,7 @@ fn run(opts: &Opt) -> Result<()> {
                         None
                     }
                 }
-                // Handle other top-level items if necessary
+
                 _ => None,
             })
             .fold(BTreeSet::new(), |mut acc, hs| {

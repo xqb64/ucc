@@ -12,7 +12,7 @@ pub enum SimpleInstr {
 
 pub trait Instr {
     fn simplify(&self) -> SimpleInstr;
-    fn pp_instr(&self) -> String; // Returns the instruction as a formatted string
+    fn pp_instr(&self) -> String;
     fn is_jump(&self) -> bool;
     fn is_label(&self) -> bool;
 }
@@ -20,7 +20,7 @@ pub trait Instr {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum NodeId {
     Entry,
-    Block(usize), // Block ID is represented by an index
+    Block(usize),
     Exit,
 }
 
@@ -31,10 +31,10 @@ where
     V: Clone + Debug,
 {
     pub id: NodeId,
-    pub instructions: Vec<(V, I)>, // Tuple of value and instruction
-    pub preds: Vec<NodeId>,        // Predecessor nodes
-    pub succs: Vec<NodeId>,        // Successor nodes
-    pub value: V,                  // Annotated value (e.g., live variables)
+    pub instructions: Vec<(V, I)>,
+    pub preds: Vec<NodeId>,
+    pub succs: Vec<NodeId>,
+    pub value: V,
 }
 
 #[derive(Clone, Debug)]
@@ -43,10 +43,10 @@ where
     I: Clone + Instr,
     V: Clone + Debug,
 {
-    pub basic_blocks: Vec<(usize, BasicBlock<V, I>)>, // List of blocks indexed by ID
-    pub entry_succs: Vec<NodeId>,                     // Successors of the entry node
-    pub exit_preds: Vec<NodeId>,                      // Predecessors of the exit node
-    pub debug_label: String,                          // Label for debugging
+    pub basic_blocks: Vec<(usize, BasicBlock<V, I>)>,
+    pub entry_succs: Vec<NodeId>,
+    pub exit_preds: Vec<NodeId>,
+    pub debug_label: String,
 }
 
 impl<V, I> CFG<V, I>
@@ -74,7 +74,7 @@ where
                 let block = self.basic_blocks.iter().find(|(i, _)| *i == *n).unwrap();
                 block.1.succs.clone()
             }
-            NodeId::Exit => vec![], // Exit node has no successors
+            NodeId::Exit => vec![],
         }
     }
 
@@ -85,7 +85,7 @@ where
                 let block = self.basic_blocks.iter().find(|(i, _)| *i == *n).unwrap();
                 block.1.preds.clone()
             }
-            NodeId::Entry => vec![], // Entry node has no predecessors
+            NodeId::Entry => vec![],
         }
     }
 
@@ -118,17 +118,15 @@ where
     }
 
     pub fn initialize_annotation<T: Clone + Debug>(self, dummy_val: T) -> CFG<T, I> {
-        // Initialize a single instruction with the provided dummy_val
         let initialize_instruction = |(_, instr): (V, I)| -> (T, I) { (dummy_val.clone(), instr) };
 
-        // Initialize a block by updating its instructions and value
         let initialize_block =
             |(idx, block): (usize, BasicBlock<V, I>)| -> (usize, BasicBlock<T, I>) {
                 (
                     idx,
                     BasicBlock {
                         id: block.id,
-                        // Apply the dummy_val to each instruction
+
                         instructions: block
                             .instructions
                             .into_iter()
@@ -136,13 +134,12 @@ where
                             .collect(),
                         preds: block.preds,
                         succs: block.succs,
-                        // Set the block's value to dummy_val
+
                         value: dummy_val.clone(),
                     },
                 )
             };
 
-        // Apply the changes to each block in the CFG
         CFG {
             basic_blocks: self
                 .basic_blocks
@@ -171,7 +168,6 @@ where
             }
         };
 
-        // Add successor to predecessor
         match pred {
             NodeId::Entry => add_if_missing(&mut self.entry_succs, succ.clone()),
             NodeId::Block(n) => {
@@ -181,7 +177,6 @@ where
             NodeId::Exit => panic!("Cannot add edges from the Exit node"),
         }
 
-        // Add predecessor to successor
         match succ {
             NodeId::Block(n) => {
                 let block = self.basic_blocks.iter_mut().find(|(i, _)| *i == n).unwrap();
@@ -252,37 +247,31 @@ where
     }
 
     pub fn remove_block(&mut self, block_id: NodeId) {
-        // First, collect the successors and predecessors that need to be updated
         let mut successors_to_update = Vec::new();
         let mut predecessors_to_update = Vec::new();
 
-        // Collect successors of the block
         self.update_successors(&block_id, |succs| {
-            successors_to_update.extend(succs.clone()); // Clone the successors
-            succs.clear(); // Clear all successors of the block
+            successors_to_update.extend(succs.clone());
+            succs.clear();
         });
 
-        // Collect predecessors of the block
         self.update_predecessors(&block_id, |preds| {
-            predecessors_to_update.extend(preds.clone()); // Clone the predecessors
-            preds.clear(); // Clear all predecessors of the block
+            predecessors_to_update.extend(preds.clone());
+            preds.clear();
         });
 
-        // Now update all the predecessors by removing the block from their successor lists
         for succ in &successors_to_update {
             self.update_predecessors(succ, |preds| {
-                preds.retain(|x| x != &block_id); // Remove block from predecessors
+                preds.retain(|x| x != &block_id);
             });
         }
 
-        // Now update all the successors by removing the block from their predecessor lists
         for pred in &predecessors_to_update {
             self.update_successors(pred, |succs| {
-                succs.retain(|x| x != &block_id); // Remove block from successors
+                succs.retain(|x| x != &block_id);
             });
         }
 
-        // Reconnect the block's predecessors to its successors, skipping the deleted block
         for pred in predecessors_to_update {
             for succ in &successors_to_update {
                 if pred != block_id && succ != &block_id {
@@ -291,13 +280,11 @@ where
             }
         }
 
-        // Finally, remove the block from the basic blocks
         self.basic_blocks.retain(|(_, blk)| blk.id != block_id);
 
-        // If the entry node is affected, reconnect it to the first available block
         if block_id == NodeId::Block(0) {
             if let Some(block) = self.basic_blocks.first_mut() {
-                self.entry_succs.clear(); // Clear entry successors first
+                self.entry_succs.clear();
                 self.entry_succs.push(block.1.id.clone());
                 block.1.preds.push(NodeId::Entry);
             }
@@ -334,7 +321,6 @@ where
     fn add_all_edges(&mut self) {
         use std::collections::BTreeMap;
 
-        // Create a map from labels to block IDs
         let mut label_map = BTreeMap::new();
         for (_, block) in &self.basic_blocks {
             if let SimpleInstr::Label(lbl) = block.instructions[0].1.simplify() {
@@ -342,7 +328,6 @@ where
             }
         }
 
-        // Add outgoing edges from each basic block
         for (id_num, block) in self.basic_blocks.clone() {
             let next_block = if id_num == self.basic_blocks.last().unwrap().0 {
                 NodeId::Exit
@@ -367,7 +352,6 @@ where
             }
         }
 
-        // Finally, add edge from Entry to the first block
         self.add_edge(NodeId::Entry, NodeId::Block(0));
     }
 
@@ -426,13 +410,11 @@ where
         let mut file = File::create(path.clone()).unwrap();
         writeln!(file, "digraph {{").unwrap();
 
-        // Graph general settings
         writeln!(file, "  labeljust=l;").unwrap();
         writeln!(file, "  node[shape=\"box\"];").unwrap();
         writeln!(file, "  Entry[label=\"ENTRY\"];").unwrap();
         writeln!(file, "  Exit[label=\"EXIT\"];").unwrap();
 
-        // Function to extract node ids
         fn extract_id(node: &NodeId) -> String {
             match node {
                 NodeId::Entry => "Entry".to_string(),
@@ -441,7 +423,6 @@ where
             }
         }
 
-        // Print the basic blocks
         for (idx, block) in &self.basic_blocks {
             writeln!(file, "  Block{}[label=<", idx).unwrap();
             writeln!(
@@ -456,7 +437,6 @@ where
             )
             .unwrap();
 
-            // Print the instructions and value annotations
             for (val, instr) in &block.instructions {
                 writeln!(
                     file,
@@ -467,7 +447,6 @@ where
                 .unwrap();
             }
 
-            // Add any block annotations
             writeln!(
                 file,
                 "      <tr><td colspan=\"2\">{:?}</td></tr>",
@@ -479,26 +458,22 @@ where
             writeln!(file, "  >];").unwrap();
         }
 
-        // Print the entry edges
         for succ in &self.entry_succs {
             writeln!(file, "  Entry -> {};", extract_id(succ)).unwrap();
         }
 
-        // Print the block edges
         for (idx, block) in &self.basic_blocks {
             for succ in &block.succs {
                 writeln!(file, "  Block{} -> {};", idx, extract_id(succ)).unwrap();
             }
         }
 
-        // Print the exit edges
         for pred in &self.exit_preds {
             writeln!(file, "  {} -> Exit;", extract_id(pred)).unwrap();
         }
 
         writeln!(file, "}}").unwrap();
 
-        // Convert the dot file to png
         std::process::Command::new("dot")
             .arg("-Tpng")
             .arg(path)

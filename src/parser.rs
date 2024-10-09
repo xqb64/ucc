@@ -241,14 +241,10 @@ impl Parser {
         }
     }
 
-    // Function to convert `Expression` to `Initializer`
     fn convert_expression_to_initializer(&self, name: &str, expr: Expression) -> Initializer {
         match expr {
             Expression::Literal(literal) => self.transform_initializer(name, &literal.value),
-            _ => {
-                // Handle other expressions by wrapping them in a Single Initializer
-                Initializer::Single(name.to_owned(), expr)
-            }
+            _ => Initializer::Single(name.to_owned(), expr),
         }
     }
 
@@ -303,12 +299,10 @@ impl Parser {
     }
 
     fn parse_array_decl_suffix(&mut self, base_decl: &Declarator) -> Result<Declarator> {
-        // Get the next array dimension
         let dim = self.parse_dim()?;
         let mut new_decl = Declarator::Array(Box::new(base_decl.clone()), dim);
 
         if let Some(Token::LBracket) = self.current.as_ref() {
-            // There's another dimension
             new_decl = self.parse_array_decl_suffix(&new_decl)?;
         }
 
@@ -392,7 +386,6 @@ impl Parser {
                     specifier_list.push(self.current.clone().unwrap());
                     self.advance();
 
-                    // Check if the next token is an identifier
                     if let Some(Token::Identifier(_)) = self.current {
                         specifier_list.push(self.current.clone().unwrap());
                         self.advance();
@@ -503,7 +496,6 @@ impl Parser {
     }
 
     fn parse_type(&self, specifier_list: Vec<Token>) -> Result<Type> {
-        // Sort specifiers
         let mut sorted_specifiers = specifier_list.clone();
         sorted_specifiers.sort();
 
@@ -515,7 +507,6 @@ impl Parser {
             [Token::Char, Token::Signed] => Ok(Type::SChar),
             [Token::Char, Token::Unsigned] => Ok(Type::UChar),
             _ => {
-                // Check for invalid specifiers
                 let unique_specifiers: BTreeSet<_> = sorted_specifiers.iter().collect();
                 if sorted_specifiers.is_empty()
                     || unique_specifiers.len() != sorted_specifiers.len()
@@ -759,7 +750,6 @@ impl Parser {
         if self.is_next(&[Token::QuestionMark]) {
             let then_expr = self.parse_expression()?;
 
-            // hacK:
             if let Expression::Literal(_) = then_expr {
                 bail!("expected expression, got literal");
             }
@@ -904,7 +894,6 @@ impl Parser {
         if self.is_next(&[Token::Hyphen, Token::Tilde, Token::Bang]) {
             let op = self.previous.clone().unwrap();
 
-            // Handle unary operators
             let expr = self.unary()?;
             return Ok(Expression::Unary(UnaryExpression {
                 expr: expr.into(),
@@ -1079,7 +1068,7 @@ impl Parser {
                     break;
                 }
                 inits.push(Initializer::Single(String::new(), self.parse_expression()?));
-                // fix up the trailing comma case
+
                 if self.is_next(&[Token::Comma]) {
                     continue;
                 }

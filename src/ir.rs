@@ -777,7 +777,7 @@ fn emit_string_init(dst: String, offset: usize, s: &[u8]) -> Vec<IRInstruction> 
         instructions.extend(emit_string_init(dst, offset + 4, rest));
         return instructions;
     } else {
-        let c = s[0] as i8; // Convert u8 to i8
+        let c = s[0] as i8;
         let instr = IRInstruction::CopyToOffset {
             src: IRValue::Constant(Const::Char(c)),
             dst: dst.clone(),
@@ -1034,51 +1034,39 @@ impl Irfy for IfStatement {
         let else_label = format!("Else.{}", tmp);
         let end_label = format!("End.{}", tmp);
 
-        // Generate code for the condition
         let condition = emit_tacky_and_convert(&self.condition, &mut instructions);
 
-        // If there is no else clause
         if self.else_branch.is_none() {
-            // Emit JumpIfZero to end_label (because there is no else clause)
             instructions.push(IRInstruction::JumpIfZero {
                 condition,
                 target: end_label.clone(),
             });
 
-            // Emit the then clause
             if let Some(then_branch) = self.then_branch.irfy() {
                 instructions.extend::<Vec<IRInstruction>>(then_branch.into());
             }
 
-            // End the if statement with the end label
             instructions.push(IRInstruction::Label(end_label));
         } else {
-            // If there is an else clause
-            // Emit JumpIfZero to else_label
             instructions.push(IRInstruction::JumpIfZero {
                 condition,
                 target: else_label.clone(),
             });
 
-            // Emit the then clause
             if let Some(then_branch) = self.then_branch.irfy() {
                 instructions.extend::<Vec<IRInstruction>>(then_branch.into());
             }
 
-            // Unconditional jump to the end label after then clause
             instructions.push(IRInstruction::Jump(end_label.clone()));
 
-            // Now handle the else clause
             instructions.push(IRInstruction::Label(else_label.clone()));
 
-            // Emit the else clause
             if let Some(else_branch) = &*self.else_branch {
                 if let Some(else_instrs) = else_branch.irfy() {
                     instructions.extend::<Vec<IRInstruction>>(else_instrs.into());
                 }
             }
 
-            // End the if-else structure with the end label
             instructions.push(IRInstruction::Label(end_label));
         }
 
@@ -1481,8 +1469,6 @@ impl Optimize for IRFunction {
             return self.clone();
         }
 
-        // let all_static_vars = find_all_static_variables();
-
         loop {
             let aliased_vars = address_taken_analysis(&self.body);
 
@@ -1499,22 +1485,13 @@ impl Optimize for IRFunction {
                     post_constant_folding,
                 );
 
-            // cfg.print_as_graphviz();
-
-            // First optimization: Unreachable code elimination
             if enabled_optimizations.contains(&Optimization::UnreachableCodeElimination) {
                 cfg = unreachable_code_elimination(&mut cfg).to_owned();
             }
 
-            // cfg.print_as_graphviz();
-
-            // Reannotate the cfg with ReachingCopies for copy propagation
             if enabled_optimizations.contains(&Optimization::CopyPropagation) {
                 cfg = copy_propagation(&aliased_vars, cfg);
-                // Call copy propagation
             }
-
-            // cfg.print_as_graphviz();
 
             if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
                 cfg = dead_store_elimination(&aliased_vars, cfg);
@@ -1940,7 +1917,7 @@ fn is_zero(konst: &Const) -> bool {
         Const::Long(val) => *val == 0,
         Const::UInt(val) => *val == 0,
         Const::ULong(val) => *val == 0,
-        Const::Double(val) => *val == 0.0, // -0.0?
+        Const::Double(val) => *val == 0.0,
         Const::Char(val) => *val == 0,
         Const::UChar(val) => *val == 0,
     }
@@ -1948,10 +1925,8 @@ fn is_zero(konst: &Const) -> bool {
 
 use std::collections::BTreeSet;
 
-// Module aliases and utility sets
 type NodeSet = BTreeSet<NodeId>;
 
-// DFS to find reachable blocks
 pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
     cfg: &mut cfg::CFG<V, I>,
 ) -> &mut cfg::CFG<V, I> {
@@ -1978,7 +1953,6 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
     let mut edges_to_remove = vec![];
     let mut blocks_to_remove = vec![];
 
-    // Filter out unreachable blocks
     let _: Vec<(usize, BasicBlock<V, I>)> = cfg
         .basic_blocks
         .iter()
@@ -1986,7 +1960,6 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
             if reachable_block_ids.contains(&blk.id) {
                 true
             } else {
-                // Collect edges to remove
                 for pred in &blk.preds {
                     edges_to_remove.push((pred.clone(), blk.id.clone()));
                 }
@@ -2007,7 +1980,6 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
     cfg
 }
 
-// Eliminate useless jump instructions
 pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(
     cfg: &mut cfg::CFG<V, I>,
 ) -> &mut cfg::CFG<V, I> {
@@ -2021,14 +1993,12 @@ pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(
         .enumerate()
         .map(|(idx, (n, blk))| {
             if idx == cfg.basic_blocks.len() - 1 {
-                // Do not modify the last block
                 (*n, blk.clone())
             } else {
                 match blk.instructions.last() {
                     Some((_, instr)) if instr.is_jump() => {
                         let (_, default_succ) = &cfg.basic_blocks[idx + 1];
                         if blk.succs.iter().all(|succ| succ == &default_succ.id) {
-                            // Useless jump, drop the last instruction
                             let mut new_blk = blk.clone();
                             drop_last(&mut new_blk.instructions);
                             (*n, new_blk)
@@ -2047,7 +2017,6 @@ pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(
     cfg
 }
 
-// Eliminate useless label instructions
 pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(
     cfg: &mut cfg::CFG<V, I>,
 ) -> &mut cfg::CFG<V, I> {
@@ -2065,7 +2034,6 @@ pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(
                     };
 
                     if blk.preds.iter().all(|pred| pred == &default_pred) {
-                        // Remove the label
                         let mut new_blk = blk.clone();
                         new_blk.instructions.remove(0);
                         return (*n, new_blk);
@@ -2092,9 +2060,9 @@ pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
         .filter(|(_, blk)| {
             if blk.instructions.is_empty() {
                 blocks_to_remove.push(blk.id.clone());
-                false // Mark this block for removal
+                false
             } else {
-                true // Keep this block
+                true
             }
         })
         .cloned()
@@ -2257,11 +2225,10 @@ fn transfer(
         },
     );
 
-    // Return the new block with updated instructions and value
     BasicBlock {
         instructions: annotated_instructions,
         value: final_reaching_copies,
-        ..block.clone() // Keep other fields the same
+        ..block.clone()
     }
 }
 
@@ -2342,8 +2309,6 @@ fn copy_propagation(
     cfg: cfg::CFG<(), IRInstruction>,
 ) -> cfg::CFG<(), IRInstruction> {
     let annotated_cfg = find_reaching_copies(aliased_vars, cfg);
-
-    // annotated_cfg.print_as_graphviz();
 
     let rewrite_block = |block: BasicBlock<ReachingCopies, IRInstruction>| {
         let new_instructions = block
@@ -2560,15 +2525,13 @@ fn dead_store_elimination(
         }
     }
 
-    // Find live variables (this returns an annotated CFG with BTreeSet<String> as annotations)
     let annotated_cfg = find_live_variables(&static_vars, aliased_vars, cfg);
 
-    // Rewrite the basic blocks to eliminate dead stores
     let rewrite_block = |(idx, block): (usize, BasicBlock<BTreeSet<String>, IRInstruction>)| -> (usize, BasicBlock<BTreeSet<String>, IRInstruction>) {
         let new_instructions = block
             .instructions
             .into_iter()
-            .filter(|instr| !is_dead_store(instr)) // Only keep non-dead-store instructions
+            .filter(|instr| !is_dead_store(instr)) 
             .collect();
 
         (
@@ -2583,7 +2546,6 @@ fn dead_store_elimination(
         )
     };
 
-    // Map over the CFG and remove dead stores, then strip the annotations
     cfg::CFG {
         basic_blocks: annotated_cfg
             .basic_blocks
@@ -2592,7 +2554,7 @@ fn dead_store_elimination(
             .collect(),
         ..annotated_cfg
     }
-    .strip_annotations() // Remove the annotations (BTreeSet<String>)
+    .strip_annotations()
 }
 
 fn is_dead_store((live_vars, i): &(BTreeSet<String>, IRInstruction)) -> bool {
@@ -2610,37 +2572,27 @@ fn find_live_variables(
     aliased_vars: &BTreeSet<String>,
     cfg: cfg::CFG<(), IRInstruction>,
 ) -> cfg::CFG<BTreeSet<String>, IRInstruction> {
-    // Initialize the CFG with empty live variable sets
     let mut starting_cfg = cfg.initialize_annotation(BTreeSet::new());
 
-    // Combine static variables and aliased variables
     let static_and_aliased_vars = static_vars
         .union(aliased_vars)
         .cloned()
         .collect::<BTreeSet<_>>();
 
-    // Create the worklist by cloning the basic blocks
     let mut worklist: Vec<(usize, BasicBlock<BTreeSet<String>, IRInstruction>)> =
         starting_cfg.basic_blocks.clone();
 
-    // Process the worklist in a loop
     while let Some((block_idx, blk)) = worklist.pop() {
-        // Save the old annotation (live variables)
         let old_annotation = blk.value.clone();
 
-        // Calculate live variables at the exit of the block
         let live_vars_at_exit = meet_dead_store(static_vars, &starting_cfg, &blk);
 
-        // Transfer function: propagate live variables through the block
         let block = transfer_dead_store(&static_and_aliased_vars, blk.clone(), live_vars_at_exit);
 
-        // Update the CFG with the new block
         starting_cfg.update_basic_block(block_idx, block.clone());
 
-        // Get the new live variable annotation
         let new_annotation = starting_cfg.get_block_value(block_idx);
 
-        // If the live variables have changed, update the worklist with predecessors
         if old_annotation != *new_annotation {
             let block_predecessors = starting_cfg.get_preds(&blk.id);
 
@@ -2810,11 +2762,10 @@ fn transfer_dead_store(
         },
     );
 
-    // Return the new block with updated instructions and value
     BasicBlock {
         instructions: annotated_reversed_instructions.into_iter().rev().collect(),
         value: incoming_live_vars,
-        ..block.clone() // Keep other fields the same
+        ..block.clone()
     }
 }
 

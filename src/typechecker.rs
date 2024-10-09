@@ -286,7 +286,6 @@ impl Typecheck for VariableDeclaration {
                             bail!("Extern variable with initializer");
                         }
 
-                        // if an extern local var is already in the symbol table, don't need to add it again
                         let symbol = SYMBOL_TABLE.lock().unwrap().get(&self.name).cloned();
 
                         match symbol {
@@ -611,7 +610,6 @@ impl Typecheck for FunctionDeclaration {
 
         let global = self.storage_class != Some(StorageClass::Static);
 
-        // Helper function to reconcile current and previous declarations
         let check_against_previous = |prev: &Symbol| -> Result<(bool, bool)> {
             if prev._type != fun_type {
                 bail!("RedeclaredFunction");
@@ -1347,7 +1345,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
         }) => {
             if is_lvalue(lhs) {
                 let typed_lhs = typecheck_and_convert(lhs)?;
-                // if typed_lhs is not an lvalue
+
                 if !is_lvalue(&typed_lhs) {
                     bail!("Invalid lvalue in assignment");
                 }
@@ -1576,7 +1574,6 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                         bail!("Unknown member in struct");
                     }
 
-                    // find the type of the member
                     let member_def = struct_def
                         .members
                         .iter()
@@ -1613,7 +1610,6 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                             bail!("Unknown member in struct");
                         }
 
-                        // find the type of the member
                         let member_def = struct_def
                             .members
                             .into_iter()

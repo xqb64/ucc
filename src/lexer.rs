@@ -149,7 +149,6 @@ impl Iterator for Lexer {
                 "&" => Token::Ampersand,
                 ";" => Token::Semicolon,
                 "." => {
-                    // if the next character is a constant followed by a suffix, it's an error
                     if self.constant_re.is_match(&self.src[self.pos..]) {
                         return Some(Token::Error);
                     }
@@ -308,7 +307,7 @@ impl Ord for Const {
             (ULong(ul1), ULong(ul2)) => ul1.cmp(ul2),
             (Char(c1), Char(c2)) => c1.cmp(c2),
             (UChar(uc1), UChar(uc2)) => uc1.cmp(uc2),
-            // Define a consistent order between different variants
+
             (a, b) => std::mem::discriminant(a)
                 .type_id()
                 .cmp(&std::mem::discriminant(b).type_id()),

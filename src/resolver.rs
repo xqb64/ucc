@@ -234,7 +234,6 @@ impl Resolve for FunctionDeclaration {
             bail!("storage class specifier in non-global scope");
         }
 
-        // FIXME: stupid hack to prevent redeclaration of function parameters
         for param in &self.params {
             if self.body.is_some() {
                 if let BlockItem::Statement(Statement::Compound(block)) = self.body.clone().unwrap()

@@ -148,12 +148,6 @@ impl Emit for AsmFunction {
     fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         writeln!(f, ".section .text")?;
 
-        // if let Some(instr) = self.instructions.get_mut(0) {
-        //     *instr = AsmInstruction::AllocateStack(self.stack_space);
-        // } else {
-        //     self.instructions.remove(0);
-        // }
-
         if self.global {
             writeln!(f, "\t.globl {}", self.name)?;
         }
@@ -406,7 +400,6 @@ impl Emit for AsmInstruction {
                 writeln!(f, "addq ${}, %rsp", n)?;
             }
             AsmInstruction::Call(target) => {
-                // if function is not defined in symbol table, add @PLT
                 if let Some(symbol) = ASM_SYMBOL_TABLE.lock().unwrap().get(target).cloned() {
                     if let AsmSymtabEntry::Function { defined, .. } = symbol {
                         if !defined {
@@ -663,17 +656,17 @@ fn escape(s: &str) -> String {
     re.replace_all(s, |caps: &regex::Captures| {
         let c = &caps[0];
         match c.chars().next().unwrap() {
-            '\x07' => format!("\\{:03o}", 0x07), // Bell
-            '\x08' => format!("\\{:03o}", 0x08), // Backspace
-            '\t' => format!("\\{:03o}", 0x09),   // Horizontal Tab
-            '\n' => format!("\\{:03o}", 0x0A),   // Line Feed
-            '\x0B' => format!("\\{:03o}", 0x0B), // Vertical Tab
-            '\x0C' => format!("\\{:03o}", 0x0C), // Form Feed
-            '\r' => format!("\\{:03o}", 0x0D),   // Carriage Return
-            '\\' => format!("\\{:03o}", 0x5C),   // Backslash
-            '\'' => format!("\\{:03o}", 0x27),   // Single Quote
-            '"' => format!("\\{:03o}", 0x22),    // Double Quote
-            '?' => format!("\\{:03o}", 0x3F),    // Question Mark
+            '\x07' => format!("\\{:03o}", 0x07),
+            '\x08' => format!("\\{:03o}", 0x08),
+            '\t' => format!("\\{:03o}", 0x09),
+            '\n' => format!("\\{:03o}", 0x0A),
+            '\x0B' => format!("\\{:03o}", 0x0B),
+            '\x0C' => format!("\\{:03o}", 0x0C),
+            '\r' => format!("\\{:03o}", 0x0D),
+            '\\' => format!("\\{:03o}", 0x5C),
+            '\'' => format!("\\{:03o}", 0x27),
+            '"' => format!("\\{:03o}", 0x22),
+            '?' => format!("\\{:03o}", 0x3F),
             _ => c.to_string(),
         }
     })
