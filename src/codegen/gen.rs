@@ -4,11 +4,11 @@ use std::{
 };
 
 use crate::{
-    ir::{
+    ir::gen::{
         make_temporary, BinaryOp, IRFunction, IRInstruction, IRNode, IRProgram, IRStaticConstant,
         IRStaticVariable, IRValue, UnaryOp,
     },
-    lexer::Const,
+    lexer::lex::Const,
     parser::ast::Type,
     semantics::typechecker::{
         get_common_type, get_signedness, get_size_of_type, is_scalar, IdentifierAttrs, MemberEntry,

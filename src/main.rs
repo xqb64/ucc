@@ -4,16 +4,16 @@ use std::{collections::VecDeque, fs::File, path::PathBuf};
 use anyhow::{bail, Result};
 use structopt::StructOpt;
 
-use ucc::ir::{IRInstruction, IRProgram, IRValue, Optimization};
+use ucc::ir::gen::{IRInstruction, IRProgram, IRValue, Optimization};
 use ucc::parser::recursive_descent::Parser;
 use ucc::{
     codegen::fixup::Fixup,
     codegen::gen::{build_asm_symbol_table, AsmType, Codegen},
     codegen::regalloc::RegAlloc,
     codegen::replace_pseudo::ReplacePseudo,
-    emitter::Emit,
-    ir::{convert_symbols_to_tacky, IRNode, Irfy, Optimize},
-    lexer::{Lexer, Token},
+    emitter::emit::Emit,
+    ir::gen::{convert_symbols_to_tacky, IRNode, Irfy, Optimize},
+    lexer::lex::{Lexer, Token},
     semantics::loop_label::LoopLabel,
     semantics::resolver::Resolve,
     semantics::typechecker::Typecheck,

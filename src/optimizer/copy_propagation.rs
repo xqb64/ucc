@@ -1,7 +1,7 @@
-use crate::cfg::{self, BasicBlock, NodeId};
+use crate::util::cfg::{self, BasicBlock, NodeId};
 use crate::codegen::gen::tacky_type;
-use crate::ir::{get_dst, IRInstruction, IRValue};
-use crate::lexer::Const;
+use crate::ir::gen::{get_dst, IRInstruction, IRValue};
+use crate::lexer::lex::Const;
 use crate::semantics::typechecker::{get_signedness, IdentifierAttrs, SYMBOL_TABLE};
 use std::collections::BTreeSet;
 

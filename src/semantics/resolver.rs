@@ -2,7 +2,7 @@ use anyhow::{bail, Ok, Result};
 use std::collections::BTreeMap;
 
 use crate::{
-    ir::make_temporary,
+    ir::gen::make_temporary,
     parser::ast::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BlockItem,
         BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression,

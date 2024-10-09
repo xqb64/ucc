@@ -1,5 +1,5 @@
-use crate::ir::{BinaryOp, IRInstruction, IRValue, UnaryOp};
-use crate::lexer::Const;
+use crate::ir::gen::{BinaryOp, IRInstruction, IRValue, UnaryOp};
+use crate::lexer::lex::Const;
 use crate::parser::ast::Type;
 use anyhow::Result;
 

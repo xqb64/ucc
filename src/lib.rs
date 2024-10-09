@@ -1,7 +1,17 @@
-pub mod cfg;
-pub mod emitter;
-pub mod ir;
-pub mod lexer;
+pub mod util {
+    pub mod cfg;
+}
+pub mod emitter {
+    pub mod emit;
+    pub mod util;
+}
+pub mod ir {
+    pub mod gen;
+}
+pub mod lexer {
+    pub mod lex;
+    pub mod util;
+}
 pub mod parser {
     pub mod ast;
     pub mod recursive_descent;

@@ -1,6 +1,6 @@
 use crate::{
-    ir::make_temporary,
-    lexer::Const,
+    ir::gen::make_temporary,
+    lexer::lex::Const,
     parser::ast::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
         BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression,

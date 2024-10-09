@@ -1,5 +1,5 @@
-use crate::cfg::{self, BasicBlock, NodeId};
-use crate::ir::{get_dst, IRInstruction, IRValue};
+use crate::util::cfg::{self, BasicBlock, NodeId};
+use crate::ir::gen::{get_dst, IRInstruction, IRValue};
 use crate::semantics::typechecker::{IdentifierAttrs, SYMBOL_TABLE};
 use std::collections::BTreeSet;
 

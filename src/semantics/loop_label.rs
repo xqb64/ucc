@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 
 use crate::{
-    ir::make_temporary,
+    ir::gen::make_temporary,
     parser::ast::{
         BlockItem, BlockStatement, BreakStatement, ContinueStatement, Declaration,
         DoWhileStatement, ExpressionStatement, ForStatement, FunctionDeclaration, IfStatement,

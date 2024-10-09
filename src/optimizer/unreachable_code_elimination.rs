@@ -1,4 +1,4 @@
-use crate::cfg::{self, BasicBlock, Instr, NodeId};
+use crate::util::cfg::{self, BasicBlock, Instr, NodeId};
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 

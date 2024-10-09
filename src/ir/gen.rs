@@ -1,6 +1,6 @@
 use crate::{
-    cfg::{self, Instr, SimpleInstr},
-    lexer::Const,
+    util::cfg::{self, Instr, SimpleInstr},
+    lexer::lex::Const,
     parser::ast::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
         BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,

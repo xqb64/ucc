@@ -1,4 +1,4 @@
-use crate::lexer::{Const, Token};
+use crate::lexer::lex::{Const, Token};
 use crate::parser::ast::{
     AbstractDeclarator, AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
     BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,

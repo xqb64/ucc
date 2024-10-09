@@ -1,4 +1,4 @@
-use crate::ir::make_temporary;
+use crate::ir::gen::make_temporary;
 use std::fmt::Debug;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
