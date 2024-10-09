@@ -1,5 +1,5 @@
 use crate::ir::{IRInstruction, IRValue, get_dst};
-use crate::codegen::tacky_type;
+use crate::codegen::gen::tacky_type;
 use crate::typechecker::{get_signedness, SYMBOL_TABLE, IdentifierAttrs};
 use std::collections::BTreeSet;
 use crate::cfg::{self, BasicBlock, NodeId};

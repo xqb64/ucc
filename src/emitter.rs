@@ -1,5 +1,5 @@
 use crate::{
-    codegen::{
+    codegen::gen::{
         AsmBinaryOp, AsmFunction, AsmInstruction, AsmNode, AsmOperand, AsmProgram, AsmRegister,
         AsmStaticConstant, AsmStaticVariable, AsmSymtabEntry, AsmType, AsmUnaryOp, ConditionCode,
         ASM_SYMBOL_TABLE,
@@ -496,45 +496,6 @@ impl Emit for AsmOperand {
             AsmOperand::PseudoMem(_, _) => unreachable!(),
         }
         Ok(())
-    }
-}
-
-impl std::fmt::Display for AsmRegister {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AsmRegister::AX => write!(f, "%rax"),
-            AsmRegister::BX => write!(f, "%rbx"),
-            AsmRegister::DX => write!(f, "%rdx"),
-            AsmRegister::CX => write!(f, "%rcx"),
-            AsmRegister::DI => write!(f, "%rdi"),
-            AsmRegister::SI => write!(f, "%rsi"),
-            AsmRegister::R8 => write!(f, "%r8"),
-            AsmRegister::R9 => write!(f, "%r9"),
-            AsmRegister::R10 => write!(f, "%r10"),
-            AsmRegister::R11 => write!(f, "%r11"),
-            AsmRegister::R12 => write!(f, "%r12"),
-            AsmRegister::R13 => write!(f, "%r13"),
-            AsmRegister::R14 => write!(f, "%r14"),
-            AsmRegister::R15 => write!(f, "%r15"),
-            AsmRegister::BP => write!(f, "%rbp"),
-            AsmRegister::SP => write!(f, "%rsp"),
-            AsmRegister::XMM0 => write!(f, "%xmm0"),
-            AsmRegister::XMM1 => write!(f, "%xmm1"),
-            AsmRegister::XMM2 => write!(f, "%xmm2"),
-            AsmRegister::XMM3 => write!(f, "%xmm3"),
-            AsmRegister::XMM4 => write!(f, "%xmm4"),
-            AsmRegister::XMM5 => write!(f, "%xmm5"),
-            AsmRegister::XMM6 => write!(f, "%xmm6"),
-            AsmRegister::XMM7 => write!(f, "%xmm7"),
-            AsmRegister::XMM8 => write!(f, "%xmm8"),
-            AsmRegister::XMM9 => write!(f, "%xmm9"),
-            AsmRegister::XMM10 => write!(f, "%xmm10"),
-            AsmRegister::XMM11 => write!(f, "%xmm11"),
-            AsmRegister::XMM12 => write!(f, "%xmm12"),
-            AsmRegister::XMM13 => write!(f, "%xmm13"),
-            AsmRegister::XMM14 => write!(f, "%xmm14"),
-            AsmRegister::XMM15 => write!(f, "%xmm15"),
-        }
     }
 }
 
