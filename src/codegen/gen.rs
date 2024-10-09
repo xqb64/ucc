@@ -9,7 +9,7 @@ use crate::{
         IRStaticVariable, IRValue, UnaryOp,
     },
     lexer::Const,
-    parser::Type,
+    parser::ast::Type,
     typechecker::{
         get_common_type, get_signedness, get_size_of_type, is_scalar, IdentifierAttrs, MemberEntry,
         StaticInit, CURRENT_FN_RETURNS_ON_STACK, SYMBOL_TABLE, TYPE_TABLE,

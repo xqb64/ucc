@@ -1,6 +1,6 @@
 use crate::ir::{BinaryOp, IRInstruction, IRValue, UnaryOp};
 use crate::lexer::Const;
-use crate::parser::Type;
+use crate::parser::ast::Type;
 use anyhow::Result;
 
 pub fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
