@@ -295,6 +295,129 @@ pub enum Const {
     UChar(u8),
 }
 
+impl std::ops::Add for Const {
+    type Output = Const;
+
+    fn add(self, rhs: Const) -> Self::Output {
+        match (self, rhs) {
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs + rhs),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs + rhs),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs + rhs),
+            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs + rhs),
+            (Const::Double(lhs), Const::Double(rhs)) => Const::Double(lhs + rhs),
+            (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs + rhs),
+            (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs + rhs),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl std::ops::Sub for Const {
+    type Output = Const;
+
+    fn sub(self, rhs: Const) -> Self::Output {
+        match (self, rhs) {
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs - rhs),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs - rhs),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs - rhs),
+            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs - rhs),
+            (Const::Double(lhs), Const::Double(rhs)) => Const::Double(lhs - rhs),
+            (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs - rhs),
+            (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs - rhs),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl std::ops::Mul for Const {
+    type Output = Const;
+
+    fn mul(self, rhs: Const) -> Self::Output {
+        match (self, rhs) {
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs * rhs),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs * rhs),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs * rhs),
+            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs * rhs),
+            (Const::Double(lhs), Const::Double(rhs)) => Const::Double(lhs * rhs),
+            (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs * rhs),
+            (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs * rhs),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl std::ops::Div for Const {
+    type Output = Const;
+
+    fn div(self, rhs: Const) -> Self::Output {
+        match (self, rhs) {
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs.checked_div(rhs).unwrap_or(0)),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs.checked_div(rhs).unwrap_or(0)),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs.checked_div(rhs).unwrap_or(0)),
+            (Const::ULong(lhs), Const::ULong(rhs)) => {
+                Const::ULong(lhs.checked_div(rhs).unwrap_or(0))
+            }
+            (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs.checked_div(rhs).unwrap_or(0)),
+            (Const::UChar(lhs), Const::UChar(rhs)) => {
+                Const::UChar(lhs.checked_div(rhs).unwrap_or(0))
+            }
+            (Const::Double(lhs), Const::Double(rhs)) => Const::Double(lhs / rhs),
+            _ => {
+                unreachable!()
+            }
+        }
+    }
+}
+
+impl std::ops::Rem for Const {
+    type Output = Const;
+
+    fn rem(self, rhs: Const) -> Self::Output {
+        match (self, rhs) {
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs.checked_rem(rhs).unwrap_or(0)),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs.checked_rem(rhs).unwrap_or(0)),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs.checked_rem(rhs).unwrap_or(0)),
+            (Const::ULong(lhs), Const::ULong(rhs)) => {
+                Const::ULong(lhs.checked_rem(rhs).unwrap_or(0))
+            }
+            (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs.checked_rem(rhs).unwrap_or(0)),
+            (Const::UChar(lhs), Const::UChar(rhs)) => {
+                Const::UChar(lhs.checked_rem(rhs).unwrap_or(0))
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl std::ops::Neg for Const {
+    type Output = Const;
+
+    fn neg(self) -> Self::Output {
+        match self {
+            Const::Int(val) => Const::Int(-val),
+            Const::Long(val) => Const::Long(-val),
+            Const::UInt(val) => Const::Int(-(val as i32)),
+            Const::ULong(val) => Const::Long(-(val as i64)),
+            Const::Double(val) => Const::Double(-val),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl std::ops::Not for Const {
+    type Output = Const;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Const::Int(val) => Const::Int(!val),
+            Const::Long(val) => Const::Long(!val),
+            Const::UInt(val) => Const::UInt(!val),
+            Const::ULong(val) => Const::ULong(!val),
+            _ => unreachable!(),
+        }
+    }
+}
+
 impl Ord for Const {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         use std::any::Any;
@@ -343,6 +466,20 @@ impl Hash for Const {
             Const::Double(d) => d.to_bits().hash(state),
             Const::Char(c) => c.hash(state),
             Const::UChar(c) => c.hash(state),
+        }
+    }
+}
+
+impl ToString for Const {
+    fn to_string(&self) -> String {
+        match self {
+            Const::Int(i) => i.to_string(),
+            Const::Long(l) => l.to_string(),
+            Const::UInt(u) => u.to_string(),
+            Const::ULong(ul) => ul.to_string(),
+            Const::Double(d) => d.to_string(),
+            Const::Char(c) => c.to_string(),
+            Const::UChar(uc) => uc.to_string(),
         }
     }
 }
