@@ -483,7 +483,6 @@ impl Emit for AsmOperand {
         match self {
             AsmOperand::Imm(n) => write!(f, "${}", { *n })?,
             AsmOperand::Register(reg) => reg.emit(f, asm_type)?,
-            AsmOperand::Pseudo(_) => unreachable!(),
             AsmOperand::Data(identifier, offset) => write!(
                 f,
                 "{}{}{}(%rip)",
@@ -493,7 +492,7 @@ impl Emit for AsmOperand {
             )?,
             AsmOperand::Memory(reg, n) => write!(f, "{}({})", n, reg)?,
             AsmOperand::Indexed(reg1, reg2, n) => write!(f, "({}, {}, {})", reg1, reg2, n)?,
-            AsmOperand::PseudoMem(_, _) => unreachable!(),
+            AsmOperand::PseudoMem(_, _) | AsmOperand::Pseudo(_) => unreachable!(),
         }
         Ok(())
     }
