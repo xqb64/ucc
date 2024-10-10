@@ -1,18 +1,11 @@
 use crate::lexer::util::parse_integer;
 use regex::Regex;
-use std::hash::Hash;
+use std::{collections::HashMap, hash::Hash};
 
 pub struct Lexer {
     src: String,
     pos: usize,
-    punctuation_re: Regex,
-    punctuation_double_re: Regex,
-    keyword_re: Regex,
-    identifier_re: Regex,
-    constant_re: Regex,
-    double_constant_re: Regex,
-    char_const_re: Regex,
-    string_re: Regex,
+    regexes: HashMap<&'static str, Regex>,
 }
 
 impl Lexer {
@@ -22,20 +15,24 @@ impl Lexer {
             "do", "while", "for", "break", "continue", "static", "extern", "sizeof", "struct",
         ];
 
+        let mut regexes = HashMap::new();
+
+        regexes.insert("punctuation", Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\].]").unwrap());
+        regexes.insert("punctuation_double", Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\||^->").unwrap());
+        regexes.insert("keyword", Regex::new(&format!(r"^{}\b", keywords.join(r"\b|^"))).unwrap());
+        regexes.insert("constant", Regex::new(r"^[0-9]+(?P<suffix>[lL]?[uU]?|[uU]?[lL]?)\b").unwrap());
+        regexes.insert("double_constant", Regex::new(
+            r"^(([0-9]*\.[0-9]+|[0-9]+\.?)[Ee][+-]?[0-9]+|[0-9]*\.[0-9]+|[0-9]+\.)[^\w.]",
+        )
+        .unwrap());
+        regexes.insert("identifier", Regex::new(r"^[a-zA-Z_]\w*\b").unwrap());
+        regexes.insert("char_const", Regex::new(r#"^'([^'\\\n]|\\['"?\\abfnrtv])'"#).unwrap());
+        regexes.insert("string", Regex::new(r#"^"([^"\\\n]|\\['"\\?abfnrtv])*""#).unwrap());
+
         Lexer {
             src,
             pos: 0,
-            punctuation_re: Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\].]").unwrap(),
-            punctuation_double_re: Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\||^->").unwrap(),
-            keyword_re: Regex::new(&format!(r"^{}\b", keywords.join(r"\b|^"))).unwrap(),
-            constant_re: Regex::new(r"^[0-9]+(?P<suffix>[lL]?[uU]?|[uU]?[lL]?)\b").unwrap(),
-            double_constant_re: Regex::new(
-                r"^(([0-9]*\.[0-9]+|[0-9]+\.?)[Ee][+-]?[0-9]+|[0-9]*\.[0-9]+|[0-9]+\.)[^\w.]",
-            )
-            .unwrap(),
-            identifier_re: Regex::new(r"^[a-zA-Z_]\w*\b").unwrap(),
-            char_const_re: Regex::new(r#"^'([^'\\\n]|\\['"?\\abfnrtv])'"#).unwrap(),
-            string_re: Regex::new(r#"^"([^"\\\n]|\\['"\\?abfnrtv])*""#).unwrap(),
+            regexes,
         }
     }
 }
@@ -59,7 +56,7 @@ impl Iterator for Lexer {
 
         let src = &self.src[self.pos..];
 
-        let token = if let Some(m) = self.keyword_re.find(src) {
+        let token = if let Some(m) = self.regexes["keyword"].find(src) {
             self.pos += m.as_str().len();
             match m.as_str() {
                 "int" => Token::Int,
@@ -83,12 +80,12 @@ impl Iterator for Lexer {
                 "struct" => Token::Struct,
                 _ => unreachable!(),
             }
-        } else if let Some(m) = self.double_constant_re.find(src) {
+        } else if let Some(m) = self.regexes["double_constant"].find(src) {
             self.pos += m.as_str().len() - 1;
             Token::Constant(Const::Double(
                 m.as_str()[..m.as_str().len() - 1].parse::<f64>().unwrap(),
             ))
-        } else if let Some(m) = self.constant_re.find(src) {
+        } else if let Some(m) = self.regexes["constant"].find(src) {
             self.pos += m.as_str().len();
 
             if self.src.chars().nth(self.pos).is_some_and(|ch| ch == '.') {
@@ -96,7 +93,7 @@ impl Iterator for Lexer {
             }
 
             let suffix = self
-                .constant_re
+                .regexes["constant"]
                 .captures(src)
                 .unwrap()
                 .name("suffix")
@@ -113,7 +110,7 @@ impl Iterator for Lexer {
                 Ok(konst) => Token::Constant(konst),
                 Err(_) => Token::Error,
             }
-        } else if let Some(m) = self.punctuation_double_re.find(src) {
+        } else if let Some(m) = self.regexes["punctuation_double"].find(src) {
             self.pos += m.as_str().len();
             match m.as_str() {
                 "--" => Token::DoubleHyphen,
@@ -126,7 +123,7 @@ impl Iterator for Lexer {
                 "->" => Token::Arrow,
                 _ => unreachable!(),
             }
-        } else if let Some(m) = self.punctuation_re.find(src) {
+        } else if let Some(m) = self.regexes["punctuation"].find(src) {
             self.pos += m.as_str().len();
 
             match m.as_str() {
@@ -152,7 +149,7 @@ impl Iterator for Lexer {
                 "&" => Token::Ampersand,
                 ";" => Token::Semicolon,
                 "." => {
-                    if self.constant_re.is_match(&self.src[self.pos..]) {
+                    if self.regexes["constant"].is_match(&self.src[self.pos..]) {
                         return Some(Token::Error);
                     }
 
@@ -160,10 +157,10 @@ impl Iterator for Lexer {
                 }
                 _ => unreachable!(),
             }
-        } else if let Some(m) = self.identifier_re.find(src) {
+        } else if let Some(m) = self.regexes["identifier"].find(src) {
             self.pos += m.as_str().len();
             Token::Identifier(m.as_str().to_string())
-        } else if let Some(m) = self.string_re.find(src) {
+        } else if let Some(m) = self.regexes["string"].find(src) {
             self.pos += m.as_str().len();
             let s = m.as_str().trim_start_matches("\"").trim_end_matches("\"");
 
@@ -184,7 +181,7 @@ impl Iterator for Lexer {
                 .for_each(|ch| result.push(ch));
 
             Token::StringLiteral(result.to_string())
-        } else if let Some(m) = self.char_const_re.find(src) {
+        } else if let Some(m) = self.regexes["char_const"].find(src) {
             self.pos += m.as_str().len();
             let ch = &m.as_str()[1..m.as_str().len() - 1];
             let ch = match ch {
