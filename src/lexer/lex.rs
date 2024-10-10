@@ -17,12 +17,14 @@ pub struct Lexer {
 
 impl Lexer {
     pub fn new(src: String) -> Lexer {
-        let keywords = vec!{
+        let keywords = vec![
             "int", "long", "char", "signed", "unsigned", "double", "void", "return", "if", "else",
             "do", "while", "for", "break", "continue", "static", "extern", "sizeof", "struct",
-        };
+        ];
 
-        Lexer { src, pos: 0,
+        Lexer {
+            src,
+            pos: 0,
             punctuation_re: Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\].]").unwrap(),
             punctuation_double_re: Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\||^->").unwrap(),
             keyword_re: Regex::new(&format!(r"^{}\b", keywords.join(r"\b|^"))).unwrap(),
@@ -34,7 +36,7 @@ impl Lexer {
             identifier_re: Regex::new(r"^[a-zA-Z_]\w*\b").unwrap(),
             char_const_re: Regex::new(r#"^'([^'\\\n]|\\['"?\\abfnrtv])'"#).unwrap(),
             string_re: Regex::new(r#"^"([^"\\\n]|\\['"\\?abfnrtv])*""#).unwrap(),
-         }
+        }
     }
 }
 

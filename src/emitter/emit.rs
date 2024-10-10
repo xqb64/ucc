@@ -4,8 +4,8 @@ use crate::{
         AsmStaticConstant, AsmStaticVariable, AsmSymtabEntry, AsmType, AsmUnaryOp, ConditionCode,
         ASM_SYMBOL_TABLE,
     },
-    semantics::typechecker::StaticInit,
     emitter::util::escape,
+    semantics::typechecker::StaticInit,
 };
 use anyhow::Result;
 use std::{fs::File, io::Write};
