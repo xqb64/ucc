@@ -17,13 +17,15 @@ pub struct Lexer {
 
 impl Lexer {
     pub fn new(src: String) -> Lexer {
+        let keywords = vec!{
+            "int", "long", "char", "signed", "unsigned", "double", "void", "return", "if", "else",
+            "do", "while", "for", "break", "continue", "static", "extern", "sizeof", "struct",
+        };
+
         Lexer { src, pos: 0,
             punctuation_re: Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\].]").unwrap(),
             punctuation_double_re: Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\||^->").unwrap(),
-            keyword_re: Regex::new(
-                r"^int\b|^long\b|^char\b|^signed\b|^unsigned\b|^double\b|^void\b|^return\b|^if\b|^else\b|^do\b|^while\b|^for\b|^break\b|^continue\b|^static\b|^extern\b|^sizeof\b|^struct\b|^union\b|^enum\b|^typedef\b|^const\b|^volatile\b|^register\b|^auto\b|^restrict\b|^inline\b|^_Bool\b|^_Complex\b|^_Imaginary\b",
-            )
-            .unwrap(),
+            keyword_re: Regex::new(&format!(r"^{}\b", keywords.join(r"\b|^"))).unwrap(),
             constant_re: Regex::new(r"^[0-9]+(?P<suffix>[lL]?[uU]?|[uU]?[lL]?)\b").unwrap(),
             double_constant_re: Regex::new(
                 r"^(([0-9]*\.[0-9]+|[0-9]+\.?)[Ee][+-]?[0-9]+|[0-9]*\.[0-9]+|[0-9]+\.)[^\w.]",
