@@ -1,14 +1,16 @@
-use crate::lexer::lex::{Const, Token};
-use crate::parser::ast::{
-    AbstractDeclarator, AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
-    BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,
-    CastExpression, ConditionalExpression, ConstantExpression, ContinueStatement, Declaration,
-    Declarator, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement,
-    ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression,
-    MemberDeclaration, ParamInfo, ProgramStatement, ReturnStatement, SizeofExpression,
-    SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration,
-    SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration,
-    VariableExpression, WhileStatement,
+use crate::{
+    lexer::lex::{Const, Token},
+    parser::ast::{
+        AbstractDeclarator, AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
+        BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,
+        CastExpression, ConditionalExpression, ConstantExpression, ContinueStatement, Declaration,
+        Declarator, DerefExpression, DoWhileStatement, DotExpression, Expression,
+        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer,
+        LiteralExpression, MemberDeclaration, ParamInfo, ProgramStatement, ReturnStatement,
+        SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
+        StructDeclaration, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind,
+        VariableDeclaration, VariableExpression, WhileStatement,
+    },
 };
 use anyhow::{bail, Result};
 use std::collections::{BTreeSet, VecDeque};

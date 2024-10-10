@@ -1,9 +1,11 @@
-use crate::util::cfg::{self, BasicBlock, Instr, SimpleInstr, CFG};
-use crate::codegen::gen::{
-    AsmFunction, AsmInstruction, AsmNode, AsmOperand, AsmProgram, AsmRegister, AsmSymtabEntry,
-    AsmType, ASM_SYMBOL_TABLE,
+use crate::{
+    codegen::gen::{
+        AsmFunction, AsmInstruction, AsmNode, AsmOperand, AsmProgram, AsmRegister, AsmSymtabEntry,
+        AsmType, ASM_SYMBOL_TABLE,
+    },
+    ir::gen::make_temporary,
+    util::cfg::{self, BasicBlock, Instr, SimpleInstr, CFG},
 };
-use crate::ir::gen::make_temporary;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub trait RegAlloc {

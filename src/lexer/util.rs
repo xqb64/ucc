@@ -1,5 +1,5 @@
-use anyhow::{bail, Result};
 use crate::lexer::lex::Const;
+use anyhow::{bail, Result};
 
 pub fn parse_integer(suffix: &str, just_number: &str) -> Result<Const> {
     let konst = match suffix {

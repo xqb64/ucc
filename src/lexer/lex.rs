@@ -1,6 +1,6 @@
-use std::hash::Hash;
-use regex::Regex;
 use crate::lexer::util::parse_integer;
+use regex::Regex;
+use std::hash::Hash;
 
 pub struct Lexer {
     src: String,
@@ -482,4 +482,3 @@ impl ToString for Const {
         }
     }
 }
-

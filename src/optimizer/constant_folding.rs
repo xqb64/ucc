@@ -1,6 +1,8 @@
-use crate::ir::gen::{BinaryOp, IRInstruction, IRValue, UnaryOp};
-use crate::lexer::lex::Const;
-use crate::parser::ast::Type;
+use crate::{
+    ir::gen::{BinaryOp, IRInstruction, IRValue, UnaryOp},
+    lexer::lex::Const,
+    parser::ast::Type,
+};
 use anyhow::Result;
 
 pub fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {

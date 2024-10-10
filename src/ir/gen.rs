@@ -1,5 +1,4 @@
 use crate::{
-    util::cfg::{self, Instr, SimpleInstr},
     lexer::lex::Const,
     parser::ast::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
@@ -14,6 +13,7 @@ use crate::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
         IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE, TYPE_TABLE,
     },
+    util::cfg::{self, Instr, SimpleInstr},
 };
 
 #[derive(Debug, Clone, PartialEq)]

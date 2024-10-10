@@ -1,8 +1,10 @@
-use crate::util::cfg::{self, BasicBlock, NodeId};
-use crate::codegen::gen::tacky_type;
-use crate::ir::gen::{get_dst, IRInstruction, IRValue};
-use crate::lexer::lex::Const;
-use crate::semantics::typechecker::{get_signedness, IdentifierAttrs, SYMBOL_TABLE};
+use crate::{
+    codegen::gen::tacky_type,
+    ir::gen::{get_dst, IRInstruction, IRValue},
+    lexer::lex::Const,
+    semantics::typechecker::{get_signedness, IdentifierAttrs, SYMBOL_TABLE},
+    util::cfg::{self, BasicBlock, NodeId},
+};
 use std::collections::BTreeSet;
 
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]

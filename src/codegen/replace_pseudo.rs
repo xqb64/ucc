@@ -1,10 +1,11 @@
-use crate::codegen::gen::STATIC_CONSTANTS;
-use crate::codegen::gen::{
-    AsmFunction, AsmInstruction, AsmNode, AsmOperand, AsmProgram, AsmRegister, AsmStaticConstant,
-    AsmStaticVariable, AsmSymtabEntry, ASM_SYMBOL_TABLE, VAR_TO_STACK_POS,
+use crate::{
+    codegen::gen::{
+        AsmFunction, AsmInstruction, AsmNode, AsmOperand, AsmProgram, AsmRegister,
+        AsmStaticConstant, AsmStaticVariable, AsmSymtabEntry, ASM_SYMBOL_TABLE, STATIC_CONSTANTS,
+        VAR_TO_STACK_POS,
+    },
+    semantics::typechecker::{IdentifierAttrs, SYMBOL_TABLE},
 };
-use crate::semantics::typechecker::IdentifierAttrs;
-use crate::semantics::typechecker::SYMBOL_TABLE;
 
 pub trait ReplacePseudo {
     fn replace_pseudo(&self) -> Self;
