@@ -353,8 +353,7 @@ impl Emit for AsmInstruction {
                 writeln!(f)?;
             }
             AsmInstruction::Jmp { target } => {
-                write!(f, "jmp ")?;
-                writeln!(f, ".L{}", target)?;
+                writeln!(f, "jmp .L{}", target)?;
             }
             AsmInstruction::JmpCC { condition, target } => {
                 let suffix = match condition {
