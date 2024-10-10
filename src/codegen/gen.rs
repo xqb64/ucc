@@ -12,7 +12,7 @@ use crate::{
     parser::ast::Type,
     semantics::typechecker::{
         get_common_type, get_signedness, get_size_of_type, is_scalar, IdentifierAttrs, MemberEntry,
-        StaticInit, CURRENT_FN_RETURNS_ON_STACK, SYMBOL_TABLE, TYPE_TABLE,
+        StaticInit, SYMBOL_TABLE, TYPE_TABLE,
     },
 };
 
@@ -433,8 +433,6 @@ impl Codegen for IRFunction {
             IdentifierAttrs::FuncAttr { defined: _, global } => global,
             _ => unreachable!(),
         };
-
-        *CURRENT_FN_RETURNS_ON_STACK.lock().unwrap() = 0;
 
         AsmNode::Function(AsmFunction {
             name: self.name.clone(),

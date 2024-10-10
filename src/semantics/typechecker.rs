@@ -43,7 +43,6 @@ pub struct MemberEntry {
 lazy_static::lazy_static! {
     pub static ref SYMBOL_TABLE: Mutex<BTreeMap<String, Symbol>> = Mutex::new(BTreeMap::new());
     pub static ref TYPE_TABLE: Mutex<BTreeMap<String, StructEntry>> = Mutex::new(BTreeMap::new());
-    pub static ref CURRENT_FN_RETURNS_ON_STACK: Mutex<isize> = Mutex::new(0);
 }
 
 pub trait Typecheck {
