@@ -17,17 +17,38 @@ impl Lexer {
 
         let mut regexes = HashMap::new();
 
-        regexes.insert("punctuation", Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\].]").unwrap());
-        regexes.insert("punctuation_double", Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\||^->").unwrap());
-        regexes.insert("keyword", Regex::new(&format!(r"^{}\b", keywords.join(r"\b|^"))).unwrap());
-        regexes.insert("constant", Regex::new(r"^[0-9]+(?P<suffix>[lL]?[uU]?|[uU]?[lL]?)\b").unwrap());
-        regexes.insert("double_constant", Regex::new(
-            r"^(([0-9]*\.[0-9]+|[0-9]+\.?)[Ee][+-]?[0-9]+|[0-9]*\.[0-9]+|[0-9]+\.)[^\w.]",
-        )
-        .unwrap());
+        regexes.insert(
+            "punctuation",
+            Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\].]").unwrap(),
+        );
+        regexes.insert(
+            "punctuation_double",
+            Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\||^->").unwrap(),
+        );
+        regexes.insert(
+            "keyword",
+            Regex::new(&format!(r"^{}\b", keywords.join(r"\b|^"))).unwrap(),
+        );
+        regexes.insert(
+            "constant",
+            Regex::new(r"^[0-9]+(?P<suffix>[lL]?[uU]?|[uU]?[lL]?)\b").unwrap(),
+        );
+        regexes.insert(
+            "double_constant",
+            Regex::new(
+                r"^(([0-9]*\.[0-9]+|[0-9]+\.?)[Ee][+-]?[0-9]+|[0-9]*\.[0-9]+|[0-9]+\.)[^\w.]",
+            )
+            .unwrap(),
+        );
         regexes.insert("identifier", Regex::new(r"^[a-zA-Z_]\w*\b").unwrap());
-        regexes.insert("char_const", Regex::new(r#"^'([^'\\\n]|\\['"?\\abfnrtv])'"#).unwrap());
-        regexes.insert("string", Regex::new(r#"^"([^"\\\n]|\\['"\\?abfnrtv])*""#).unwrap());
+        regexes.insert(
+            "char_const",
+            Regex::new(r#"^'([^'\\\n]|\\['"?\\abfnrtv])'"#).unwrap(),
+        );
+        regexes.insert(
+            "string",
+            Regex::new(r#"^"([^"\\\n]|\\['"\\?abfnrtv])*""#).unwrap(),
+        );
 
         Lexer {
             src,
@@ -92,8 +113,7 @@ impl Iterator for Lexer {
                 return Some(Token::Error);
             }
 
-            let suffix = self
-                .regexes["constant"]
+            let suffix = self.regexes["constant"]
                 .captures(src)
                 .unwrap()
                 .name("suffix")
