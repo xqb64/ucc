@@ -140,7 +140,6 @@ impl Fixup for AsmFunction {
                     dst,
                 } => match (&src, &dst) {
                     (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
-                        println!("Data, Data");
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Double,
@@ -155,7 +154,6 @@ impl Fixup for AsmFunction {
                         ]);
                     }
                     (AsmOperand::Memory(_, _), AsmOperand::Data(_, _)) => {
-                        println!("Memory, Data");
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Double,
@@ -170,7 +168,6 @@ impl Fixup for AsmFunction {
                         ]);
                     }
                     (AsmOperand::Data(_, _), AsmOperand::Memory(_, _)) => {
-                        println!("Data, Memory");
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Double,
@@ -185,7 +182,6 @@ impl Fixup for AsmFunction {
                         ]);
                     }
                     (AsmOperand::Memory(_, _), AsmOperand::Memory(_, _)) => {
-                        println!("Memory, Memory");
                         instructions.extend(vec![
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Double,
@@ -200,7 +196,6 @@ impl Fixup for AsmFunction {
                         ]);
                     }
                     _ => {
-                        println!("Cloning: {:?}", instr.clone());
                         instructions.push(instr.clone());
                     }
                 },

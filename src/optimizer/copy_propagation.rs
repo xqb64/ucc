@@ -154,10 +154,7 @@ fn meet(
             }
             NodeId::Block(n) => {
                 let v = cfg.get_block_value(*n);
-                println!("v: {:?}", v);
-                println!("incoming: {:?}", incoming);
                 incoming = incoming.intersection(v);
-                println!("RESULT: {:?}", incoming);
             }
             _ => panic!("Internal error"),
         }
