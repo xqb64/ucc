@@ -183,89 +183,31 @@ fn evaluate_cast(konst: &Const, dst: &IRValue) -> Vec<IRInstruction> {
     }]
 }
 
+macro_rules! convert_const {
+    ($konst:expr, $variant:path, $ty:ty) => {
+        match $konst {
+            Const::Int(val) => Ok($variant(*val as $ty)),
+            Const::Long(val) => Ok($variant(*val as $ty)),
+            Const::UInt(val) => Ok($variant(*val as $ty)),
+            Const::ULong(val) => Ok($variant(*val as $ty)),
+            Const::Double(val) => Ok($variant(*val as $ty)),
+            Const::Char(val) => Ok($variant(*val as $ty)),
+            Const::UChar(val) => Ok($variant(*val as $ty)),
+        }
+    };
+}
+
 fn const_convert(konst: &Const, dst_type: &Type) -> Result<Const> {
     match dst_type {
-        Type::Int => match konst {
-            Const::Int(val) => Ok(Const::Int(*val)),
-            Const::Long(val) => Ok(Const::Int(*val as i32)),
-            Const::UInt(val) => Ok(Const::Int(*val as i32)),
-            Const::ULong(val) => Ok(Const::Int(*val as i32)),
-            Const::Double(val) => Ok(Const::Int(*val as i32)),
-            Const::Char(val) => Ok(Const::Int(*val as i32)),
-            Const::UChar(val) => Ok(Const::Int(*val as i32)),
-        },
-        Type::Long => match konst {
-            Const::Int(val) => Ok(Const::Long(*val as i64)),
-            Const::Long(val) => Ok(Const::Long(*val)),
-            Const::UInt(val) => Ok(Const::Long(*val as i64)),
-            Const::ULong(val) => Ok(Const::Long(*val as i64)),
-            Const::Double(val) => Ok(Const::Long(*val as i64)),
-            Const::Char(val) => Ok(Const::Long(*val as i64)),
-            Const::UChar(val) => Ok(Const::Long(*val as i64)),
-        },
-        Type::Uint => match konst {
-            Const::Int(val) => Ok(Const::UInt(*val as u32)),
-            Const::Long(val) => Ok(Const::UInt(*val as u32)),
-            Const::UInt(val) => Ok(Const::UInt(*val)),
-            Const::ULong(val) => Ok(Const::UInt(*val as u32)),
-            Const::Double(val) => Ok(Const::UInt(*val as u32)),
-            Const::Char(val) => Ok(Const::UInt(*val as u32)),
-            Const::UChar(val) => Ok(Const::UInt(*val as u32)),
-        },
-        Type::Ulong => match konst {
-            Const::Int(val) => Ok(Const::ULong(*val as u64)),
-            Const::Long(val) => Ok(Const::ULong(*val as u64)),
-            Const::UInt(val) => Ok(Const::ULong(*val as u64)),
-            Const::ULong(val) => Ok(Const::ULong(*val)),
-            Const::Double(val) => Ok(Const::ULong(*val as u64)),
-            Const::Char(val) => Ok(Const::ULong(*val as u64)),
-            Const::UChar(val) => Ok(Const::ULong(*val as u64)),
-        },
-        Type::Double => match konst {
-            Const::Int(val) => Ok(Const::Double(*val as f64)),
-            Const::Long(val) => Ok(Const::Double(*val as f64)),
-            Const::UInt(val) => Ok(Const::Double(*val as f64)),
-            Const::ULong(val) => Ok(Const::Double(*val as f64)),
-            Const::Double(val) => Ok(Const::Double(*val)),
-            Const::Char(val) => Ok(Const::Double(*val as f64)),
-            Const::UChar(val) => Ok(Const::Double(*val as f64)),
-        },
-        Type::Char => match konst {
-            Const::Int(val) => Ok(Const::Char(*val as i8)),
-            Const::Long(val) => Ok(Const::Char(*val as i8)),
-            Const::UInt(val) => Ok(Const::Char(*val as i8)),
-            Const::ULong(val) => Ok(Const::Char(*val as i8)),
-            Const::Double(val) => Ok(Const::Char(*val as i8)),
-            Const::Char(val) => Ok(Const::Char(*val)),
-            Const::UChar(val) => Ok(Const::Char(*val as i8)),
-        },
-        Type::UChar => match konst {
-            Const::Int(val) => Ok(Const::UChar(*val as u8)),
-            Const::Long(val) => Ok(Const::UChar(*val as u8)),
-            Const::UInt(val) => Ok(Const::UChar(*val as u8)),
-            Const::ULong(val) => Ok(Const::UChar(*val as u8)),
-            Const::Char(val) => Ok(Const::UChar(*val as u8)),
-            Const::UChar(val) => Ok(Const::UChar(*val)),
-            Const::Double(val) => Ok(Const::UChar(*val as u8)),
-        },
-        Type::SChar => match konst {
-            Const::Int(val) => Ok(Const::Char(*val as i8)),
-            Const::Long(val) => Ok(Const::Char(*val as i8)),
-            Const::UInt(val) => Ok(Const::Char(*val as i8)),
-            Const::ULong(val) => Ok(Const::Char(*val as i8)),
-            Const::Char(val) => Ok(Const::Char(*val)),
-            Const::UChar(val) => Ok(Const::Char(*val as i8)),
-            Const::Double(val) => Ok(Const::Char(*val as i8)),
-        },
-        Type::Pointer(_) => match konst {
-            Const::Int(val) => Ok(Const::ULong(*val as u64)),
-            Const::Long(val) => Ok(Const::ULong(*val as u64)),
-            Const::UInt(val) => Ok(Const::ULong(*val as u64)),
-            Const::ULong(val) => Ok(Const::ULong(*val)),
-            Const::Double(val) => Ok(Const::ULong(*val as u64)),
-            Const::Char(val) => Ok(Const::ULong(*val as u64)),
-            Const::UChar(val) => Ok(Const::ULong(*val as u64)),
-        },
+        Type::Int => convert_const!(konst, Const::Int, i32),
+        Type::Long => convert_const!(konst, Const::Long, i64),
+        Type::Uint => convert_const!(konst, Const::UInt, u32),
+        Type::Ulong => convert_const!(konst, Const::ULong, u64),
+        Type::Double => convert_const!(konst, Const::Double, f64),
+        Type::Char => convert_const!(konst, Const::Char, i8),
+        Type::UChar => convert_const!(konst, Const::UChar, u8),
+        Type::SChar => convert_const!(konst, Const::Char, i8),
+        Type::Pointer(_) => convert_const!(konst, Const::ULong, u64),
         _ => unreachable!(),
     }
 }
