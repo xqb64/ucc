@@ -3,7 +3,7 @@ use crate::{
     ir::gen::{get_dst, IRInstruction, IRValue},
     lexer::lex::Const,
     semantics::typechecker::{get_signedness, IdentifierAttrs, SYMBOL_TABLE},
-    util::cfg::{self, BasicBlock, NodeId},
+    util::cfg::{CFG, BasicBlock, NodeId},
 };
 use std::collections::BTreeSet;
 
@@ -143,7 +143,7 @@ fn transfer(
 
 fn meet(
     ident: &ReachingCopies,
-    cfg: &cfg::CFG<ReachingCopies, IRInstruction>,
+    cfg: &CFG<ReachingCopies, IRInstruction>,
     block: &BasicBlock<ReachingCopies, IRInstruction>,
 ) -> ReachingCopies {
     let mut incoming = ident.clone();
@@ -164,8 +164,8 @@ fn meet(
 
 fn find_reaching_copies(
     aliased_vars: &BTreeSet<String>,
-    cfg: cfg::CFG<(), IRInstruction>,
-) -> cfg::CFG<ReachingCopies, IRInstruction> {
+    cfg: CFG<(), IRInstruction>,
+) -> CFG<ReachingCopies, IRInstruction> {
     let ident = collect_all_copies(&cfg);
 
     let mut starting_cfg = cfg.initialize_annotation(ident.clone());
@@ -212,8 +212,8 @@ fn find_reaching_copies(
 
 pub fn copy_propagation(
     aliased_vars: &BTreeSet<String>,
-    cfg: cfg::CFG<(), IRInstruction>,
-) -> cfg::CFG<(), IRInstruction> {
+    cfg: CFG<(), IRInstruction>,
+) -> CFG<(), IRInstruction> {
     let annotated_cfg = find_reaching_copies(aliased_vars, cfg);
 
     let rewrite_block = |block: BasicBlock<ReachingCopies, IRInstruction>| {
@@ -232,7 +232,7 @@ pub fn copy_propagation(
         }
     };
 
-    let transformed_cfg = cfg::CFG {
+    let transformed_cfg = CFG {
         basic_blocks: annotated_cfg
             .basic_blocks
             .iter()
@@ -373,7 +373,7 @@ fn rewrite_instruction(
     }
 }
 
-fn collect_all_copies(cfg: &cfg::CFG<(), IRInstruction>) -> ReachingCopies {
+fn collect_all_copies(cfg: &CFG<(), IRInstruction>) -> ReachingCopies {
     let mut copies = ReachingCopies::new();
 
     for (_, block) in &cfg.basic_blocks {

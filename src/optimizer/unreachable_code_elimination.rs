@@ -1,22 +1,22 @@
-use crate::util::cfg::{self, BasicBlock, Instr, NodeId};
+use crate::util::cfg::{CFG, BasicBlock, Instr, NodeId};
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 
 type NodeSet = BTreeSet<NodeId>;
 
 pub fn unreachable_code_elimination<V: Clone + Debug, I: Debug + Instr + Clone>(
-    cfg: &mut cfg::CFG<V, I>,
-) -> &mut cfg::CFG<V, I> {
+    cfg: &mut CFG<V, I>,
+) -> &mut CFG<V, I> {
     remove_empty_blocks(eliminate_useless_labels(eliminate_useless_jumps(
         eliminate_unreachable_blocks(cfg),
     )))
 }
 
 pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
-    cfg: &mut cfg::CFG<V, I>,
-) -> &mut cfg::CFG<V, I> {
+    cfg: &mut CFG<V, I>,
+) -> &mut CFG<V, I> {
     fn dfs<V: Clone + Debug, I: Clone + Debug + Instr>(
-        cfg: &cfg::CFG<V, I>,
+        cfg: &CFG<V, I>,
         explored: &mut NodeSet,
         node_id: NodeId,
     ) {
@@ -66,8 +66,8 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
 }
 
 pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(
-    cfg: &mut cfg::CFG<V, I>,
-) -> &mut cfg::CFG<V, I> {
+    cfg: &mut CFG<V, I>,
+) -> &mut CFG<V, I> {
     fn drop_last<T>(vec: &mut Vec<T>) {
         vec.pop();
     }
@@ -103,8 +103,8 @@ pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(
 }
 
 pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(
-    cfg: &mut cfg::CFG<V, I>,
-) -> &mut cfg::CFG<V, I> {
+    cfg: &mut CFG<V, I>,
+) -> &mut CFG<V, I> {
     let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg
         .basic_blocks
         .iter()
@@ -135,8 +135,8 @@ pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(
 }
 
 pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
-    cfg: &mut cfg::CFG<V, I>,
-) -> &mut cfg::CFG<V, I> {
+    cfg: &mut CFG<V, I>,
+) -> &mut CFG<V, I> {
     let mut blocks_to_remove = Vec::new();
 
     let _: Vec<(usize, BasicBlock<V, I>)> = cfg

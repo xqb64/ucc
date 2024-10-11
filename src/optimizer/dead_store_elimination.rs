@@ -1,14 +1,14 @@
 use crate::{
     ir::gen::{get_dst, IRInstruction, IRValue},
     semantics::typechecker::{IdentifierAttrs, SYMBOL_TABLE},
-    util::cfg::{self, BasicBlock, NodeId},
+    util::cfg::{CFG, BasicBlock, NodeId},
 };
 use std::collections::BTreeSet;
 
 pub fn dead_store_elimination(
     aliased_vars: &BTreeSet<String>,
-    cfg: cfg::CFG<(), IRInstruction>,
-) -> cfg::CFG<(), IRInstruction> {
+    cfg: CFG<(), IRInstruction>,
+) -> CFG<(), IRInstruction> {
     let mut static_vars = BTreeSet::new();
 
     for (k, v) in SYMBOL_TABLE.lock().unwrap().iter() {
@@ -38,7 +38,7 @@ pub fn dead_store_elimination(
         )
     };
 
-    cfg::CFG {
+    CFG {
         basic_blocks: annotated_cfg
             .basic_blocks
             .into_iter()
@@ -62,8 +62,8 @@ fn is_dead_store((live_vars, i): &(BTreeSet<String>, IRInstruction)) -> bool {
 fn find_live_variables(
     static_vars: &BTreeSet<String>,
     aliased_vars: &BTreeSet<String>,
-    cfg: cfg::CFG<(), IRInstruction>,
-) -> cfg::CFG<BTreeSet<String>, IRInstruction> {
+    cfg: CFG<(), IRInstruction>,
+) -> CFG<BTreeSet<String>, IRInstruction> {
     let mut starting_cfg = cfg.initialize_annotation(BTreeSet::new());
 
     let static_and_aliased_vars = static_vars
@@ -108,7 +108,7 @@ fn find_live_variables(
 
 fn meet(
     static_vars: &BTreeSet<String>,
-    cfg: &cfg::CFG<BTreeSet<String>, IRInstruction>,
+    cfg: &CFG<BTreeSet<String>, IRInstruction>,
     block: &BasicBlock<BTreeSet<String>, IRInstruction>,
 ) -> BTreeSet<String> {
     let mut live = BTreeSet::new();
