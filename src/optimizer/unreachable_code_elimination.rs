@@ -1,20 +1,24 @@
-use crate::util::cfg::{CFG, BasicBlock, Instr, NodeId};
+use crate::util::cfg::{BasicBlock, Instr, NodeId, CFG};
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 
 type NodeSet = BTreeSet<NodeId>;
 
-pub fn unreachable_code_elimination<V: Clone + Debug, I: Debug + Instr + Clone>(
-    cfg: &mut CFG<V, I>,
-) -> &mut CFG<V, I> {
+pub fn unreachable_code_elimination<V, I>(cfg: &mut CFG<V, I>) -> &mut CFG<V, I>
+where
+    V: Clone + Debug,
+    I: Debug + Instr + Clone,
+{
     remove_empty_blocks(eliminate_useless_labels(eliminate_useless_jumps(
         eliminate_unreachable_blocks(cfg),
     )))
 }
 
-pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
-    cfg: &mut CFG<V, I>,
-) -> &mut CFG<V, I> {
+fn eliminate_unreachable_blocks<V, I>(cfg: &mut CFG<V, I>) -> &mut CFG<V, I>
+where
+    V: Clone + Debug,
+    I: Clone + Debug + Instr,
+{
     fn dfs<V: Clone + Debug, I: Clone + Debug + Instr>(
         cfg: &CFG<V, I>,
         explored: &mut NodeSet,
@@ -65,9 +69,11 @@ pub fn eliminate_unreachable_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
     cfg
 }
 
-pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(
-    cfg: &mut CFG<V, I>,
-) -> &mut CFG<V, I> {
+fn eliminate_useless_jumps<V, I>(cfg: &mut CFG<V, I>) -> &mut CFG<V, I>
+where
+    V: Clone + Debug,
+    I: Clone + Debug + Instr,
+{
     fn drop_last<T>(vec: &mut Vec<T>) {
         vec.pop();
     }
@@ -102,9 +108,11 @@ pub fn eliminate_useless_jumps<V: Clone + Debug, I: Clone + Debug + Instr>(
     cfg
 }
 
-pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(
-    cfg: &mut CFG<V, I>,
-) -> &mut CFG<V, I> {
+fn eliminate_useless_labels<V, I>(cfg: &mut CFG<V, I>) -> &mut CFG<V, I>
+where
+    V: Clone + Debug,
+    I: Clone + Debug + Instr,
+{
     let updated_blocks: Vec<(usize, BasicBlock<V, I>)> = cfg
         .basic_blocks
         .iter()
@@ -134,9 +142,11 @@ pub fn eliminate_useless_labels<V: Clone + Debug, I: Clone + Debug + Instr>(
     cfg
 }
 
-pub fn remove_empty_blocks<V: Clone + Debug, I: Clone + Debug + Instr>(
-    cfg: &mut CFG<V, I>,
-) -> &mut CFG<V, I> {
+fn remove_empty_blocks<V, I>(cfg: &mut CFG<V, I>) -> &mut CFG<V, I>
+where
+    V: Clone + Debug,
+    I: Clone + Debug + Instr,
+{
     let mut blocks_to_remove = Vec::new();
 
     let _: Vec<(usize, BasicBlock<V, I>)> = cfg

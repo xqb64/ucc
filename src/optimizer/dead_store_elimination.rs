@@ -1,7 +1,7 @@
 use crate::{
     ir::gen::{get_dst, IRInstruction, IRValue},
     semantics::typechecker::{IdentifierAttrs, SYMBOL_TABLE},
-    util::cfg::{CFG, BasicBlock, NodeId},
+    util::cfg::{BasicBlock, NodeId, CFG},
 };
 use std::collections::BTreeSet;
 

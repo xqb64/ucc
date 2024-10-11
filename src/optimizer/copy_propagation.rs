@@ -3,7 +3,7 @@ use crate::{
     ir::gen::{get_dst, IRInstruction, IRValue},
     lexer::lex::Const,
     semantics::typechecker::{get_signedness, IdentifierAttrs, SYMBOL_TABLE},
-    util::cfg::{CFG, BasicBlock, NodeId},
+    util::cfg::{BasicBlock, NodeId, CFG},
 };
 use std::collections::BTreeSet;
 
