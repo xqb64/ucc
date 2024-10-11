@@ -462,7 +462,7 @@ impl PartialEq for Const {
     fn eq(&self, other: &Self) -> bool {
         use Const::*;
         match (self, other) {
-            (Double(d1), Double(d2)) => d1 == d2 || d1.total_cmp(d2) == std::cmp::Ordering::Equal,
+            (Double(d1), Double(d2)) => d1.partial_cmp(d2) == Some(std::cmp::Ordering::Equal),
             (Int(i1), Int(i2)) => i1 == i2,
             (Long(l1), Long(l2)) => l1 == l2,
             (UInt(u1), UInt(u2)) => u1 == u2,
@@ -470,6 +470,15 @@ impl PartialEq for Const {
             (Char(c1), Char(c2)) => c1 == c2,
             (UChar(uc1), UChar(uc2)) => uc1 == uc2,
             _ => false,
+        }
+    }
+}
+
+impl From<bool> for Const {
+    fn from(b: bool) -> Self {
+        match b {
+            true => Const::Int(1),
+            false => Const::Int(0),
         }
     }
 }

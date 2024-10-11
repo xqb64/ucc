@@ -20,30 +20,12 @@ pub fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction>
                         BinaryOp::Mul => lhs_val * rhs_val,
                         BinaryOp::Div => lhs_val / rhs_val,
                         BinaryOp::Rem => lhs_val % rhs_val,
-                        BinaryOp::Less => match lhs_val < rhs_val {
-                            true => Const::Int(1),
-                            false => Const::Int(0),
-                        },
-                        BinaryOp::Greater => match lhs_val > rhs_val {
-                            true => Const::Int(1),
-                            false => Const::Int(0),
-                        },
-                        BinaryOp::Equal => match lhs_val == rhs_val {
-                            true => Const::Int(1),
-                            false => Const::Int(0),
-                        },
-                        BinaryOp::NotEqual => match lhs_val != rhs_val {
-                            true => Const::Int(1),
-                            false => Const::Int(0),
-                        },
-                        BinaryOp::GreaterEqual => match lhs_val >= rhs_val {
-                            true => Const::Int(1),
-                            false => Const::Int(0),
-                        },
-                        BinaryOp::LessEqual => match lhs_val <= rhs_val {
-                            true => Const::Int(1),
-                            false => Const::Int(0),
-                        },
+                        BinaryOp::Less => (lhs_val < rhs_val).into(),
+                        BinaryOp::Greater => (lhs_val > rhs_val).into(),
+                        BinaryOp::Equal => (lhs_val == rhs_val).into(),
+                        BinaryOp::NotEqual => (lhs_val != rhs_val).into(),
+                        BinaryOp::GreaterEqual => (lhs_val >= rhs_val).into(),
+                        BinaryOp::LessEqual => (lhs_val <= rhs_val).into(),
                     };
                     optimized_instructions.push(IRInstruction::Copy {
                         src: IRValue::Constant(result),
