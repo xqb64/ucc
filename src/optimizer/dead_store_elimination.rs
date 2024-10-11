@@ -77,9 +77,9 @@ fn find_live_variables(
     while let Some((block_idx, blk)) = worklist.pop() {
         let old_annotation = blk.value.clone();
 
-        let live_vars_at_exit = meet_dead_store(static_vars, &starting_cfg, &blk);
+        let live_vars_at_exit = meet(static_vars, &starting_cfg, &blk);
 
-        let block = transfer_dead_store(&static_and_aliased_vars, blk.clone(), live_vars_at_exit);
+        let block = transfer(&static_and_aliased_vars, blk.clone(), live_vars_at_exit);
 
         starting_cfg.update_basic_block(block_idx, block.clone());
 
@@ -106,7 +106,7 @@ fn find_live_variables(
     starting_cfg
 }
 
-fn meet_dead_store(
+fn meet(
     static_vars: &BTreeSet<String>,
     cfg: &cfg::CFG<BTreeSet<String>, IRInstruction>,
     block: &BasicBlock<BTreeSet<String>, IRInstruction>,
@@ -128,7 +128,7 @@ fn meet_dead_store(
     live
 }
 
-fn transfer_dead_store(
+fn transfer(
     static_and_aliased_vars: &BTreeSet<String>,
     block: BasicBlock<BTreeSet<String>, IRInstruction>,
     end_live_variables: BTreeSet<String>,
