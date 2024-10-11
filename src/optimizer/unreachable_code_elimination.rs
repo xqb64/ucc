@@ -19,11 +19,11 @@ where
     V: Clone + Debug,
     I: Clone + Debug + Instr,
 {
-    fn dfs<V: Clone + Debug, I: Clone + Debug + Instr>(
-        cfg: &CFG<V, I>,
-        explored: &mut NodeSet,
-        node_id: NodeId,
-    ) {
+    fn dfs<V, I>(cfg: &CFG<V, I>, explored: &mut NodeSet, node_id: NodeId)
+    where
+        V: Clone + Debug,
+        I: Clone + Debug + Instr,
+    {
         if explored.contains(&node_id) {
             return;
         }
