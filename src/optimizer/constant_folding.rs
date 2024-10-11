@@ -3,7 +3,6 @@ use crate::{
     lexer::lex::Const,
     parser::ast::Type,
 };
-use anyhow::Result;
 
 pub fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
     let mut optimized_instructions = vec![];
@@ -172,10 +171,7 @@ fn evaluate_cast(konst: &Const, dst: &IRValue) -> Vec<IRInstruction> {
     use crate::codegen::gen::tacky_type;
 
     let dst_type = tacky_type(dst);
-    let converted_src = match const_convert(konst, &dst_type) {
-        Ok(result) => result,
-        Err(_) => const_convert(&Const::Int(0), &dst_type).unwrap(),
-    };
+    let converted_src = const_convert(konst, &dst_type);
 
     vec![IRInstruction::Copy {
         src: IRValue::Constant(converted_src),
@@ -186,18 +182,18 @@ fn evaluate_cast(konst: &Const, dst: &IRValue) -> Vec<IRInstruction> {
 macro_rules! convert_const {
     ($konst:expr, $variant:path, $ty:ty) => {
         match $konst {
-            Const::Int(val) => Ok($variant(*val as $ty)),
-            Const::Long(val) => Ok($variant(*val as $ty)),
-            Const::UInt(val) => Ok($variant(*val as $ty)),
-            Const::ULong(val) => Ok($variant(*val as $ty)),
-            Const::Double(val) => Ok($variant(*val as $ty)),
-            Const::Char(val) => Ok($variant(*val as $ty)),
-            Const::UChar(val) => Ok($variant(*val as $ty)),
+            Const::Int(val) => $variant(*val as $ty),
+            Const::Long(val) => $variant(*val as $ty),
+            Const::UInt(val) => $variant(*val as $ty),
+            Const::ULong(val) => $variant(*val as $ty),
+            Const::Double(val) => $variant(*val as $ty),
+            Const::Char(val) => $variant(*val as $ty),
+            Const::UChar(val) => $variant(*val as $ty),
         }
     };
 }
 
-fn const_convert(konst: &Const, dst_type: &Type) -> Result<Const> {
+fn const_convert(konst: &Const, dst_type: &Type) -> Const {
     match dst_type {
         Type::Int => convert_const!(konst, Const::Int, i32),
         Type::Long => convert_const!(konst, Const::Long, i64),
