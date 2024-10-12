@@ -13,10 +13,10 @@ impl Fixup for AsmNode {
         match self {
             AsmNode::Program(prog) => AsmNode::Program(prog.fixup(callee_saved_args)),
             AsmNode::Function(func) => AsmNode::Function(func.fixup(callee_saved_args)),
-            AsmNode::Instructions(instrs) => AsmNode::Instructions(instrs.fixup(callee_saved_args)),
             AsmNode::Operand(op) => AsmNode::Operand(op.clone()),
             AsmNode::StaticVariable(static_var) => AsmNode::StaticVariable(static_var.clone()),
             AsmNode::StaticConstant(static_const) => AsmNode::StaticConstant(static_const.clone()),
+            _ => unreachable!(),
         }
     }
 }
@@ -1671,40 +1671,6 @@ impl Fixup for AsmFunction {
             global: self.global,
             stack_space: self.stack_space,
         }
-    }
-}
-
-impl Fixup for Vec<AsmInstruction> {
-    fn fixup(&mut self, _callee_saved_args: &BTreeSet<AsmRegister>) -> Vec<AsmInstruction> {
-        let mut instructions = vec![];
-
-        for instr in self {
-            match instr {
-                AsmInstruction::Mov { src, dst, asm_type } => match (src, dst) {
-                    (
-                        AsmOperand::Memory(AsmRegister::BP, src_n),
-                        AsmOperand::Memory(AsmRegister::BP, dst_n),
-                    ) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: *asm_type,
-                                src: AsmOperand::Memory(AsmRegister::BP, *src_n),
-                                dst: AsmOperand::Register(AsmRegister::R10),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: *asm_type,
-                                src: AsmOperand::Register(AsmRegister::R10),
-                                dst: AsmOperand::Memory(AsmRegister::BP, *dst_n),
-                            },
-                        ]);
-                    }
-                    _ => instructions.push(instr.clone()),
-                },
-                _ => instructions.push(instr.clone()),
-            }
-        }
-
-        instructions
     }
 }
 
