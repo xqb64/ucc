@@ -45,7 +45,7 @@ impl RegAlloc for AsmFunction {
                 break gp_graph;
             }
 
-            self.instructions = rewrite_coalesced(self.instructions.clone(), &mut coalesced_regs)
+            self.instructions = rewrite_coalesced(&self.instructions, &mut coalesced_regs)
         };
 
         let gp_spilled_graph = add_spill_costs(gp_graph, &self.instructions);
@@ -69,7 +69,7 @@ impl RegAlloc for AsmFunction {
                 break xmm_graph;
             }
 
-            self.instructions = rewrite_coalesced(self.instructions.clone(), &mut coalesced_regs)
+            self.instructions = rewrite_coalesced(&self.instructions, &mut coalesced_regs)
         };
 
         let xmm_spilled_graph = add_spill_costs(xmm_graph, &self.instructions);
@@ -1127,7 +1127,7 @@ fn coalesce(
 }
 
 fn rewrite_coalesced(
-    instructions: Vec<AsmInstruction>,
+    instructions: &[AsmInstruction],
     coalesced_regs: &mut DisjointSet<AsmOperand>,
 ) -> Vec<AsmInstruction> {
     let mut rewrite_instruction = |instr: &AsmInstruction| -> Option<AsmInstruction> {
