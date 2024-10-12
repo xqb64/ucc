@@ -107,7 +107,7 @@ type NodeId = AsmOperand;
 #[derive(Debug, Clone, PartialEq)]
 struct Node {
     id: NodeId,
-    neighbors: BTreeSet<AsmOperand>,
+    neighbors: BTreeSet<NodeId>,
     spill_cost: f64,
     color: Option<usize>,
     pruned: bool,
