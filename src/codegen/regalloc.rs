@@ -16,10 +16,7 @@ impl RegAlloc for AsmProgram {
     fn reg_alloc(&mut self, aliased_pseudos: &BTreeSet<String>) -> Self {
         let mut functions = vec![];
         for func in &mut self.functions {
-            functions.push(match func {
-                AsmNode::Function(f) => AsmNode::Function(f.reg_alloc(aliased_pseudos)),
-                _ => unreachable!(),
-            });
+            functions.push(func.reg_alloc(aliased_pseudos).into());
         }
         AsmProgram {
             functions,
