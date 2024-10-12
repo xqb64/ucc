@@ -98,10 +98,8 @@ impl Fixup for AsmFunction {
             callee_saved_args.len(),
         ));
 
-        let save_reg = |r: &AsmRegister| AsmInstruction::Push(AsmOperand::Register(*r));
-
         for reg in callee_saved_args {
-            instructions_setup.push(save_reg(reg));
+            instructions_setup.push(AsmInstruction::Push(AsmOperand::Register(*reg)));
         }
 
         self.instructions.splice(0..0, instructions_setup);
