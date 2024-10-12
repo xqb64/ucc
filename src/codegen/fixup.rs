@@ -106,14 +106,6 @@ impl Fixup for AsmFunction {
 
         for instr in &mut self.instructions {
             match instr {
-                AsmInstruction::Pop(reg) if is_xmm(reg) => {
-                    instructions.push(AsmInstruction::Binary {
-                        asm_type: AsmType::Quadword,
-                        op: AsmBinaryOp::Add,
-                        lhs: AsmOperand::Imm(8),
-                        rhs: AsmOperand::Register(AsmRegister::SP),
-                    });
-                }
                 AsmInstruction::Lea { src, dst } => match dst {
                     AsmOperand::Memory(AsmRegister::BP, _)
                     | AsmOperand::Memory(_, _)
