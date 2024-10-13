@@ -726,6 +726,7 @@ impl Fixup for AsmFunction {
                         instructions.push(instr.clone());
                     }
                 }
+
                 AsmInstruction::Push(AsmOperand::Register(reg)) if is_xmm(reg) => instructions
                     .extend(vec![
                         AsmInstruction::Binary {
