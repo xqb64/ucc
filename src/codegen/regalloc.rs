@@ -38,7 +38,7 @@ impl RegAlloc for AsmFunction {
 
             let mut coalesced_regs =
                 coalesce(&mut gp_graph, &self.instructions, &RegisterClass::GP);
-            
+
             if coalesced_regs.nothing_was_coalesced() {
                 break gp_graph;
             }
@@ -63,7 +63,7 @@ impl RegAlloc for AsmFunction {
 
             let mut coalesced_regs =
                 coalesce(&mut xmm_graph, &self.instructions, &RegisterClass::XMM);
-            
+
             if coalesced_regs.nothing_was_coalesced() {
                 break xmm_graph;
             }
