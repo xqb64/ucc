@@ -567,60 +567,28 @@ impl Fixup for AsmFunction {
                     ]);
                 }
 
-                AsmInstruction::Cvtsi2sd { asm_type, src, dst } => match (&src, &dst, *asm_type) {
-                    (
-                        AsmOperand::Memory(AsmRegister::BP, _),
-                        AsmOperand::Memory(AsmRegister::BP, _),
-                        AsmType::Double,
-                    ) => {
+                AsmInstruction::Cvtsi2sd { asm_type, src, dst } => {
+                    if matches!(src, AsmOperand::Imm(_)) && is_memory(dst) {
                         instructions.extend(vec![
-                            AsmInstruction::Cvtsi2sd {
-                                asm_type: *asm_type,
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::XMM15),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Double,
-                                src: AsmOperand::Register(AsmRegister::XMM15),
-                                dst: dst.clone(),
-                            },
+                            AsmInstruction::Mov { asm_type: *asm_type, src: src.clone(), dst: AsmOperand::Register(AsmRegister::R10) },
+                            AsmInstruction::Cvtsi2sd { asm_type: *asm_type, src: AsmOperand::Register(AsmRegister::R10), dst: AsmOperand::Register(AsmRegister::XMM15) },
+                            AsmInstruction::Mov { asm_type: AsmType::Double, src: AsmOperand::Register(AsmRegister::XMM15), dst: dst.clone() },
                         ]);
-                    }
-                    (AsmOperand::Imm(_), _, _) => {
+                    } else if matches!(src, AsmOperand::Imm(_)) {
                         instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: *asm_type,
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::R10),
-                            },
-                            AsmInstruction::Cvtsi2sd {
-                                asm_type: *asm_type,
-                                src: AsmOperand::Register(AsmRegister::R10),
-                                dst: AsmOperand::Register(AsmRegister::XMM15),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Double,
-                                src: AsmOperand::Register(AsmRegister::XMM15),
-                                dst: dst.clone(),
-                            },
+                            AsmInstruction::Mov { asm_type: *asm_type, src: src.clone(), dst: AsmOperand::Register(AsmRegister::R10) },
+                            AsmInstruction::Cvtsi2sd { asm_type: *asm_type, src: AsmOperand::Register(AsmRegister::R10), dst: dst.clone() },
                         ]);
-                    }
-                    (_, AsmOperand::Memory(AsmRegister::BP, _), _) => {
+                    } else if is_memory(dst) {
                         instructions.extend(vec![
-                            AsmInstruction::Cvtsi2sd {
-                                asm_type: *asm_type,
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::XMM15),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Double,
-                                src: AsmOperand::Register(AsmRegister::XMM15),
-                                dst: dst.clone(),
-                            },
+                            AsmInstruction::Cvtsi2sd { asm_type: *asm_type, src: src.clone(), dst: AsmOperand::Register(AsmRegister::XMM15) },
+                            AsmInstruction::Mov { asm_type: AsmType::Double, src: AsmOperand::Register(AsmRegister::XMM15), dst: dst.clone() },
                         ]);
+                    } else {
+                        instructions.push(instr.clone());
                     }
-                    _ => instructions.push(instr.clone()),
                 },
+
                 AsmInstruction::Ret => {
                     let restore_regs: Vec<AsmInstruction> = callee_saved_args
                         .iter()
