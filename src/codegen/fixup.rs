@@ -37,6 +37,7 @@ impl Fixup for AsmProgram {
                 .get(&func_name)
                 .cloned()
                 .unwrap();
+
             let callee_saved_args = match symbol {
                 AsmSymtabEntry::Function {
                     callee_saved_regs_used,
@@ -106,457 +107,87 @@ impl Fixup for AsmFunction {
 
         for instr in &mut self.instructions {
             match instr {
-                AsmInstruction::Lea { src, dst } => match dst {
-                    AsmOperand::Memory(AsmRegister::BP, _)
-                    | AsmOperand::Memory(_, _)
-                    | AsmOperand::Data(_, _) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Lea {
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::R11),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: AsmOperand::Register(AsmRegister::R11),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    _ => instructions.push(instr.clone()),
+
+                /* 'mov' can't move a value from one memory address to another */
+                AsmInstruction::Mov { asm_type, src, dst } if matches!(src, AsmOperand::Memory(_, _) | AsmOperand::Data(_ , _,)) && matches!(dst, AsmOperand::Memory(_, _) | AsmOperand::Data(_ , _,)) => {
+                    let scratch = if asm_type == &AsmType::Double {
+                        AsmOperand::Register(AsmRegister::XMM14)
+                    } else {
+                        AsmOperand::Register(AsmRegister::R10)
+                    };
+
+                    instructions.extend(vec![
+                        AsmInstruction::Mov {
+                            asm_type: *asm_type,
+                            src: src.clone(),
+                            dst: scratch.clone(),
+                        },
+                        AsmInstruction::Mov {
+                            asm_type: *asm_type,
+                            src: scratch.clone(),
+                            dst: dst.clone(),
+                        },
+                    ]);
                 },
-                AsmInstruction::Mov {
-                    asm_type: AsmType::Double,
-                    src,
-                    dst,
-                } => match (&src, &dst) {
-                    (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Double,
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::XMM14),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Double,
-                                src: AsmOperand::Register(AsmRegister::XMM14),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Memory(_, _), AsmOperand::Data(_, _)) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Double,
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::XMM14),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Double,
-                                src: AsmOperand::Register(AsmRegister::XMM14),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Data(_, _), AsmOperand::Memory(_, _)) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Double,
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::XMM14),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Double,
-                                src: AsmOperand::Register(AsmRegister::XMM14),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Memory(_, _), AsmOperand::Memory(_, _)) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Double,
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::XMM14),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Double,
-                                src: AsmOperand::Register(AsmRegister::XMM14),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    _ => {
-                        instructions.push(instr.clone());
-                    }
+
+                /* 'mov' can't move a large constant to a memory address */
+                AsmInstruction::Mov { asm_type: AsmType::Quadword, src: AsmOperand::Imm(imm), dst } if is_large(*imm) && matches!(dst, AsmOperand::Memory(_, _,) | AsmOperand::Data(_, _,)) => {
+                    instructions.extend(vec![
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Quadword,
+                            src: AsmOperand::Imm(*imm),
+                            dst: AsmOperand::Register(AsmRegister::R10),
+                        },
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Quadword,
+                            src: AsmOperand::Register(AsmRegister::R10),
+                            dst: dst.clone(),
+                        },
+                    ]);
                 },
-                AsmInstruction::Mov {
-                    asm_type: AsmType::Quadword,
-                    src,
-                    dst,
-                } => match (&src, &dst) {
-                    (AsmOperand::Imm(_), AsmOperand::Memory(_, _)) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::R10),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: AsmOperand::Register(AsmRegister::R10),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Imm(_), AsmOperand::Data(_, _)) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::R10),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: AsmOperand::Register(AsmRegister::R10),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Memory(_, _), AsmOperand::Memory(_, _)) => {
-                        let scratch = AsmOperand::Register(AsmRegister::R10);
 
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Data(_, _), AsmOperand::Memory(_, _)) => {
-                        let scratch = AsmOperand::Register(AsmRegister::R10);
-
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Memory(_, _), AsmOperand::Data(_, _)) => {
-                        let scratch = AsmOperand::Register(AsmRegister::R10);
-
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
-                        let scratch = AsmOperand::Register(AsmRegister::R10);
-
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    _ => instructions.push(instr.clone()),
+                /* 'mov'-ing a quadword-size constant with a longword operand size produces an assembler warning */
+                AsmInstruction::Mov { asm_type: AsmType::Longword, src: AsmOperand::Imm(imm), dst } if is_larger_than_uint(*imm) => {
+                    let bitmask: i64 = 0xffffffff;
+                    let reduced = *imm & bitmask;
+                
+                    instructions.extend(vec![
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Longword,
+                            src: AsmOperand::Imm(reduced),
+                            dst: dst.clone(),
+                        },
+                    ]);
                 },
-                AsmInstruction::Mov {
-                    asm_type: AsmType::Longword,
-                    src,
-                    dst,
-                } => match (&src, &dst) {
-                    (AsmOperand::Imm(imm), AsmOperand::Memory(_, _)) => {
-                        if *imm < i32::MIN as i64 || *imm > i32::MAX as i64 {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: AsmType::Longword,
-                                    src: AsmOperand::Imm(*imm as i32 as i64),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: AsmType::Longword,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: dst.clone(),
-                                },
-                            ]);
-                        } else {
-                            instructions.push(instr.clone());
-                        }
-                    }
-                    (AsmOperand::Imm(_), AsmOperand::Data(_, _)) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::R10),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: AsmOperand::Register(AsmRegister::R10),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Memory(_, _), AsmOperand::Memory(_, _)) => {
-                        let scratch = AsmOperand::Register(AsmRegister::R10);
 
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Data(_, _), AsmOperand::Memory(_, _)) => {
-                        let scratch = AsmOperand::Register(AsmRegister::R10);
-
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Memory(_, _), AsmOperand::Data(_, _)) => {
-                        let scratch = AsmOperand::Register(AsmRegister::R10);
-
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
-                        let scratch = AsmOperand::Register(AsmRegister::R10);
-
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    _ => instructions.push(instr.clone()),
+                /* 'mov'-ing a longword-size constant with a byte operand size produces an assembler warning */
+                AsmInstruction::Mov { asm_type: AsmType::Byte, src: AsmOperand::Imm(imm), dst } if is_larger_than_byte(*imm) => {
+                    let bitmask: i64 = 0xff;
+                    let reduced = *imm & bitmask;
+                
+                    instructions.extend(vec![
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Byte,
+                            src: AsmOperand::Imm(reduced),
+                            dst: dst.clone(),
+                        },
+                    ]);
                 },
-                AsmInstruction::Mov {
-                    asm_type: AsmType::Byte,
-                    src,
-                    dst,
-                } => match (&src, &dst) {
-                    (AsmOperand::Imm(imm), AsmOperand::Memory(_, _)) => {
-                        if *imm < i8::MIN as i64 || *imm > i8::MAX as i64 {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: AsmType::Byte,
-                                    src: AsmOperand::Imm(*imm as i8 as i64),
-                                    dst: AsmOperand::Register(AsmRegister::R10),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: AsmType::Byte,
-                                    src: AsmOperand::Register(AsmRegister::R10),
-                                    dst: dst.clone(),
-                                },
-                            ]);
-                        } else {
-                            instructions.push(instr.clone());
-                        }
-                    }
-                    (AsmOperand::Imm(_), AsmOperand::Data(_, _)) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Byte,
-                                src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::R10),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Byte,
-                                src: AsmOperand::Register(AsmRegister::R10),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Memory(_, _), AsmOperand::Memory(_, _)) => {
-                        let scratch = AsmOperand::Register(AsmRegister::R10);
 
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Byte,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Byte,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Data(_, _), AsmOperand::Memory(_, _)) => {
-                        let scratch = AsmOperand::Register(AsmRegister::R10);
-
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Byte,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Byte,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Memory(_, _), AsmOperand::Data(_, _)) => {
-                        let scratch = AsmOperand::Register(AsmRegister::R10);
-
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Byte,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Byte,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
-                        let scratch = AsmOperand::Register(AsmRegister::R10);
-
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Byte,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Byte,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    _ => instructions.push(instr.clone()),
+                AsmInstruction::Lea { src, dst } if is_memory(dst) => {
+                    instructions.extend(vec![
+                        AsmInstruction::Lea {
+                            src: src.clone(),
+                            dst: AsmOperand::Register(AsmRegister::R11),
+                        },
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Quadword,
+                            src: AsmOperand::Register(AsmRegister::R11),
+                            dst: dst.clone(),
+                        },
+                    ]);
                 },
-                AsmInstruction::Mov { asm_type, src, dst } => match (&src, &dst) {
-                    (AsmOperand::Data(_, _), AsmOperand::Data(_, _)) => {
-                        let scratch = if asm_type == &AsmType::Double {
-                            AsmOperand::Register(AsmRegister::XMM14)
-                        } else {
-                            AsmOperand::Register(AsmRegister::R10)
-                        };
-
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: *asm_type,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: *asm_type,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Data(_, _), AsmOperand::Memory(_, _)) => {
-                        let scratch = if asm_type == &AsmType::Double {
-                            AsmOperand::Register(AsmRegister::XMM14)
-                        } else {
-                            AsmOperand::Register(AsmRegister::R10)
-                        };
-
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: *asm_type,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: *asm_type,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    (AsmOperand::Memory(_, _), AsmOperand::Memory(_, _)) => {
-                        let scratch = if asm_type == &AsmType::Double {
-                            AsmOperand::Register(AsmRegister::XMM14)
-                        } else {
-                            AsmOperand::Register(AsmRegister::R10)
-                        };
-
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: *asm_type,
-                                src: src.clone(),
-                                dst: scratch.clone(),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: *asm_type,
-                                src: scratch.clone(),
-                                dst: dst.clone(),
-                            },
-                        ]);
-                    }
-                    _ => instructions.push(instr.clone()),
-                },
+                
                 AsmInstruction::Binary {
                     asm_type: AsmType::Double,
                     op: _,
@@ -1666,6 +1297,15 @@ impl Fixup for AsmFunction {
     }
 }
 
+fn is_memory(op: &AsmOperand) -> bool {
+    matches!(
+        op,
+        AsmOperand::Memory(_, _)
+            | AsmOperand::Data(_, _)
+            | AsmOperand::Indexed(_, _, _)
+    )
+}
+
 fn is_xmm(r: &AsmRegister) -> bool {
     matches!(
         r,
@@ -1690,4 +1330,18 @@ fn is_xmm(r: &AsmRegister) -> bool {
 
 fn is_large(n: i64) -> bool {
     n > i32::MAX as i64 || n < i32::MIN as i64
+}
+
+fn is_larger_than_uint(imm: i64) -> bool {
+    // use unsigned upper-bound for positives
+    let max_i: i64 = 4294967295; // 2^32 - 1
+
+    // use signed 32-bit lower bound for negatives
+    let int32_min: i64 = i32::MIN as i64;
+
+    imm > max_i || imm < int32_min
+}
+
+fn is_larger_than_byte(imm: i64) -> bool {
+    imm >= 256 || imm < -128
 }
