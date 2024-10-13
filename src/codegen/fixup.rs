@@ -174,6 +174,30 @@ impl Fixup for AsmFunction {
                     ]);
                 },
 
+                /* 'movsx' can't handle immediate source or memory dst */
+                AsmInstruction::Movsx { src_type, src: AsmOperand::Imm(imm), dst_type, dst } if matches!(dst, AsmOperand::Memory(_, _,) | AsmOperand::Data(_, _)) => {
+                    instructions.extend(vec![
+                        AsmInstruction::Mov { asm_type: *src_type, src: AsmOperand::Imm(*imm), dst: AsmOperand::Register(AsmRegister::R10) },
+                        AsmInstruction::Movsx { src_type: *src_type, src: AsmOperand::Register(AsmRegister::R10), dst_type: *dst_type, dst: AsmOperand::Register(AsmRegister::R11) },
+                        AsmInstruction::Mov { asm_type: *dst_type, src: AsmOperand::Register(AsmRegister::R11), dst: dst.clone() },    
+                    ]);
+                }
+
+                AsmInstruction::Movsx { src_type, src: AsmOperand::Imm(imm), dst_type, dst } => {
+                    instructions.extend(vec![
+                        AsmInstruction::Mov { asm_type: *src_type, src: AsmOperand::Imm(*imm), dst: AsmOperand::Register(AsmRegister::R10) },
+                        AsmInstruction::Movsx { src_type: *src_type, src: AsmOperand::Register(AsmRegister::R10), dst_type: *dst_type, dst: dst.clone() },
+
+                    ]);
+                }
+
+                AsmInstruction::Movsx { src_type, src, dst_type, dst } if matches!(dst, AsmOperand::Memory(_, _) | AsmOperand::Data(_, _)) => {
+                    instructions.extend(vec![
+                        AsmInstruction::Movsx { src_type: *src_type, src: src.clone(), dst_type: *dst_type, dst: AsmOperand::Register(AsmRegister::R11) },
+                        AsmInstruction::Mov { asm_type: *dst_type, src: AsmOperand::Register(AsmRegister::R11), dst: dst.clone() },
+                    ]);
+                }
+
                 AsmInstruction::Lea { src, dst } if is_memory(dst) => {
                     instructions.extend(vec![
                         AsmInstruction::Lea {
@@ -187,7 +211,7 @@ impl Fixup for AsmFunction {
                         },
                     ]);
                 },
-                
+
                 AsmInstruction::Binary {
                     asm_type: AsmType::Double,
                     op: _,
@@ -1027,49 +1051,6 @@ impl Fixup for AsmFunction {
                                 asm_type: *asm_type,
                                 lhs: lhs.clone(),
                                 rhs: AsmOperand::Register(AsmRegister::R11),
-                            },
-                        ]);
-                    }
-                    _ => instructions.push(instr.clone()),
-                },
-                AsmInstruction::Movsx {
-                    src_type,
-                    src,
-                    dst_type,
-                    dst,
-                } => match (&src, &dst) {
-                    (AsmOperand::Imm(konst), AsmOperand::Memory(AsmRegister::BP, dst_n)) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Longword,
-                                src: AsmOperand::Imm(*konst),
-                                dst: AsmOperand::Register(AsmRegister::R10),
-                            },
-                            AsmInstruction::Movsx {
-                                src_type: *src_type,
-                                src: AsmOperand::Register(AsmRegister::R10),
-                                dst_type: *dst_type,
-                                dst: AsmOperand::Register(AsmRegister::R11),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: AsmOperand::Register(AsmRegister::R11),
-                                dst: AsmOperand::Memory(AsmRegister::BP, *dst_n),
-                            },
-                        ]);
-                    }
-                    (_, AsmOperand::Memory(AsmRegister::BP, _dst_n)) => {
-                        instructions.extend(vec![
-                            AsmInstruction::Movsx {
-                                src_type: *src_type,
-                                src: src.clone(),
-                                dst_type: *dst_type,
-                                dst: AsmOperand::Register(AsmRegister::R11),
-                            },
-                            AsmInstruction::Mov {
-                                asm_type: *dst_type,
-                                src: AsmOperand::Register(AsmRegister::R11),
-                                dst: dst.clone(),
                             },
                         ]);
                     }
