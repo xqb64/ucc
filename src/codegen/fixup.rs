@@ -237,6 +237,21 @@ impl Fixup for AsmFunction {
                     ]);
                 }
 
+                /* Idiv can't operate on constants */
+                AsmInstruction::Idiv { asm_type, operand: AsmOperand::Imm(imm) } => {
+                    instructions.extend(vec![
+                        AsmInstruction::Mov { asm_type: *asm_type, src: AsmOperand::Imm(*imm), dst: AsmOperand::Register(AsmRegister::R10) },
+                        AsmInstruction::Idiv { asm_type: *asm_type, operand: AsmOperand::Register(AsmRegister::R10) },
+                    ]);
+                }
+
+                AsmInstruction::Div { asm_type, operand: AsmOperand::Imm(imm) } => {
+                    instructions.extend(vec![
+                        AsmInstruction::Mov { asm_type: *asm_type, src: AsmOperand::Imm(*imm), dst: AsmOperand::Register(AsmRegister::R10) },
+                        AsmInstruction::Div { asm_type: *asm_type, operand: AsmOperand::Register(AsmRegister::R10) },
+                    ]);
+                }
+
                 AsmInstruction::Lea { src, dst } if is_memory(dst) => {
                     instructions.extend(vec![
                         AsmInstruction::Lea {
@@ -718,93 +733,10 @@ impl Fixup for AsmFunction {
                         }
                         _ => instructions.push(instr.clone()),
                     },
-                    AsmBinaryOp::DivDouble => match (&lhs, &rhs) {
-                        (
-                            AsmOperand::Memory(AsmRegister::BP, _),
-                            AsmOperand::Memory(AsmRegister::BP, _),
-                        ) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: rhs.clone(),
-                                    dst: AsmOperand::Register(AsmRegister::XMM15),
-                                },
-                                AsmInstruction::Binary {
-                                    asm_type: *asm_type,
-                                    op: *op,
-                                    lhs: lhs.clone(),
-                                    rhs: AsmOperand::Register(AsmRegister::XMM15),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Register(AsmRegister::XMM15),
-                                    dst: rhs.clone(),
-                                },
-                            ]);
-                        }
-                        (AsmOperand::Data(_, _), AsmOperand::Memory(AsmRegister::BP, _)) => {
-                            instructions.extend(vec![
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: rhs.clone(),
-                                    dst: AsmOperand::Register(AsmRegister::XMM15),
-                                },
-                                AsmInstruction::Binary {
-                                    asm_type: *asm_type,
-                                    op: *op,
-                                    lhs: lhs.clone(),
-                                    rhs: AsmOperand::Register(AsmRegister::XMM15),
-                                },
-                                AsmInstruction::Mov {
-                                    asm_type: *asm_type,
-                                    src: AsmOperand::Register(AsmRegister::XMM15),
-                                    dst: rhs.clone(),
-                                },
-                            ]);
-                        }
-                        _ => instructions.push(instr.clone()),
-                    },
                     _ => {
                         instructions.push(instr.clone());
                     }
                 },
-                AsmInstruction::Idiv { operand, asm_type } => {
-                    if let AsmOperand::Imm(konst) = operand {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: *asm_type,
-                                src: AsmOperand::Imm(*konst),
-                                dst: AsmOperand::Register(AsmRegister::R10),
-                            },
-                            AsmInstruction::Idiv {
-                                asm_type: *asm_type,
-                                operand: AsmOperand::Register(AsmRegister::R10),
-                            },
-                        ]);
-                    } else {
-                        instructions.push(instr.clone());
-                    }
-                }
-                AsmInstruction::Div {
-                    operand,
-                    asm_type: _,
-                } => {
-                    if let AsmOperand::Imm(konst) = operand {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: AsmOperand::Imm(*konst),
-                                dst: AsmOperand::Register(AsmRegister::R10),
-                            },
-                            AsmInstruction::Div {
-                                asm_type: AsmType::Quadword,
-                                operand: AsmOperand::Register(AsmRegister::R10),
-                            },
-                        ]);
-                    } else {
-                        instructions.push(instr.clone());
-                    }
-                }
                 AsmInstruction::Cmp {
                     asm_type: AsmType::Double,
                     lhs: _,

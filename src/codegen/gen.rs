@@ -819,12 +819,12 @@ impl Codegen for IRInstruction {
                         } else {
                             v.extend(vec![
                                 AsmInstruction::Mov {
-                                    asm_type: AsmType::Longword,
+                                    asm_type,
                                     src: AsmOperand::Imm(0),
                                     dst: AsmOperand::Register(AsmRegister::DX),
                                 },
                                 AsmInstruction::Div {
-                                    asm_type: AsmType::Longword,
+                                    asm_type,
                                     operand: rhs.codegen().into(),
                                 },
                                 AsmInstruction::Mov {
