@@ -265,26 +265,7 @@ impl Codegen for IRStaticVariable {
             name: self.name.clone(),
             init: self.init.clone(),
             global: self.global,
-            alignment: match self._type {
-                Type::Int => 4,
-                Type::Long => 8,
-                Type::Uint => 4,
-                Type::Ulong => 8,
-                Type::Double => 8,
-                Type::Pointer(_) => 8,
-                Type::Array { .. } => get_alignment_of_type(&self._type),
-                Type::Char | Type::UChar | Type::SChar => 1,
-                Type::Struct { ref tag } => {
-                    TYPE_TABLE
-                        .lock()
-                        .unwrap()
-                        .get(tag)
-                        .cloned()
-                        .unwrap()
-                        .alignment
-                }
-                _ => unreachable!(),
-            },
+            alignment: get_alignment_of_type(&self._type),
         })
     }
 }
