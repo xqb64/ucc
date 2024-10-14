@@ -312,46 +312,48 @@ impl Resolve for Statement {
         match self {
             Statement::Expression(expr) => {
                 expr.resolve(variable_map, struct_map)?;
-                Ok(self)
             }
+
             Statement::Return(ret) => {
                 ret.resolve(variable_map, struct_map)?;
-                Ok(self)
             }
-            Statement::Null => Ok(self),
+
             Statement::Program(prog) => {
                 prog.resolve(variable_map, struct_map)?;
-                Ok(self)
             }
+
             Statement::If(if_stmt) => {
                 if_stmt.resolve(variable_map, struct_map)?;
-                Ok(self)
             }
+
             Statement::Compound(block) => {
                 block.resolve(variable_map, struct_map)?;
-                Ok(self)
             }
+
             Statement::For(for_stmt) => {
                 for_stmt.resolve(variable_map, struct_map)?;
-                Ok(self)
             }
+
             Statement::DoWhile(do_while) => {
                 do_while.resolve(variable_map, struct_map)?;
-                Ok(self)
             }
+
             Statement::While(while_stmt) => {
                 while_stmt.resolve(variable_map, struct_map)?;
-                Ok(self)
             }
+
             Statement::Break(break_stmt) => {
                 break_stmt.resolve(variable_map, struct_map)?;
-                Ok(self)
             }
+
             Statement::Continue(continue_stmt) => {
                 continue_stmt.resolve(variable_map, struct_map)?;
-                Ok(self)
             }
+
+            Statement::Null => {},
         }
+
+        Ok(self)
     }
 }
 
