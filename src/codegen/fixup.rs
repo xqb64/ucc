@@ -712,19 +712,15 @@ impl Fixup for AsmFunction {
                     ]);
                 }
 
-                AsmInstruction::Push(AsmOperand::Imm(n)) => {
-                    if *n > i32::MAX as i64 || *n < i32::MIN as i64 {
-                        instructions.extend(vec![
-                            AsmInstruction::Mov {
-                                asm_type: AsmType::Quadword,
-                                src: AsmOperand::Imm(*n),
-                                dst: AsmOperand::Register(AsmRegister::R10),
-                            },
-                            AsmInstruction::Push(AsmOperand::Register(AsmRegister::R10)),
-                        ]);
-                    } else {
-                        instructions.push(instr.clone());
-                    }
+                AsmInstruction::Push(AsmOperand::Imm(n)) if is_large(*n) => {
+                    instructions.extend(vec![
+                        AsmInstruction::Mov {
+                            asm_type: AsmType::Quadword,
+                            src: AsmOperand::Imm(*n),
+                            dst: AsmOperand::Register(AsmRegister::R10),
+                        },
+                        AsmInstruction::Push(AsmOperand::Register(AsmRegister::R10)),
+                    ]);
                 }
 
                 AsmInstruction::Push(AsmOperand::Register(reg)) if is_xmm(reg) => instructions
