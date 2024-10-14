@@ -16,7 +16,7 @@ impl RegAlloc for AsmProgram {
     fn reg_alloc(&mut self, aliased_pseudos: &BTreeSet<String>) -> Self {
         let mut functions = vec![];
         for func in &mut self.functions {
-            functions.push(func.reg_alloc(aliased_pseudos).into());
+            functions.push(func.reg_alloc(aliased_pseudos));
         }
         AsmProgram {
             functions,
@@ -793,13 +793,10 @@ fn make_register_map(
     let mut colors_to_regs: IntMap = BTreeMap::new();
 
     for (nd_id, node) in graph.iter() {
-        match nd_id {
-            NodeId::Register(r) => {
-                if let Some(color) = node.color {
-                    colors_to_regs.insert(color, *r);
-                }
+        if let NodeId::Register(r) = nd_id {
+            if let Some(color) = node.color {
+                colors_to_regs.insert(color, *r);
             }
-            _ => {}
         }
     }
 
@@ -955,13 +952,7 @@ where
             operand: f(operand),
         },
         AsmInstruction::Push(v) => AsmInstruction::Push(f(v)),
-        AsmInstruction::Label(_)
-        | AsmInstruction::Call(_)
-        | AsmInstruction::Ret
-        | AsmInstruction::Cdq { .. }
-        | AsmInstruction::Jmp { .. }
-        | AsmInstruction::JmpCC { .. }
-        | _ => instr,
+        _ => instr,
     }
 }
 
@@ -1086,35 +1077,34 @@ fn coalesce(
                 let dst = coalesced_regs.find(dst.clone());
 
                 if let Some(src_node) = graph.get(&src) {
-                    if graph.get(&dst).is_some() {
-                        if src != dst {
-                            if !src_node.neighbors.contains(&dst)
-                                && conservative_coalesceable(
-                                    graph,
-                                    src.clone(),
-                                    dst.clone(),
-                                    register_class,
-                                )
-                            {
-                                let to_keep;
-                                let to_merge;
-                                if let AsmOperand::Register(reg) = src {
-                                    if GP_REGISTERS.contains(&reg) || XMM_REGISTERS.contains(&reg) {
-                                        to_keep = src;
-                                        to_merge = dst;
-                                    } else {
-                                        to_keep = dst;
-                                        to_merge = src;
-                                    }
-                                } else {
-                                    to_keep = dst;
-                                    to_merge = src;
-                                }
-
-                                coalesced_regs.union(to_merge.clone(), to_keep.clone());
-                                update_graph(graph, to_merge, to_keep);
+                    if graph.get(&dst).is_some()
+                        && src != dst
+                        && !src_node.neighbors.contains(&dst)
+                        && conservative_coalesceable(
+                            graph,
+                            src.clone(),
+                            dst.clone(),
+                            register_class,
+                        )
+                    {
+                        let to_keep;
+                        let to_merge;
+                        
+                        if let AsmOperand::Register(reg) = src {
+                            if GP_REGISTERS.contains(&reg) || XMM_REGISTERS.contains(&reg) {
+                                to_keep = src;
+                                to_merge = dst;
+                            } else {
+                                to_keep = dst;
+                                to_merge = src;
                             }
+                        } else {
+                            to_keep = dst;
+                            to_merge = src;
                         }
+
+                        coalesced_regs.union(to_merge.clone(), to_keep.clone());
+                        update_graph(graph, to_merge, to_keep);
                     }
                 }
             }
@@ -1129,7 +1119,7 @@ fn rewrite_coalesced(
     instructions: &[AsmInstruction],
     coalesced_regs: &mut DisjointSet<AsmOperand>,
 ) -> Vec<AsmInstruction> {
-    let mut rewrite_instruction = |instr: &AsmInstruction| -> Option<AsmInstruction> {
+    let rewrite_instruction = |instr: &AsmInstruction| -> Option<AsmInstruction> {
         match instr {
             AsmInstruction::Mov { asm_type, src, dst } => {
                 let new_src = coalesced_regs.find(src.clone());
@@ -1154,8 +1144,8 @@ fn rewrite_coalesced(
     };
 
     instructions
-        .into_iter()
-        .filter_map(|x| rewrite_instruction(&x))
+        .iter()
+        .filter_map(rewrite_instruction)
         .collect()
 }
 

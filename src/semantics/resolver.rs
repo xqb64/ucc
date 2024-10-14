@@ -350,7 +350,7 @@ impl Resolve for Statement {
                 continue_stmt.resolve(variable_map, struct_map)?;
             }
 
-            Statement::Null => {},
+            Statement::Null => {}
         }
 
         Ok(self)

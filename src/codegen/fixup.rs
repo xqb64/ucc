@@ -890,5 +890,5 @@ fn is_larger_than_uint(imm: i64) -> bool {
 }
 
 fn is_larger_than_byte(imm: i64) -> bool {
-    imm >= 256 || imm < -128
+    !(-128..256).contains(&imm)
 }
