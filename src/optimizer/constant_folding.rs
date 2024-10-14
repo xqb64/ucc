@@ -4,7 +4,7 @@ use crate::{
     parser::ast::Type,
 };
 
-pub fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction> {
+pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
     let mut optimized_instructions = vec![];
 
     for instr in instructions {
