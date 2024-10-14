@@ -965,6 +965,8 @@ const GP_REGISTERS: &[AsmRegister] = &[
     AsmRegister::DI,
     AsmRegister::R8,
     AsmRegister::R9,
+    /* We are leaving out R10 and R11 because we use it as
+     * scratch registers during the instruction fix-up pass. */
     AsmRegister::R12,
     AsmRegister::R13,
     AsmRegister::R14,
@@ -986,6 +988,8 @@ const XMM_REGISTERS: &[AsmRegister] = &[
     AsmRegister::XMM11,
     AsmRegister::XMM12,
     AsmRegister::XMM13,
+    /* We are leaving out XMM14 and XMM15 because we use it as
+     * scratch registers during the instruction fix-up pass. */
 ];
 
 const GP_CALLER_SAVED_REGISTERS: &[AsmRegister] = &[
@@ -1089,7 +1093,7 @@ fn coalesce(
                     {
                         let to_keep;
                         let to_merge;
-                        
+
                         if let AsmOperand::Register(reg) = src {
                             if GP_REGISTERS.contains(&reg) || XMM_REGISTERS.contains(&reg) {
                                 to_keep = src;
@@ -1176,12 +1180,15 @@ fn conservative_coalesceable(
     if briggs_test(graph, &src, &dst, register_class) {
         return true;
     }
+ 
     if let AsmOperand::Register(_) = src {
         return george_test(graph, src, dst, register_class);
     }
+ 
     if let AsmOperand::Register(_) = dst {
         return george_test(graph, dst, src, register_class);
     }
+ 
     false
 }
 
