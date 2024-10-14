@@ -364,6 +364,7 @@ impl Resolve for ExpressionStatement {
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<&mut Self> {
         self.expr = resolve_exp(&self.expr, variable_map, struct_map)?;
+
         Ok(self)
     }
 }
@@ -376,6 +377,7 @@ impl Resolve for ReturnStatement {
     ) -> Result<&mut Self> {
         self.expr = resolve_optional_expr(&self.expr, variable_map, struct_map)?;
         self.target_type = optionally_resolve_type(&self.target_type, struct_map)?;
+
         Ok(self)
     }
 }
@@ -386,6 +388,7 @@ fn optionally_resolve_type(
 ) -> Result<Option<Type>> {
     if target_type.is_some() {
         let resolved_type = resolve_type(target_type.as_ref().unwrap(), struct_map)?;
+
         Ok(Some(resolved_type))
     } else {
         Ok(None)
@@ -401,6 +404,7 @@ impl Resolve for ProgramStatement {
         for block_item in &mut self.block_items {
             block_item.resolve(variable_map, struct_map)?;
         }
+
         Ok(self)
     }
 }
@@ -432,9 +436,11 @@ impl Resolve for BlockStatement {
     ) -> Result<&mut Self> {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
+
         for stmt in &mut self.stmts {
             stmt.resolve(&mut new_variable_map, &mut new_struct_map)?;
         }
+
         Ok(self)
     }
 }
@@ -447,6 +453,7 @@ impl Resolve for ForStatement {
     ) -> Result<&mut Self> {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
+
         self.init = resolve_for_init(&mut self.init, &mut new_variable_map, &mut new_struct_map)?;
         self.condition = resolve_optional_expr(&self.condition, &mut new_variable_map, struct_map)?;
         self.post = resolve_optional_expr(&self.post, &mut new_variable_map, struct_map)?;
@@ -455,6 +462,7 @@ impl Resolve for ForStatement {
             .resolve(&mut new_variable_map, &mut new_struct_map)?
             .to_owned()
             .into();
+
         Ok(self)
     }
 }
@@ -467,12 +475,14 @@ impl Resolve for DoWhileStatement {
     ) -> Result<&mut Self> {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
+
         self.body = self
             .body
             .resolve(&mut new_variable_map, &mut new_struct_map)?
             .to_owned()
             .into();
         self.condition = resolve_exp(&self.condition, &mut new_variable_map, struct_map)?;
+
         Ok(self)
     }
 }
@@ -485,12 +495,14 @@ impl Resolve for WhileStatement {
     ) -> Result<&mut Self> {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
+
         self.condition = resolve_exp(&self.condition, &mut new_variable_map, struct_map)?;
         self.body = self
             .body
             .resolve(&mut new_variable_map, &mut new_struct_map)?
             .to_owned()
             .into();
+
         Ok(self)
     }
 }
@@ -537,16 +549,20 @@ fn resolve_exp(
                 _type,
             }))
         }
+
         Expression::Variable(var) => {
             let variable = variable_map
                 .get(&var.value)
                 .ok_or_else(|| anyhow::anyhow!("undeclared variable: {}", var.value))?;
+
             Ok(Expression::Variable(VariableExpression {
                 value: variable.name.clone(),
                 _type: Type::Dummy,
             }))
         }
+
         Expression::Constant(konst) => Ok(Expression::Constant(konst)),
+
         Expression::Unary(UnaryExpression { kind, expr, _type }) => {
             let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
 
@@ -556,6 +572,7 @@ fn resolve_exp(
                 _type,
             }))
         }
+
         Expression::Binary(BinaryExpression {
             kind,
             lhs,
@@ -572,6 +589,7 @@ fn resolve_exp(
                 _type,
             }))
         }
+
         Expression::Conditional(ConditionalExpression {
             condition,
             then_expr,
@@ -597,6 +615,7 @@ fn resolve_exp(
                 _type,
             }))
         }
+
         Expression::Call(CallExpression { name, args, _type }) => {
             if variable_map.contains_key(&name) {
                 let new_func_name = variable_map.get(&name).unwrap().name.clone();
@@ -614,6 +633,7 @@ fn resolve_exp(
                 bail!("undeclared function");
             }
         }
+
         Expression::Cast(CastExpression {
             target_type,
             expr,
@@ -628,6 +648,7 @@ fn resolve_exp(
                 _type,
             }))
         }
+
         Expression::AddrOf(AddrOfExpression { expr, _type }) => {
             let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
 
@@ -636,6 +657,7 @@ fn resolve_exp(
                 _type,
             }))
         }
+
         Expression::Deref(DerefExpression { expr, _type }) => {
             let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
 
@@ -644,6 +666,7 @@ fn resolve_exp(
                 _type,
             }))
         }
+
         Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
             let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
             let resolved_index = resolve_exp(&index, variable_map, struct_map)?;
@@ -654,6 +677,7 @@ fn resolve_exp(
                 _type,
             }))
         }
+
         Expression::Literal(LiteralExpression { name, value, _type }) => {
             let resolved_init = resolve_init(&value, variable_map, struct_map)?;
             Ok(Expression::Literal(LiteralExpression {
@@ -662,9 +686,11 @@ fn resolve_exp(
                 _type,
             }))
         }
+
         Expression::String(StringExpression { value, _type }) => {
             Ok(Expression::String(StringExpression { value, _type }))
         }
+
         Expression::Sizeof(SizeofExpression { expr, _type }) => {
             let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
             let resolved_type = resolve_type(&_type, struct_map)?;
@@ -673,6 +699,7 @@ fn resolve_exp(
                 _type: resolved_type,
             }))
         }
+
         Expression::Dot(DotExpression {
             structure,
             member,
@@ -685,6 +712,7 @@ fn resolve_exp(
                 _type,
             }))
         }
+
         Expression::Arrow(ArrowExpression {
             pointer,
             member,
@@ -697,6 +725,7 @@ fn resolve_exp(
                 _type,
             }))
         }
+
         Expression::SizeofT(SizeofTExpression { t, _type }) => {
             let resolved_type = resolve_type(&t, struct_map)?;
             Ok(Expression::SizeofT(SizeofTExpression {
@@ -820,10 +849,12 @@ fn resolve_type(
                 bail!("Specified an undeclared structure tag.")
             }
         }
+
         Type::Pointer(referenced) => {
             let resolved_referenced = resolve_type(referenced, struct_map)?;
             Ok(Type::Pointer(Box::new(resolved_referenced)))
         }
+
         Type::Array { element, size } => {
             let resolved_element = resolve_type(element, struct_map)?;
             Ok(Type::Array {
@@ -831,6 +862,7 @@ fn resolve_type(
                 size: *size,
             })
         }
+
         Type::Func { params, ret } => {
             let mut resolved_params = vec![];
             for param in params {
@@ -842,6 +874,7 @@ fn resolve_type(
                 ret: Box::new(resolved_ret),
             })
         }
+
         _ => Ok(type_specifier.clone()),
     }
 }
