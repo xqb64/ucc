@@ -35,6 +35,7 @@ pub fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction>
                     optimized_instructions.push(instr.clone());
                 }
             }
+
             IRInstruction::Unary { op, src, dst } => {
                 let src_val = get_constant_value(src);
 
@@ -63,6 +64,7 @@ pub fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction>
                     optimized_instructions.push(instr.clone());
                 }
             }
+            
             IRInstruction::JumpIfNotZero { condition, target } => {
                 let condition_val = get_constant_value(condition);
 
@@ -74,6 +76,7 @@ pub fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction>
                     optimized_instructions.push(instr.clone());
                 }
             }
+            
             IRInstruction::JumpIfZero { condition, target } => {
                 let condition_val = get_constant_value(condition);
 
@@ -85,54 +88,64 @@ pub fn constant_folding(instructions: &Vec<IRInstruction>) -> Vec<IRInstruction>
                     optimized_instructions.push(instr.clone());
                 }
             }
+            
+            
             IRInstruction::Truncate {
                 src: IRValue::Constant(konst),
                 dst,
             } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
+            
             IRInstruction::SignExtend {
                 src: IRValue::Constant(konst),
                 dst,
             } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
+            
             IRInstruction::ZeroExtend {
                 src: IRValue::Constant(konst),
                 dst,
             } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
+
             IRInstruction::DoubleToInt {
                 src: IRValue::Constant(konst),
                 dst,
             } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
+
             IRInstruction::DoubletoUInt {
                 src: IRValue::Constant(konst),
                 dst,
             } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
+
             IRInstruction::IntToDouble {
                 src: IRValue::Constant(konst),
                 dst,
             } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
+
             IRInstruction::UIntToDouble {
                 src: IRValue::Constant(konst),
                 dst,
             } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
+
             IRInstruction::Copy {
                 src: IRValue::Constant(konst),
                 dst,
             } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
+
             _ => {
                 optimized_instructions.push(instr.clone());
             }
