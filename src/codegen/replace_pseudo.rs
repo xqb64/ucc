@@ -167,7 +167,7 @@ impl ReplacePseudo for AsmOperand {
                             };
 
                             AsmOperand::Memory(
-                                AsmRegister::BP,
+                                AsmRegister::Bp,
                                 VAR_TO_STACK_POS
                                     .lock()
                                     .unwrap()
@@ -189,7 +189,7 @@ impl ReplacePseudo for AsmOperand {
                     };
 
                     AsmOperand::Memory(
-                        AsmRegister::BP,
+                        AsmRegister::Bp,
                         VAR_TO_STACK_POS
                             .lock()
                             .unwrap()
@@ -219,7 +219,7 @@ impl ReplacePseudo for AsmOperand {
                         .0
                         .try_into()
                         .unwrap();
-                    AsmOperand::Memory(AsmRegister::BP, previously_assigned + *offset)
+                    AsmOperand::Memory(AsmRegister::Bp, previously_assigned + *offset)
                 } else {
                     AsmOperand::Data(name.clone(), *offset)
                 }

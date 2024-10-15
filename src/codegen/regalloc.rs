@@ -33,11 +33,11 @@ impl RegAlloc for AsmFunction {
                 &self.name,
                 aliased_pseudos,
                 &self.instructions,
-                &RegisterClass::GP,
+                &RegisterClass::Gp,
             );
 
             let mut coalesced_regs =
-                coalesce(&mut gp_graph, &self.instructions, &RegisterClass::GP);
+                coalesce(&mut gp_graph, &self.instructions, &RegisterClass::Gp);
 
             if coalesced_regs.nothing_was_coalesced() {
                 break gp_graph;
@@ -49,20 +49,20 @@ impl RegAlloc for AsmFunction {
         let gp_spilled_graph = add_spill_costs(gp_graph, &self.instructions);
 
         let colored_gp_graph =
-            color_graph(gp_spilled_graph, GP_REGISTERS.len(), &RegisterClass::GP);
+            color_graph(gp_spilled_graph, GP_REGISTERS.len(), &RegisterClass::Gp);
 
-        let gp_register_map = make_register_map(&self.name, &colored_gp_graph, &RegisterClass::GP);
+        let gp_register_map = make_register_map(&self.name, &colored_gp_graph, &RegisterClass::Gp);
 
         let xmm_graph = loop {
             let mut xmm_graph = build_interference_graph(
                 &self.name,
                 aliased_pseudos,
                 &self.instructions,
-                &RegisterClass::XMM,
+                &RegisterClass::Xmm,
             );
 
             let mut coalesced_regs =
-                coalesce(&mut xmm_graph, &self.instructions, &RegisterClass::XMM);
+                coalesce(&mut xmm_graph, &self.instructions, &RegisterClass::Xmm);
 
             if coalesced_regs.nothing_was_coalesced() {
                 break xmm_graph;
@@ -73,9 +73,9 @@ impl RegAlloc for AsmFunction {
 
         let xmm_spilled_graph = add_spill_costs(xmm_graph, &self.instructions);
         let colored_xmm_graph =
-            color_graph(xmm_spilled_graph, XMM_REGISTERS.len(), &RegisterClass::XMM);
+            color_graph(xmm_spilled_graph, XMM_REGISTERS.len(), &RegisterClass::Xmm);
         let xmm_register_map =
-            make_register_map(&self.name, &colored_xmm_graph, &RegisterClass::XMM);
+            make_register_map(&self.name, &colored_xmm_graph, &RegisterClass::Xmm);
 
         let mut register_map = gp_register_map;
         register_map.extend(xmm_register_map);
@@ -143,11 +143,11 @@ fn build_interference_graph(
     register_class: &RegisterClass,
 ) -> Graph {
     let all_hardregs = match register_class {
-        RegisterClass::GP => GP_REGISTERS
+        RegisterClass::Gp => GP_REGISTERS
             .iter()
             .map(|x| AsmOperand::Register(*x))
             .collect(),
-        RegisterClass::XMM => XMM_REGISTERS
+        RegisterClass::Xmm => XMM_REGISTERS
             .iter()
             .map(|x| AsmOperand::Register(*x))
             .collect(),
@@ -231,22 +231,22 @@ fn regs_used_and_written(
         AsmInstruction::Idiv { operand, .. } | AsmInstruction::Div { operand, .. } => (
             vec![
                 operand.clone(),
-                AsmOperand::Register(AsmRegister::AX),
-                AsmOperand::Register(AsmRegister::DX),
+                AsmOperand::Register(AsmRegister::Ax),
+                AsmOperand::Register(AsmRegister::Dx),
             ],
             vec![
-                AsmOperand::Register(AsmRegister::AX),
-                AsmOperand::Register(AsmRegister::DX),
+                AsmOperand::Register(AsmRegister::Ax),
+                AsmOperand::Register(AsmRegister::Dx),
             ],
         ),
         AsmInstruction::Cdq { .. } => (
-            vec![AsmOperand::Register(AsmRegister::AX)],
-            vec![AsmOperand::Register(AsmRegister::DX)],
+            vec![AsmOperand::Register(AsmRegister::Ax)],
+            vec![AsmOperand::Register(AsmRegister::Dx)],
         ),
         AsmInstruction::Call(func_name) => {
             let all_hardregs = match register_class {
-                RegisterClass::GP => GP_REGISTERS,
-                RegisterClass::XMM => XMM_REGISTERS,
+                RegisterClass::Gp => GP_REGISTERS,
+                RegisterClass::Xmm => XMM_REGISTERS,
             };
 
             let used_regs = {
@@ -267,8 +267,8 @@ fn regs_used_and_written(
             };
 
             let regs = match register_class {
-                RegisterClass::GP => GP_CALLER_SAVED_REGISTERS,
-                RegisterClass::XMM => XMM_CALLER_SAVED_REGISTERS,
+                RegisterClass::Gp => GP_CALLER_SAVED_REGISTERS,
+                RegisterClass::Xmm => XMM_CALLER_SAVED_REGISTERS,
             };
 
             (
@@ -453,7 +453,7 @@ fn get_operands(instr: &AsmInstruction) -> Vec<AsmOperand> {
 }
 
 fn pseudo_is_current_type(pseudo: &str, register_class: &RegisterClass) -> bool {
-    if register_class == &RegisterClass::GP {
+    if register_class == &RegisterClass::Gp {
         match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
             AsmSymtabEntry::Object {
                 _type,
@@ -462,7 +462,7 @@ fn pseudo_is_current_type(pseudo: &str, register_class: &RegisterClass) -> bool 
             } => _type != &AsmType::Double,
             _ => false,
         }
-    } else if register_class == &RegisterClass::XMM {
+    } else if register_class == &RegisterClass::Xmm {
         match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
             AsmSymtabEntry::Object {
                 _type,
@@ -957,12 +957,12 @@ where
 }
 
 const GP_REGISTERS: &[AsmRegister] = &[
-    AsmRegister::AX,
-    AsmRegister::BX,
-    AsmRegister::CX,
-    AsmRegister::DX,
-    AsmRegister::SI,
-    AsmRegister::DI,
+    AsmRegister::Ax,
+    AsmRegister::Bx,
+    AsmRegister::Cx,
+    AsmRegister::Dx,
+    AsmRegister::Si,
+    AsmRegister::Di,
     AsmRegister::R8,
     AsmRegister::R9,
     /* We are leaving out R10 and R11 because we use it as
@@ -974,61 +974,61 @@ const GP_REGISTERS: &[AsmRegister] = &[
 ];
 
 const XMM_REGISTERS: &[AsmRegister] = &[
-    AsmRegister::XMM0,
-    AsmRegister::XMM1,
-    AsmRegister::XMM2,
-    AsmRegister::XMM3,
-    AsmRegister::XMM4,
-    AsmRegister::XMM5,
-    AsmRegister::XMM6,
-    AsmRegister::XMM7,
-    AsmRegister::XMM8,
-    AsmRegister::XMM9,
-    AsmRegister::XMM10,
-    AsmRegister::XMM11,
-    AsmRegister::XMM12,
-    AsmRegister::XMM13,
+    AsmRegister::Xmm0,
+    AsmRegister::Xmm1,
+    AsmRegister::Xmm2,
+    AsmRegister::Xmm3,
+    AsmRegister::Xmm4,
+    AsmRegister::Xmm5,
+    AsmRegister::Xmm6,
+    AsmRegister::Xmm7,
+    AsmRegister::Xmm8,
+    AsmRegister::Xmm9,
+    AsmRegister::Xmm10,
+    AsmRegister::Xmm11,
+    AsmRegister::Xmm12,
+    AsmRegister::Xmm13,
     /* We are leaving out XMM14 and XMM15 because we use it as
      * scratch registers during the instruction fix-up pass. */
 ];
 
 const GP_CALLER_SAVED_REGISTERS: &[AsmRegister] = &[
-    AsmRegister::AX,
-    AsmRegister::CX,
-    AsmRegister::DX,
-    AsmRegister::SI,
-    AsmRegister::DI,
+    AsmRegister::Ax,
+    AsmRegister::Cx,
+    AsmRegister::Dx,
+    AsmRegister::Si,
+    AsmRegister::Di,
     AsmRegister::R8,
     AsmRegister::R9,
 ];
 
 const XMM_CALLER_SAVED_REGISTERS: &[AsmRegister] = &[
-    AsmRegister::XMM0,
-    AsmRegister::XMM1,
-    AsmRegister::XMM2,
-    AsmRegister::XMM3,
-    AsmRegister::XMM4,
-    AsmRegister::XMM5,
-    AsmRegister::XMM6,
-    AsmRegister::XMM7,
-    AsmRegister::XMM8,
-    AsmRegister::XMM9,
-    AsmRegister::XMM10,
-    AsmRegister::XMM11,
-    AsmRegister::XMM12,
-    AsmRegister::XMM13,
+    AsmRegister::Xmm0,
+    AsmRegister::Xmm1,
+    AsmRegister::Xmm2,
+    AsmRegister::Xmm3,
+    AsmRegister::Xmm4,
+    AsmRegister::Xmm5,
+    AsmRegister::Xmm6,
+    AsmRegister::Xmm7,
+    AsmRegister::Xmm8,
+    AsmRegister::Xmm9,
+    AsmRegister::Xmm10,
+    AsmRegister::Xmm11,
+    AsmRegister::Xmm12,
+    AsmRegister::Xmm13,
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum RegisterClass {
-    GP,
-    XMM,
+    Gp,
+    Xmm,
 }
 
 fn get_caller_saved_registers(register_class: &RegisterClass) -> &[AsmRegister] {
     match register_class {
-        RegisterClass::GP => GP_CALLER_SAVED_REGISTERS,
-        RegisterClass::XMM => XMM_CALLER_SAVED_REGISTERS,
+        RegisterClass::Gp => GP_CALLER_SAVED_REGISTERS,
+        RegisterClass::Xmm => XMM_CALLER_SAVED_REGISTERS,
     }
 }
 
@@ -1201,8 +1201,8 @@ fn briggs_test(
     let mut significant_neighbors = 0;
 
     let k = match register_class {
-        RegisterClass::GP => GP_REGISTERS.len(),
-        RegisterClass::XMM => XMM_REGISTERS.len(),
+        RegisterClass::Gp => GP_REGISTERS.len(),
+        RegisterClass::Xmm => XMM_REGISTERS.len(),
     };
 
     let x_node = graph.get(src).unwrap();
@@ -1239,8 +1239,8 @@ fn george_test(
     let pseudo_node = graph.get(&pseudoreg).unwrap();
 
     let k = match register_class {
-        RegisterClass::GP => GP_REGISTERS.len(),
-        RegisterClass::XMM => XMM_REGISTERS.len(),
+        RegisterClass::Gp => GP_REGISTERS.len(),
+        RegisterClass::Xmm => XMM_REGISTERS.len(),
     };
 
     for n in pseudo_node.neighbors.iter() {

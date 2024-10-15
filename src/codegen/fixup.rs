@@ -87,7 +87,7 @@ impl Fixup for AsmFunction {
                 op: AsmBinaryOp::Sub,
                 asm_type: AsmType::Quadword,
                 lhs: AsmOperand::Imm(stack_adjustment),
-                rhs: AsmOperand::Register(AsmRegister::SP),
+                rhs: AsmOperand::Register(AsmRegister::Sp),
             }
         }
 
@@ -110,7 +110,7 @@ impl Fixup for AsmFunction {
                         && matches!(dst, AsmOperand::Memory(_, _) | AsmOperand::Data(_, _,)) =>
                 {
                     let scratch = if asm_type == &AsmType::Double {
-                        AsmOperand::Register(AsmRegister::XMM14)
+                        AsmOperand::Register(AsmRegister::Xmm14)
                     } else {
                         AsmOperand::Register(AsmRegister::R10)
                     };
@@ -418,17 +418,17 @@ impl Fixup for AsmFunction {
                         AsmInstruction::Mov {
                             asm_type: AsmType::Double,
                             src: rhs.clone(),
-                            dst: AsmOperand::Register(AsmRegister::XMM15),
+                            dst: AsmOperand::Register(AsmRegister::Xmm15),
                         },
                         AsmInstruction::Binary {
                             asm_type: AsmType::Double,
                             op: *op,
                             lhs: lhs.clone(),
-                            rhs: AsmOperand::Register(AsmRegister::XMM15),
+                            rhs: AsmOperand::Register(AsmRegister::Xmm15),
                         },
                         AsmInstruction::Mov {
                             asm_type: AsmType::Double,
-                            src: AsmOperand::Register(AsmRegister::XMM15),
+                            src: AsmOperand::Register(AsmRegister::Xmm15),
                             dst: rhs.clone(),
                         },
                     ]);
@@ -577,7 +577,7 @@ impl Fixup for AsmFunction {
                     rhs,
                 } if matches!(rhs, AsmOperand::Memory(_, _) | AsmOperand::Data(_, _)) => {
                     let scratch = if asm_type == &AsmType::Double {
-                        AsmOperand::Register(AsmRegister::XMM15)
+                        AsmOperand::Register(AsmRegister::Xmm15)
                     } else {
                         AsmOperand::Register(AsmRegister::R11)
                     };
@@ -617,12 +617,12 @@ impl Fixup for AsmFunction {
                         AsmInstruction::Mov {
                             asm_type: AsmType::Double,
                             src: rhs.clone(),
-                            dst: AsmOperand::Register(AsmRegister::XMM15),
+                            dst: AsmOperand::Register(AsmRegister::Xmm15),
                         },
                         AsmInstruction::Cmp {
                             asm_type: AsmType::Double,
                             lhs: lhs.clone(),
-                            rhs: AsmOperand::Register(AsmRegister::XMM15),
+                            rhs: AsmOperand::Register(AsmRegister::Xmm15),
                         },
                     ]);
                 }
@@ -726,12 +726,12 @@ impl Fixup for AsmFunction {
                             asm_type: AsmType::Quadword,
                             op: AsmBinaryOp::Sub,
                             lhs: AsmOperand::Imm(8),
-                            rhs: AsmOperand::Register(AsmRegister::SP),
+                            rhs: AsmOperand::Register(AsmRegister::Sp),
                         },
                         AsmInstruction::Mov {
                             asm_type: AsmType::Quadword,
                             src: AsmOperand::Register(*reg),
-                            dst: AsmOperand::Memory(AsmRegister::SP, 0),
+                            dst: AsmOperand::Memory(AsmRegister::Sp, 0),
                         },
                     ]),
 
@@ -763,11 +763,11 @@ impl Fixup for AsmFunction {
                             AsmInstruction::Cvtsi2sd {
                                 asm_type: *asm_type,
                                 src: AsmOperand::Register(AsmRegister::R10),
-                                dst: AsmOperand::Register(AsmRegister::XMM15),
+                                dst: AsmOperand::Register(AsmRegister::Xmm15),
                             },
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Double,
-                                src: AsmOperand::Register(AsmRegister::XMM15),
+                                src: AsmOperand::Register(AsmRegister::Xmm15),
                                 dst: dst.clone(),
                             },
                         ]);
@@ -789,11 +789,11 @@ impl Fixup for AsmFunction {
                             AsmInstruction::Cvtsi2sd {
                                 asm_type: *asm_type,
                                 src: src.clone(),
-                                dst: AsmOperand::Register(AsmRegister::XMM15),
+                                dst: AsmOperand::Register(AsmRegister::Xmm15),
                             },
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Double,
-                                src: AsmOperand::Register(AsmRegister::XMM15),
+                                src: AsmOperand::Register(AsmRegister::Xmm15),
                                 dst: dst.clone(),
                             },
                         ]);
@@ -813,14 +813,14 @@ impl Fixup for AsmFunction {
                                 vec![
                                     AsmInstruction::Mov {
                                         asm_type: AsmType::Quadword,
-                                        src: AsmOperand::Memory(AsmRegister::SP, 0),
+                                        src: AsmOperand::Memory(AsmRegister::Sp, 0),
                                         dst: AsmOperand::Register(*r),
                                     },
                                     AsmInstruction::Binary {
                                         asm_type: AsmType::Quadword,
                                         op: AsmBinaryOp::Add,
                                         lhs: AsmOperand::Imm(8),
-                                        rhs: AsmOperand::Register(AsmRegister::SP),
+                                        rhs: AsmOperand::Register(AsmRegister::Sp),
                                     },
                                 ]
                             }
@@ -853,22 +853,22 @@ fn is_memory(op: &AsmOperand) -> bool {
 fn is_xmm(r: &AsmRegister) -> bool {
     matches!(
         r,
-        AsmRegister::XMM0
-            | AsmRegister::XMM1
-            | AsmRegister::XMM2
-            | AsmRegister::XMM3
-            | AsmRegister::XMM4
-            | AsmRegister::XMM5
-            | AsmRegister::XMM6
-            | AsmRegister::XMM7
-            | AsmRegister::XMM8
-            | AsmRegister::XMM9
-            | AsmRegister::XMM10
-            | AsmRegister::XMM11
-            | AsmRegister::XMM12
-            | AsmRegister::XMM13
-            | AsmRegister::XMM14
-            | AsmRegister::XMM15
+        AsmRegister::Xmm0
+            | AsmRegister::Xmm1
+            | AsmRegister::Xmm2
+            | AsmRegister::Xmm3
+            | AsmRegister::Xmm4
+            | AsmRegister::Xmm5
+            | AsmRegister::Xmm6
+            | AsmRegister::Xmm7
+            | AsmRegister::Xmm8
+            | AsmRegister::Xmm9
+            | AsmRegister::Xmm10
+            | AsmRegister::Xmm11
+            | AsmRegister::Xmm12
+            | AsmRegister::Xmm13
+            | AsmRegister::Xmm14
+            | AsmRegister::Xmm15
     )
 }
 

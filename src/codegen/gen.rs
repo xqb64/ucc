@@ -166,12 +166,12 @@ pub enum AsmOperand {
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
 pub enum AsmRegister {
-    AX,
-    BX,
-    CX,
-    DX,
-    DI,
-    SI,
+    Ax,
+    Bx,
+    Cx,
+    Dx,
+    Di,
+    Si,
     R8,
     R9,
     R10,
@@ -180,24 +180,24 @@ pub enum AsmRegister {
     R13,
     R14,
     R15,
-    BP,
-    SP,
-    XMM0,
-    XMM1,
-    XMM2,
-    XMM3,
-    XMM4,
-    XMM5,
-    XMM6,
-    XMM7,
-    XMM8,
-    XMM9,
-    XMM10,
-    XMM11,
-    XMM12,
-    XMM13,
-    XMM14,
-    XMM15,
+    Bp,
+    Sp,
+    Xmm0,
+    Xmm1,
+    Xmm2,
+    Xmm3,
+    Xmm4,
+    Xmm5,
+    Xmm6,
+    Xmm7,
+    Xmm8,
+    Xmm9,
+    Xmm10,
+    Xmm11,
+    Xmm12,
+    Xmm13,
+    Xmm14,
+    Xmm15,
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -317,10 +317,10 @@ impl Codegen for IRFunction {
             classify_parameters(&params_as_tacky, return_on_stack);
 
         let int_regs: [AsmRegister; 6] = [
-            AsmRegister::DI,
-            AsmRegister::SI,
-            AsmRegister::DX,
-            AsmRegister::CX,
+            AsmRegister::Di,
+            AsmRegister::Si,
+            AsmRegister::Dx,
+            AsmRegister::Cx,
             AsmRegister::R8,
             AsmRegister::R9,
         ];
@@ -330,8 +330,8 @@ impl Codegen for IRFunction {
         if return_on_stack {
             instructions.push(AsmInstruction::Mov {
                 asm_type: AsmType::Quadword,
-                src: AsmOperand::Register(AsmRegister::DI),
-                dst: AsmOperand::Memory(AsmRegister::BP, -8),
+                src: AsmOperand::Register(AsmRegister::Di),
+                dst: AsmOperand::Memory(AsmRegister::Bp, -8),
             });
             reg_index = 1;
         }
@@ -357,14 +357,14 @@ impl Codegen for IRFunction {
         }
 
         let double_regs = [
-            AsmRegister::XMM0,
-            AsmRegister::XMM1,
-            AsmRegister::XMM2,
-            AsmRegister::XMM3,
-            AsmRegister::XMM4,
-            AsmRegister::XMM5,
-            AsmRegister::XMM6,
-            AsmRegister::XMM7,
+            AsmRegister::Xmm0,
+            AsmRegister::Xmm1,
+            AsmRegister::Xmm2,
+            AsmRegister::Xmm3,
+            AsmRegister::Xmm4,
+            AsmRegister::Xmm5,
+            AsmRegister::Xmm6,
+            AsmRegister::Xmm7,
         ];
 
         for (idx, param) in double_reg_params.iter().enumerate() {
@@ -382,7 +382,7 @@ impl Codegen for IRFunction {
             match param_type {
                 AsmType::Bytearray { size, alignment: _ } => {
                     instructions.extend(copy_bytes(
-                        &AsmOperand::Memory(AsmRegister::BP, offset),
+                        &AsmOperand::Memory(AsmRegister::Bp, offset),
                         &param,
                         size,
                     ));
@@ -390,7 +390,7 @@ impl Codegen for IRFunction {
                 _ => {
                     let instr = AsmInstruction::Mov {
                         asm_type: param_type,
-                        src: AsmOperand::Memory(AsmRegister::BP, offset),
+                        src: AsmOperand::Memory(AsmRegister::Bp, offset),
                         dst: param.clone(),
                     };
                     instructions.push(instr);
@@ -532,13 +532,13 @@ impl Codegen for IRInstruction {
                                 AsmInstruction::Binary {
                                     asm_type: AsmType::Double,
                                     op: AsmBinaryOp::Xor,
-                                    lhs: AsmOperand::Register(AsmRegister::XMM0),
-                                    rhs: AsmOperand::Register(AsmRegister::XMM0),
+                                    lhs: AsmOperand::Register(AsmRegister::Xmm0),
+                                    rhs: AsmOperand::Register(AsmRegister::Xmm0),
                                 },
                                 AsmInstruction::Cmp {
                                     asm_type: AsmType::Double,
                                     lhs: src.codegen().into(),
-                                    rhs: AsmOperand::Register(AsmRegister::XMM0),
+                                    rhs: AsmOperand::Register(AsmRegister::Xmm0),
                                 },
                                 AsmInstruction::Mov {
                                     asm_type: get_asm_type(dst),
@@ -584,11 +584,11 @@ impl Codegen for IRInstruction {
                 if return_in_memory {
                     instructions.push(AsmInstruction::Mov {
                         asm_type: AsmType::Quadword,
-                        src: AsmOperand::Memory(AsmRegister::BP, -8),
-                        dst: AsmOperand::Register(AsmRegister::AX),
+                        src: AsmOperand::Memory(AsmRegister::Bp, -8),
+                        dst: AsmOperand::Register(AsmRegister::Ax),
                     });
 
-                    let return_storage = AsmOperand::Memory(AsmRegister::AX, 0);
+                    let return_storage = AsmOperand::Memory(AsmRegister::Ax, 0);
                     let ret_operand = value.clone().unwrap().codegen().into();
                     let t = tacky_type(&value.clone().unwrap());
 
@@ -598,8 +598,8 @@ impl Codegen for IRInstruction {
                         get_size_of_type(&t),
                     ));
                 } else {
-                    let int_return_registers = [AsmRegister::AX, AsmRegister::DX];
-                    let double_return_registers = [AsmRegister::XMM0, AsmRegister::XMM1];
+                    let int_return_registers = [AsmRegister::Ax, AsmRegister::Dx];
+                    let double_return_registers = [AsmRegister::Xmm0, AsmRegister::Xmm1];
 
                     for (reg_index, (t, op)) in int_retvals.iter().enumerate() {
                         let r = int_return_registers[reg_index];
@@ -749,7 +749,7 @@ impl Codegen for IRInstruction {
                         let mut v = vec![AsmInstruction::Mov {
                             asm_type,
                             src: lhs.codegen().into(),
-                            dst: AsmOperand::Register(AsmRegister::AX),
+                            dst: AsmOperand::Register(AsmRegister::Ax),
                         }];
 
                         let signedness = match lhs {
@@ -791,7 +791,7 @@ impl Codegen for IRInstruction {
                                 },
                                 AsmInstruction::Mov {
                                     asm_type,
-                                    src: AsmOperand::Register(AsmRegister::AX),
+                                    src: AsmOperand::Register(AsmRegister::Ax),
                                     dst: dst.codegen().into(),
                                 },
                             ]);
@@ -800,7 +800,7 @@ impl Codegen for IRInstruction {
                                 AsmInstruction::Mov {
                                     asm_type,
                                     src: AsmOperand::Imm(0),
-                                    dst: AsmOperand::Register(AsmRegister::DX),
+                                    dst: AsmOperand::Register(AsmRegister::Dx),
                                 },
                                 AsmInstruction::Div {
                                     asm_type,
@@ -808,7 +808,7 @@ impl Codegen for IRInstruction {
                                 },
                                 AsmInstruction::Mov {
                                     asm_type,
-                                    src: AsmOperand::Register(AsmRegister::AX),
+                                    src: AsmOperand::Register(AsmRegister::Ax),
                                     dst: dst.codegen().into(),
                                 },
                             ])
@@ -820,7 +820,7 @@ impl Codegen for IRInstruction {
                         let mut v = vec![AsmInstruction::Mov {
                             asm_type,
                             src: lhs.codegen().into(),
-                            dst: AsmOperand::Register(AsmRegister::AX),
+                            dst: AsmOperand::Register(AsmRegister::Ax),
                         }];
 
                         let signedness = match lhs {
@@ -853,7 +853,7 @@ impl Codegen for IRInstruction {
                                 },
                                 AsmInstruction::Mov {
                                     asm_type,
-                                    src: AsmOperand::Register(AsmRegister::DX),
+                                    src: AsmOperand::Register(AsmRegister::Dx),
                                     dst: dst.codegen().into(),
                                 },
                             ])
@@ -862,12 +862,12 @@ impl Codegen for IRInstruction {
                                 AsmInstruction::Mov {
                                     asm_type: AsmType::Quadword,
                                     src: lhs.codegen().into(),
-                                    dst: AsmOperand::Register(AsmRegister::AX),
+                                    dst: AsmOperand::Register(AsmRegister::Ax),
                                 },
                                 AsmInstruction::Mov {
                                     asm_type: AsmType::Quadword,
                                     src: AsmOperand::Imm(0),
-                                    dst: AsmOperand::Register(AsmRegister::DX),
+                                    dst: AsmOperand::Register(AsmRegister::Dx),
                                 },
                                 AsmInstruction::Idiv {
                                     asm_type: AsmType::Quadword,
@@ -875,7 +875,7 @@ impl Codegen for IRInstruction {
                                 },
                                 AsmInstruction::Mov {
                                     asm_type,
-                                    src: AsmOperand::Register(AsmRegister::DX),
+                                    src: AsmOperand::Register(AsmRegister::Dx),
                                     dst: dst.codegen().into(),
                                 },
                             ])
@@ -1022,13 +1022,13 @@ impl Codegen for IRInstruction {
                         AsmInstruction::Binary {
                             asm_type: AsmType::Double,
                             op: AsmBinaryOp::Xor,
-                            lhs: AsmOperand::Register(AsmRegister::XMM0),
-                            rhs: AsmOperand::Register(AsmRegister::XMM0),
+                            lhs: AsmOperand::Register(AsmRegister::Xmm0),
+                            rhs: AsmOperand::Register(AsmRegister::Xmm0),
                         },
                         AsmInstruction::Cmp {
                             asm_type: AsmType::Double,
                             lhs: condition.codegen().into(),
-                            rhs: AsmOperand::Register(AsmRegister::XMM0),
+                            rhs: AsmOperand::Register(AsmRegister::Xmm0),
                         },
                         AsmInstruction::JmpCC {
                             condition: ConditionCode::E,
@@ -1057,13 +1057,13 @@ impl Codegen for IRInstruction {
                         AsmInstruction::Binary {
                             asm_type: AsmType::Double,
                             op: AsmBinaryOp::Xor,
-                            lhs: AsmOperand::Register(AsmRegister::XMM0),
-                            rhs: AsmOperand::Register(AsmRegister::XMM0),
+                            lhs: AsmOperand::Register(AsmRegister::Xmm0),
+                            rhs: AsmOperand::Register(AsmRegister::Xmm0),
                         },
                         AsmInstruction::Cmp {
                             asm_type: AsmType::Double,
                             lhs: condition.codegen().into(),
-                            rhs: AsmOperand::Register(AsmRegister::XMM0),
+                            rhs: AsmOperand::Register(AsmRegister::Xmm0),
                         },
                         AsmInstruction::JmpCC {
                             condition: ConditionCode::NE,
@@ -1112,23 +1112,23 @@ impl Codegen for IRInstruction {
             }
             IRInstruction::Call { target, args, dst } => {
                 let int_registers = [
-                    AsmRegister::DI,
-                    AsmRegister::SI,
-                    AsmRegister::DX,
-                    AsmRegister::CX,
+                    AsmRegister::Di,
+                    AsmRegister::Si,
+                    AsmRegister::Dx,
+                    AsmRegister::Cx,
                     AsmRegister::R8,
                     AsmRegister::R9,
                 ];
 
                 let double_registers = [
-                    AsmRegister::XMM0,
-                    AsmRegister::XMM1,
-                    AsmRegister::XMM2,
-                    AsmRegister::XMM3,
-                    AsmRegister::XMM4,
-                    AsmRegister::XMM5,
-                    AsmRegister::XMM6,
-                    AsmRegister::XMM7,
+                    AsmRegister::Xmm0,
+                    AsmRegister::Xmm1,
+                    AsmRegister::Xmm2,
+                    AsmRegister::Xmm3,
+                    AsmRegister::Xmm4,
+                    AsmRegister::Xmm5,
+                    AsmRegister::Xmm6,
+                    AsmRegister::Xmm7,
                 ];
 
                 let mut instructions = vec![];
@@ -1149,7 +1149,7 @@ impl Codegen for IRInstruction {
 
                     instructions.push(AsmInstruction::Lea {
                         src: dst_operand,
-                        dst: AsmOperand::Register(AsmRegister::DI),
+                        dst: AsmOperand::Register(AsmRegister::Di),
                     });
 
                     reg_index = 1;
@@ -1165,7 +1165,7 @@ impl Codegen for IRInstruction {
                         asm_type: AsmType::Quadword,
                         op: AsmBinaryOp::Sub,
                         lhs: AsmOperand::Imm(stack_padding),
-                        rhs: AsmOperand::Register(AsmRegister::SP),
+                        rhs: AsmOperand::Register(AsmRegister::Sp),
                     });
                 }
 
@@ -1204,11 +1204,11 @@ impl Codegen for IRInstruction {
                                 asm_type: AsmType::Quadword,
                                 op: AsmBinaryOp::Sub,
                                 lhs: AsmOperand::Imm(8),
-                                rhs: AsmOperand::Register(AsmRegister::SP),
+                                rhs: AsmOperand::Register(AsmRegister::Sp),
                             });
                             instructions.extend(copy_bytes(
                                 stack_arg,
-                                &AsmOperand::Memory(AsmRegister::SP, 0),
+                                &AsmOperand::Memory(AsmRegister::Sp, 0),
                                 *size,
                             ));
                         }
@@ -1223,10 +1223,10 @@ impl Codegen for IRInstruction {
                                     instructions.push(AsmInstruction::Mov {
                                         asm_type: *arg_type,
                                         src: stack_arg.clone(),
-                                        dst: AsmOperand::Register(AsmRegister::AX),
+                                        dst: AsmOperand::Register(AsmRegister::Ax),
                                     });
                                     instructions.push(AsmInstruction::Push(AsmOperand::Register(
-                                        AsmRegister::AX,
+                                        AsmRegister::Ax,
                                     )));
                                 }
                             }
@@ -1242,13 +1242,13 @@ impl Codegen for IRInstruction {
                         asm_type: AsmType::Quadword,
                         op: AsmBinaryOp::Add,
                         lhs: AsmOperand::Imm(bytes_to_remove as i64),
-                        rhs: AsmOperand::Register(AsmRegister::SP),
+                        rhs: AsmOperand::Register(AsmRegister::Sp),
                     });
                 }
 
                 if dst.is_some() && !return_in_memory {
-                    let int_return_registers = [AsmRegister::AX, AsmRegister::DX];
-                    let double_return_registers = [AsmRegister::XMM0, AsmRegister::XMM1];
+                    let int_return_registers = [AsmRegister::Ax, AsmRegister::Dx];
+                    let double_return_registers = [AsmRegister::Xmm0, AsmRegister::Xmm1];
 
                     for (reg_index, (t, op)) in int_dests.iter().enumerate() {
                         let r = int_return_registers[reg_index];
@@ -1309,11 +1309,11 @@ impl Codegen for IRInstruction {
                             src_type: AsmType::Byte,
                             src: src.codegen().into(),
                             dst_type: AsmType::Longword,
-                            dst: AsmOperand::Register(AsmRegister::AX),
+                            dst: AsmOperand::Register(AsmRegister::Ax),
                         },
                         AsmInstruction::Cvtsi2sd {
                             asm_type: AsmType::Longword,
-                            src: AsmOperand::Register(AsmRegister::AX),
+                            src: AsmOperand::Register(AsmRegister::Ax),
                             dst: dst.codegen().into(),
                         },
                     ]),
@@ -1322,11 +1322,11 @@ impl Codegen for IRInstruction {
                             src_type: AsmType::Longword,
                             src: src.codegen().into(),
                             dst_type: AsmType::Longword,
-                            dst: AsmOperand::Register(AsmRegister::AX),
+                            dst: AsmOperand::Register(AsmRegister::Ax),
                         },
                         AsmInstruction::Cvtsi2sd {
                             asm_type: AsmType::Quadword,
-                            src: AsmOperand::Register(AsmRegister::AX),
+                            src: AsmOperand::Register(AsmRegister::Ax),
                             dst: dst.codegen().into(),
                         },
                     ]),
@@ -1358,33 +1358,33 @@ impl Codegen for IRInstruction {
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Quadword,
                                 src: src.codegen().into(),
-                                dst: AsmOperand::Register(AsmRegister::AX),
+                                dst: AsmOperand::Register(AsmRegister::Ax),
                             },
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Quadword,
-                                src: AsmOperand::Register(AsmRegister::AX),
-                                dst: AsmOperand::Register(AsmRegister::DX),
+                                src: AsmOperand::Register(AsmRegister::Ax),
+                                dst: AsmOperand::Register(AsmRegister::Dx),
                             },
                             AsmInstruction::Unary {
                                 asm_type: AsmType::Quadword,
                                 op: AsmUnaryOp::Shr,
-                                operand: AsmOperand::Register(AsmRegister::DX),
+                                operand: AsmOperand::Register(AsmRegister::Dx),
                             },
                             AsmInstruction::Binary {
                                 op: AsmBinaryOp::And,
                                 asm_type: AsmType::Quadword,
                                 lhs: AsmOperand::Imm(1),
-                                rhs: AsmOperand::Register(AsmRegister::AX),
+                                rhs: AsmOperand::Register(AsmRegister::Ax),
                             },
                             AsmInstruction::Binary {
                                 op: AsmBinaryOp::Or,
                                 asm_type: AsmType::Quadword,
-                                lhs: AsmOperand::Register(AsmRegister::AX),
-                                rhs: AsmOperand::Register(AsmRegister::DX),
+                                lhs: AsmOperand::Register(AsmRegister::Ax),
+                                rhs: AsmOperand::Register(AsmRegister::Dx),
                             },
                             AsmInstruction::Cvtsi2sd {
                                 asm_type: AsmType::Quadword,
-                                src: AsmOperand::Register(AsmRegister::DX),
+                                src: AsmOperand::Register(AsmRegister::Dx),
                                 dst: dst.codegen().into(),
                             },
                             AsmInstruction::Binary {
@@ -1406,11 +1406,11 @@ impl Codegen for IRInstruction {
                         AsmInstruction::Cvttsd2si {
                             asm_type: AsmType::Longword,
                             src: src.codegen().into(),
-                            dst: AsmOperand::Register(AsmRegister::AX),
+                            dst: AsmOperand::Register(AsmRegister::Ax),
                         },
                         AsmInstruction::Mov {
                             asm_type: AsmType::Byte,
-                            src: AsmOperand::Register(AsmRegister::AX),
+                            src: AsmOperand::Register(AsmRegister::Ax),
                             dst: dst.codegen().into(),
                         },
                     ]),
@@ -1431,11 +1431,11 @@ impl Codegen for IRInstruction {
                         AsmInstruction::Cvttsd2si {
                             asm_type: AsmType::Longword,
                             src: src.codegen().into(),
-                            dst: AsmOperand::Register(AsmRegister::AX),
+                            dst: AsmOperand::Register(AsmRegister::Ax),
                         },
                         AsmInstruction::Mov {
                             asm_type: AsmType::Byte,
-                            src: AsmOperand::Register(AsmRegister::AX),
+                            src: AsmOperand::Register(AsmRegister::Ax),
                             dst: dst.codegen().into(),
                         },
                     ]),
@@ -1443,11 +1443,11 @@ impl Codegen for IRInstruction {
                         AsmInstruction::Cvttsd2si {
                             asm_type: AsmType::Quadword,
                             src: src.codegen().into(),
-                            dst: AsmOperand::Register(AsmRegister::AX),
+                            dst: AsmOperand::Register(AsmRegister::Ax),
                         },
                         AsmInstruction::Mov {
                             asm_type: AsmType::Longword,
-                            src: AsmOperand::Register(AsmRegister::AX),
+                            src: AsmOperand::Register(AsmRegister::Ax),
                             dst: dst.codegen().into(),
                         },
                     ]),
@@ -1492,17 +1492,17 @@ impl Codegen for IRInstruction {
                             AsmInstruction::Mov {
                                 asm_type: AsmType::Double,
                                 src: src.codegen().into(),
-                                dst: AsmOperand::Register(AsmRegister::XMM0),
+                                dst: AsmOperand::Register(AsmRegister::Xmm0),
                             },
                             AsmInstruction::Binary {
                                 op: AsmBinaryOp::Sub,
                                 asm_type: AsmType::Double,
                                 lhs: AsmOperand::Data(static_constant.name, 0),
-                                rhs: AsmOperand::Register(AsmRegister::XMM0),
+                                rhs: AsmOperand::Register(AsmRegister::Xmm0),
                             },
                             AsmInstruction::Cvttsd2si {
                                 asm_type: AsmType::Quadword,
-                                src: AsmOperand::Register(AsmRegister::XMM0),
+                                src: AsmOperand::Register(AsmRegister::Xmm0),
                                 dst: dst.codegen().into(),
                             },
                             AsmInstruction::Binary {
@@ -1525,11 +1525,11 @@ impl Codegen for IRInstruction {
                             src_type: AsmType::Byte,
                             src: src.codegen().into(),
                             dst_type: AsmType::Longword,
-                            dst: AsmOperand::Register(AsmRegister::AX),
+                            dst: AsmOperand::Register(AsmRegister::Ax),
                         },
                         AsmInstruction::Cvtsi2sd {
                             asm_type: AsmType::Longword,
-                            src: AsmOperand::Register(AsmRegister::AX),
+                            src: AsmOperand::Register(AsmRegister::Ax),
                             dst: dst.codegen().into(),
                         },
                     ]),
@@ -1639,15 +1639,15 @@ impl Codegen for IRInstruction {
                     AsmInstruction::Mov {
                         asm_type: AsmType::Quadword,
                         src: ptr.codegen().into(),
-                        dst: AsmOperand::Register(AsmRegister::AX),
+                        dst: AsmOperand::Register(AsmRegister::Ax),
                     },
                     AsmInstruction::Mov {
                         asm_type: AsmType::Quadword,
                         src: index.codegen().into(),
-                        dst: AsmOperand::Register(AsmRegister::DX),
+                        dst: AsmOperand::Register(AsmRegister::Dx),
                     },
                     AsmInstruction::Lea {
-                        src: AsmOperand::Indexed(AsmRegister::AX, AsmRegister::DX, *scale as isize),
+                        src: AsmOperand::Indexed(AsmRegister::Ax, AsmRegister::Dx, *scale as isize),
                         dst: dst.codegen().into(),
                     },
                 ]),
@@ -1655,21 +1655,21 @@ impl Codegen for IRInstruction {
                     AsmInstruction::Mov {
                         asm_type: AsmType::Quadword,
                         src: ptr.codegen().into(),
-                        dst: AsmOperand::Register(AsmRegister::AX),
+                        dst: AsmOperand::Register(AsmRegister::Ax),
                     },
                     AsmInstruction::Mov {
                         asm_type: AsmType::Quadword,
                         src: index.codegen().into(),
-                        dst: AsmOperand::Register(AsmRegister::DX),
+                        dst: AsmOperand::Register(AsmRegister::Dx),
                     },
                     AsmInstruction::Binary {
                         asm_type: AsmType::Quadword,
                         op: AsmBinaryOp::Mul,
                         lhs: AsmOperand::Imm(*scale as i64),
-                        rhs: AsmOperand::Register(AsmRegister::DX),
+                        rhs: AsmOperand::Register(AsmRegister::Dx),
                     },
                     AsmInstruction::Lea {
-                        src: AsmOperand::Indexed(AsmRegister::AX, AsmRegister::DX, 1),
+                        src: AsmOperand::Indexed(AsmRegister::Ax, AsmRegister::Dx, 1),
                         dst: dst.codegen().into(),
                     },
                 ]),
@@ -1980,23 +1980,23 @@ fn classify_param_types(params: &[Type], return_on_stack: bool) -> Vec<AsmRegist
     };
 
     let int_regs: [AsmRegister; 6] = [
-        AsmRegister::DI,
-        AsmRegister::SI,
-        AsmRegister::DX,
-        AsmRegister::CX,
+        AsmRegister::Di,
+        AsmRegister::Si,
+        AsmRegister::Dx,
+        AsmRegister::Cx,
         AsmRegister::R8,
         AsmRegister::R9,
     ];
 
     let double_regs = [
-        AsmRegister::XMM0,
-        AsmRegister::XMM1,
-        AsmRegister::XMM2,
-        AsmRegister::XMM3,
-        AsmRegister::XMM4,
-        AsmRegister::XMM5,
-        AsmRegister::XMM6,
-        AsmRegister::XMM7,
+        AsmRegister::Xmm0,
+        AsmRegister::Xmm1,
+        AsmRegister::Xmm2,
+        AsmRegister::Xmm3,
+        AsmRegister::Xmm4,
+        AsmRegister::Xmm5,
+        AsmRegister::Xmm6,
+        AsmRegister::Xmm7,
     ];
 
     let (ints, dbls, _) =
@@ -2482,14 +2482,14 @@ fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
 
             let (ints, dbls, return_on_stack) = classify_return_helper(t, &asm_val);
             if return_on_stack {
-                (vec![AsmRegister::AX], true)
+                (vec![AsmRegister::Ax], true)
             } else {
-                let int_regs: Vec<AsmRegister> = [AsmRegister::AX, AsmRegister::DX]
+                let int_regs: Vec<AsmRegister> = [AsmRegister::Ax, AsmRegister::Dx]
                     .iter()
                     .take(ints.len())
                     .cloned()
                     .collect();
-                let dbl_regs: Vec<AsmRegister> = [AsmRegister::XMM0, AsmRegister::XMM1]
+                let dbl_regs: Vec<AsmRegister> = [AsmRegister::Xmm0, AsmRegister::Xmm1]
                     .iter()
                     .take(dbls.len())
                     .cloned()
@@ -2507,12 +2507,12 @@ fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
 impl std::fmt::Display for AsmRegister {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AsmRegister::AX => write!(f, "%rax"),
-            AsmRegister::BX => write!(f, "%rbx"),
-            AsmRegister::DX => write!(f, "%rdx"),
-            AsmRegister::CX => write!(f, "%rcx"),
-            AsmRegister::DI => write!(f, "%rdi"),
-            AsmRegister::SI => write!(f, "%rsi"),
+            AsmRegister::Ax => write!(f, "%rax"),
+            AsmRegister::Bx => write!(f, "%rbx"),
+            AsmRegister::Dx => write!(f, "%rdx"),
+            AsmRegister::Cx => write!(f, "%rcx"),
+            AsmRegister::Di => write!(f, "%rdi"),
+            AsmRegister::Si => write!(f, "%rsi"),
             AsmRegister::R8 => write!(f, "%r8"),
             AsmRegister::R9 => write!(f, "%r9"),
             AsmRegister::R10 => write!(f, "%r10"),
@@ -2521,24 +2521,24 @@ impl std::fmt::Display for AsmRegister {
             AsmRegister::R13 => write!(f, "%r13"),
             AsmRegister::R14 => write!(f, "%r14"),
             AsmRegister::R15 => write!(f, "%r15"),
-            AsmRegister::BP => write!(f, "%rbp"),
-            AsmRegister::SP => write!(f, "%rsp"),
-            AsmRegister::XMM0 => write!(f, "%xmm0"),
-            AsmRegister::XMM1 => write!(f, "%xmm1"),
-            AsmRegister::XMM2 => write!(f, "%xmm2"),
-            AsmRegister::XMM3 => write!(f, "%xmm3"),
-            AsmRegister::XMM4 => write!(f, "%xmm4"),
-            AsmRegister::XMM5 => write!(f, "%xmm5"),
-            AsmRegister::XMM6 => write!(f, "%xmm6"),
-            AsmRegister::XMM7 => write!(f, "%xmm7"),
-            AsmRegister::XMM8 => write!(f, "%xmm8"),
-            AsmRegister::XMM9 => write!(f, "%xmm9"),
-            AsmRegister::XMM10 => write!(f, "%xmm10"),
-            AsmRegister::XMM11 => write!(f, "%xmm11"),
-            AsmRegister::XMM12 => write!(f, "%xmm12"),
-            AsmRegister::XMM13 => write!(f, "%xmm13"),
-            AsmRegister::XMM14 => write!(f, "%xmm14"),
-            AsmRegister::XMM15 => write!(f, "%xmm15"),
+            AsmRegister::Bp => write!(f, "%rbp"),
+            AsmRegister::Sp => write!(f, "%rsp"),
+            AsmRegister::Xmm0 => write!(f, "%xmm0"),
+            AsmRegister::Xmm1 => write!(f, "%xmm1"),
+            AsmRegister::Xmm2 => write!(f, "%xmm2"),
+            AsmRegister::Xmm3 => write!(f, "%xmm3"),
+            AsmRegister::Xmm4 => write!(f, "%xmm4"),
+            AsmRegister::Xmm5 => write!(f, "%xmm5"),
+            AsmRegister::Xmm6 => write!(f, "%xmm6"),
+            AsmRegister::Xmm7 => write!(f, "%xmm7"),
+            AsmRegister::Xmm8 => write!(f, "%xmm8"),
+            AsmRegister::Xmm9 => write!(f, "%xmm9"),
+            AsmRegister::Xmm10 => write!(f, "%xmm10"),
+            AsmRegister::Xmm11 => write!(f, "%xmm11"),
+            AsmRegister::Xmm12 => write!(f, "%xmm12"),
+            AsmRegister::Xmm13 => write!(f, "%xmm13"),
+            AsmRegister::Xmm14 => write!(f, "%xmm14"),
+            AsmRegister::Xmm15 => write!(f, "%xmm15"),
         }
     }
 }
