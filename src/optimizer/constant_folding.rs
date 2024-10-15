@@ -64,7 +64,7 @@ pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
                     optimized_instructions.push(instr.clone());
                 }
             }
-            
+
             IRInstruction::JumpIfNotZero { condition, target } => {
                 let condition_val = get_constant_value(condition);
 
@@ -76,7 +76,7 @@ pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
                     optimized_instructions.push(instr.clone());
                 }
             }
-            
+
             IRInstruction::JumpIfZero { condition, target } => {
                 let condition_val = get_constant_value(condition);
 
@@ -88,22 +88,21 @@ pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
                     optimized_instructions.push(instr.clone());
                 }
             }
-            
-            
+
             IRInstruction::Truncate {
                 src: IRValue::Constant(konst),
                 dst,
             } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
-            
+
             IRInstruction::SignExtend {
                 src: IRValue::Constant(konst),
                 dst,
             } => {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
-            
+
             IRInstruction::ZeroExtend {
                 src: IRValue::Constant(konst),
                 dst,

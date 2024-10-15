@@ -1180,15 +1180,15 @@ fn conservative_coalesceable(
     if briggs_test(graph, &src, &dst, register_class) {
         return true;
     }
- 
+
     if let AsmOperand::Register(_) = src {
         return george_test(graph, src, dst, register_class);
     }
- 
+
     if let AsmOperand::Register(_) = dst {
         return george_test(graph, dst, src, register_class);
     }
- 
+
     false
 }
 

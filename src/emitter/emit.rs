@@ -244,9 +244,6 @@ impl Emit for AsmInstruction {
                 operand.emit(f, asm_type)?;
                 writeln!(f)?;
             }
-            AsmInstruction::AllocateStack(n) => {
-                writeln!(f, "subq ${}, %rsp", n)?;
-            }
             AsmInstruction::Cdq { asm_type } => match asm_type {
                 AsmType::Longword => writeln!(f, "cdq")?,
                 AsmType::Quadword => writeln!(f, "cqo")?,
@@ -394,9 +391,6 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::Label(label) => {
                 writeln!(f, ".L{}:", label)?;
-            }
-            AsmInstruction::DeallocateStack(n) => {
-                writeln!(f, "addq ${}, %rsp", n)?;
             }
             AsmInstruction::Call(target) => {
                 if let Some(symbol) = ASM_SYMBOL_TABLE.lock().unwrap().get(target).cloned() {

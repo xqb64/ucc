@@ -133,8 +133,6 @@ pub enum AsmInstruction {
         dst: AsmOperand,
     },
     Label(String),
-    AllocateStack(usize),
-    DeallocateStack(usize),
     Push(AsmOperand),
     Call(String),
     Ret,
@@ -1163,7 +1161,12 @@ impl Codegen for IRInstruction {
                 let stack_padding = if stack_args.len() % 2 != 0 { 8 } else { 0 };
 
                 if stack_padding != 0 {
-                    instructions.push(AsmInstruction::AllocateStack(stack_padding));
+                    instructions.push(AsmInstruction::Binary {
+                        asm_type: AsmType::Quadword,
+                        op: AsmBinaryOp::Sub,
+                        lhs: AsmOperand::Imm(stack_padding),
+                        rhs: AsmOperand::Register(AsmRegister::SP),
+                    });
                 }
 
                 for (reg_type, reg_arg) in int_args.iter() {
@@ -1233,9 +1236,14 @@ impl Codegen for IRInstruction {
 
                 instructions.push(AsmInstruction::Call(target.to_owned()));
 
-                let bytes_to_remove = 8 * stack_args.len() + stack_padding;
+                let bytes_to_remove = 8 * stack_args.len() + stack_padding as usize;
                 if bytes_to_remove != 0 {
-                    instructions.push(AsmInstruction::DeallocateStack(bytes_to_remove));
+                    instructions.push(AsmInstruction::Binary {
+                        asm_type: AsmType::Quadword,
+                        op: AsmBinaryOp::Add,
+                        lhs: AsmOperand::Imm(bytes_to_remove as i64),
+                        rhs: AsmOperand::Register(AsmRegister::SP),
+                    });
                 }
 
                 if dst.is_some() && !return_in_memory {

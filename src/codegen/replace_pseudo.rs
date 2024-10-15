@@ -84,7 +84,6 @@ impl ReplacePseudo for AsmInstruction {
                 asm_type: *asm_type,
                 operand: operand.replace_pseudo(),
             },
-            AsmInstruction::AllocateStack(n) => AsmInstruction::AllocateStack(*n),
             AsmInstruction::Ret => AsmInstruction::Ret,
             AsmInstruction::Cmp { lhs, rhs, asm_type } => AsmInstruction::Cmp {
                 asm_type: *asm_type,
