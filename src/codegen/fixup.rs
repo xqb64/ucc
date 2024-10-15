@@ -13,9 +13,6 @@ impl Fixup for AsmNode {
         match self {
             AsmNode::Program(prog) => AsmNode::Program(prog.fixup(callee_saved_args)),
             AsmNode::Function(func) => AsmNode::Function(func.fixup(callee_saved_args)),
-            AsmNode::Operand(op) => AsmNode::Operand(op.clone()),
-            AsmNode::StaticVariable(static_var) => AsmNode::StaticVariable(static_var.clone()),
-            AsmNode::StaticConstant(static_const) => AsmNode::StaticConstant(static_const.clone()),
             _ => unreachable!(),
         }
     }
