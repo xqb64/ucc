@@ -171,6 +171,7 @@ fn transfer(
                 current_live_vars.insert(src.to_string());
             
             }
+            
             IRInstruction::Ret(Some(v)) => {
                 current_live_vars.insert(v.to_string());
             }
