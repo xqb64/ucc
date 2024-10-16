@@ -266,10 +266,7 @@ fn regs_used_and_written(
                 }
             };
 
-            let regs = match register_class {
-                RegisterClass::Gp => GP_CALLER_SAVED_REGISTERS,
-                RegisterClass::Xmm => XMM_CALLER_SAVED_REGISTERS,
-            };
+            let regs = get_caller_saved_registers(register_class);
 
             (
                 used_regs,
