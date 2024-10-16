@@ -15,9 +15,11 @@ pub trait RegAlloc {
 impl RegAlloc for AsmProgram {
     fn reg_alloc(&mut self, aliased_pseudos: &BTreeSet<String>) -> Self {
         let mut functions = vec![];
+
         for func in &mut self.functions {
             functions.push(func.reg_alloc(aliased_pseudos));
         }
+
         AsmProgram {
             functions,
             static_constants: self.static_constants.clone(),
