@@ -1291,6 +1291,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _ => bail!("Variable used as function name"),
             }
         }
+    
         Expression::Variable(VariableExpression { value, _type }) => {
             let v_type = SYMBOL_TABLE
                 .lock()
@@ -1314,6 +1315,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _type: v_type,
             }))
         }
+    
         Expression::Binary(BinaryExpression {
             kind,
             lhs,
@@ -1336,6 +1338,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             | BinaryExpressionKind::Greater
             | BinaryExpressionKind::GreaterEqual => typecheck_relational(kind, lhs, rhs),
         },
+    
         Expression::Assign(AssignExpression {
             op,
             lhs,
@@ -1365,6 +1368,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 bail!("Invalid lvalue in assignment");
             }
         }
+    
         Expression::Conditional(ConditionalExpression {
             condition,
             then_expr,
@@ -1407,11 +1411,13 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _type: common_type.to_owned(),
             }))
         }
+    
         Expression::Unary(UnaryExpression { kind, expr, _type }) => match kind {
             UnaryExpressionKind::Complement => typecheck_complement(expr),
             UnaryExpressionKind::Negate => typecheck_negate(expr),
             UnaryExpressionKind::Not => typecheck_not(expr),
         },
+    
         Expression::Constant(ConstantExpression { value, _type }) => match value {
             Const::Int(i) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::Int(*i),
@@ -1442,6 +1448,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _type: Type::Uint,
             })),
         },
+    
         Expression::Cast(CastExpression {
             target_type,
             expr,
@@ -1491,6 +1498,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _type: target_type.clone(),
             }))
         }
+    
         Expression::Deref(DerefExpression { expr, _type }) => {
             let typed_inner = typecheck_and_convert(expr)?;
 
@@ -1510,6 +1518,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _ => bail!("Dereference of non-pointer type"),
             }
         }
+    
         Expression::AddrOf(AddrOfExpression { expr, _type }) => {
             if is_lvalue(expr) {
                 let typed_inner = typecheck_expr(expr)?;
@@ -1522,9 +1531,11 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 bail!("Can't take address of a non-lvalue");
             }
         }
+    
         Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
             typecheck_subscript(expr, index)
         }
+    
         Expression::String(StringExpression { value, _type }) => {
             Ok(Expression::String(StringExpression {
                 value: value.clone(),
@@ -1534,6 +1545,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 },
             }))
         }
+    
         Expression::SizeofT(SizeofTExpression { t, _type }) => {
             validate_type_specifier(t)?;
             if !is_complete(t) {
@@ -1544,6 +1556,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _type: Type::Ulong,
             }))
         }
+    
         Expression::Sizeof(SizeofExpression { expr, _type }) => {
             let typed_inner = typecheck_expr(expr)?;
             if !is_complete(get_type(&typed_inner)) {
@@ -1554,6 +1567,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _type: Type::Ulong,
             }))
         }
+    
         Expression::Dot(DotExpression {
             structure,
             member,
@@ -1589,6 +1603,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _ => bail!("Non-struct type in dot expression"),
             }
         }
+    
         Expression::Arrow(ArrowExpression {
             pointer,
             member,
@@ -1627,6 +1642,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _ => bail!("Non-struct type in arrow expression"),
             }
         }
+    
         _ => todo!(),
     }
 }
