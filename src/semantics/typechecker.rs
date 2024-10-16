@@ -1909,15 +1909,18 @@ fn validate_type_specifier(t: &Type) -> Result<()> {
             }
             validate_type_specifier(element)?;
         }
+
         Type::Pointer(referenced) => {
             validate_type_specifier(referenced)?;
         }
+        
         Type::Func { params, ret } => {
             for param in params {
                 validate_type_specifier(param)?;
             }
             validate_type_specifier(ret)?;
         }
+        
         _ => {}
     }
 
