@@ -217,17 +217,27 @@ fn regs_used_and_written(
 ) -> (OperandSet, OperandSet) {
     let (ops_used, ops_written) = match instr {
         AsmInstruction::Mov { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
+
         AsmInstruction::Movsx { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
+
         AsmInstruction::MovZeroExtend { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
+
         AsmInstruction::Cvtsi2sd { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
+
         AsmInstruction::Cvttsd2si { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
+
         AsmInstruction::Binary { lhs, rhs, .. } => {
             (vec![lhs.clone(), rhs.clone()], vec![rhs.clone()])
         }
+
         AsmInstruction::Unary { operand, .. } => (vec![operand.clone()], vec![operand.clone()]),
+
         AsmInstruction::Cmp { lhs, rhs, .. } => (vec![lhs.clone(), rhs.clone()], vec![]),
+
         AsmInstruction::SetCC { operand, .. } => (vec![], vec![operand.clone()]),
+
         AsmInstruction::Push(operand) => (vec![operand.clone()], vec![]),
+
         AsmInstruction::Idiv { operand, .. } | AsmInstruction::Div { operand, .. } => (
             vec![
                 operand.clone(),
@@ -239,10 +249,12 @@ fn regs_used_and_written(
                 AsmOperand::Register(AsmRegister::Dx),
             ],
         ),
+
         AsmInstruction::Cdq { .. } => (
             vec![AsmOperand::Register(AsmRegister::Ax)],
             vec![AsmOperand::Register(AsmRegister::Dx)],
         ),
+
         AsmInstruction::Call(func_name) => {
             let all_hardregs = match register_class {
                 RegisterClass::Gp => GP_REGISTERS,
@@ -274,6 +286,7 @@ fn regs_used_and_written(
             )
         }
         AsmInstruction::Lea { src, dst } => (vec![src.clone()], vec![dst.clone()]),
+
         AsmInstruction::Jmp { .. }
         | AsmInstruction::JmpCC { .. }
         | AsmInstruction::Label(_)
