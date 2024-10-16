@@ -65,10 +65,10 @@ fn resolve_structure_declaration<'a>(
     decl: &'a mut StructDeclaration,
     struct_map: &'a mut BTreeMap<String, StructTableEntry>,
 ) -> Result<StructDeclaration> {
-    let prev_entry = struct_map.get(&decl.tag).cloned();
+    let prev_entry = struct_map.get(&decl.tag);
 
     let unique_tag;
-    if prev_entry.is_none() || !prev_entry.clone().unwrap().from_current_scope {
+    if prev_entry.is_none() || !prev_entry.as_ref().unwrap().from_current_scope {
         unique_tag = format!("struct.{}.{}", decl.tag.clone(), make_temporary());
         struct_map.insert(
             decl.tag.clone(),
