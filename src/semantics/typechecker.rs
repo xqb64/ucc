@@ -1634,17 +1634,20 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
     let typed_expr = typecheck_expr(e)?;
     let type_of_expr = get_type(&typed_expr);
+    
     match type_of_expr {
         Type::Array { element, .. } => Ok(Expression::AddrOf(AddrOfExpression {
             expr: typed_expr.to_owned().into(),
             _type: Type::Pointer(element.to_owned()),
         })),
+    
         Type::Struct { .. } => {
             if !is_complete(type_of_expr) {
                 bail!("Unknown struct type");
             }
             Ok(typed_expr)
         }
+    
         _ => Ok(typed_expr),
     }
 }
