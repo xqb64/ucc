@@ -475,16 +475,33 @@ impl Emit for AsmOperand {
     fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         match self {
             AsmOperand::Imm(n) => write!(f, "${}", { *n })?,
+            
             AsmOperand::Register(reg) => reg.emit(f, asm_type)?,
-            AsmOperand::Data(identifier, offset) => write!(
-                f,
-                "{}{}{}(%rip)",
-                identifier,
-                if *offset >= 0 { "+" } else { "-" },
-                offset.abs()
-            )?,
-            AsmOperand::Memory(reg, n) => write!(f, "{}({})", n, reg)?,
+            
+            AsmOperand::Data(identifier, offset) => {
+                if *offset == 0 {
+                    write!(f, "{}(%rip)", identifier)?
+                } else {
+                    write!(
+                        f,
+                        "{}{}{}(%rip)",
+                        identifier,
+                        if *offset >= 0 { "+" } else { "-" },
+                        offset.abs()
+                    )?
+                }
+            },
+            
+            AsmOperand::Memory(reg, n) => {
+                if *n == 0 {
+                    write!(f, "({})", reg)?
+                } else {
+                    write!(f, "{}({})", n, reg)?
+                }
+            }
+            
             AsmOperand::Indexed(reg1, reg2, n) => write!(f, "({}, {}, {})", reg1, reg2, n)?,
+            
             AsmOperand::PseudoMem(_, _) | AsmOperand::Pseudo(_) => unreachable!(),
         }
         Ok(())
