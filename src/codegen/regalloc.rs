@@ -878,6 +878,7 @@ where
             src: f(src),
             dst: f(dst),
         },
+
         AsmInstruction::Movsx {
             src,
             src_type,
@@ -889,6 +890,7 @@ where
             dst_type,
             dst: f(dst),
         },
+
         AsmInstruction::MovZeroExtend {
             src,
             src_type,
@@ -900,20 +902,24 @@ where
             dst_type,
             dst: f(dst),
         },
+
         AsmInstruction::Lea { src, dst } => AsmInstruction::Lea {
             src: f(src),
             dst: f(dst),
         },
+
         AsmInstruction::Cvttsd2si { asm_type, src, dst } => AsmInstruction::Cvttsd2si {
             asm_type,
             src: f(src),
             dst: f(dst),
         },
+
         AsmInstruction::Cvtsi2sd { asm_type, src, dst } => AsmInstruction::Cvtsi2sd {
             asm_type,
             src: f(src),
             dst: f(dst),
         },
+
         AsmInstruction::Unary {
             op,
             asm_type,
@@ -923,6 +929,7 @@ where
             asm_type,
             operand: f(operand),
         },
+
         AsmInstruction::Binary {
             op,
             asm_type,
@@ -934,24 +941,30 @@ where
             lhs: f(lhs),
             rhs: f(rhs),
         },
+
         AsmInstruction::Cmp { asm_type, lhs, rhs } => AsmInstruction::Cmp {
             asm_type,
             lhs: f(lhs),
             rhs: f(rhs),
         },
+
         AsmInstruction::Idiv { asm_type, operand } => AsmInstruction::Idiv {
             asm_type,
             operand: f(operand),
         },
+
         AsmInstruction::Div { asm_type, operand } => AsmInstruction::Div {
             asm_type,
             operand: f(operand),
         },
+
         AsmInstruction::SetCC { condition, operand } => AsmInstruction::SetCC {
             condition,
             operand: f(operand),
         },
+
         AsmInstruction::Push(v) => AsmInstruction::Push(f(v)),
+
         _ => instr,
     }
 }
