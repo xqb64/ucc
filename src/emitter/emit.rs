@@ -522,6 +522,7 @@ impl Emit for AsmOperand {
             
             AsmOperand::Indexed(reg1, reg2, n) => write!(f, "({}, {}, {})", reg1, reg2, n)?,
             
+            /* We don't emit any pseudo-like operands. */
             AsmOperand::PseudoMem(_, _) | AsmOperand::Pseudo(_) => unreachable!(),
         }
         Ok(())
