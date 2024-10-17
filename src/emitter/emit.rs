@@ -439,9 +439,7 @@ impl Emit for AsmInstruction {
                     (AsmType::Byte, AsmType::Quadword) => "zbq",
                     (AsmType::Quadword, AsmType::Byte) => "zqb",
                     (AsmType::Longword, AsmType::Byte) => "zlb",
-                    _ => {
-                        unreachable!()
-                    }
+                    _ => unreachable!(),
                 };
 
                 write!(f, "mov{} ", suffix)?;
