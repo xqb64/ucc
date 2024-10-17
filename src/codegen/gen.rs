@@ -101,11 +101,6 @@ pub enum AsmInstruction {
         lhs: AsmOperand,
         rhs: AsmOperand,
     },
-    Imul {
-        asm_type: AsmType,
-        src: AsmOperand,
-        dst: AsmOperand,
-    },
     Idiv {
         asm_type: AsmType,
         operand: AsmOperand,

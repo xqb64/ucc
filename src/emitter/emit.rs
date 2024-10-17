@@ -450,8 +450,6 @@ impl Emit for AsmInstruction {
                 reg.emit(f, &mut AsmType::Quadword)?;
                 writeln!(f)?;
             }
-
-            _ => unreachable!(),
         }
 
         Ok(())
