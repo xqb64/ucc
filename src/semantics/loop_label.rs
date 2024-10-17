@@ -118,35 +118,46 @@ impl LoopLabel for Statement {
             Statement::Program(p) => {
                 p.loop_label(current_label)?;
             }
+
             Statement::Compound(b) => {
                 b.loop_label(current_label)?;
             }
+
             Statement::If(i) => {
                 i.loop_label(current_label)?;
             }
+
             Statement::Break(b) => {
                 b.loop_label(current_label)?;
             }
+
             Statement::Continue(c) => {
                 c.loop_label(current_label)?;
             }
+
             Statement::While(w) => {
                 w.loop_label(current_label)?;
             }
+
             Statement::DoWhile(d) => {
                 d.loop_label(current_label)?;
             }
+
             Statement::For(f) => {
                 f.loop_label(current_label)?;
             }
+
             Statement::Expression(e) => {
                 e.loop_label(current_label)?;
             }
+
             Statement::Return(r) => {
                 r.loop_label(current_label)?;
             }
+
             Self::Null => {}
         }
+
         Ok(self)
     }
 }
