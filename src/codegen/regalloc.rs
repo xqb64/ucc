@@ -562,26 +562,6 @@ fn add_pseudo_nodes(
     }
 }
 
-impl std::fmt::Display for AsmOperand {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            AsmOperand::Register(reg) => {
-                let mut s = format!("{}", reg);
-                s = s.replace("%", "");
-                write!(f, "{}", s)
-            }
-            AsmOperand::Pseudo(pseudo) => write!(f, "{}", pseudo),
-            AsmOperand::Memory(base, offset) => write!(f, "Memory({}, {})", base, offset),
-            AsmOperand::Indexed(base, index, scale) => {
-                write!(f, "Indexed({}, {}, {})", base, index, scale)
-            }
-            AsmOperand::Imm(imm) => write!(f, "Imm({})", imm),
-            AsmOperand::Data(data, size) => write!(f, "Data({}, {})", data, size),
-            AsmOperand::PseudoMem(name, offset) => write!(f, "PseudoMem({}, {})", name, offset),
-        }
-    }
-}
-
 #[allow(dead_code)]
 fn print_graphviz(fn_name: &str, graph: &Graph) {
     use std::io::Write;
@@ -602,10 +582,10 @@ fn print_graphviz(fn_name: &str, graph: &Graph) {
     for node in graph.values() {
         let node_id = &node.id;
 
-        writeln!(file, "  \"{}\";", node_id).expect("Failed to write node to DOT file");
+        writeln!(file, "  \"{:?}\";", node_id).expect("Failed to write node to DOT file");
 
         for neighbor in &node.neighbors {
-            writeln!(file, " \"{}\" -- \"{}\";", node_id, neighbor)
+            writeln!(file, " \"{:?}\" -- \"{:?}\";", node_id, neighbor)
                 .expect("Failed to write edge to DOT file");
         }
     }

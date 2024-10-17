@@ -479,14 +479,24 @@ impl Emit for AsmOperand {
             
             AsmOperand::Memory(reg, n) => {
                 if *n == 0 {
-                    write!(f, "({})", reg)?
+                    write!(f, "(")?;
+                    reg.emit(f, &mut AsmType::Quadword)?;
+                    write!(f, ")")?;
                 } else {
-                    write!(f, "{}({})", n, reg)?
+                    write!(f, "{}(", n)?;
+                    reg.emit(f, &mut AsmType::Quadword)?;
+                    write!(f, ")")?;
                 }
             }
             
-            AsmOperand::Indexed(reg1, reg2, n) => write!(f, "({}, {}, {})", reg1, reg2, n)?,
-            
+            AsmOperand::Indexed(reg1, reg2, n) => {
+                write!(f, "(")?;
+                reg1.emit(f, &mut AsmType::Quadword)?;
+                write!(f, ", ")?;
+                reg2.emit(f, &mut AsmType::Quadword)?;
+                write!(f, ", {})", n)?;
+            }
+
             /* We don't emit any pseudo-like operands. */
             AsmOperand::PseudoMem(_, _) | AsmOperand::Pseudo(_) => unreachable!(),
         }
