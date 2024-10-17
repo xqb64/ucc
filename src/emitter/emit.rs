@@ -378,8 +378,7 @@ impl Emit for AsmInstruction {
                     ConditionCode::BE => "be",
                 };
 
-                write!(f, "j{} ", suffix)?;
-                writeln!(f, ".L{}", target)?;
+                writeln!(f, "j{} .L{}", suffix, target)?;
             }
             
             AsmInstruction::SetCC { condition, operand } => {
