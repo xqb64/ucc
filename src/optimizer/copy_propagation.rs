@@ -102,6 +102,7 @@ fn transfer(
                     filter_updated(current_copies, dst)
                 }
             }
+
             IRInstruction::Call { dst, .. } => {
                 let copies_after_dst_filter = match dst {
                     Some(d) => filter_updated(current_copies, d),
@@ -110,9 +111,11 @@ fn transfer(
 
                 copies_after_dst_filter.filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
             }
+
             IRInstruction::Store { .. } => {
                 current_copies.filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
             }
+            
             _ => match get_dst(instr) {
                 Some(dst) => filter_updated(current_copies, &dst),
                 None => current_copies,
