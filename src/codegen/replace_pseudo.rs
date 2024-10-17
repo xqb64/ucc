@@ -60,6 +60,7 @@ impl ReplacePseudo for AsmInstruction {
                 src: src.replace_pseudo(),
                 dst: dst.replace_pseudo(),
             },
+
             AsmInstruction::Unary {
                 op,
                 operand,
@@ -69,6 +70,7 @@ impl ReplacePseudo for AsmInstruction {
                 op: *op,
                 operand: operand.replace_pseudo(),
             },
+
             AsmInstruction::Binary {
                 op,
                 lhs,
@@ -80,21 +82,27 @@ impl ReplacePseudo for AsmInstruction {
                 lhs: lhs.replace_pseudo(),
                 rhs: rhs.replace_pseudo(),
             },
+
             AsmInstruction::Idiv { operand, asm_type } => AsmInstruction::Idiv {
                 asm_type: *asm_type,
                 operand: operand.replace_pseudo(),
             },
+
             AsmInstruction::Ret => AsmInstruction::Ret,
+
             AsmInstruction::Cmp { lhs, rhs, asm_type } => AsmInstruction::Cmp {
                 asm_type: *asm_type,
                 lhs: lhs.replace_pseudo(),
                 rhs: rhs.replace_pseudo(),
             },
+
             AsmInstruction::SetCC { condition, operand } => AsmInstruction::SetCC {
                 condition: condition.clone(),
                 operand: operand.replace_pseudo(),
             },
+
             AsmInstruction::Push(operand) => AsmInstruction::Push(operand.replace_pseudo()),
+
             AsmInstruction::Movsx {
                 src_type,
                 src,
@@ -106,10 +114,12 @@ impl ReplacePseudo for AsmInstruction {
                 dst_type: *dst_type,
                 dst: dst.replace_pseudo(),
             },
+
             AsmInstruction::Div { operand, asm_type } => AsmInstruction::Div {
                 asm_type: *asm_type,
                 operand: operand.replace_pseudo(),
             },
+
             AsmInstruction::MovZeroExtend {
                 src_type,
                 src,
@@ -121,20 +131,24 @@ impl ReplacePseudo for AsmInstruction {
                 dst_type: *dst_type,
                 dst: dst.replace_pseudo(),
             },
+
             AsmInstruction::Cvtsi2sd { asm_type, src, dst } => AsmInstruction::Cvtsi2sd {
                 asm_type: *asm_type,
                 src: src.replace_pseudo(),
                 dst: dst.replace_pseudo(),
             },
+
             AsmInstruction::Cvttsd2si { asm_type, src, dst } => AsmInstruction::Cvttsd2si {
                 asm_type: *asm_type,
                 src: src.replace_pseudo(),
                 dst: dst.replace_pseudo(),
             },
+
             AsmInstruction::Lea { src, dst } => AsmInstruction::Lea {
                 src: src.replace_pseudo(),
                 dst: dst.replace_pseudo(),
             },
+
             _ => self.clone(),
         }
     }
