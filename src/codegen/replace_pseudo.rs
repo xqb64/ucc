@@ -1,8 +1,7 @@
 use crate::{
     codegen::gen::{
-        AsmFunction, AsmInstruction, AsmNode, AsmOperand, AsmProgram, AsmRegister,
-        AsmSymtabEntry, ASM_SYMBOL_TABLE, STATIC_CONSTANTS,
-        VAR_TO_STACK_POS,
+        AsmFunction, AsmInstruction, AsmNode, AsmOperand, AsmProgram, AsmRegister, AsmSymtabEntry,
+        ASM_SYMBOL_TABLE, STATIC_CONSTANTS, VAR_TO_STACK_POS,
     },
     semantics::typechecker::{IdentifierAttrs, SYMBOL_TABLE},
 };
@@ -24,7 +23,6 @@ impl ReplacePseudo for AsmNode {
         }
     }
 }
-
 
 impl ReplacePseudo for Vec<AsmInstruction> {
     fn replace_pseudo(&self) -> Self {

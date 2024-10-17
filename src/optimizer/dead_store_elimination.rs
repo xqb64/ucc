@@ -149,12 +149,12 @@ fn transfer(
                 current_live_vars.insert(lhs.to_string());
                 current_live_vars.insert(rhs.to_string());
             }
-            
+
             IRInstruction::Unary { op: _, dst, src } => {
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(src.to_string());
             }
-            
+
             IRInstruction::JumpIfZero {
                 target: _,
                 condition,
@@ -165,17 +165,16 @@ fn transfer(
             } => {
                 current_live_vars.insert(condition.to_string());
             }
-            
+
             IRInstruction::Copy { dst, src } => {
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(src.to_string());
-            
             }
-            
+
             IRInstruction::Ret(Some(v)) => {
                 current_live_vars.insert(v.to_string());
             }
-            
+
             IRInstruction::Call {
                 dst,
                 args,
@@ -192,7 +191,7 @@ fn transfer(
                     .cloned()
                     .collect();
             }
-            
+
             IRInstruction::SignExtend { dst, src }
             | IRInstruction::ZeroExtend { dst, src }
             | IRInstruction::DoubleToInt { dst, src }
@@ -203,7 +202,7 @@ fn transfer(
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(src.to_string());
             }
-            
+
             IRInstruction::AddPtr {
                 dst,
                 ptr,
@@ -214,11 +213,11 @@ fn transfer(
                 current_live_vars.insert(ptr.to_string());
                 current_live_vars.insert(index.to_string());
             }
-            
+
             IRInstruction::GetAddress { src: _, dst } => {
                 current_live_vars.remove(&dst.to_string());
             }
-            
+
             IRInstruction::Load { src_ptr, dst } => {
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(src_ptr.to_string());
@@ -227,12 +226,12 @@ fn transfer(
                     .cloned()
                     .collect();
             }
-            
+
             IRInstruction::Store { src, dst_ptr } => {
                 current_live_vars.insert(src.to_string());
                 current_live_vars.insert(dst_ptr.to_string());
             }
-            
+
             IRInstruction::CopyToOffset {
                 src,
                 dst: _,
@@ -240,7 +239,7 @@ fn transfer(
             } => {
                 current_live_vars.insert(src.to_string());
             }
-            
+
             IRInstruction::CopyFromOffset {
                 src,
                 dst,
@@ -249,7 +248,7 @@ fn transfer(
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(src.to_string());
             }
-            
+
             _ => {}
         }
 

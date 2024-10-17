@@ -115,7 +115,7 @@ fn transfer(
             IRInstruction::Store { .. } => {
                 current_copies.filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
             }
-            
+
             _ => match get_dst(instr) {
                 Some(dst) => filter_updated(current_copies, &dst),
                 None => current_copies,
@@ -282,73 +282,73 @@ fn rewrite_instruction(
             src: replace(src),
             dst: dst.clone(),
         }),
- 
+
         IRInstruction::Unary { op, src, dst } => Some(IRInstruction::Unary {
             src: replace(src),
             op: *op,
             dst: dst.clone(),
         }),
- 
+
         IRInstruction::Binary { op, lhs, rhs, dst } => Some(IRInstruction::Binary {
             lhs: replace(lhs),
             rhs: replace(rhs),
             op: *op,
             dst: dst.clone(),
         }),
- 
+
         IRInstruction::Ret(v) => Some(IRInstruction::Ret(v.as_ref().map(replace))),
- 
+
         IRInstruction::JumpIfZero { condition, target } => Some(IRInstruction::JumpIfZero {
             condition: replace(condition),
             target: target.clone(),
         }),
- 
+
         IRInstruction::JumpIfNotZero { condition, target } => Some(IRInstruction::JumpIfNotZero {
             condition: replace(condition),
             target: target.clone(),
         }),
- 
+
         IRInstruction::SignExtend { src, dst } => Some(IRInstruction::SignExtend {
             src: replace(src),
             dst: dst.clone(),
         }),
- 
+
         IRInstruction::ZeroExtend { src, dst } => Some(IRInstruction::ZeroExtend {
             src: replace(src),
             dst: dst.clone(),
         }),
- 
+
         IRInstruction::Truncate { src, dst } => Some(IRInstruction::Truncate {
             src: replace(src),
             dst: dst.clone(),
         }),
- 
+
         IRInstruction::IntToDouble { src, dst } => Some(IRInstruction::IntToDouble {
             src: replace(src),
             dst: dst.clone(),
         }),
- 
+
         IRInstruction::DoubleToInt { src, dst } => Some(IRInstruction::DoubleToInt {
             src: replace(src),
             dst: dst.clone(),
         }),
- 
+
         IRInstruction::DoubletoUInt { src, dst } => Some(IRInstruction::DoubletoUInt {
             src: replace(src),
             dst: dst.clone(),
         }),
- 
+
         IRInstruction::UIntToDouble { src, dst } => Some(IRInstruction::UIntToDouble {
             src: replace(src),
             dst: dst.clone(),
         }),
- 
+
         IRInstruction::CopyToOffset { src, dst, offset } => Some(IRInstruction::CopyToOffset {
             src: replace(src),
             dst: dst.clone(),
             offset: *offset,
         }),
- 
+
         IRInstruction::CopyFromOffset { src, dst, offset } => {
             match replace(&IRValue::Var(src.to_owned())) {
                 IRValue::Var(new_src) => Some(IRInstruction::CopyFromOffset {
@@ -359,7 +359,7 @@ fn rewrite_instruction(
                 _ => panic!("internal error"),
             }
         }
- 
+
         IRInstruction::AddPtr {
             ptr,
             index,
@@ -371,17 +371,17 @@ fn rewrite_instruction(
             scale: *scale,
             dst: dst.clone(),
         }),
- 
+
         IRInstruction::Load { src_ptr, dst } => Some(IRInstruction::Load {
             src_ptr: replace(src_ptr),
             dst: dst.clone(),
         }),
- 
+
         IRInstruction::Store { src, dst_ptr } => Some(IRInstruction::Store {
             src: replace(src),
             dst_ptr: dst_ptr.clone(),
         }),
- 
+
         IRInstruction::Call { target, args, dst } => {
             let new_args = args.iter().map(replace).collect();
             Some(IRInstruction::Call {
@@ -390,7 +390,7 @@ fn rewrite_instruction(
                 dst: dst.clone(),
             })
         }
- 
+
         _ => Some(instr.clone()),
     }
 }

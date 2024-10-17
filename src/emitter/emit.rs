@@ -178,7 +178,7 @@ impl Emit for AsmInstruction {
                 dst.emit(f, &mut AsmType::Quadword)?;
                 writeln!(f)?;
             }
-            
+
             AsmInstruction::Mov { src, dst, asm_type } => {
                 let suffix = match asm_type {
                     AsmType::Byte => "b",
@@ -194,7 +194,7 @@ impl Emit for AsmInstruction {
                 dst.emit(f, asm_type)?;
                 writeln!(f)?;
             }
-            
+
             AsmInstruction::Movsx {
                 src_type,
                 src,
@@ -215,14 +215,14 @@ impl Emit for AsmInstruction {
                 dst.emit(f, dst_type)?;
                 writeln!(f)?;
             }
-            
+
             AsmInstruction::Ret => {
                 writeln!(f, "movq %rbp, %rsp")?;
                 writeln!(f, "\tpopq %rbp")?;
                 write!(f, "\tret")?;
                 writeln!(f)?;
             }
-            
+
             AsmInstruction::Unary {
                 op,
                 operand,
@@ -242,13 +242,13 @@ impl Emit for AsmInstruction {
                 operand.emit(f, asm_type)?;
                 writeln!(f)?;
             }
-            
+
             AsmInstruction::Cdq { asm_type } => match asm_type {
                 AsmType::Longword => writeln!(f, "cdq")?,
                 AsmType::Quadword => writeln!(f, "cqo")?,
                 _ => writeln!(f, "cdq")?,
             },
-            
+
             AsmInstruction::Binary {
                 op,
                 lhs,
@@ -292,7 +292,7 @@ impl Emit for AsmInstruction {
 
                 writeln!(f)?;
             }
-            
+
             AsmInstruction::Idiv { operand, asm_type } => {
                 let suffix = match asm_type {
                     AsmType::Byte => "b",
@@ -304,7 +304,7 @@ impl Emit for AsmInstruction {
                 operand.emit(f, asm_type)?;
                 writeln!(f)?;
             }
-            
+
             AsmInstruction::Div { operand, asm_type } => {
                 let suffix = match asm_type {
                     AsmType::Byte => "b",
@@ -316,7 +316,7 @@ impl Emit for AsmInstruction {
                 operand.emit(f, asm_type)?;
                 writeln!(f)?;
             }
-                        
+
             AsmInstruction::Cmp { lhs, rhs, asm_type } => {
                 let instr = match asm_type {
                     AsmType::Byte => "cmpb",
@@ -331,11 +331,11 @@ impl Emit for AsmInstruction {
                 rhs.emit(f, asm_type)?;
                 writeln!(f)?;
             }
-            
+
             AsmInstruction::Jmp { target } => {
                 writeln!(f, "jmp .L{}", target)?;
             }
-            
+
             AsmInstruction::JmpCC { condition, target } => {
                 let suffix = match condition {
                     ConditionCode::E => "e",
@@ -352,7 +352,7 @@ impl Emit for AsmInstruction {
 
                 writeln!(f, "j{} .L{}", suffix, target)?;
             }
-            
+
             AsmInstruction::SetCC { condition, operand } => {
                 let suffix = match condition {
                     ConditionCode::E => "e",
@@ -373,11 +373,11 @@ impl Emit for AsmInstruction {
 
                 writeln!(f)?;
             }
-            
+
             AsmInstruction::Label(label) => {
                 writeln!(f, ".L{}:", label)?;
             }
-            
+
             AsmInstruction::Call(target) => {
                 if let Some(symbol) = ASM_SYMBOL_TABLE.lock().unwrap().get(target).cloned() {
                     if let AsmSymtabEntry::Function { defined, .. } = symbol {
@@ -391,13 +391,13 @@ impl Emit for AsmInstruction {
                     writeln!(f, "call {}", target)?;
                 }
             }
-            
+
             AsmInstruction::Push(operand) => {
                 write!(f, "pushq ")?;
                 operand.emit(f, &mut AsmType::Quadword)?;
                 writeln!(f)?;
             }
-            
+
             AsmInstruction::MovZeroExtend {
                 src_type,
                 src,
@@ -416,7 +416,7 @@ impl Emit for AsmInstruction {
                 dst.emit(f, dst_type)?;
                 writeln!(f)?;
             }
-            
+
             AsmInstruction::Cvtsi2sd { asm_type, src, dst } => {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
@@ -430,7 +430,7 @@ impl Emit for AsmInstruction {
                 dst.emit(f, &mut AsmType::Double)?;
                 writeln!(f)?;
             }
-            
+
             AsmInstruction::Cvttsd2si { asm_type, src, dst } => {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
@@ -460,9 +460,9 @@ impl Emit for AsmOperand {
     fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
         match self {
             AsmOperand::Imm(n) => write!(f, "${}", { *n })?,
-            
+
             AsmOperand::Register(reg) => reg.emit(f, asm_type)?,
-            
+
             AsmOperand::Data(identifier, offset) => {
                 if *offset == 0 {
                     write!(f, "{}(%rip)", identifier)?
@@ -475,8 +475,8 @@ impl Emit for AsmOperand {
                         offset.abs()
                     )?
                 }
-            },
-            
+            }
+
             AsmOperand::Memory(reg, n) => {
                 if *n == 0 {
                     write!(f, "(")?;
@@ -488,7 +488,7 @@ impl Emit for AsmOperand {
                     write!(f, ")")?;
                 }
             }
-            
+
             AsmOperand::Indexed(reg1, reg2, n) => {
                 write!(f, "(")?;
                 reg1.emit(f, &mut AsmType::Quadword)?;

@@ -8,10 +8,10 @@ use crate::{
         BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression,
         ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression,
         Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement,
-        Initializer, MemberDeclaration, ProgramStatement, ReturnStatement,
-        SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
-        StructDeclaration, SubscriptExpression, Type, UnaryExpression, VariableDeclaration,
-        VariableExpression, WhileStatement,
+        Initializer, MemberDeclaration, ProgramStatement, ReturnStatement, SizeofExpression,
+        SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration,
+        SubscriptExpression, Type, UnaryExpression, VariableDeclaration, VariableExpression,
+        WhileStatement,
     },
 };
 
@@ -725,7 +725,7 @@ fn resolve_exp(
             }))
         }
 
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 }
 
