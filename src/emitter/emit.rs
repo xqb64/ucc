@@ -574,7 +574,7 @@ impl Emit for AsmRegister {
             (Xmm14, _) => write!(f, "%xmm14")?,
             (Xmm15, _) => write!(f, "%xmm15")?,
 
-            _ => todo!(),
+            _ => unreachable!(),
         }
 
         Ok(())
