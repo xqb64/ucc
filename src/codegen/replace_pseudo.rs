@@ -1,7 +1,7 @@
 use crate::{
     codegen::gen::{
         AsmFunction, AsmInstruction, AsmNode, AsmOperand, AsmProgram, AsmRegister,
-        AsmStaticConstant, AsmStaticVariable, AsmSymtabEntry, ASM_SYMBOL_TABLE, STATIC_CONSTANTS,
+        AsmSymtabEntry, ASM_SYMBOL_TABLE, STATIC_CONSTANTS,
         VAR_TO_STACK_POS,
     },
     semantics::typechecker::{IdentifierAttrs, SYMBOL_TABLE},
@@ -20,27 +20,11 @@ impl ReplacePseudo for AsmNode {
             AsmNode::Instructions(instrs) => {
                 AsmNode::Instructions(instrs.to_owned().replace_pseudo())
             }
-            AsmNode::StaticVariable(static_var) => {
-                AsmNode::StaticVariable(static_var.to_owned().replace_pseudo())
-            }
-            AsmNode::StaticConstant(static_const) => {
-                AsmNode::StaticConstant(static_const.to_owned().replace_pseudo())
-            }
+            _ => unreachable!(),
         }
     }
 }
 
-impl ReplacePseudo for AsmStaticVariable {
-    fn replace_pseudo(&self) -> Self {
-        self.clone()
-    }
-}
-
-impl ReplacePseudo for AsmStaticConstant {
-    fn replace_pseudo(&self) -> Self {
-        self.clone()
-    }
-}
 
 impl ReplacePseudo for Vec<AsmInstruction> {
     fn replace_pseudo(&self) -> Self {
