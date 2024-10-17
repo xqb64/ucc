@@ -8,7 +8,7 @@ use crate::{
         BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression,
         ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression,
         Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement,
-        Initializer, LiteralExpression, MemberDeclaration, ProgramStatement, ReturnStatement,
+        Initializer, MemberDeclaration, ProgramStatement, ReturnStatement,
         SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
         StructDeclaration, SubscriptExpression, Type, UnaryExpression, VariableDeclaration,
         VariableExpression, WhileStatement,
@@ -678,15 +678,6 @@ fn resolve_exp(
             }))
         }
 
-        Expression::Literal(LiteralExpression { name, value, _type }) => {
-            let resolved_init = resolve_init(&value, variable_map, struct_map)?;
-            Ok(Expression::Literal(LiteralExpression {
-                name,
-                value: resolved_init.into(),
-                _type,
-            }))
-        }
-
         Expression::String(StringExpression { value, _type }) => {
             Ok(Expression::String(StringExpression { value, _type }))
         }
@@ -733,6 +724,8 @@ fn resolve_exp(
                 _type,
             }))
         }
+
+        _ => unreachable!()
     }
 }
 
