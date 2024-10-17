@@ -316,29 +316,7 @@ impl Emit for AsmInstruction {
                 operand.emit(f, asm_type)?;
                 writeln!(f)?;
             }
-            
-            AsmInstruction::Imul { src, dst, asm_type } => {
-                let instr = match asm_type {
-                    AsmType::Longword => "imul",
-                    AsmType::Quadword => "imul",
-                    AsmType::Double => "mul",
-                    _ => unreachable!(),
-                };
-
-                let suffix = match asm_type {
-                    AsmType::Longword => "l",
-                    AsmType::Quadword => "q",
-                    AsmType::Double => "sd",
-                    _ => unreachable!(),
-                };
-
-                write!(f, "{}{} ", instr, suffix)?;
-                src.emit(f, asm_type)?;
-                write!(f, ", ")?;
-                dst.emit(f, asm_type)?;
-                writeln!(f)?;
-            }
-            
+                        
             AsmInstruction::Cmp { lhs, rhs, asm_type } => {
                 let instr = match asm_type {
                     AsmType::Byte => "cmpb",
@@ -476,6 +454,8 @@ impl Emit for AsmInstruction {
                 reg.emit(f, &mut AsmType::Quadword)?;
                 writeln!(f)?;
             }
+
+            _ => unreachable!(),
         }
 
         Ok(())
