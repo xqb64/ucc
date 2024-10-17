@@ -185,10 +185,9 @@ impl Emit for AsmInstruction {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     AsmType::Double => "sd",
-                    _ => {
-                        todo!()
-                    }
+                    _ => unreachable!(),
                 };
+                
                 write!(f, "mov{} ", suffix)?;
                 src.emit(f, asm_type)?;
                 write!(f, ", ")?;
@@ -210,9 +209,7 @@ impl Emit for AsmInstruction {
                     (AsmType::Quadword, AsmType::Byte) => "qb",
                     (AsmType::Longword, AsmType::Byte) => "lb",
                     (AsmType::Byte, AsmType::Double) => "lq",
-                    _ => {
-                        todo!()
-                    }
+                    _ => unreachable!(),
                 };
 
                 write!(f, "movs{} ", suffix)?;
@@ -268,7 +265,7 @@ impl Emit for AsmInstruction {
                         AsmType::Longword => "imul",
                         AsmType::Quadword => "imul",
                         AsmType::Double => "mul",
-                        _ => todo!(),
+                        _ => unreachable!(),
                     },
                     AsmBinaryOp::Xor => "xor",
                     AsmBinaryOp::And => "and",
@@ -287,7 +284,7 @@ impl Emit for AsmInstruction {
                         _ => "sd",
                     },
                     AsmType::Byte => "b",
-                    _ => todo!(),
+                    _ => unreachable!(),
                 };
 
                 write!(f, "{}{} ", instr, suffix)?;
@@ -304,7 +301,7 @@ impl Emit for AsmInstruction {
                     AsmType::Byte => "b",
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
-                    _ => todo!(),
+                    _ => unreachable!(),
                 };
                 write!(f, "idiv{} ", suffix)?;
                 operand.emit(f, asm_type)?;
@@ -316,7 +313,7 @@ impl Emit for AsmInstruction {
                     AsmType::Byte => "b",
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
-                    _ => todo!(),
+                    _ => unreachable!(),
                 };
                 write!(f, "div{} ", suffix)?;
                 operand.emit(f, asm_type)?;
@@ -328,14 +325,14 @@ impl Emit for AsmInstruction {
                     AsmType::Longword => "imul",
                     AsmType::Quadword => "imul",
                     AsmType::Double => "mul",
-                    _ => todo!(),
+                    _ => unreachable!(),
                 };
 
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     AsmType::Double => "sd",
-                    _ => todo!(),
+                    _ => unreachable!(),
                 };
 
                 write!(f, "{}{} ", instr, suffix)?;
@@ -351,7 +348,7 @@ impl Emit for AsmInstruction {
                     AsmType::Longword => "cmpl",
                     AsmType::Quadword => "cmpq",
                     AsmType::Double => "comisd",
-                    _ => todo!(),
+                    _ => unreachable!(),
                 };
                 write!(f, "{} ", instr)?;
                 lhs.emit(f, asm_type)?;
@@ -453,7 +450,7 @@ impl Emit for AsmInstruction {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
-                    _ => todo!(),
+                    _ => unreachable!(),
                 };
 
                 write!(f, "cvtsi2sd{} ", suffix)?;
@@ -467,7 +464,7 @@ impl Emit for AsmInstruction {
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
-                    _ => todo!(),
+                    _ => unreachable!(),
                 };
 
                 write!(f, "cvttsd2si{} ", suffix)?;
