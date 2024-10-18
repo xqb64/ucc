@@ -1987,6 +1987,7 @@ pub fn build_asm_symbol_table() {
                 }
                 _ => unreachable!(),
             },
+
             IdentifierAttrs::StaticAttr {
                 initial_value: _, ..
             } => {
@@ -2005,6 +2006,7 @@ pub fn build_asm_symbol_table() {
                     }
                 }
             }
+
             IdentifierAttrs::LocalAttr => {
                 let asm_type = convert_type(&symbol._type);
                 AsmSymtabEntry::Object {
@@ -2013,6 +2015,7 @@ pub fn build_asm_symbol_table() {
                     is_constant: false,
                 }
             }
+
             IdentifierAttrs::ConstantAttr(_) => {
                 let asm_type = convert_type(&symbol._type);
                 AsmSymtabEntry::Object {
