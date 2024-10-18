@@ -2170,20 +2170,6 @@ pub fn tacky_type(value: &IRValue) -> Type {
     }
 }
 
-fn add_offset(byte_count: usize, operand: &AsmOperand) -> AsmOperand {
-    match operand {
-        AsmOperand::PseudoMem(name, offset) => {
-            AsmOperand::PseudoMem(name.clone(), *offset + byte_count as isize)
-        }
-        AsmOperand::Memory(base, offset) => {
-            AsmOperand::Memory(*base, *offset + byte_count as isize)
-        }
-        _ => {
-            unreachable!()
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Class {
     Memory,
@@ -2444,4 +2430,18 @@ fn copy_bytes(src: &AsmOperand, dst: &AsmOperand, byte_count: usize) -> Vec<AsmI
     instructions.extend(copy_bytes(&next_src, &next_dst, bytes_left));
 
     instructions
+}
+
+fn add_offset(byte_count: usize, operand: &AsmOperand) -> AsmOperand {
+    match operand {
+        AsmOperand::PseudoMem(name, offset) => {
+            AsmOperand::PseudoMem(name.clone(), *offset + byte_count as isize)
+        }
+        AsmOperand::Memory(base, offset) => {
+            AsmOperand::Memory(*base, *offset + byte_count as isize)
+        }
+        _ => {
+            unreachable!()
+        }
+    }
 }
