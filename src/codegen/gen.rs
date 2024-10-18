@@ -884,47 +884,8 @@ impl Codegen for IRInstruction {
                     | BinaryOp::GreaterEqual
                     | BinaryOp::Equal
                     | BinaryOp::NotEqual => {
-                        let lhs_type = match lhs {
-                            IRValue::Var(name) => {
-                                SYMBOL_TABLE
-                                    .lock()
-                                    .unwrap()
-                                    .get(name)
-                                    .cloned()
-                                    .unwrap()
-                                    ._type
-                            }
-                            IRValue::Constant(konst) => match konst {
-                                Const::Int(_) => Type::Int,
-                                Const::Long(_) => Type::Long,
-                                Const::UInt(_) => Type::Uint,
-                                Const::ULong(_) => Type::Ulong,
-                                Const::Double(_) => Type::Double,
-                                Const::Char(_) => Type::Char,
-                                Const::UChar(_) => Type::UChar,
-                            },
-                        };
-
-                        let rhs_type = match rhs {
-                            IRValue::Var(name) => {
-                                SYMBOL_TABLE
-                                    .lock()
-                                    .unwrap()
-                                    .get(name)
-                                    .cloned()
-                                    .unwrap()
-                                    ._type
-                            }
-                            IRValue::Constant(konst) => match konst {
-                                Const::Int(_) => Type::Int,
-                                Const::Long(_) => Type::Long,
-                                Const::UInt(_) => Type::Uint,
-                                Const::ULong(_) => Type::Ulong,
-                                Const::Double(_) => Type::Double,
-                                Const::Char(_) => Type::Char,
-                                Const::UChar(_) => Type::UChar,
-                            },
-                        };
+                        let lhs_type = tacky_type(lhs);
+                        let rhs_type = tacky_type(rhs);
 
                         if lhs_type == Type::Double && rhs_type == Type::Double {
                             AsmNode::Instructions(vec![
