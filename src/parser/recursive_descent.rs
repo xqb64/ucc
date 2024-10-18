@@ -202,7 +202,7 @@ impl Parser {
     }
 
     fn parse_var_or_fn_decl(&mut self) -> Result<BlockItem> {
-        let specifier_list = self.consume_while_specifier();
+        let specifier_list = self.consume_while_specifier()?;
         let (base_type, storage_class) = self.parse_type_and_storage_specifiers(&specifier_list)?;
 
         let declarator = self.parse_declarator()?;
@@ -334,9 +334,9 @@ impl Parser {
     }
 
     fn parse_dim(&mut self) -> Result<usize> {
-        self.consume(&Token::LBracket).unwrap();
+        self.consume(&Token::LBracket)?;
         let dim = self.consume_constant_or_char_literal()?.unwrap();
-        self.consume(&Token::RBracket).unwrap();
+        self.consume(&Token::RBracket)?;
         Ok(match dim {
             Token::Constant(Const::Int(n)) => n as usize,
             Token::Constant(Const::Long(n)) => n as usize,
@@ -345,7 +345,7 @@ impl Parser {
             Token::Constant(Const::Char(n)) => n as usize,
             Token::Constant(Const::UChar(n)) => n as usize,
             Token::CharLiteral(ch) => ch as usize,
-            _ => unreachable!(),
+            _ => bail!("expected const or char literal, got: {:?}", dim),
         })
     }
     fn parse_param_list(&mut self) -> Result<Vec<ParamInfo>> {
@@ -395,7 +395,7 @@ impl Parser {
         Ok((param_t, param_decl.into()))
     }
 
-    fn consume_while_specifier(&mut self) -> Vec<Token> {
+    fn consume_while_specifier(&mut self) -> Result<Vec<Token>> {
         let mut specifier_list = vec![];
         while self.is_specifier(self.current.as_ref().unwrap()) {
             match self.current {
@@ -407,7 +407,7 @@ impl Parser {
                         specifier_list.push(self.current.clone().unwrap());
                         self.advance();
                     } else {
-                        panic!("Expected an identifier after 'struct'");
+                        bail!("Expected an identifier after 'struct'");
                     }
                 }
                 _ => {
@@ -416,7 +416,8 @@ impl Parser {
                 }
             }
         }
-        specifier_list
+
+        Ok(specifier_list)
     }
 
     fn process_declarator(
@@ -679,7 +680,7 @@ impl Parser {
             let decl = self.parse_var_or_fn_decl()?;
             ForInit::Declaration(match decl {
                 BlockItem::Declaration(Declaration::Variable(var)) => var,
-                _ => unreachable!(),
+                _ => bail!("Function declarations are not allowed in for loop headers."),
             })
         } else {
             let expr = self.parse_expression()?;
@@ -741,7 +742,7 @@ impl Parser {
         Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
             expr,
             target_type: self.current_target_type.clone(),
-            belongs_to: self.current_fn.clone().unwrap(),
+            belongs_to: self.current_fn.clone().unwrap_or_else(|| "no current function".to_owned()),
         })))
     }
 
@@ -994,7 +995,7 @@ impl Parser {
         match self.current.as_ref().unwrap() {
             Token::RParen => Ok(base_type),
             _ => {
-                let decl = self.parse_abstract_declarator().unwrap();
+                let decl = self.parse_abstract_declarator()?;
                 Ok(self.process_abstract_declarator(&decl, &base_type))
             }
         }
@@ -1026,7 +1027,7 @@ impl Parser {
                 expr = Expression::Call(CallExpression {
                     name: match expr {
                         Expression::Variable(var) => var.value,
-                        _ => unreachable!(),
+                        _ => bail!("expected a variable"),
                     },
                     args,
                     _type: Type::Dummy,
