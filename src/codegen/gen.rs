@@ -647,6 +647,7 @@ impl Codegen for IRInstruction {
                             rhs: dst.codegen().into(),
                         },
                     ]),
+
                     BinaryOp::Div => {
                         match (&lhs, &rhs) {
                             (
@@ -796,26 +797,8 @@ impl Codegen for IRInstruction {
                             dst: AsmOperand::Register(AsmRegister::Ax),
                         }];
 
-                        let signedness = match lhs {
-                            IRValue::Var(name) => get_signedness(
-                                &SYMBOL_TABLE
-                                    .lock()
-                                    .unwrap()
-                                    .get(name)
-                                    .cloned()
-                                    .unwrap()
-                                    ._type,
-                            ),
-                            IRValue::Constant(konst) => match konst {
-                                Const::Int(_) => true,
-                                Const::Long(_) => true,
-                                Const::UInt(_) => false,
-                                Const::ULong(_) => false,
-                                Const::Char(_) => true,
-                                Const::UChar(_) => false,
-                                Const::Double(_) => unreachable!(),
-                            },
-                        };
+                        let t = tacky_type(&lhs);
+                        let signedness = get_signedness(&t);
 
                         if signedness {
                             v.extend(vec![
