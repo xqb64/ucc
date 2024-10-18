@@ -204,7 +204,6 @@ impl Emit for AsmInstruction {
                 let suffix = match (&src_type, &dst_type) {
                     (AsmType::Byte, AsmType::Longword) => "bl",
                     (AsmType::Byte, AsmType::Quadword) => "bq",
-                    (AsmType::Byte, AsmType::Double) => "lq",
                     (AsmType::Longword, AsmType::Quadword) => "lq",
                     _ => unreachable!(),
                 };
