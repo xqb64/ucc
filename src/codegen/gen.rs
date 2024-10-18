@@ -11,7 +11,8 @@ use crate::{
     lexer::lex::Const,
     parser::ast::Type,
     semantics::typechecker::{
-        get_common_type, get_signedness, get_size_of_type, is_pointer_type, is_scalar, IdentifierAttrs, MemberEntry, StaticInit, SYMBOL_TABLE, TYPE_TABLE
+        get_common_type, get_signedness, get_size_of_type, is_pointer_type, is_scalar,
+        IdentifierAttrs, MemberEntry, StaticInit, SYMBOL_TABLE, TYPE_TABLE,
     },
 };
 
