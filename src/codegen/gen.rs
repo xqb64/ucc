@@ -11,8 +11,7 @@ use crate::{
     lexer::lex::Const,
     parser::ast::Type,
     semantics::typechecker::{
-        get_common_type, get_signedness, get_size_of_type, is_scalar, IdentifierAttrs, MemberEntry,
-        StaticInit, SYMBOL_TABLE, TYPE_TABLE,
+        get_common_type, get_signedness, get_size_of_type, is_pointer_type, is_scalar, IdentifierAttrs, MemberEntry, StaticInit, SYMBOL_TABLE, TYPE_TABLE
     },
 };
 
@@ -751,37 +750,10 @@ impl Codegen for IRInstruction {
                             dst: AsmOperand::Register(AsmRegister::Ax),
                         }];
 
-                        let signedness = match lhs {
-                            IRValue::Var(name) => get_signedness(
-                                &SYMBOL_TABLE
-                                    .lock()
-                                    .unwrap()
-                                    .get(name)
-                                    .cloned()
-                                    .unwrap()
-                                    ._type,
-                            ),
-                            IRValue::Constant(konst) => match konst {
-                                Const::Int(_) => true,
-                                Const::Long(_) => true,
-                                Const::UInt(_) => false,
-                                Const::ULong(_) => false,
-                                Const::Char(_) => true,
-                                Const::UChar(_) => false,
-                                Const::Double(_) => unreachable!(),
-                            },
-                        };
+                        let t = tacky_type(lhs);
+                        let signedness = get_signedness(&t);
 
-                        let is_pointer_src = match lhs {
-                            IRValue::Var(name) => {
-                                let symbol =
-                                    SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
-                                matches!(symbol._type, Type::Pointer(_))
-                            }
-                            _ => false,
-                        };
-
-                        if signedness || (is_pointer_src) {
+                        if signedness || is_pointer_type(&t) {
                             v.extend(vec![
                                 AsmInstruction::Cdq { asm_type },
                                 AsmInstruction::Idiv {
