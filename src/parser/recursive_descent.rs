@@ -55,7 +55,11 @@ impl Parser {
     }
 
     fn check(&self, token: &Token) -> bool {
-        std::mem::discriminant(self.current.as_ref().unwrap()) == std::mem::discriminant(token)
+        if let Some(current) = &self.current {
+            std::mem::discriminant(current) == std::mem::discriminant(token)
+        } else {
+            false
+        }
     }
 
     pub fn parse(&mut self) -> Result<Statement> {
@@ -898,9 +902,13 @@ impl Parser {
     }
 
     fn peek(&self, n: usize) -> Vec<Token> {
-        let mut v = vec![self.current.clone().unwrap()];
-        v.extend(self.tokens.iter().take(n - 1).cloned().collect::<Vec<_>>());
-        v
+        if let Some(current) = &self.current {
+            let mut v = vec![current.clone()];
+            v.extend(self.tokens.iter().take(n - 1).cloned().collect::<Vec<_>>());
+            v
+        } else {
+            vec![]
+        }
     }
 
     fn unary(&mut self) -> Result<Expression> {
