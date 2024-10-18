@@ -2184,34 +2184,6 @@ fn add_offset(byte_count: usize, operand: &AsmOperand) -> AsmOperand {
     }
 }
 
-fn copy_bytes(src: &AsmOperand, dst: &AsmOperand, byte_count: usize) -> Vec<AsmInstruction> {
-    if byte_count == 0 {
-        return vec![];
-    }
-
-    let (operand_type, operand_size) = if byte_count < 4 {
-        (AsmType::Byte, 1)
-    } else if byte_count < 8 {
-        (AsmType::Longword, 4)
-    } else {
-        (AsmType::Quadword, 8)
-    };
-
-    let next_src = add_offset(operand_size, src);
-    let next_dst = add_offset(operand_size, dst);
-
-    let bytes_left = byte_count - operand_size;
-
-    let mut instructions = vec![AsmInstruction::Mov {
-        asm_type: operand_type,
-        src: src.clone(),
-        dst: dst.clone(),
-    }];
-    instructions.extend(copy_bytes(&next_src, &next_dst, bytes_left));
-
-    instructions
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Class {
     Memory,
@@ -2278,31 +2250,6 @@ fn flatten_member_types(members: &Vec<MemberEntry>) -> Vec<Type> {
     result
 }
 
-fn copy_bytes_to_reg(
-    src_op: AsmOperand,
-    dst_reg: AsmRegister,
-    byte_count: usize,
-    instructions: &mut Vec<AsmInstruction>,
-) {
-    let mut offset = byte_count as isize - 1;
-    while offset >= 0 {
-        let src_byte = add_offset(offset as usize, &src_op);
-        instructions.push(AsmInstruction::Mov {
-            asm_type: AsmType::Byte,
-            src: src_byte,
-            dst: AsmOperand::Register(dst_reg),
-        });
-        if offset > 0 {
-            instructions.push(AsmInstruction::Binary {
-                asm_type: AsmType::Quadword,
-                op: AsmBinaryOp::Shl,
-                lhs: AsmOperand::Imm(8),
-                rhs: AsmOperand::Register(dst_reg),
-            });
-        }
-        offset -= 1;
-    }
-}
 
 fn classify_return_value(retval: &IRValue) -> (Vec<(AsmType, AsmOperand)>, Vec<AsmOperand>, bool) {
     let t = tacky_type(retval);
@@ -2385,32 +2332,6 @@ fn convert_type(t: &Type) -> AsmType {
     }
 }
 
-fn copy_bytes_from_reg(
-    src_reg: &AsmRegister,
-    dst_op: &AsmOperand,
-    byte_count: usize,
-    instructions: &mut Vec<AsmInstruction>,
-) {
-    let mut offset = 0;
-    while offset < byte_count {
-        let dst_byte = add_offset(offset, dst_op);
-        instructions.push(AsmInstruction::Mov {
-            asm_type: AsmType::Byte,
-            src: AsmOperand::Register(*src_reg),
-            dst: dst_byte,
-        });
-        if offset < byte_count - 1 {
-            instructions.push(AsmInstruction::Binary {
-                asm_type: AsmType::Quadword,
-                op: AsmBinaryOp::ShrTwoOp,
-                lhs: AsmOperand::Imm(8),
-                rhs: AsmOperand::Register(*src_reg),
-            });
-        }
-        offset += 1;
-    }
-}
-
 fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
     match t {
         Type::Void => (vec![], false),
@@ -2443,4 +2364,84 @@ fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
             }
         }
     }
+}
+
+fn copy_bytes_from_reg(
+    src_reg: &AsmRegister,
+    dst_op: &AsmOperand,
+    byte_count: usize,
+    instructions: &mut Vec<AsmInstruction>,
+) {
+    let mut offset = 0;
+    while offset < byte_count {
+        let dst_byte = add_offset(offset, dst_op);
+        instructions.push(AsmInstruction::Mov {
+            asm_type: AsmType::Byte,
+            src: AsmOperand::Register(*src_reg),
+            dst: dst_byte,
+        });
+        if offset < byte_count - 1 {
+            instructions.push(AsmInstruction::Binary {
+                asm_type: AsmType::Quadword,
+                op: AsmBinaryOp::ShrTwoOp,
+                lhs: AsmOperand::Imm(8),
+                rhs: AsmOperand::Register(*src_reg),
+            });
+        }
+        offset += 1;
+    }
+}
+
+fn copy_bytes_to_reg(
+    src_op: AsmOperand,
+    dst_reg: AsmRegister,
+    byte_count: usize,
+    instructions: &mut Vec<AsmInstruction>,
+) {
+    let mut offset = byte_count as isize - 1;
+    while offset >= 0 {
+        let src_byte = add_offset(offset as usize, &src_op);
+        instructions.push(AsmInstruction::Mov {
+            asm_type: AsmType::Byte,
+            src: src_byte,
+            dst: AsmOperand::Register(dst_reg),
+        });
+        if offset > 0 {
+            instructions.push(AsmInstruction::Binary {
+                asm_type: AsmType::Quadword,
+                op: AsmBinaryOp::Shl,
+                lhs: AsmOperand::Imm(8),
+                rhs: AsmOperand::Register(dst_reg),
+            });
+        }
+        offset -= 1;
+    }
+}
+
+fn copy_bytes(src: &AsmOperand, dst: &AsmOperand, byte_count: usize) -> Vec<AsmInstruction> {
+    if byte_count == 0 {
+        return vec![];
+    }
+
+    let (operand_type, operand_size) = if byte_count < 4 {
+        (AsmType::Byte, 1)
+    } else if byte_count < 8 {
+        (AsmType::Longword, 4)
+    } else {
+        (AsmType::Quadword, 8)
+    };
+
+    let next_src = add_offset(operand_size, src);
+    let next_dst = add_offset(operand_size, dst);
+
+    let bytes_left = byte_count - operand_size;
+
+    let mut instructions = vec![AsmInstruction::Mov {
+        asm_type: operand_type,
+        src: src.clone(),
+        dst: dst.clone(),
+    }];
+    instructions.extend(copy_bytes(&next_src, &next_dst, bytes_left));
+
+    instructions
 }
