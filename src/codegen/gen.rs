@@ -63,12 +63,15 @@ pub enum AsmInstruction {
         src: AsmOperand,
         dst: AsmOperand,
     },
+
+    /* Move with sign extension. */
     Movsx {
         src_type: AsmType,
         src: AsmOperand,
         dst_type: AsmType,
         dst: AsmOperand,
     },
+
     MovZeroExtend {
         src_type: AsmType,
         src: AsmOperand,
