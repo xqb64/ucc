@@ -101,17 +101,33 @@ pub enum AsmInstruction {
         lhs: AsmOperand,
         rhs: AsmOperand,
     },
+
+    /* Signed division.
+     * It divides the value in accumulator (AX, AX:DX, RAX:RDX) by the
+     * specified divisor.  The result of the division are quotient and
+     * remainder.  The quotient is stored in AX (RAX for 64-bit), and
+     * the remainder is stored in DX (RDX for 64-bit). */
     Idiv {
         asm_type: AsmType,
         operand: AsmOperand,
     },
-    Div {
+
+    /* Unsigned division.
+     * It divides the value in accumulator (AX, AX:DX, RAX:RDX) by the
+     * specified divisor.  The result of the division are quotient and
+     * remainder.  The quotient is stored in AX (RAX for 64-bit), and
+     * the remainder is stored in DX (RDX for 64-bit). */
+     Div {
         asm_type: AsmType,
         operand: AsmOperand,
     },
+
+    /* Sign-extends EAX into EDX.  Used before performing a signed division
+     * to form a 64-bit dividend pair consisting of EAX:EDX. */
     Cdq {
         asm_type: AsmType,
     },
+    
     Jmp {
         target: String,
     },
