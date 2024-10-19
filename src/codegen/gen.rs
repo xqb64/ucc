@@ -178,10 +178,10 @@ pub enum AsmInstruction {
     },
     
     Label(String),
-    Push(AsmOperand),
     Call(String),
-    Ret,
+    Push(AsmOperand),
     Pop(AsmRegister),
+    Ret,
 }
 
 #[derive(Debug, Clone, PartialEq)]
