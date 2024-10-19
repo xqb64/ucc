@@ -177,10 +177,10 @@ pub enum AsmInstruction {
         dst: AsmOperand,
     },
     
-    Label(String),
-    Call(String),
     Push(AsmOperand),
     Pop(AsmRegister),
+    Label(String),
+    Call(String),
     Ret,
 }
 
