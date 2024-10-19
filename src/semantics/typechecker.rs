@@ -6,7 +6,7 @@ use crate::{
         BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression,
         ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement,
         DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration,
-        IfStatement, Initializer, ProgramStatement, ReturnStatement, SizeofExpression,
+        IfStatement, Initializer, Program, ReturnStatement, SizeofExpression,
         SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration,
         SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration,
         VariableExpression, WhileStatement,
@@ -662,16 +662,19 @@ impl Typecheck for FunctionDeclaration {
     }
 }
 
+impl Typecheck for Program {
+    fn typecheck(&mut self) -> Result<&mut Self> {
+        for decl in &mut self.block_items {
+            decl.typecheck()?;
+        }
+
+        Ok(self)
+    }
+}
+
 impl Typecheck for Statement {
     fn typecheck(&mut self) -> Result<&mut Self> {
         match self {
-            Statement::Program(ProgramStatement { block_items: stmts }) => {
-                for block_item in stmts {
-                    block_item.typecheck()?;
-                }
-
-                Ok(self)
-            }
             Statement::Expression(ExpressionStatement { expr }) => {
                 *expr = typecheck_and_convert(expr)?;
 

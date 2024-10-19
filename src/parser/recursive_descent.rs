@@ -6,7 +6,7 @@ use crate::{
         CastExpression, ConditionalExpression, ConstantExpression, ContinueStatement, Declaration,
         Declarator, DerefExpression, DoWhileStatement, DotExpression, Expression,
         ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer,
-        LiteralExpression, MemberDeclaration, ParamInfo, ProgramStatement, ReturnStatement,
+        LiteralExpression, MemberDeclaration, ParamInfo, Program, ReturnStatement,
         SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
         StructDeclaration, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind,
         VariableDeclaration, VariableExpression, WhileStatement,
@@ -62,13 +62,13 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Statement> {
+    pub fn parse(&mut self) -> Result<Program> {
         self.advance();
         let mut stmts = vec![];
         while self.current.is_some() {
             stmts.push(self.parse_statement()?);
         }
-        Ok(Statement::Program(ProgramStatement { block_items: stmts }))
+        Ok(Program { block_items: stmts })
     }
 
     fn is_next(&mut self, tokens: &[Token]) -> bool {

@@ -54,7 +54,6 @@ pub enum Type {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
-    Program(ProgramStatement),
     Return(ReturnStatement),
     Expression(ExpressionStatement),
     If(IfStatement),
@@ -68,7 +67,7 @@ pub enum Statement {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ProgramStatement {
+pub struct Program {
     pub block_items: Vec<BlockItem>,
 }
 

@@ -5,7 +5,7 @@ use crate::{
     parser::ast::{
         BlockItem, BlockStatement, BreakStatement, ContinueStatement, Declaration,
         DoWhileStatement, ExpressionStatement, ForStatement, FunctionDeclaration, IfStatement,
-        ProgramStatement, ReturnStatement, Statement, WhileStatement,
+        Program, ReturnStatement, Statement, WhileStatement,
     },
 };
 
@@ -13,7 +13,7 @@ pub trait LoopLabel {
     fn loop_label(&mut self, current_label: &str) -> Result<&mut Self>;
 }
 
-impl LoopLabel for ProgramStatement {
+impl LoopLabel for Program {
     fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
         for block_item in self.block_items.iter_mut() {
             block_item.loop_label(current_label)?;
@@ -115,10 +115,6 @@ impl LoopLabel for ExpressionStatement {
 impl LoopLabel for Statement {
     fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
         match self {
-            Statement::Program(p) => {
-                p.loop_label(current_label)?;
-            }
-
             Statement::Compound(b) => {
                 b.loop_label(current_label)?;
             }

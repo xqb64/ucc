@@ -8,7 +8,7 @@ use crate::{
         BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression,
         ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression,
         Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement,
-        Initializer, MemberDeclaration, ProgramStatement, ReturnStatement, SizeofExpression,
+        Initializer, MemberDeclaration, Program, ReturnStatement, SizeofExpression,
         SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration,
         SubscriptExpression, Type, UnaryExpression, VariableDeclaration, VariableExpression,
         WhileStatement,
@@ -317,11 +317,6 @@ impl Resolve for Statement {
             Statement::Return(ret) => {
                 ret.resolve(variable_map, struct_map)?;
             }
-
-            Statement::Program(prog) => {
-                prog.resolve(variable_map, struct_map)?;
-            }
-
             Statement::If(if_stmt) => {
                 if_stmt.resolve(variable_map, struct_map)?;
             }
@@ -395,7 +390,7 @@ fn optionally_resolve_type(
     }
 }
 
-impl Resolve for ProgramStatement {
+impl Resolve for Program {
     fn resolve(
         &mut self,
         variable_map: &mut BTreeMap<String, Variable>,

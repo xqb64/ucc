@@ -5,7 +5,7 @@ use crate::{
         BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,
         CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression,
         DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement,
-        FunctionDeclaration, IfStatement, Initializer, ProgramStatement, ReturnStatement,
+        FunctionDeclaration, IfStatement, Initializer, Program, ReturnStatement,
         SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression,
         Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement,
     },
@@ -941,7 +941,6 @@ pub trait Irfy {
 impl Irfy for Statement {
     fn irfy(&self) -> Option<IRNode> {
         match self {
-            Statement::Program(prog) => prog.irfy(),
             Statement::Return(ret_stmt) => ret_stmt.irfy(),
             Statement::Expression(expr_stmt) => expr_stmt.irfy(),
             Statement::If(if_stmt) => if_stmt.irfy(),
@@ -956,7 +955,7 @@ impl Irfy for Statement {
     }
 }
 
-impl Irfy for ProgramStatement {
+impl Irfy for Program {
     fn irfy(&self) -> Option<IRNode> {
         let mut instructions = vec![];
 
