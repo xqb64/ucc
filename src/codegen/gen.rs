@@ -75,21 +75,29 @@ pub enum AsmInstruction {
         dst_type: AsmType,
         dst: AsmOperand,
     },
+
+    /* Convert with truncation scalar double to signed integer. */
     Cvttsd2si {
         asm_type: AsmType,
         src: AsmOperand,
         dst: AsmOperand,
     },
+
+    /* Convert signed integer to scalar double. */
     Cvtsi2sd {
         asm_type: AsmType,
         src: AsmOperand,
         dst: AsmOperand,
     },
+
+    /* Generic 'unary' instruction. */
     Unary {
         asm_type: AsmType,
         op: AsmUnaryOp,
         operand: AsmOperand,
     },
+
+    /* Generic 'binary' instruction. */
     Binary {
         asm_type: AsmType,
         op: AsmBinaryOp,
