@@ -148,6 +148,7 @@ pub enum AsmInstruction {
      * cmp $3, %eax  # sets flags 
      * setne %al     # set AL to 1 if not equal, 0 otherwise
      * 
+     * See ConditionCode enum for more info.
      */
     SetCC {
         condition: ConditionCode,
