@@ -123,26 +123,42 @@ pub enum AsmInstruction {
     },
 
     /* Sign-extends EAX into EDX.  Used before performing a signed division
-     * to form a 64-bit dividend pair consisting of EAX:EDX. */
+     * to form a 64-bit dividend pair consisting of EDX:EAX. */
     Cdq {
         asm_type: AsmType,
     },
-    
+
+    /* Unconditional jump to 'target'. */
     Jmp {
         target: String,
     },
+
+    /* Conditional jump to 'target'. */
     JmpCC {
         condition: ConditionCode,
         target: String,
     },
+    
+    /* Set a byte in a register to 1 or 0 based on the result of a previous
+     * comparison or arithmetic operation. 
+     * 
+     * For example:
+     * 
+     * mov $5, %eax
+     * cmp $3, %eax  # sets flags 
+     * setne %al     # set AL to 1 if not equal, 0 otherwise
+     * 
+     */
     SetCC {
         condition: ConditionCode,
         operand: AsmOperand,
     },
+    
     Lea {
         src: AsmOperand,
         dst: AsmOperand,
     },
+    
     Label(String),
     Push(AsmOperand),
     Call(String),
@@ -152,16 +168,19 @@ pub enum AsmInstruction {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConditionCode {
-    E,
-    NE,
-    L,
-    LE,
-    G,
-    GE,
-    A,
-    AE,
-    B,
-    BE,
+    /* signed */
+    E,   /* equal */
+    NE,  /* not equal */
+    L,   /* less, */
+    LE,  /* less or equal */
+    G,   /* greater */
+    GE,  /* greater or equal */
+
+    /* unsigned */
+    A,   /* above */
+    AE,  /* above or equal */
+    B,   /* below */
+    BE,  /* below or equal */
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
