@@ -17,6 +17,16 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum IRNode {
+    Program(IRProgram),
+    Function(IRFunction),
+    Instructions(Vec<IRInstruction>),
+    Value(IRValue),
+    StaticVariable(IRStaticVariable),
+    StaticConstant(IRStaticConstant),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct IRProgram {
     pub functions: Vec<IRNode>,
     pub static_vars: Vec<IRNode>,
@@ -35,6 +45,14 @@ pub struct IRStaticConstant {
     pub name: String,
     pub _type: Type,
     pub init: StaticInit,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IRStaticVariable {
+    pub name: String,
+    pub _type: Type,
+    pub init: Vec<StaticInit>,
+    pub global: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -163,6 +181,360 @@ enum ExpResult {
     SubObject { base: String, offset: usize },
 }
 
+pub trait Irfy {
+    fn irfy(&self) -> Option<IRNode>;
+}
+
+impl Irfy for Statement {
+    fn irfy(&self) -> Option<IRNode> {
+        match self {
+            Statement::Return(ret_stmt) => ret_stmt.irfy(),
+            Statement::Expression(expr_stmt) => expr_stmt.irfy(),
+            Statement::If(if_stmt) => if_stmt.irfy(),
+            Statement::Compound(block_stmt) => block_stmt.irfy(),
+            Statement::Break(break_stmt) => break_stmt.irfy(),
+            Statement::Continue(continue_stmt) => continue_stmt.irfy(),
+            Statement::While(while_stmt) => while_stmt.irfy(),
+            Statement::DoWhile(do_while_stmt) => do_while_stmt.irfy(),
+            Statement::For(for_stmt) => for_stmt.irfy(),
+            Statement::Null => None,
+        }
+    }
+}
+
+impl Irfy for Program {
+    fn irfy(&self) -> Option<IRNode> {
+        let mut instructions = vec![];
+
+        for block_item in &self.block_items {
+            match block_item {
+                BlockItem::Declaration(decl) => match decl {
+                    Declaration::Function(func_decl) => {
+                        if let Some(ir_func) = func_decl.irfy() {
+                            instructions.push(ir_func);
+                        }
+                    }
+                    
+                    Declaration::Variable(var_decl) => {
+                        if var_decl.is_global {
+                            continue;
+                        }
+
+                        if !var_decl.is_global && var_decl.storage_class.is_some() {
+                            continue;
+                        }
+                    }
+                    
+                    _ => {}
+                },
+
+                BlockItem::Statement(stmt) => {
+                    if let Some(ir_stmt) = stmt.irfy() {
+                        instructions.push(ir_stmt);
+                    }
+                }
+            }
+        }
+
+        Some(IRNode::Program(IRProgram {
+            functions: instructions,
+            static_vars: vec![],
+        }))
+    }
+}
+
+impl Irfy for BlockStatement {
+    fn irfy(&self) -> Option<IRNode> {
+        let mut instructions = vec![];
+
+        for stmt in &self.stmts {
+            match stmt {
+                BlockItem::Declaration(decl) => match decl {
+                    Declaration::Variable(var_decl) => {
+                        if !var_decl.is_global && var_decl.storage_class.is_some() {
+                            continue;
+                        } else {
+                            instructions
+                                .extend::<Vec<IRInstruction>>(var_decl.irfy().unwrap().into());
+                        }
+                    }
+                    
+                    Declaration::Function(_func_decl) => {}
+                    
+                    Declaration::Struct(_) => {}
+                },
+
+                BlockItem::Statement(stmt) => {
+                    if let Some(ir_stmt) = stmt.irfy() {
+                        instructions.extend::<Vec<IRInstruction>>(ir_stmt.into());
+                    }
+                }
+            }
+        }
+
+        Some(IRNode::Instructions(instructions))
+    }
+}
+
+impl Irfy for IfStatement {
+    fn irfy(&self) -> Option<IRNode> {
+        let mut instructions = vec![];
+
+        let tmp = make_temporary();
+
+        let else_label = format!("Else.{}", tmp);
+        let end_label = format!("End.{}", tmp);
+
+        let condition = emit_tacky_and_convert(&self.condition, &mut instructions);
+
+        if self.else_branch.is_none() {
+            instructions.push(IRInstruction::JumpIfZero {
+                condition,
+                target: end_label.clone(),
+            });
+
+            if let Some(then_branch) = self.then_branch.irfy() {
+                instructions.extend::<Vec<IRInstruction>>(then_branch.into());
+            }
+
+            instructions.push(IRInstruction::Label(end_label));
+        } else {
+            instructions.push(IRInstruction::JumpIfZero {
+                condition,
+                target: else_label.clone(),
+            });
+
+            if let Some(then_branch) = self.then_branch.irfy() {
+                instructions.extend::<Vec<IRInstruction>>(then_branch.into());
+            }
+
+            instructions.push(IRInstruction::Jump(end_label.clone()));
+
+            instructions.push(IRInstruction::Label(else_label.clone()));
+
+            if let Some(else_branch) = &*self.else_branch {
+                if let Some(else_instrs) = else_branch.irfy() {
+                    instructions.extend::<Vec<IRInstruction>>(else_instrs.into());
+                }
+            }
+
+            instructions.push(IRInstruction::Label(end_label));
+        }
+
+        Some(IRNode::Instructions(instructions))
+    }
+}
+
+impl Irfy for BreakStatement {
+    fn irfy(&self) -> Option<IRNode> {
+        Some(IRNode::Instructions(vec![IRInstruction::Jump(format!(
+            "{}.break",
+            self.label.clone()
+        ))]))
+    }
+}
+
+impl Irfy for ContinueStatement {
+    fn irfy(&self) -> Option<IRNode> {
+        Some(IRNode::Instructions(vec![IRInstruction::Jump(format!(
+            "{}.continue",
+            self.label.clone()
+        ))]))
+    }
+}
+
+impl Irfy for DoWhileStatement {
+    fn irfy(&self) -> Option<IRNode> {
+        let mut instructions = vec![];
+
+        let start_label = self.label.clone();
+        let continue_label = format!("{}.continue", self.label);
+        let break_label = format!("{}.break", self.label);
+
+        instructions.push(IRInstruction::Label(start_label.clone()));
+
+        if let Some(body) = self.body.irfy() {
+            instructions.extend::<Vec<IRInstruction>>(body.into());
+        }
+
+        instructions.push(IRInstruction::Label(continue_label.clone()));
+
+        let condition = emit_tacky_and_convert(&self.condition, &mut instructions);
+
+        instructions.push(IRInstruction::JumpIfNotZero {
+            condition,
+            target: start_label.clone(),
+        });
+
+        instructions.push(IRInstruction::Label(break_label.clone()));
+
+        Some(IRNode::Instructions(instructions))
+    }
+}
+
+impl Irfy for WhileStatement {
+    fn irfy(&self) -> Option<IRNode> {
+        let mut instructions = vec![];
+
+        let continue_label = format!("{}.continue", self.label);
+        let break_label = format!("{}.break", self.label);
+
+        instructions.push(IRInstruction::Label(continue_label.clone()));
+
+        let condition = emit_tacky_and_convert(&self.condition, &mut instructions);
+
+        instructions.push(IRInstruction::JumpIfZero {
+            condition,
+            target: break_label.clone(),
+        });
+
+        instructions.extend::<Vec<IRInstruction>>(self.body.irfy().unwrap().into());
+
+        instructions.push(IRInstruction::Jump(continue_label.clone()));
+
+        instructions.push(IRInstruction::Label(break_label.clone()));
+
+        Some(IRNode::Instructions(instructions))
+    }
+}
+
+impl Irfy for ForStatement {
+    fn irfy(&self) -> Option<IRNode> {
+        let mut instructions = vec![];
+
+        let start_label = format!("{}.start", self.label);
+        let break_label = format!("{}.break", self.label);
+        let continue_label = format!("{}.continue", self.label);
+
+        instructions.extend::<Vec<IRInstruction>>(self.init.irfy().unwrap().into());
+
+        instructions.push(IRInstruction::Label(start_label.clone()));
+
+        if self.condition.is_some() {
+            let condition =
+                emit_tacky_and_convert(self.condition.as_ref().unwrap(), &mut instructions);
+            instructions.push(IRInstruction::JumpIfZero {
+                condition,
+                target: break_label.clone(),
+            });
+        }
+
+        instructions.extend::<Vec<IRInstruction>>(self.body.irfy().unwrap().into());
+
+        instructions.push(IRInstruction::Label(continue_label.clone()));
+
+        if self.post.is_some() {
+            emit_tacky(self.post.as_ref().unwrap(), &mut instructions);
+        }
+
+        instructions.push(IRInstruction::Jump(start_label.clone()));
+
+        instructions.push(IRInstruction::Label(break_label.clone()));
+
+        Some(IRNode::Instructions(instructions))
+    }
+}
+
+impl Irfy for ForInit {
+    fn irfy(&self) -> Option<IRNode> {
+        match self {
+            ForInit::Expression(expr) => {
+                let mut instructions = vec![];
+                if expr.is_some() {
+                    let _ = emit_tacky(expr.as_ref().unwrap(), &mut instructions);
+                }
+                Some(IRNode::Instructions(instructions))
+            }
+            ForInit::Declaration(decl) => decl.irfy(),
+        }
+    }
+}
+
+impl Irfy for ReturnStatement {
+    fn irfy(&self) -> Option<IRNode> {
+        let mut instructions = vec![];
+        let result = optionally_emit_tacky_and_convert(&self.expr, &mut instructions);
+        instructions.push(IRInstruction::Ret(result));
+        Some(IRNode::Instructions(instructions))
+    }
+}
+
+impl Irfy for ExpressionStatement {
+    fn irfy(&self) -> Option<IRNode> {
+        let mut instructions = vec![];
+        let _ = emit_tacky(&self.expr, &mut instructions);
+        Some(IRNode::Instructions(instructions))
+    }
+}
+
+impl Irfy for BlockItem {
+    fn irfy(&self) -> Option<IRNode> {
+        match self {
+            BlockItem::Declaration(decl) => match decl {
+                Declaration::Function(func) => func.irfy(),
+                Declaration::Variable(var) => var.irfy(),
+                _ => todo!(),
+            },
+            BlockItem::Statement(stmt) => stmt.irfy(),
+        }
+    }
+}
+
+impl Irfy for FunctionDeclaration {
+    fn irfy(&self) -> Option<IRNode> {
+        let mut instructions = vec![];
+
+        if self.body.is_none() {
+            return None;
+        }
+
+        for stmt in self.body.iter() {
+            instructions.extend::<Vec<IRInstruction>>(stmt.irfy().unwrap().into());
+        }
+
+        instructions.push(IRInstruction::Ret(Some(IRValue::Constant(Const::Int(0)))));
+
+        Some(IRNode::Function(IRFunction {
+            name: self.name.clone(),
+            params: self.params.clone(),
+            body: instructions,
+            global: self.is_global,
+        }))
+    }
+}
+
+impl Irfy for VariableDeclaration {
+    fn irfy(&self) -> Option<IRNode> {
+        let mut instructions = vec![];
+
+        if let Some(Initializer::Single(_, Expression::String(_))) = &self.init {
+            emit_compound_init(
+                &self.name,
+                self.init.as_ref().unwrap(),
+                &mut instructions,
+                0,
+                &self._type,
+            );
+        } else if let Some(Initializer::Single(_, init)) = &self.init {
+            let result = emit_tacky_and_convert(init, &mut instructions);
+            instructions.push(IRInstruction::Copy {
+                src: result,
+                dst: IRValue::Var(self.name.clone()),
+            });
+        } else if let Some(Initializer::Compound(_, _type, _)) = &self.init {
+            emit_compound_init(
+                &self.name,
+                self.init.as_ref().unwrap(),
+                &mut instructions,
+                0,
+                &self._type,
+            );
+        }
+
+        Some(IRNode::Instructions(instructions))
+    }
+}
+
 fn emit_tacky_and_convert(e: &Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
     let result = emit_tacky(e, instructions);
     match result {
@@ -186,6 +558,13 @@ fn emit_tacky_and_convert(e: &Expression, instructions: &mut Vec<IRInstruction>)
             dst
         }
     }
+}
+
+fn optionally_emit_tacky_and_convert(
+    e: &Option<Expression>,
+    instructions: &mut Vec<IRInstruction>,
+) -> Option<IRValue> {
+    e.as_ref().map(|e| emit_tacky_and_convert(e, instructions))
 }
 
 fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult {
@@ -912,437 +1291,6 @@ fn emit_ptr_addition(
     }
 }
 
-pub fn make_tacky_variable(t: &Type) -> IRValue {
-    let var_name = format!("var.{}", make_temporary());
-    let symbol = Symbol {
-        attrs: IdentifierAttrs::LocalAttr,
-        _type: t.to_owned(),
-    };
-    SYMBOL_TABLE
-        .lock()
-        .unwrap()
-        .insert(var_name.clone(), symbol);
-    IRValue::Var(var_name)
-}
-
-pub fn make_temporary() -> usize {
-    static mut TEMPORARY: usize = 0;
-    unsafe {
-        let temporary = TEMPORARY;
-        TEMPORARY += 1;
-        temporary
-    }
-}
-
-fn get_ptr_scale(t: &Type) -> usize {
-    match t {
-        Type::Pointer(referenced) => get_size_of_type(referenced),
-        _ => unimplemented!(),
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum IRNode {
-    Program(IRProgram),
-    Function(IRFunction),
-    Instructions(Vec<IRInstruction>),
-    Value(IRValue),
-    StaticVariable(IRStaticVariable),
-    StaticConstant(IRStaticConstant),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct IRStaticVariable {
-    pub name: String,
-    pub _type: Type,
-    pub init: Vec<StaticInit>,
-    pub global: bool,
-}
-
-pub trait Irfy {
-    fn irfy(&self) -> Option<IRNode>;
-}
-
-impl Irfy for Statement {
-    fn irfy(&self) -> Option<IRNode> {
-        match self {
-            Statement::Return(ret_stmt) => ret_stmt.irfy(),
-            Statement::Expression(expr_stmt) => expr_stmt.irfy(),
-            Statement::If(if_stmt) => if_stmt.irfy(),
-            Statement::Compound(block_stmt) => block_stmt.irfy(),
-            Statement::Break(break_stmt) => break_stmt.irfy(),
-            Statement::Continue(continue_stmt) => continue_stmt.irfy(),
-            Statement::While(while_stmt) => while_stmt.irfy(),
-            Statement::DoWhile(do_while_stmt) => do_while_stmt.irfy(),
-            Statement::For(for_stmt) => for_stmt.irfy(),
-            Statement::Null => None,
-        }
-    }
-}
-
-impl Irfy for Program {
-    fn irfy(&self) -> Option<IRNode> {
-        let mut instructions = vec![];
-
-        for block_item in &self.block_items {
-            match block_item {
-                BlockItem::Declaration(decl) => match decl {
-                    Declaration::Function(func_decl) => {
-                        if let Some(ir_func) = func_decl.irfy() {
-                            instructions.push(ir_func);
-                        }
-                    }
-                    
-                    Declaration::Variable(var_decl) => {
-                        if var_decl.is_global {
-                            continue;
-                        }
-
-                        if !var_decl.is_global && var_decl.storage_class.is_some() {
-                            continue;
-                        }
-                    }
-                    
-                    _ => {}
-                },
-
-                BlockItem::Statement(stmt) => {
-                    if let Some(ir_stmt) = stmt.irfy() {
-                        instructions.push(ir_stmt);
-                    }
-                }
-            }
-        }
-
-        Some(IRNode::Program(IRProgram {
-            functions: instructions,
-            static_vars: vec![],
-        }))
-    }
-}
-
-impl Irfy for BlockStatement {
-    fn irfy(&self) -> Option<IRNode> {
-        let mut instructions = vec![];
-
-        for stmt in &self.stmts {
-            match stmt {
-                BlockItem::Declaration(decl) => match decl {
-                    Declaration::Variable(var_decl) => {
-                        if !var_decl.is_global && var_decl.storage_class.is_some() {
-                            continue;
-                        } else {
-                            instructions
-                                .extend::<Vec<IRInstruction>>(var_decl.irfy().unwrap().into());
-                        }
-                    }
-                    
-                    Declaration::Function(_func_decl) => {}
-                    
-                    Declaration::Struct(_) => {}
-                },
-                
-                BlockItem::Statement(stmt) => {
-                    if let Some(ir_stmt) = stmt.irfy() {
-                        instructions.extend::<Vec<IRInstruction>>(ir_stmt.into());
-                    }
-                }
-            }
-        }
-
-        Some(IRNode::Instructions(instructions))
-    }
-}
-
-impl Irfy for IfStatement {
-    fn irfy(&self) -> Option<IRNode> {
-        let mut instructions = vec![];
-
-        let tmp = make_temporary();
-
-        let else_label = format!("Else.{}", tmp);
-        let end_label = format!("End.{}", tmp);
-
-        let condition = emit_tacky_and_convert(&self.condition, &mut instructions);
-
-        if self.else_branch.is_none() {
-            instructions.push(IRInstruction::JumpIfZero {
-                condition,
-                target: end_label.clone(),
-            });
-
-            if let Some(then_branch) = self.then_branch.irfy() {
-                instructions.extend::<Vec<IRInstruction>>(then_branch.into());
-            }
-
-            instructions.push(IRInstruction::Label(end_label));
-        } else {
-            instructions.push(IRInstruction::JumpIfZero {
-                condition,
-                target: else_label.clone(),
-            });
-
-            if let Some(then_branch) = self.then_branch.irfy() {
-                instructions.extend::<Vec<IRInstruction>>(then_branch.into());
-            }
-
-            instructions.push(IRInstruction::Jump(end_label.clone()));
-
-            instructions.push(IRInstruction::Label(else_label.clone()));
-
-            if let Some(else_branch) = &*self.else_branch {
-                if let Some(else_instrs) = else_branch.irfy() {
-                    instructions.extend::<Vec<IRInstruction>>(else_instrs.into());
-                }
-            }
-
-            instructions.push(IRInstruction::Label(end_label));
-        }
-
-        Some(IRNode::Instructions(instructions))
-    }
-}
-
-impl Irfy for BreakStatement {
-    fn irfy(&self) -> Option<IRNode> {
-        Some(IRNode::Instructions(vec![IRInstruction::Jump(format!(
-            "{}.break",
-            self.label.clone()
-        ))]))
-    }
-}
-
-impl Irfy for ContinueStatement {
-    fn irfy(&self) -> Option<IRNode> {
-        Some(IRNode::Instructions(vec![IRInstruction::Jump(format!(
-            "{}.continue",
-            self.label.clone()
-        ))]))
-    }
-}
-
-impl Irfy for DoWhileStatement {
-    fn irfy(&self) -> Option<IRNode> {
-        let mut instructions = vec![];
-
-        let start_label = self.label.clone();
-        let continue_label = format!("{}.continue", self.label);
-        let break_label = format!("{}.break", self.label);
-
-        instructions.push(IRInstruction::Label(start_label.clone()));
-
-        if let Some(body) = self.body.irfy() {
-            instructions.extend::<Vec<IRInstruction>>(body.into());
-        }
-
-        instructions.push(IRInstruction::Label(continue_label.clone()));
-
-        let condition = emit_tacky_and_convert(&self.condition, &mut instructions);
-
-        instructions.push(IRInstruction::JumpIfNotZero {
-            condition,
-            target: start_label.clone(),
-        });
-
-        instructions.push(IRInstruction::Label(break_label.clone()));
-
-        Some(IRNode::Instructions(instructions))
-    }
-}
-
-impl Irfy for WhileStatement {
-    fn irfy(&self) -> Option<IRNode> {
-        let mut instructions = vec![];
-
-        let continue_label = format!("{}.continue", self.label);
-        let break_label = format!("{}.break", self.label);
-
-        instructions.push(IRInstruction::Label(continue_label.clone()));
-
-        let condition = emit_tacky_and_convert(&self.condition, &mut instructions);
-
-        instructions.push(IRInstruction::JumpIfZero {
-            condition,
-            target: break_label.clone(),
-        });
-
-        instructions.extend::<Vec<IRInstruction>>(self.body.irfy().unwrap().into());
-
-        instructions.push(IRInstruction::Jump(continue_label.clone()));
-
-        instructions.push(IRInstruction::Label(break_label.clone()));
-
-        Some(IRNode::Instructions(instructions))
-    }
-}
-
-impl Irfy for ForStatement {
-    fn irfy(&self) -> Option<IRNode> {
-        let mut instructions = vec![];
-
-        let start_label = format!("{}.start", self.label);
-        let break_label = format!("{}.break", self.label);
-        let continue_label = format!("{}.continue", self.label);
-
-        instructions.extend::<Vec<IRInstruction>>(self.init.irfy().unwrap().into());
-
-        instructions.push(IRInstruction::Label(start_label.clone()));
-
-        if self.condition.is_some() {
-            let condition =
-                emit_tacky_and_convert(self.condition.as_ref().unwrap(), &mut instructions);
-            instructions.push(IRInstruction::JumpIfZero {
-                condition,
-                target: break_label.clone(),
-            });
-        }
-
-        instructions.extend::<Vec<IRInstruction>>(self.body.irfy().unwrap().into());
-
-        instructions.push(IRInstruction::Label(continue_label.clone()));
-
-        if self.post.is_some() {
-            emit_tacky(self.post.as_ref().unwrap(), &mut instructions);
-        }
-
-        instructions.push(IRInstruction::Jump(start_label.clone()));
-
-        instructions.push(IRInstruction::Label(break_label.clone()));
-
-        Some(IRNode::Instructions(instructions))
-    }
-}
-
-impl Irfy for ForInit {
-    fn irfy(&self) -> Option<IRNode> {
-        match self {
-            ForInit::Expression(expr) => {
-                let mut instructions = vec![];
-                if expr.is_some() {
-                    let _ = emit_tacky(expr.as_ref().unwrap(), &mut instructions);
-                }
-                Some(IRNode::Instructions(instructions))
-            }
-            ForInit::Declaration(decl) => decl.irfy(),
-        }
-    }
-}
-
-impl Irfy for ReturnStatement {
-    fn irfy(&self) -> Option<IRNode> {
-        let mut instructions = vec![];
-        let result = optionally_emit_tacky_and_convert(&self.expr, &mut instructions);
-        instructions.push(IRInstruction::Ret(result));
-        Some(IRNode::Instructions(instructions))
-    }
-}
-
-impl Irfy for ExpressionStatement {
-    fn irfy(&self) -> Option<IRNode> {
-        let mut instructions = vec![];
-        let _ = emit_tacky(&self.expr, &mut instructions);
-        Some(IRNode::Instructions(instructions))
-    }
-}
-
-impl Irfy for BlockItem {
-    fn irfy(&self) -> Option<IRNode> {
-        match self {
-            BlockItem::Declaration(decl) => match decl {
-                Declaration::Function(func) => func.irfy(),
-                Declaration::Variable(var) => var.irfy(),
-                _ => todo!(),
-            },
-            BlockItem::Statement(stmt) => stmt.irfy(),
-        }
-    }
-}
-
-impl Irfy for FunctionDeclaration {
-    fn irfy(&self) -> Option<IRNode> {
-        let mut instructions = vec![];
-
-        if self.body.is_none() {
-            return None;
-        }
-
-        for stmt in self.body.iter() {
-            instructions.extend::<Vec<IRInstruction>>(stmt.irfy().unwrap().into());
-        }
-
-        instructions.push(IRInstruction::Ret(Some(IRValue::Constant(Const::Int(0)))));
-
-        Some(IRNode::Function(IRFunction {
-            name: self.name.clone(),
-            params: self.params.clone(),
-            body: instructions,
-            global: self.is_global,
-        }))
-    }
-}
-
-impl Irfy for VariableDeclaration {
-    fn irfy(&self) -> Option<IRNode> {
-        let mut instructions = vec![];
-
-        if let Some(Initializer::Single(_, Expression::String(_))) = &self.init {
-            emit_compound_init(
-                &self.name,
-                self.init.as_ref().unwrap(),
-                &mut instructions,
-                0,
-                &self._type,
-            );
-        } else if let Some(Initializer::Single(_, init)) = &self.init {
-            let result = emit_tacky_and_convert(init, &mut instructions);
-            instructions.push(IRInstruction::Copy {
-                src: result,
-                dst: IRValue::Var(self.name.clone()),
-            });
-        } else if let Some(Initializer::Compound(_, _type, _)) = &self.init {
-            emit_compound_init(
-                &self.name,
-                self.init.as_ref().unwrap(),
-                &mut instructions,
-                0,
-                &self._type,
-            );
-        }
-
-        Some(IRNode::Instructions(instructions))
-    }
-}
-
-impl From<IRNode> for IRProgram {
-    fn from(node: IRNode) -> Self {
-        match node {
-            IRNode::Program(prog) => prog,
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl From<IRNode> for IRFunction {
-    fn from(node: IRNode) -> Self {
-        match node {
-            IRNode::Function(func) => func,
-            _ => {
-                unreachable!()
-            }
-        }
-    }
-}
-
-impl From<IRNode> for Vec<IRInstruction> {
-    fn from(node: IRNode) -> Self {
-        match node {
-            IRNode::Instructions(instrs) => instrs,
-            IRNode::StaticVariable(_) => vec![],
-            _ => unreachable!(),
-        }
-    }
-}
-
 pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
     let mut tacky_defs = vec![];
     for (name, entry) in SYMBOL_TABLE.lock().unwrap().iter() {
@@ -1401,11 +1349,63 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
     tacky_defs
 }
 
-fn optionally_emit_tacky_and_convert(
-    e: &Option<Expression>,
-    instructions: &mut Vec<IRInstruction>,
-) -> Option<IRValue> {
-    e.as_ref().map(|e| emit_tacky_and_convert(e, instructions))
+pub fn make_tacky_variable(t: &Type) -> IRValue {
+    let var_name = format!("var.{}", make_temporary());
+    let symbol = Symbol {
+        attrs: IdentifierAttrs::LocalAttr,
+        _type: t.to_owned(),
+    };
+    SYMBOL_TABLE
+        .lock()
+        .unwrap()
+        .insert(var_name.clone(), symbol);
+    IRValue::Var(var_name)
+}
+
+pub fn make_temporary() -> usize {
+    static mut TEMPORARY: usize = 0;
+    unsafe {
+        let temporary = TEMPORARY;
+        TEMPORARY += 1;
+        temporary
+    }
+}
+
+fn get_ptr_scale(t: &Type) -> usize {
+    match t {
+        Type::Pointer(referenced) => get_size_of_type(referenced),
+        _ => unimplemented!(),
+    }
+}
+
+impl From<IRNode> for IRProgram {
+    fn from(node: IRNode) -> Self {
+        match node {
+            IRNode::Program(prog) => prog,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<IRNode> for IRFunction {
+    fn from(node: IRNode) -> Self {
+        match node {
+            IRNode::Function(func) => func,
+            _ => {
+                unreachable!()
+            }
+        }
+    }
+}
+
+impl From<IRNode> for Vec<IRInstruction> {
+    fn from(node: IRNode) -> Self {
+        match node {
+            IRNode::Instructions(instrs) => instrs,
+            IRNode::StaticVariable(_) => vec![],
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1432,6 +1432,62 @@ impl Optimize for IRProgram {
         IRProgram {
             functions,
             static_vars: self.static_vars.clone(),
+        }
+    }
+}
+
+impl Optimize for IRFunction {
+    fn optimize(&mut self, enabled_optimizations: Vec<Optimization>) -> Self {
+        use crate::optimizer::{
+            constant_folding::constant_folding, copy_propagation::copy_propagation,
+            dead_store_elimination::dead_store_elimination,
+            unreachable_code_elimination::unreachable_code_elimination,
+        };
+
+        if self.body.is_empty() {
+            return self.clone();
+        }
+
+        loop {
+            let aliased_vars = address_taken_analysis(&self.body);
+
+            let post_constant_folding =
+                if enabled_optimizations.contains(&Optimization::ConstantFolding) {
+                    constant_folding(&self.body)
+                } else {
+                    self.body.clone()
+                };
+
+            let mut cfg: cfg::CFG<(), IRInstruction> =
+                cfg::CFG::<(), IRInstruction>::instructions_to_cfg(
+                    "spam".to_string(),
+                    post_constant_folding,
+                );
+
+            if enabled_optimizations.contains(&Optimization::UnreachableCodeElimination) {
+                cfg = unreachable_code_elimination(&mut cfg).to_owned();
+            }
+
+            if enabled_optimizations.contains(&Optimization::CopyPropagation) {
+                cfg = copy_propagation(&aliased_vars, cfg);
+            }
+
+            if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
+                cfg = dead_store_elimination(&aliased_vars, cfg);
+            }
+
+            let optimized_function_body = cfg.cfg_to_instructions();
+
+            if optimized_function_body == self.body || optimized_function_body.is_empty() {
+                return IRFunction {
+                    name: self.name.clone(),
+                    params: self.params.clone(),
+                    body: optimized_function_body,
+                    global: self.global,
+                };
+            }
+
+            self.body = optimized_function_body;
         }
     }
 }
@@ -1489,62 +1545,6 @@ impl Instr for IRInstruction {
 
     fn is_label(&self) -> bool {
         matches!(self, IRInstruction::Label(_))
-    }
-}
-
-impl Optimize for IRFunction {
-    fn optimize(&mut self, enabled_optimizations: Vec<Optimization>) -> Self {
-        use crate::optimizer::{
-            constant_folding::constant_folding, copy_propagation::copy_propagation,
-            dead_store_elimination::dead_store_elimination,
-            unreachable_code_elimination::unreachable_code_elimination,
-        };
-
-        if self.body.is_empty() {
-            return self.clone();
-        }
-
-        loop {
-            let aliased_vars = address_taken_analysis(&self.body);
-
-            let post_constant_folding =
-                if enabled_optimizations.contains(&Optimization::ConstantFolding) {
-                    constant_folding(&self.body)
-                } else {
-                    self.body.clone()
-                };
-
-            let mut cfg: cfg::CFG<(), IRInstruction> =
-                cfg::CFG::<(), IRInstruction>::instructions_to_cfg(
-                    "spam".to_string(),
-                    post_constant_folding,
-                );
-
-            if enabled_optimizations.contains(&Optimization::UnreachableCodeElimination) {
-                cfg = unreachable_code_elimination(&mut cfg).to_owned();
-            }
-
-            if enabled_optimizations.contains(&Optimization::CopyPropagation) {
-                cfg = copy_propagation(&aliased_vars, cfg);
-            }
-
-            if enabled_optimizations.contains(&Optimization::DeadStoreElimination) {
-                cfg = dead_store_elimination(&aliased_vars, cfg);
-            }
-
-            let optimized_function_body = cfg.cfg_to_instructions();
-
-            if optimized_function_body == self.body || optimized_function_body.is_empty() {
-                return IRFunction {
-                    name: self.name.clone(),
-                    params: self.params.clone(),
-                    body: optimized_function_body,
-                    global: self.global,
-                };
-            }
-
-            self.body = optimized_function_body;
-        }
     }
 }
 
