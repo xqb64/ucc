@@ -680,6 +680,7 @@ impl Typecheck for Statement {
 
                 Ok(self)
             }
+
             Statement::Compound(BlockStatement { stmts }) => {
                 for stmt in stmts {
                     stmt.typecheck()?;
@@ -687,6 +688,7 @@ impl Typecheck for Statement {
 
                 Ok(self)
             }
+
             Statement::If(IfStatement {
                 condition,
                 then_branch,
@@ -699,6 +701,7 @@ impl Typecheck for Statement {
 
                 Ok(self)
             }
+
             Statement::While(WhileStatement {
                 condition,
                 body,
@@ -710,6 +713,7 @@ impl Typecheck for Statement {
 
                 Ok(self)
             }
+
             Statement::DoWhile(DoWhileStatement {
                 condition,
                 body,
@@ -720,6 +724,7 @@ impl Typecheck for Statement {
 
                 Ok(self)
             }
+
             Statement::For(ForStatement {
                 init,
                 condition,
@@ -741,6 +746,7 @@ impl Typecheck for Statement {
 
                 Ok(self)
             }
+
             Statement::Return(ReturnStatement {
                 expr: Some(expression),
                 target_type,
@@ -766,6 +772,7 @@ impl Typecheck for Statement {
                 }
                 Ok(self)
             }
+
             Statement::Return(ReturnStatement {
                 expr: None,
                 target_type,
@@ -777,6 +784,7 @@ impl Typecheck for Statement {
                     bail!("Return statement with no expression in non-void function");
                 }
             }
+            
             Statement::Break(_) | Statement::Continue(_) | Statement::Null => Ok(self),
         }
     }
