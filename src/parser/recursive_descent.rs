@@ -541,9 +541,9 @@ impl Parser {
                 } else if sorted_specifiers.contains(&Token::Unsigned)
                     && sorted_specifiers.contains(&Token::Long)
                 {
-                    Ok(Type::Ulong)
+                    Ok(Type::ULong)
                 } else if sorted_specifiers.contains(&Token::Unsigned) {
-                    Ok(Type::Uint)
+                    Ok(Type::UInt)
                 } else if sorted_specifiers.contains(&Token::Long) {
                     Ok(Type::Long)
                 } else {

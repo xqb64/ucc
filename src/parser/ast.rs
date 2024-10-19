@@ -38,8 +38,8 @@ pub struct VariableDeclaration {
 pub enum Type {
     Int,
     Long,
-    Uint,
-    Ulong,
+    UInt,
+    ULong,
     Double,
     Func { params: Vec<Type>, ret: Box<Type> },
     Pointer(Box<Type>),

@@ -88,8 +88,8 @@ impl Typecheck for Declaration {
 fn alignment(t: &Type) -> usize {
     match t {
         Type::Char | Type::UChar | Type::SChar => 1,
-        Type::Int | Type::Uint => 4,
-        Type::Double | Type::Long | Type::Ulong | Type::Pointer(_) => 8,
+        Type::Int | Type::UInt => 4,
+        Type::Double | Type::Long | Type::ULong | Type::Pointer(_) => 8,
         Type::Struct { tag } => TYPE_TABLE.lock().unwrap()[tag].alignment,
         Type::Array { element, size: _ } => alignment(element),
         Type::Dummy | Type::Void | Type::Func { .. } => unreachable!(),
@@ -362,9 +362,9 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
     match konst {
         Const::Int(i) => match t {
             Type::Int => StaticInit::Int(*i),
-            Type::Uint => StaticInit::UInt(*i as u32),
+            Type::UInt => StaticInit::UInt(*i as u32),
             Type::Long => StaticInit::Long(*i as i64),
-            Type::Ulong => StaticInit::ULong(*i as u64),
+            Type::ULong => StaticInit::ULong(*i as u64),
             Type::Double => StaticInit::Double(*i as f64),
             Type::Pointer(_) => StaticInit::ULong(*i as u64),
             Type::Char | Type::SChar => StaticInit::Char(*i),
@@ -373,9 +373,9 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
         },
         Const::Long(l) => match t {
             Type::Int => StaticInit::Int(*l as i32),
-            Type::Uint => StaticInit::UInt(*l as u32),
+            Type::UInt => StaticInit::UInt(*l as u32),
             Type::Long => StaticInit::Long(*l),
-            Type::Ulong => StaticInit::ULong(*l as u64),
+            Type::ULong => StaticInit::ULong(*l as u64),
             Type::Double => StaticInit::Double(*l as f64),
             Type::Pointer(_) => StaticInit::ULong(*l as u64),
             Type::Char | Type::SChar => StaticInit::Char(*l as i32),
@@ -384,9 +384,9 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
         },
         Const::UInt(u) => match t {
             Type::Int => StaticInit::Int(*u as i32),
-            Type::Uint => StaticInit::UInt(*u),
+            Type::UInt => StaticInit::UInt(*u),
             Type::Long => StaticInit::Long(*u as i64),
-            Type::Ulong => StaticInit::ULong(*u as u64),
+            Type::ULong => StaticInit::ULong(*u as u64),
             Type::Double => StaticInit::Double(*u as f64),
             Type::Pointer(_) => StaticInit::ULong(*u as u64),
             Type::Char | Type::SChar => StaticInit::Char(*u as i32),
@@ -395,9 +395,9 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
         },
         Const::ULong(ul) => match t {
             Type::Int => StaticInit::Int(*ul as i32),
-            Type::Uint => StaticInit::UInt(*ul as u32),
+            Type::UInt => StaticInit::UInt(*ul as u32),
             Type::Long => StaticInit::Long(*ul as i64),
-            Type::Ulong => StaticInit::ULong(*ul),
+            Type::ULong => StaticInit::ULong(*ul),
             Type::Double => StaticInit::Double(*ul as f64),
             Type::Pointer(_) => StaticInit::ULong(*ul),
             Type::Char | Type::SChar => StaticInit::Char(*ul as i32),
@@ -406,9 +406,9 @@ fn const2type(konst: &Const, t: &Type) -> StaticInit {
         },
         Const::Double(d) => match t {
             Type::Int => StaticInit::Int(*d as i32),
-            Type::Uint => StaticInit::UInt(*d as u32),
+            Type::UInt => StaticInit::UInt(*d as u32),
             Type::Long => StaticInit::Long(*d as i64),
-            Type::Ulong => StaticInit::ULong(*d as u64),
+            Type::ULong => StaticInit::ULong(*d as u64),
             Type::Double => StaticInit::Double(*d),
             Type::Pointer(_) => StaticInit::ULong(*d as u64),
             Type::Char | Type::SChar => StaticInit::Char(*d as i32),
@@ -907,11 +907,11 @@ fn zero_initializer(t: &Type) -> Initializer {
                 _type: Type::Int,
             }),
         ),
-        Type::Uint => Initializer::Single(
+        Type::UInt => Initializer::Single(
             String::new(),
             Expression::Constant(ConstantExpression {
                 value: Const::UInt(0),
-                _type: Type::Uint,
+                _type: Type::UInt,
             }),
         ),
         Type::Long => Initializer::Single(
@@ -921,11 +921,11 @@ fn zero_initializer(t: &Type) -> Initializer {
                 _type: Type::Long,
             }),
         ),
-        Type::Ulong => Initializer::Single(
+        Type::ULong => Initializer::Single(
             String::new(),
             Expression::Constant(ConstantExpression {
                 value: Const::ULong(0),
-                _type: Type::Ulong,
+                _type: Type::ULong,
             }),
         ),
         Type::Double => Initializer::Single(
@@ -1429,11 +1429,11 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             })),
             Const::UInt(u) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::UInt(*u),
-                _type: Type::Uint,
+                _type: Type::UInt,
             })),
             Const::ULong(ul) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::ULong(*ul),
-                _type: Type::Ulong,
+                _type: Type::ULong,
             })),
             Const::Double(d) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::Double(*d),
@@ -1445,7 +1445,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             })),
             Const::UChar(uc) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::UChar(*uc),
-                _type: Type::Uint,
+                _type: Type::UInt,
             })),
         },
 
@@ -1553,7 +1553,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }
             Ok(Expression::SizeofT(SizeofTExpression {
                 t: t.clone(),
-                _type: Type::Ulong,
+                _type: Type::ULong,
             }))
         }
 
@@ -1564,7 +1564,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }
             Ok(Expression::Sizeof(SizeofExpression {
                 expr: Box::new(typed_inner),
-                _type: Type::Ulong,
+                _type: Type::ULong,
             }))
         }
 
@@ -1686,9 +1686,9 @@ fn is_arithmetic(t: &Type) -> bool {
     matches!(
         t,
         Type::Int
-            | Type::Uint
+            | Type::UInt
             | Type::Long
-            | Type::Ulong
+            | Type::ULong
             | Type::Double
             | Type::Char
             | Type::UChar
@@ -1699,7 +1699,7 @@ fn is_arithmetic(t: &Type) -> bool {
 pub fn is_integer_type(t: &Type) -> bool {
     matches!(
         t,
-        Type::Int | Type::Uint | Type::Long | Type::Ulong | Type::Char | Type::UChar | Type::SChar
+        Type::Int | Type::UInt | Type::Long | Type::ULong | Type::Char | Type::UChar | Type::SChar
     )
 }
 
@@ -1781,9 +1781,9 @@ pub fn get_size_of_type(t: &Type) -> usize {
     match t {
         Type::Char | Type::UChar | Type::SChar => 1,
         Type::Int => 4,
-        Type::Uint => 4,
+        Type::UInt => 4,
         Type::Long => 8,
-        Type::Ulong => 8,
+        Type::ULong => 8,
         Type::Double => 8,
         Type::Pointer(_) => 8,
         Type::Array { element, size } => get_size_of_type(element) * size,
@@ -1800,9 +1800,9 @@ pub fn get_size_of_type(t: &Type) -> usize {
 pub fn get_signedness(t: &Type) -> bool {
     match t {
         Type::Int => true,
-        Type::Uint => false,
+        Type::UInt => false,
         Type::Long => true,
-        Type::Ulong => false,
+        Type::ULong => false,
         Type::Pointer(_) => false,
         Type::Char | Type::SChar => true,
         Type::UChar => false,

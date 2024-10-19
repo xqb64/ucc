@@ -278,8 +278,8 @@ fn get_alignment_of_type(t: &Type) -> usize {
         Type::Char | Type::UChar | Type::SChar => 1,
         Type::Int => 4,
         Type::Long => 8,
-        Type::Uint => 4,
-        Type::Ulong => 8,
+        Type::UInt => 4,
+        Type::ULong => 8,
         Type::Double => 8,
         Type::Pointer(_) => 8,
         Type::Array { element, size } => {
@@ -2159,8 +2159,8 @@ pub fn tacky_type(value: &IRValue) -> Type {
             Const::UChar(_) => Type::UChar,
             Const::Int(_) => Type::Int,
             Const::Long(_) => Type::Long,
-            Const::UInt(_) => Type::Uint,
-            Const::ULong(_) => Type::Ulong,
+            Const::UInt(_) => Type::UInt,
+            Const::ULong(_) => Type::ULong,
             Const::Double(_) => Type::Double,
         },
         IRValue::Var(var_name) => {
@@ -2298,8 +2298,8 @@ fn classify_return_helper(
 fn convert_type(t: &Type) -> AsmType {
     match t {
         Type::Char | Type::UChar | Type::SChar => AsmType::Byte,
-        Type::Int | Type::Uint => AsmType::Longword,
-        Type::Long | Type::Ulong => AsmType::Quadword,
+        Type::Int | Type::UInt => AsmType::Longword,
+        Type::Long | Type::ULong => AsmType::Quadword,
         Type::Double => AsmType::Double,
         Type::Array { element, size } => AsmType::Bytearray {
             size: get_size_of_type(element) * size,

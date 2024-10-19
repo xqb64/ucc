@@ -191,8 +191,8 @@ fn const_convert(konst: &Const, dst_type: &Type) -> Const {
     match dst_type {
         Type::Int => convert_const!(konst, Const::Int, i32),
         Type::Long => convert_const!(konst, Const::Long, i64),
-        Type::Uint => convert_const!(konst, Const::UInt, u32),
-        Type::Ulong => convert_const!(konst, Const::ULong, u64),
+        Type::UInt => convert_const!(konst, Const::UInt, u32),
+        Type::ULong => convert_const!(konst, Const::ULong, u64),
         Type::Double => convert_const!(konst, Const::Double, f64),
         Type::Char => convert_const!(konst, Const::Char, i8),
         Type::UChar => convert_const!(konst, Const::UChar, u8),

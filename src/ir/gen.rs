@@ -1340,8 +1340,8 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                             Type::UChar => StaticInit::UChar(0),
                             Type::Int => StaticInit::Int(0),
                             Type::Long => StaticInit::Long(0),
-                            Type::Ulong => StaticInit::ULong(0),
-                            Type::Uint => StaticInit::UInt(0),
+                            Type::ULong => StaticInit::ULong(0),
+                            Type::UInt => StaticInit::UInt(0),
                             Type::Double => StaticInit::Double(0.0),
                             Type::Pointer(_) => StaticInit::ULong(0),
                             Type::Array { element, size } => {
