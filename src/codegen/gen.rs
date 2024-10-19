@@ -154,6 +154,23 @@ pub enum AsmInstruction {
         operand: AsmOperand,
     },
     
+    /* Computes the effective address (without a memory access) of 'src' and
+     * stores it in 'dst'.
+     * 
+     * For example:
+     * 
+     * movl $5, %eax
+     * movl $3, %ecx
+     * leal 8(%eax, %ecx, 4), %ebx
+     * 
+     * 8: displacement
+     * %eax: base
+     * %ecx: index
+     * 4: scale factor
+     * 
+     * ...so, this is:
+     * 
+     * EBX = EAX + ECX*4 + 8 */
     Lea {
         src: AsmOperand,
         dst: AsmOperand,
