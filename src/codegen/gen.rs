@@ -1821,7 +1821,7 @@ fn classify_params_helper(
     let mut stack_args = vec![];
 
     for (tacky_t, operand) in typed_asm_vals {
-        let typed_operand = (convert_type(tacky_t), operand.clone());
+        let typed_operand = (type2asmtype(tacky_t), operand.clone());
 
         match tacky_t {
             Type::Struct { .. } => {
@@ -1937,7 +1937,7 @@ fn get_asm_type(value: &IRValue) -> AsmType {
                 .unwrap()
                 ._type;
 
-            convert_type(&_type)
+            type2asmtype(&_type)
         }
     }
 }
@@ -2056,7 +2056,7 @@ pub fn build_asm_symbol_table() {
                 initial_value: _, ..
             } => {
                 if is_complete(&symbol._type) {
-                    let asm_type = convert_type(&symbol._type);
+                    let asm_type = type2asmtype(&symbol._type);
                     AsmSymtabEntry::Object {
                         _type: asm_type,
                         is_static: true,
@@ -2072,7 +2072,7 @@ pub fn build_asm_symbol_table() {
             }
 
             IdentifierAttrs::LocalAttr => {
-                let asm_type = convert_type(&symbol._type);
+                let asm_type = type2asmtype(&symbol._type);
                 AsmSymtabEntry::Object {
                     _type: asm_type,
                     is_static: false,
@@ -2081,7 +2081,7 @@ pub fn build_asm_symbol_table() {
             }
 
             IdentifierAttrs::ConstantAttr(_) => {
-                let asm_type = convert_type(&symbol._type);
+                let asm_type = type2asmtype(&symbol._type);
                 AsmSymtabEntry::Object {
                     _type: asm_type,
                     is_static: false,
@@ -2353,13 +2353,13 @@ fn classify_return_helper(
         Type::Double => (vec![], vec![asm_retval.clone()], false),
 
         t => {
-            let typed_operand = (convert_type(t), asm_retval.clone());
+            let typed_operand = (type2asmtype(t), asm_retval.clone());
             (vec![typed_operand], vec![], false)
         }
     }
 }
 
-fn convert_type(t: &Type) -> AsmType {
+fn type2asmtype(t: &Type) -> AsmType {
     match t {
         Type::Char | Type::UChar | Type::SChar => AsmType::Byte,
         Type::Int | Type::UInt => AsmType::Longword,
