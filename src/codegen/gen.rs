@@ -2250,7 +2250,10 @@ fn copy_bytes_from_reg(
     byte_count: usize,
     instructions: &mut Vec<AsmInstruction>,
 ) {
+    /* Start from the first byte (zero-based) index. */
     let mut offset = 0;
+
+    /* Copy each byte from the source register to the destination operand. */
     while offset < byte_count {
         let dst_byte = add_offset(offset, dst_op);
         instructions.push(AsmInstruction::Mov {
@@ -2258,6 +2261,9 @@ fn copy_bytes_from_reg(
             src: AsmOperand::Register(*src_reg),
             dst: dst_byte,
         });
+
+        /* If there are more bytes left to copy, shift the source register right by 8 bits
+         * in order to make space for the next byte. */
         if offset < byte_count - 1 {
             instructions.push(AsmInstruction::Binary {
                 asm_type: AsmType::Quadword,
@@ -2266,6 +2272,8 @@ fn copy_bytes_from_reg(
                 rhs: AsmOperand::Register(*src_reg),
             });
         }
+
+        /* Move on to the next byte. */
         offset += 1;
     }
 }
@@ -2276,14 +2284,22 @@ fn copy_bytes_to_reg(
     byte_count: usize,
     instructions: &mut Vec<AsmInstruction>,
 ) {
+    /* Start with the last byte (zero-based index). */
     let mut offset = byte_count as isize - 1;
+
+    /* Copy each byte from the source operand to the destination register, in reverse order. */
     while offset >= 0 {
+
+        /* Move the byte from source operand to destination register. */
         let src_byte = add_offset(offset as usize, &src_op);
         instructions.push(AsmInstruction::Mov {
             asm_type: AsmType::Byte,
             src: src_byte,
             dst: AsmOperand::Register(dst_reg),
         });
+
+        /* If there are more bytes left to move, shift the destination register left by 8 bits
+         * in order to make room for the next byte. */
         if offset > 0 {
             instructions.push(AsmInstruction::Binary {
                 asm_type: AsmType::Quadword,
@@ -2292,6 +2308,8 @@ fn copy_bytes_to_reg(
                 rhs: AsmOperand::Register(dst_reg),
             });
         }
+
+        /* Move on to the next byte. */
         offset -= 1;
     }
 }
