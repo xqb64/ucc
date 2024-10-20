@@ -1,5 +1,5 @@
 use crate::{
-    codegen::gen::tacky_type,
+    codegen::gen::ir2type,
     ir::gen::{get_dst, IRInstruction, IRValue},
     lexer::lex::Const,
     semantics::typechecker::{get_signedness, IdentifierAttrs, SYMBOL_TABLE},
@@ -50,8 +50,8 @@ impl ReachingCopies {
 }
 
 fn same_type(v1: &IRValue, v2: &IRValue) -> bool {
-    let t1 = tacky_type(v1);
-    let t2 = tacky_type(v2);
+    let t1 = ir2type(v1);
+    let t2 = ir2type(v2);
     t1 == t2 || get_signedness(&t1) == get_signedness(&t2)
 }
 

@@ -647,7 +647,7 @@ impl Codegen for IRInstruction {
 
                     let return_storage = AsmOperand::Memory(AsmRegister::Ax, 0);
                     let ret_operand = value.clone().unwrap().codegen().into();
-                    let t = tacky_type(&value.clone().unwrap());
+                    let t = ir2type(&value.clone().unwrap());
 
                     instructions.extend(copy_bytes(
                         &ret_operand,
@@ -811,7 +811,7 @@ impl Codegen for IRInstruction {
                             dst: AsmOperand::Register(AsmRegister::Ax),
                         }];
 
-                        let t = tacky_type(lhs);
+                        let t = ir2type(lhs);
                         let signedness = get_signedness(&t);
 
                         if signedness || is_pointer_type(&t) {
@@ -856,7 +856,7 @@ impl Codegen for IRInstruction {
                             dst: AsmOperand::Register(AsmRegister::Ax),
                         }];
 
-                        let t = tacky_type(&lhs);
+                        let t = ir2type(&lhs);
                         let signedness = get_signedness(&t);
 
                         if signedness {
@@ -905,8 +905,8 @@ impl Codegen for IRInstruction {
                     | BinaryOp::GreaterEqual
                     | BinaryOp::Equal
                     | BinaryOp::NotEqual => {
-                        let lhs_type = tacky_type(lhs);
-                        let rhs_type = tacky_type(rhs);
+                        let lhs_type = ir2type(lhs);
+                        let rhs_type = ir2type(rhs);
 
                         if lhs_type == Type::Double && rhs_type == Type::Double {
                             AsmNode::Instructions(vec![
@@ -1073,7 +1073,7 @@ impl Codegen for IRInstruction {
             }
 
             IRInstruction::Copy { src, dst } => {
-                let t = tacky_type(src);
+                let t = ir2type(src);
                 let asm_type = get_asm_type(src);
 
                 if is_scalar(&t) {
@@ -1532,7 +1532,7 @@ impl Codegen for IRInstruction {
             }
 
             IRInstruction::Load { src_ptr, dst } => {
-                let t = tacky_type(dst);
+                let t = ir2type(dst);
                 if is_scalar(&t) {
                     AsmNode::Instructions(vec![
                         AsmInstruction::Mov {
@@ -1566,7 +1566,7 @@ impl Codegen for IRInstruction {
             }
 
             IRInstruction::Store { src, dst_ptr } => {
-                let t = tacky_type(src);
+                let t = ir2type(src);
 
                 if is_scalar(&t) {
                     AsmNode::Instructions(vec![
@@ -1673,7 +1673,7 @@ impl Codegen for IRInstruction {
             IRInstruction::CopyToOffset { src, dst, offset } => {
                 let type_of_src = get_asm_type(src);
 
-                let t = tacky_type(src);
+                let t = ir2type(src);
 
                 if is_scalar(&t) {
                     AsmNode::Instructions(vec![AsmInstruction::Mov {
@@ -1694,7 +1694,7 @@ impl Codegen for IRInstruction {
             IRInstruction::CopyFromOffset { src, offset, dst } => {
                 let type_of_dst = get_asm_type(dst);
 
-                let t = tacky_type(dst);
+                let t = ir2type(dst);
 
                 if is_scalar(&t) {
                     AsmNode::Instructions(vec![AsmInstruction::Mov {
@@ -1791,7 +1791,7 @@ fn classify_parameters(
 ) {
     let typed_params: Vec<(Type, AsmOperand)> = params
         .iter()
-        .map(|v| (tacky_type(v), v.codegen().into()))
+        .map(|v| (ir2type(v), v.codegen().into()))
         .collect();
 
     classify_params_helper(&typed_params, return_on_stack)
@@ -2133,7 +2133,7 @@ fn flatten_member_types(members: &Vec<MemberEntry>) -> Vec<Type> {
 }
 
 fn classify_return_value(retval: &IRValue) -> (Vec<(AsmType, AsmOperand)>, Vec<AsmOperand>, bool) {
-    let t = tacky_type(retval);
+    let t = ir2type(retval);
     let val = retval.codegen().into();
     classify_return_helper(&t, &val)
 }
@@ -2388,7 +2388,7 @@ fn type2asmtype(t: &Type) -> AsmType {
     }
 }
 
-pub fn tacky_type(value: &IRValue) -> Type {
+pub fn ir2type(value: &IRValue) -> Type {
     match value {
         IRValue::Constant(konst) => match konst {
             Const::Char(_) => Type::Char,

@@ -162,9 +162,9 @@ fn get_constant_value(value: &IRValue) -> Option<Const> {
 }
 
 fn evaluate_cast(konst: &Const, dst: &IRValue) -> Vec<IRInstruction> {
-    use crate::codegen::gen::tacky_type;
+    use crate::codegen::gen::ir2type;
 
-    let dst_type = tacky_type(dst);
+    let dst_type = ir2type(dst);
     let converted_src = const_convert(konst, &dst_type);
 
     vec![IRInstruction::Copy {
