@@ -527,7 +527,7 @@ impl Codegen for IRInstruction {
     fn codegen(&self) -> AsmNode {
         match self {
             IRInstruction::Unary { op, src, dst } => {
-                let asm_type = get_asm_type(src);
+                let asm_type = ir2asmtype(src);
 
                 match op {
                     UnaryOp::Complement => AsmNode::Instructions(vec![
@@ -597,7 +597,7 @@ impl Codegen for IRInstruction {
                                     rhs: AsmOperand::Register(AsmRegister::Xmm0),
                                 },
                                 AsmInstruction::Mov {
-                                    asm_type: get_asm_type(dst),
+                                    asm_type: ir2asmtype(dst),
                                     src: AsmOperand::Imm(0),
                                     dst: dst.codegen().into(),
                                 },
@@ -609,12 +609,12 @@ impl Codegen for IRInstruction {
                         } else {
                             AsmNode::Instructions(vec![
                                 AsmInstruction::Cmp {
-                                    asm_type: get_asm_type(src),
+                                    asm_type: ir2asmtype(src),
                                     lhs: AsmOperand::Imm(0),
                                     rhs: src.codegen().into(),
                                 },
                                 AsmInstruction::Mov {
-                                    asm_type: get_asm_type(dst),
+                                    asm_type: ir2asmtype(dst),
                                     src: AsmOperand::Imm(0),
                                     dst: dst.codegen().into(),
                                 },
@@ -690,17 +690,17 @@ impl Codegen for IRInstruction {
             }
 
             IRInstruction::Binary { op, lhs, rhs, dst } => {
-                let asm_type = get_asm_type(lhs);
+                let asm_type = ir2asmtype(lhs);
 
                 match op {
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => AsmNode::Instructions(vec![
                         AsmInstruction::Mov {
-                            asm_type: get_asm_type(dst),
+                            asm_type: ir2asmtype(dst),
                             src: lhs.codegen().into(),
                             dst: dst.codegen().into(),
                         },
                         AsmInstruction::Binary {
-                            asm_type: get_asm_type(dst),
+                            asm_type: ir2asmtype(dst),
                             op: (*op).into(),
                             lhs: rhs.codegen().into(),
                             rhs: dst.codegen().into(),
@@ -944,7 +944,7 @@ impl Codegen for IRInstruction {
                                         rhs: lhs.codegen().into(),
                                     },
                                     AsmInstruction::Mov {
-                                        asm_type: get_asm_type(dst),
+                                        asm_type: ir2asmtype(dst),
                                         src: AsmOperand::Imm(0),
                                         dst: dst.codegen().into(),
                                     },
@@ -969,7 +969,7 @@ impl Codegen for IRInstruction {
                                         rhs: lhs.codegen().into(),
                                     },
                                     AsmInstruction::Mov {
-                                        asm_type: get_asm_type(dst),
+                                        asm_type: ir2asmtype(dst),
                                         src: AsmOperand::Imm(0),
                                         dst: dst.codegen().into(),
                                     },
@@ -993,7 +993,7 @@ impl Codegen for IRInstruction {
             }
 
             IRInstruction::JumpIfZero { condition, target } => {
-                let asm_type = get_asm_type(condition);
+                let asm_type = ir2asmtype(condition);
 
                 if asm_type == AsmType::Double {
                     AsmNode::Instructions(vec![
@@ -1029,7 +1029,7 @@ impl Codegen for IRInstruction {
             }
 
             IRInstruction::JumpIfNotZero { condition, target } => {
-                let asm_type = get_asm_type(condition);
+                let asm_type = ir2asmtype(condition);
 
                 if asm_type == AsmType::Double {
                     AsmNode::Instructions(vec![
@@ -1074,7 +1074,7 @@ impl Codegen for IRInstruction {
 
             IRInstruction::Copy { src, dst } => {
                 let t = ir2type(src);
-                let asm_type = get_asm_type(src);
+                let asm_type = ir2asmtype(src);
 
                 if is_scalar(&t) {
                     AsmNode::Instructions(vec![AsmInstruction::Mov {
@@ -1264,16 +1264,16 @@ impl Codegen for IRInstruction {
 
             IRInstruction::SignExtend { src, dst } => {
                 AsmNode::Instructions(vec![AsmInstruction::Movsx {
-                    src_type: get_asm_type(src),
+                    src_type: ir2asmtype(src),
                     src: src.codegen().into(),
-                    dst_type: get_asm_type(dst),
+                    dst_type: ir2asmtype(dst),
                     dst: dst.codegen().into(),
                 }])
             }
 
             IRInstruction::Truncate { src, dst } => {
                 AsmNode::Instructions(vec![AsmInstruction::Mov {
-                    asm_type: get_asm_type(dst),
+                    asm_type: ir2asmtype(dst),
                     src: src.codegen().into(),
                     dst: dst.codegen().into(),
                 }])
@@ -1281,15 +1281,15 @@ impl Codegen for IRInstruction {
 
             IRInstruction::ZeroExtend { src, dst } => {
                 AsmNode::Instructions(vec![AsmInstruction::MovZeroExtend {
-                    src_type: get_asm_type(src),
+                    src_type: ir2asmtype(src),
                     src: src.codegen().into(),
-                    dst_type: get_asm_type(dst),
+                    dst_type: ir2asmtype(dst),
                     dst: dst.codegen().into(),
                 }])
             }
 
             IRInstruction::UIntToDouble { src, dst } => {
-                let src_type = get_asm_type(src);
+                let src_type = ir2asmtype(src);
                 match src_type {
                     AsmType::Byte => AsmNode::Instructions(vec![
                         AsmInstruction::MovZeroExtend {
@@ -1388,7 +1388,7 @@ impl Codegen for IRInstruction {
             }
 
             IRInstruction::DoubleToInt { src, dst } => {
-                let dst_type = get_asm_type(dst);
+                let dst_type = ir2asmtype(dst);
                 match dst_type {
                     AsmType::Byte => AsmNode::Instructions(vec![
                         AsmInstruction::Cvttsd2si {
@@ -1404,7 +1404,7 @@ impl Codegen for IRInstruction {
                     ]),
                     AsmType::Longword | AsmType::Quadword => {
                         AsmNode::Instructions(vec![AsmInstruction::Cvttsd2si {
-                            asm_type: get_asm_type(dst),
+                            asm_type: ir2asmtype(dst),
                             src: src.codegen().into(),
                             dst: dst.codegen().into(),
                         }])
@@ -1414,7 +1414,7 @@ impl Codegen for IRInstruction {
             }
 
             IRInstruction::DoubletoUInt { src, dst } => {
-                let dst_type = get_asm_type(dst);
+                let dst_type = ir2asmtype(dst);
                 match dst_type {
                     AsmType::Byte => AsmNode::Instructions(vec![
                         AsmInstruction::Cvttsd2si {
@@ -1508,7 +1508,7 @@ impl Codegen for IRInstruction {
             }
 
             IRInstruction::IntToDouble { src, dst } => {
-                let src_type = get_asm_type(src);
+                let src_type = ir2asmtype(src);
                 match src_type {
                     AsmType::Byte => AsmNode::Instructions(vec![
                         AsmInstruction::Movsx {
@@ -1524,7 +1524,7 @@ impl Codegen for IRInstruction {
                         },
                     ]),
                     _ => AsmNode::Instructions(vec![AsmInstruction::Cvtsi2sd {
-                        asm_type: get_asm_type(src),
+                        asm_type: ir2asmtype(src),
                         src: src.codegen().into(),
                         dst: dst.codegen().into(),
                     }]),
@@ -1541,7 +1541,7 @@ impl Codegen for IRInstruction {
                             dst: AsmOperand::Register(AsmRegister::R9),
                         },
                         AsmInstruction::Mov {
-                            asm_type: get_asm_type(dst),
+                            asm_type: ir2asmtype(dst),
                             src: AsmOperand::Memory(AsmRegister::R9, 0),
                             dst: dst.codegen().into(),
                         },
@@ -1576,7 +1576,7 @@ impl Codegen for IRInstruction {
                             dst: AsmOperand::Register(AsmRegister::R9),
                         },
                         AsmInstruction::Mov {
-                            asm_type: get_asm_type(src),
+                            asm_type: ir2asmtype(src),
                             src: src.codegen().into(),
                             dst: AsmOperand::Memory(AsmRegister::R9, 0),
                         },
@@ -1671,7 +1671,7 @@ impl Codegen for IRInstruction {
             },
 
             IRInstruction::CopyToOffset { src, dst, offset } => {
-                let type_of_src = get_asm_type(src);
+                let type_of_src = ir2asmtype(src);
 
                 let t = ir2type(src);
 
@@ -1692,7 +1692,7 @@ impl Codegen for IRInstruction {
             }
 
             IRInstruction::CopyFromOffset { src, offset, dst } => {
-                let type_of_dst = get_asm_type(dst);
+                let type_of_dst = ir2asmtype(dst);
 
                 let t = ir2type(dst);
 
@@ -2451,7 +2451,7 @@ fn get_eightbyte_type(offset: isize, struct_size: usize) -> AsmType {
     }
 }
 
-fn get_asm_type(value: &IRValue) -> AsmType {
+fn ir2asmtype(value: &IRValue) -> AsmType {
     match value {
         IRValue::Constant(konst) => match konst {
             Const::Char(_) | Const::UChar(_) => AsmType::Byte,
