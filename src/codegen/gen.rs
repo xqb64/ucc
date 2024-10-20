@@ -279,6 +279,15 @@ pub enum AsmBinaryOp {
     ShrTwoOp,
 }
 
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum AsmType {
+    Byte,
+    Longword,
+    Quadword,
+    Double,
+    Bytearray { size: usize, alignment: usize },
+}
+
 pub trait Codegen {
     fn codegen(&self) -> AsmNode;
 }
@@ -334,30 +343,6 @@ impl Codegen for IRStaticConstant {
             init: self.init.clone(),
             alignment: get_alignment_of_type(&self._type),
         })
-    }
-}
-
-fn get_alignment_of_type(t: &Type) -> usize {
-    match t {
-        Type::Char | Type::UChar | Type::SChar => 1,
-        Type::Int => 4,
-        Type::Long => 8,
-        Type::UInt => 4,
-        Type::ULong => 8,
-        Type::Double => 8,
-        Type::Pointer(_) => 8,
-        Type::Array { element, size } => {
-            if get_size_of_type(element) * size >= 16 {
-                16
-            } else {
-                get_alignment_of_type(element)
-            }
-        }
-        Type::Struct { tag } => {
-            let struct_type = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
-            struct_type.alignment
-        }
-        _ => unreachable!(),
     }
 }
 
@@ -1720,10 +1705,6 @@ impl Codegen for IRInstruction {
     }
 }
 
-lazy_static::lazy_static! {
-    pub static ref STATIC_CONSTANTS: Mutex<Vec<AsmStaticConstant>> = Mutex::new(Vec::new());
-}
-
 impl From<AsmNode> for AsmFunction {
     fn from(node: AsmNode) -> AsmFunction {
         match node {
@@ -1779,15 +1760,6 @@ impl From<BinaryOp> for AsmBinaryOp {
             _ => unreachable!(),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Copy)]
-pub enum AsmType {
-    Byte,
-    Longword,
-    Quadword,
-    Double,
-    Bytearray { size: usize, alignment: usize },
 }
 
 fn classify_parameters(
@@ -1897,81 +1869,6 @@ fn classify_params_helper(
     (int_reg_args, double_reg_args, stack_args)
 }
 
-fn get_eightbyte_type(offset: isize, struct_size: usize) -> AsmType {
-    let bytes_from_end = struct_size as isize - offset;
-
-    if bytes_from_end >= 8 {
-        return AsmType::Quadword;
-    }
-
-    if bytes_from_end == 4 {
-        return AsmType::Longword;
-    }
-
-    if bytes_from_end == 1 {
-        return AsmType::Byte;
-    }
-
-    AsmType::Bytearray {
-        size: bytes_from_end as usize,
-        alignment: 8,
-    }
-}
-
-fn get_asm_type(value: &IRValue) -> AsmType {
-    match value {
-        IRValue::Constant(konst) => match konst {
-            Const::Char(_) | Const::UChar(_) => AsmType::Byte,
-            Const::Int(_) => AsmType::Longword,
-            Const::Long(_) => AsmType::Quadword,
-            Const::UInt(_) => AsmType::Longword,
-            Const::ULong(_) => AsmType::Quadword,
-            Const::Double(_) => AsmType::Double,
-        },
-        IRValue::Var(var_name) => {
-            let _type = SYMBOL_TABLE
-                .lock()
-                .unwrap()
-                .get(var_name)
-                .cloned()
-                .unwrap()
-                ._type;
-
-            type2asmtype(&_type)
-        }
-    }
-}
-
-fn returns_on_stack(name: &str) -> bool {
-    match SYMBOL_TABLE
-        .lock()
-        .unwrap()
-        .get(name)
-        .cloned()
-        .unwrap()
-        ._type
-    {
-        Type::Func { params: _, ret } => match &*ret {
-            Type::Struct { tag } => {
-                let struct_entry = TYPE_TABLE
-                    .lock()
-                    .unwrap()
-                    .get(tag)
-                    .cloned()
-                    .unwrap()
-                    .clone();
-
-                matches!(
-                    classify_structure(&struct_entry).as_slice(),
-                    [Class::Memory, ..]
-                )
-            }
-            _ => false,
-        },
-        _ => unreachable!(),
-    }
-}
-
 fn classify_param_types(params: &[Type], return_on_stack: bool) -> Vec<AsmRegister> {
     let f = |t: &Type| {
         if is_scalar(t) {
@@ -2012,6 +1909,36 @@ fn classify_param_types(params: &[Type], return_on_stack: bool) -> Vec<AsmRegist
         .chain(double_regs_final.iter())
         .map(|x| x.to_owned().to_owned())
         .collect()
+}
+
+fn returns_on_stack(name: &str) -> bool {
+    match SYMBOL_TABLE
+        .lock()
+        .unwrap()
+        .get(name)
+        .cloned()
+        .unwrap()
+        ._type
+    {
+        Type::Func { params: _, ret } => match &*ret {
+            Type::Struct { tag } => {
+                let struct_entry = TYPE_TABLE
+                    .lock()
+                    .unwrap()
+                    .get(tag)
+                    .cloned()
+                    .unwrap()
+                    .clone();
+
+                matches!(
+                    classify_structure(&struct_entry).as_slice(),
+                    [Class::Memory, ..]
+                )
+            }
+            _ => false,
+        },
+        _ => unreachable!(),
+    }
 }
 
 pub fn build_asm_symbol_table() {
@@ -2109,129 +2036,6 @@ pub enum AsmSymtabEntry {
         is_static: bool,
         is_constant: bool,
     },
-}
-
-#[derive(Debug, Clone, PartialEq, Copy)]
-pub struct StackPosition(pub i64);
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct VarToStackPos {
-    pub last_used_stack_pos: StackPosition,
-    pub var_to_stack_pos: BTreeMap<String, StackPosition>,
-}
-
-impl Default for VarToStackPos {
-    fn default() -> Self {
-        Self {
-            last_used_stack_pos: StackPosition(0),
-            var_to_stack_pos: BTreeMap::new(),
-        }
-    }
-}
-
-impl VarToStackPos {
-    pub fn var_to_stack_pos(&mut self, ident: &str, asm_type: AsmType) -> StackPosition {
-        let pos = self
-            .var_to_stack_pos
-            .entry(ident.to_owned())
-            .or_insert_with(|| {
-                let alloc = match OperandByteLen::from(asm_type) {
-                    OperandByteLen::B1 => 1,
-                    OperandByteLen::B4 => 4,
-                    OperandByteLen::B8 => 8,
-                    OperandByteLen::Other(size) => size as i64,
-                };
-                self.last_used_stack_pos.0 -= alloc;
-
-                let alignment = match Alignment::default_of(asm_type) {
-                    Alignment::B1 => 1,
-                    Alignment::B4 => 4,
-                    Alignment::B8 => 8,
-                    Alignment::B16 => 16,
-                    Alignment::Other(size) => size,
-                };
-                let rem = self.last_used_stack_pos.0 % alignment as i64;
-                if rem != 0 {
-                    self.last_used_stack_pos.0 -= alignment as i64 + rem;
-                }
-
-                self.last_used_stack_pos
-            });
-        *pos
-    }
-
-    pub fn clear(&mut self) {
-        self.var_to_stack_pos.clear();
-        self.last_used_stack_pos = StackPosition(0);
-    }
-}
-
-#[repr(i64)]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum OperandByteLen {
-    B1 = 1,
-    B4 = 4,
-    B8 = 8,
-    Other(usize),
-}
-
-impl<T: Into<AsmType>> From<T> for OperandByteLen {
-    fn from(t: T) -> Self {
-        let asm_type = t.into();
-        match asm_type {
-            AsmType::Byte => Self::B1,
-            AsmType::Longword => Self::B4,
-            AsmType::Quadword => Self::B8,
-            AsmType::Double => Self::B8,
-            AsmType::Bytearray { size, alignment: _ } => Self::Other(size),
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Hash, Debug)]
-#[repr(usize)]
-pub enum Alignment {
-    B1 = 1,
-    B4 = 4,
-    B8 = 8,
-    B16 = 16,
-    Other(usize),
-}
-
-impl Alignment {
-    pub fn default_of<T: Into<AsmType>>(t: T) -> Self {
-        let asm_type = t.into();
-        match asm_type {
-            AsmType::Byte => Self::B1,
-            AsmType::Longword => Self::B4,
-            AsmType::Quadword => Self::B8,
-            AsmType::Double => Self::B8,
-            AsmType::Bytearray { size: _, alignment } => Self::Other(alignment),
-        }
-    }
-}
-
-lazy_static::lazy_static! {
-    pub static ref ASM_SYMBOL_TABLE: Mutex<BTreeMap<String, AsmSymtabEntry>> = Mutex::new(BTreeMap::new());
-    pub static ref VAR_TO_STACK_POS: Mutex<VarToStackPos> = Mutex::new(VarToStackPos::default());
-}
-
-pub fn tacky_type(value: &IRValue) -> Type {
-    match value {
-        IRValue::Constant(konst) => match konst {
-            Const::Char(_) => Type::Char,
-            Const::UChar(_) => Type::UChar,
-            Const::Int(_) => Type::Int,
-            Const::Long(_) => Type::Long,
-            Const::UInt(_) => Type::UInt,
-            Const::ULong(_) => Type::ULong,
-            Const::Double(_) => Type::Double,
-        },
-        IRValue::Var(var_name) => {
-            let symbol = SYMBOL_TABLE.lock().unwrap().get(var_name).cloned().unwrap();
-            symbol._type
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2505,4 +2309,197 @@ fn type2asmtype(t: &Type) -> AsmType {
         Type::Pointer(_) => AsmType::Quadword,
         _ => unreachable!(),
     }
+}
+
+pub fn tacky_type(value: &IRValue) -> Type {
+    match value {
+        IRValue::Constant(konst) => match konst {
+            Const::Char(_) => Type::Char,
+            Const::UChar(_) => Type::UChar,
+            Const::Int(_) => Type::Int,
+            Const::Long(_) => Type::Long,
+            Const::UInt(_) => Type::UInt,
+            Const::ULong(_) => Type::ULong,
+            Const::Double(_) => Type::Double,
+        },
+        IRValue::Var(var_name) => {
+            let symbol = SYMBOL_TABLE.lock().unwrap().get(var_name).cloned().unwrap();
+            symbol._type
+        }
+    }
+}
+
+fn get_alignment_of_type(t: &Type) -> usize {
+    match t {
+        Type::Char | Type::UChar | Type::SChar => 1,
+        Type::Int => 4,
+        Type::Long => 8,
+        Type::UInt => 4,
+        Type::ULong => 8,
+        Type::Double => 8,
+        Type::Pointer(_) => 8,
+        Type::Array { element, size } => {
+            if get_size_of_type(element) * size >= 16 {
+                16
+            } else {
+                get_alignment_of_type(element)
+            }
+        }
+        Type::Struct { tag } => {
+            let struct_type = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
+            struct_type.alignment
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn get_eightbyte_type(offset: isize, struct_size: usize) -> AsmType {
+    let bytes_from_end = struct_size as isize - offset;
+
+    if bytes_from_end >= 8 {
+        return AsmType::Quadword;
+    }
+
+    if bytes_from_end == 4 {
+        return AsmType::Longword;
+    }
+
+    if bytes_from_end == 1 {
+        return AsmType::Byte;
+    }
+
+    AsmType::Bytearray {
+        size: bytes_from_end as usize,
+        alignment: 8,
+    }
+}
+
+fn get_asm_type(value: &IRValue) -> AsmType {
+    match value {
+        IRValue::Constant(konst) => match konst {
+            Const::Char(_) | Const::UChar(_) => AsmType::Byte,
+            Const::Int(_) => AsmType::Longword,
+            Const::Long(_) => AsmType::Quadword,
+            Const::UInt(_) => AsmType::Longword,
+            Const::ULong(_) => AsmType::Quadword,
+            Const::Double(_) => AsmType::Double,
+        },
+        IRValue::Var(var_name) => {
+            let _type = SYMBOL_TABLE
+                .lock()
+                .unwrap()
+                .get(var_name)
+                .cloned()
+                .unwrap()
+                ._type;
+
+            type2asmtype(&_type)
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub struct StackPosition(pub i64);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VarToStackPos {
+    pub last_used_stack_pos: StackPosition,
+    pub var_to_stack_pos: BTreeMap<String, StackPosition>,
+}
+
+impl Default for VarToStackPos {
+    fn default() -> Self {
+        Self {
+            last_used_stack_pos: StackPosition(0),
+            var_to_stack_pos: BTreeMap::new(),
+        }
+    }
+}
+
+impl VarToStackPos {
+    pub fn var_to_stack_pos(&mut self, ident: &str, asm_type: AsmType) -> StackPosition {
+        let pos = self
+            .var_to_stack_pos
+            .entry(ident.to_owned())
+            .or_insert_with(|| {
+                let alloc = match OperandByteLen::from(asm_type) {
+                    OperandByteLen::B1 => 1,
+                    OperandByteLen::B4 => 4,
+                    OperandByteLen::B8 => 8,
+                    OperandByteLen::Other(size) => size as i64,
+                };
+                self.last_used_stack_pos.0 -= alloc;
+
+                let alignment = match Alignment::default_of(asm_type) {
+                    Alignment::B1 => 1,
+                    Alignment::B4 => 4,
+                    Alignment::B8 => 8,
+                    Alignment::B16 => 16,
+                    Alignment::Other(size) => size,
+                };
+                let rem = self.last_used_stack_pos.0 % alignment as i64;
+                if rem != 0 {
+                    self.last_used_stack_pos.0 -= alignment as i64 + rem;
+                }
+
+                self.last_used_stack_pos
+            });
+        *pos
+    }
+
+    pub fn clear(&mut self) {
+        self.var_to_stack_pos.clear();
+        self.last_used_stack_pos = StackPosition(0);
+    }
+}
+
+#[repr(i64)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum OperandByteLen {
+    B1 = 1,
+    B4 = 4,
+    B8 = 8,
+    Other(usize),
+}
+
+impl<T: Into<AsmType>> From<T> for OperandByteLen {
+    fn from(t: T) -> Self {
+        let asm_type = t.into();
+        match asm_type {
+            AsmType::Byte => Self::B1,
+            AsmType::Longword => Self::B4,
+            AsmType::Quadword => Self::B8,
+            AsmType::Double => Self::B8,
+            AsmType::Bytearray { size, alignment: _ } => Self::Other(size),
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Debug)]
+#[repr(usize)]
+pub enum Alignment {
+    B1 = 1,
+    B4 = 4,
+    B8 = 8,
+    B16 = 16,
+    Other(usize),
+}
+
+impl Alignment {
+    pub fn default_of<T: Into<AsmType>>(t: T) -> Self {
+        let asm_type = t.into();
+        match asm_type {
+            AsmType::Byte => Self::B1,
+            AsmType::Longword => Self::B4,
+            AsmType::Quadword => Self::B8,
+            AsmType::Double => Self::B8,
+            AsmType::Bytearray { size: _, alignment } => Self::Other(alignment),
+        }
+    }
+}
+
+lazy_static::lazy_static! {
+    pub static ref ASM_SYMBOL_TABLE: Mutex<BTreeMap<String, AsmSymtabEntry>> = Mutex::new(BTreeMap::new());
+    pub static ref VAR_TO_STACK_POS: Mutex<VarToStackPos> = Mutex::new(VarToStackPos::default());
+    pub static ref STATIC_CONSTANTS: Mutex<Vec<AsmStaticConstant>> = Mutex::new(Vec::new());
 }
