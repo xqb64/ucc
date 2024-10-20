@@ -742,7 +742,10 @@ impl Parser {
         Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
             expr,
             target_type: self.current_target_type.clone(),
-            belongs_to: self.current_fn.clone().unwrap_or_else(|| "no current function".to_owned()),
+            belongs_to: self
+                .current_fn
+                .clone()
+                .unwrap_or_else(|| "no current function".to_owned()),
         })))
     }
 

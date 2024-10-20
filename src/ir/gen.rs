@@ -5,9 +5,9 @@ use crate::{
         BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,
         CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression,
         DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement,
-        FunctionDeclaration, IfStatement, Initializer, Program, ReturnStatement,
-        SizeofExpression, SizeofTExpression, Statement, StringExpression, SubscriptExpression,
-        Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, WhileStatement,
+        FunctionDeclaration, IfStatement, Initializer, Program, ReturnStatement, SizeofExpression,
+        SizeofTExpression, Statement, StringExpression, SubscriptExpression, Type, UnaryExpression,
+        UnaryExpressionKind, VariableDeclaration, WhileStatement,
     },
     semantics::typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
@@ -214,7 +214,7 @@ impl Irfy for Program {
                             instructions.push(ir_func);
                         }
                     }
-                    
+
                     Declaration::Variable(var_decl) => {
                         if var_decl.is_global {
                             continue;
@@ -224,7 +224,7 @@ impl Irfy for Program {
                             continue;
                         }
                     }
-                    
+
                     _ => {}
                 },
 
@@ -258,9 +258,9 @@ impl Irfy for BlockStatement {
                                 .extend::<Vec<IRInstruction>>(var_decl.irfy().unwrap().into());
                         }
                     }
-                    
+
                     Declaration::Function(_func_decl) => {}
-                    
+
                     Declaration::Struct(_) => {}
                 },
 
@@ -677,7 +677,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             }
 
             BinaryExpressionKind::Add => emit_ptr_addition(lhs, rhs, t, instructions),
-            
+
             BinaryExpressionKind::Sub => {
                 let lhs_type = get_type(lhs);
                 let rhs_type = get_type(rhs);
@@ -802,14 +802,14 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
         },
 
         Expression::Variable(var) => ExpResult::PlainOperand(IRValue::Var(var.value.to_owned())),
-        
+
         Expression::Assign(AssignExpression {
             op: _,
             lhs,
             rhs,
             _type,
         }) => emit_assignment(lhs, rhs, instructions),
-        
+
         Expression::Conditional(ConditionalExpression {
             condition,
             then_expr,
@@ -862,7 +862,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                 ExpResult::PlainOperand(result)
             }
         }
-        
+
         Expression::Call(CallExpression { name, args, _type }) => {
             let result = if _type == &Type::Void {
                 None
@@ -884,7 +884,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
 
             ExpResult::PlainOperand(result.unwrap_or(IRValue::Var("DUMMY".to_owned())))
         }
-        
+
         Expression::Cast(CastExpression {
             target_type,
             expr,
@@ -953,12 +953,12 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
 
             ExpResult::PlainOperand(dst)
         }
-        
+
         Expression::Deref(DerefExpression { expr, _type }) => {
             let ptr = emit_tacky_and_convert(expr, instructions);
             ExpResult::DereferencedPointer(ptr)
         }
-        
+
         Expression::AddrOf(AddrOfExpression { expr, _type }) => {
             let result = emit_tacky(expr, instructions);
 
@@ -988,7 +988,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                 }
             }
         }
-        
+
         Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
             let result = emit_ptr_addition(expr, index, _type, instructions);
             match result {
@@ -996,9 +996,9 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                 _ => unreachable!(),
             }
         }
-        
+
         Expression::Literal(_) => todo!(),
-        
+
         Expression::String(StringExpression { value, _type }) => {
             let var_name = format!("str.{}", make_temporary());
             let t = Type::Array {
@@ -1016,15 +1016,15 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
 
             ExpResult::PlainOperand(IRValue::Var(var_name))
         }
-        
+
         Expression::Sizeof(SizeofExpression { expr, _type }) => ExpResult::PlainOperand(
             IRValue::Constant(Const::ULong(get_size_of_type(get_type(expr)) as u64)),
         ),
-        
+
         Expression::SizeofT(SizeofTExpression { t, _type }) => {
             ExpResult::PlainOperand(IRValue::Constant(Const::ULong(get_size_of_type(t) as u64)))
         }
-        
+
         Expression::Dot(DotExpression {
             structure,
             member,
@@ -1068,7 +1068,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                 _ => unreachable!(),
             }
         }
-        
+
         Expression::Arrow(ArrowExpression {
             pointer,
             member,
@@ -1130,7 +1130,7 @@ fn emit_assignment(
             });
             ExpResult::PlainOperand(rval)
         }
-        
+
         ExpResult::PlainOperand(val) => {
             instructions.push(IRInstruction::Copy {
                 src: rval,
@@ -1138,7 +1138,7 @@ fn emit_assignment(
             });
             lval
         }
-        
+
         ExpResult::DereferencedPointer(ptr) => {
             instructions.push(IRInstruction::Store {
                 src: rval.clone(),
@@ -1213,7 +1213,7 @@ fn emit_compound_init(
                 instructions.extend(emit_string_init(name.to_owned(), offset, &combined_bytes));
             }
         }
-        
+
         Initializer::Single(_, single_init) => {
             let v = emit_tacky_and_convert(single_init, instructions);
             instructions.push(IRInstruction::CopyToOffset {
@@ -1222,7 +1222,7 @@ fn emit_compound_init(
                 offset,
             });
         }
-        
+
         Initializer::Compound(_, _type, compound_init) => {
             if let Type::Array { element, size: _ } = inited_type {
                 for (idx, elem_init) in compound_init.iter().enumerate() {

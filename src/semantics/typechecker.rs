@@ -6,10 +6,10 @@ use crate::{
         BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression,
         ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement,
         DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration,
-        IfStatement, Initializer, Program, ReturnStatement, SizeofExpression,
-        SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration,
-        SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration,
-        VariableExpression, WhileStatement,
+        IfStatement, Initializer, Program, ReturnStatement, SizeofExpression, SizeofTExpression,
+        Statement, StorageClass, StringExpression, StructDeclaration, SubscriptExpression, Type,
+        UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression,
+        WhileStatement,
     },
 };
 use anyhow::{bail, Result};
@@ -784,7 +784,7 @@ impl Typecheck for Statement {
                     bail!("Return statement with no expression in non-void function");
                 }
             }
-            
+
             Statement::Break(_) | Statement::Continue(_) | Statement::Null => Ok(self),
         }
     }

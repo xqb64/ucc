@@ -12,7 +12,7 @@ use crate::{
     parser::ast::Type,
     semantics::typechecker::{
         get_common_type, get_signedness, get_size_of_type, is_pointer_type, is_scalar,
-        IdentifierAttrs, MemberEntry, StaticInit, SYMBOL_TABLE, TYPE_TABLE, StructEntry,
+        IdentifierAttrs, MemberEntry, StaticInit, StructEntry, SYMBOL_TABLE, TYPE_TABLE,
     },
 };
 
@@ -128,7 +128,7 @@ pub enum AsmInstruction {
      * specified divisor.  The result of the division are quotient and
      * remainder.  The quotient is stored in AX (RAX for 64-bit), and
      * the remainder is stored in DX (RDX for 64-bit). */
-     Div {
+    Div {
         asm_type: AsmType,
         operand: AsmOperand,
     },
@@ -149,45 +149,45 @@ pub enum AsmInstruction {
         condition: ConditionCode,
         target: String,
     },
-    
+
     /* Set a byte in a register to 1 or 0 based on the result of a previous
-     * comparison or arithmetic operation. 
-     * 
+     * comparison or arithmetic operation.
+     *
      * For example:
-     * 
+     *
      * mov $5, %eax
-     * cmp $3, %eax  # sets flags 
+     * cmp $3, %eax  # sets flags
      * setne %al     # set AL to 1 if not equal, 0 otherwise
-     * 
+     *
      * See ConditionCode enum for more info.
      */
     SetCC {
         condition: ConditionCode,
         operand: AsmOperand,
     },
-    
+
     /* Computes the effective address (without a memory access) of 'src' and
      * stores it in 'dst'.
-     * 
+     *
      * For example:
-     * 
+     *
      * movl $5, %eax
      * movl $3, %ecx
      * leal 8(%eax, %ecx, 4), %ebx
-     * 
+     *
      * 8: displacement
      * %eax: base
      * %ecx: index
      * 4: scale factor
-     * 
+     *
      * ...so, this is:
-     * 
+     *
      * EBX = EAX + ECX*4 + 8 */
     Lea {
         src: AsmOperand,
         dst: AsmOperand,
     },
-    
+
     Push(AsmOperand),
     Pop(AsmRegister),
     Label(String),
@@ -198,18 +198,18 @@ pub enum AsmInstruction {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConditionCode {
     /* signed */
-    E,   /* equal */
-    NE,  /* not equal */
-    L,   /* less, */
-    LE,  /* less or equal */
-    G,   /* greater */
-    GE,  /* greater or equal */
+    E,  /* equal */
+    NE, /* not equal */
+    L,  /* less, */
+    LE, /* less or equal */
+    G,  /* greater */
+    GE, /* greater or equal */
 
     /* unsigned */
-    A,   /* above */
-    AE,  /* above or equal */
-    B,   /* below */
-    BE,  /* below or equal */
+    A,  /* above */
+    AE, /* above or equal */
+    B,  /* below */
+    BE, /* below or equal */
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
