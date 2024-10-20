@@ -28,8 +28,9 @@ pub enum IRNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IRProgram {
-    pub functions: Vec<IRNode>,
-    pub static_vars: Vec<IRNode>,
+    pub functions: Vec<IRFunction>,
+    pub static_vars: Vec<IRStaticVariable>,
+    pub static_constants: Vec<IRStaticConstant>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -211,7 +212,7 @@ impl Irfy for Program {
                 BlockItem::Declaration(decl) => match decl {
                     Declaration::Function(func_decl) => {
                         if let Some(ir_func) = func_decl.irfy() {
-                            instructions.push(ir_func);
+                            instructions.push(ir_func.into());
                         }
                     }
 
@@ -230,7 +231,7 @@ impl Irfy for Program {
 
                 BlockItem::Statement(stmt) => {
                     if let Some(ir_stmt) = stmt.irfy() {
-                        instructions.push(ir_stmt);
+                        instructions.push(ir_stmt.into());
                     }
                 }
             }
@@ -239,6 +240,7 @@ impl Irfy for Program {
         Some(IRNode::Program(IRProgram {
             functions: instructions,
             static_vars: vec![],
+            static_constants: vec![],
         }))
     }
 }
@@ -1291,8 +1293,9 @@ fn emit_ptr_addition(
     }
 }
 
-pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
-    let mut tacky_defs = vec![];
+pub fn convert_symbols_to_tacky() -> (Vec<IRStaticVariable>, Vec<IRStaticConstant>) {
+    let mut static_variables = vec![];
+    let mut static_constants = vec![];
     for (name, entry) in SYMBOL_TABLE.lock().unwrap().iter() {
         if let IdentifierAttrs::StaticAttr {
             initial_value,
@@ -1301,15 +1304,15 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
         {
             match initial_value {
                 InitialValue::Initial(init) => {
-                    tacky_defs.push(IRNode::StaticVariable(IRStaticVariable {
+                    static_variables.push(IRStaticVariable {
                         name: name.clone(),
                         global,
                         init: init.clone(),
                         _type: entry._type.clone(),
-                    }))
+                    })
                 }
                 InitialValue::Tentative => {
-                    tacky_defs.push(IRNode::StaticVariable(IRStaticVariable {
+                    static_variables.push(IRStaticVariable {
                         name: name.clone(),
                         _type: entry._type.clone(),
                         global,
@@ -1333,20 +1336,21 @@ pub fn convert_symbols_to_tacky() -> Vec<IRNode> {
                                 unimplemented!()
                             }
                         }],
-                    }))
+                    })
                 }
                 _ => continue,
             }
         }
         if let IdentifierAttrs::ConstantAttr(init) = entry.attrs.clone() {
-            tacky_defs.push(IRNode::StaticConstant(IRStaticConstant {
+            static_constants.push(IRStaticConstant {
                 name: name.clone(),
                 init,
                 _type: entry._type.clone(),
-            }))
+            })
         }
     }
-    tacky_defs
+
+    (static_variables, static_constants)
 }
 
 pub fn make_tacky_variable(t: &Type) -> IRValue {
@@ -1421,15 +1425,15 @@ pub trait Optimize {
 impl Optimize for IRProgram {
     fn optimize(&mut self, enabled_optimizations: Vec<Optimization>) -> Self {
         let mut functions = vec![];
+
         for func in &mut self.functions {
-            functions.push(match func {
-                IRNode::Function(f) => IRNode::Function(f.optimize(enabled_optimizations.clone())),
-                _ => unreachable!(),
-            });
+            functions.push(func.optimize(enabled_optimizations.clone()));
         }
+
         IRProgram {
             functions,
             static_vars: self.static_vars.clone(),
+            static_constants: self.static_constants.clone(),
         }
     }
 }

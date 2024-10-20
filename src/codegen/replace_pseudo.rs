@@ -234,7 +234,7 @@ impl ReplacePseudo for AsmProgram {
         AsmProgram {
             functions,
             static_vars: self.static_vars.clone(),
-            static_constants: STATIC_CONSTANTS.lock().unwrap().to_owned(),
+            static_constants: self.static_constants.clone(),
         }
     }
 }

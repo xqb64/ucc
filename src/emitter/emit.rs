@@ -29,16 +29,16 @@ impl Emit for AsmNode {
 
 impl Emit for AsmProgram {
     fn emit(&mut self, f: &mut File, asm_type: &mut AsmType) -> Result<()> {
-        for func in self.functions.iter_mut() {
-            func.emit(f, asm_type)?;
-        }
-
         for static_var in self.static_vars.iter_mut() {
             static_var.emit(f, asm_type)?;
         }
 
         for static_const in self.static_constants.iter_mut() {
             static_const.emit(f, asm_type)?;
+        }
+
+        for func in self.functions.iter_mut() {
+            func.emit(f, asm_type)?;
         }
 
         writeln!(f, ".section	.note.GNU-stack,\"\",@progbits")?;

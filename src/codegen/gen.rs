@@ -29,7 +29,7 @@ pub enum AsmNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AsmProgram {
     pub functions: Vec<AsmFunction>,
-    pub static_vars: Vec<AsmNode>,
+    pub static_vars: Vec<AsmStaticVariable>,
     pub static_constants: Vec<AsmStaticConstant>,
 }
 
@@ -314,13 +314,23 @@ impl Codegen for IRProgram {
 
         let mut static_vars = vec![];
         for static_var in &self.static_vars {
-            static_vars.push(static_var.codegen());
+            static_vars.push(static_var.codegen().into());
         }
+
+        let mut static_constants = vec![];
+        for static_const in &self.static_constants {
+            static_constants.push(static_const.codegen().into());
+        }
+
+        static_constants = static_constants
+            .into_iter()
+            .chain(STATIC_CONSTANTS.lock().unwrap().iter().map(|x| x.clone().into()))
+            .collect::<Vec<AsmStaticConstant>>();
 
         AsmNode::Program(AsmProgram {
             functions,
             static_vars,
-            static_constants: STATIC_CONSTANTS.lock().unwrap().to_owned(),
+            static_constants,
         })
     }
 }
@@ -1736,6 +1746,15 @@ impl From<AsmNode> for AsmStaticConstant {
     fn from(value: AsmNode) -> Self {
         match value {
             AsmNode::StaticConstant(static_const) => static_const,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<AsmNode> for AsmStaticVariable {
+    fn from(value: AsmNode) -> Self {
+        match value {
+            AsmNode::StaticVariable(static_var) => static_var,
             _ => unreachable!(),
         }
     }

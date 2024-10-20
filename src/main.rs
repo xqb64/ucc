@@ -71,10 +71,11 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let mut tac = cooked_ast.irfy().unwrap();
-    let tacky_defs = convert_symbols_to_tacky();
+    let (static_variables, static_constants) = convert_symbols_to_tacky();
 
     let ir_prog = if let IRNode::Program(prog) = &mut tac {
-        prog.static_vars = tacky_defs;
+        prog.static_vars = static_variables;
+        prog.static_constants.extend(static_constants);
 
         prog
     } else {
@@ -125,17 +126,13 @@ fn run(opts: &Opt) -> Result<()> {
         program
             .functions
             .iter()
-            .filter_map(|tl| match tl {
-                IRNode::Function(f) => {
-                    let vars = analyze(&f.body);
-                    if !vars.is_empty() {
-                        Some(vars)
-                    } else {
-                        None
-                    }
+            .filter_map(|f| {
+                let vars = analyze(&f.body);
+                if !vars.is_empty() {
+                    Some(vars)
+                } else {
+                    None
                 }
-
-                _ => None,
             })
             .fold(BTreeSet::new(), |mut acc, hs| {
                 acc.extend(hs);
