@@ -324,7 +324,7 @@ impl Codegen for IRProgram {
 
         static_constants = static_constants
             .into_iter()
-            .chain(STATIC_CONSTANTS.lock().unwrap().iter().map(|x| x.clone().into()))
+            .chain(STATIC_CONSTANTS.lock().unwrap().iter().map(|x| x.to_owned()))
             .collect::<Vec<AsmStaticConstant>>();
 
         AsmNode::Program(AsmProgram {
