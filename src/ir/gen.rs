@@ -1391,9 +1391,7 @@ impl From<IRNode> for IRFunction {
     fn from(node: IRNode) -> Self {
         match node {
             IRNode::Function(func) => func,
-            _ => {
-                unreachable!()
-            }
+            _ => unreachable!(),
         }
     }
 }
