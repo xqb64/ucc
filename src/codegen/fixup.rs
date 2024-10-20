@@ -71,6 +71,18 @@ impl Fixup for AsmFunction {
             }
         }
 
+        /* We start by calculating how many bytes the callee-saved registers will occupy.
+         * Then, we add bytes that the locals will occupy, and round this up to the nearest
+         * multiple of 16.  Working back from this value, we subtract the number of bytes that
+         * the callee-saved registers will occupy, and we come to the exact number by which we
+         * need to adjust the stack to keep it 16-byte aligned as per SystemV ABI. 
+         * 
+         * For example, if the pseudo-operand replacement pass has allocated 20 bytes of stack
+         * space to store the locals of a particular function.  Normally, we'd subtract 32 bytes
+         * from %rsp to maintain the proper stack alignment.  However, if the function uses a single
+         * callee-saved register, we should subtract 24 bytes instead.  Then, after we push the
+         * callee-saved register to preserve its value, we'll subtract another 8 bytes, thereby
+         * maintaining the proper stack alignment.*/
         fn emit_stack_adjustment(
             bytes_for_locals: usize,
             callee_saved_count: usize,
@@ -96,10 +108,14 @@ impl Fixup for AsmFunction {
             callee_saved_args.len(),
         ));
 
+        /* If a function uses any callee-saved registers, it must save their values by pushing them
+         * on top of the current stack frame.  Later, before returning to the caller, it must pop them off
+         * the stack. */
         for reg in callee_saved_args {
             instructions_setup.push(AsmInstruction::Push(AsmOperand::Register(*reg)));
         }
 
+        /* Prepend 'self.instructions' with 'instructions_setup'. */
         self.instructions.splice(0..0, instructions_setup);
 
         for instr in &mut self.instructions {
@@ -803,6 +819,11 @@ impl Fixup for AsmFunction {
                 }
 
                 AsmInstruction::Ret => {
+                    /* Before returning to the caller, any callee-saved registers must be popped off
+                     * of the stack in reverse-order of how we pushed them.
+                     * 
+                     * Since 'pop' operates only on general purpose registers, for XMM registers we need
+                     * to use a combination of mov+add. */
                     let restore_regs: Vec<AsmInstruction> = callee_saved_args
                         .iter()
                         .rev()
