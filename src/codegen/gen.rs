@@ -2150,8 +2150,13 @@ fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
 
             let (ints, dbls, return_on_stack) = classify_return_helper(t, &asm_val);
             if return_on_stack {
+                /* Too large to fit into registers and must be passed via memory. */
                 (vec![AsmRegister::Ax], true)
             } else {
+                /* Can be passed via registers. */
+
+                /* We use AX and DX for ints, and XMM0 and XMM1 for doubles, as per the SystemV AMD64 ABI,
+                 * to return the values. */
                 let int_regs: Vec<AsmRegister> = [AsmRegister::Ax, AsmRegister::Dx]
                     .iter()
                     .take(ints.len())
