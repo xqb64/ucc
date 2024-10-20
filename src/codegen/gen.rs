@@ -2300,11 +2300,44 @@ fn flatten_member_types(members: &Vec<MemberEntry>) -> Vec<Type> {
     result
 }
 
-
 fn classify_return_value(retval: &IRValue) -> (Vec<(AsmType, AsmOperand)>, Vec<AsmOperand>, bool) {
     let t = tacky_type(retval);
     let val = retval.codegen().into();
     classify_return_helper(&t, &val)
+}
+
+fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
+    match t {
+        Type::Void => (vec![], false),
+        t => {
+            let asm_val = if is_scalar(t) {
+                AsmOperand::Pseudo("DUMMY".to_string())
+            } else {
+                AsmOperand::PseudoMem("DUMMY".to_string(), 0)
+            };
+
+            let (ints, dbls, return_on_stack) = classify_return_helper(t, &asm_val);
+            if return_on_stack {
+                (vec![AsmRegister::Ax], true)
+            } else {
+                let int_regs: Vec<AsmRegister> = [AsmRegister::Ax, AsmRegister::Dx]
+                    .iter()
+                    .take(ints.len())
+                    .cloned()
+                    .collect();
+                let dbl_regs: Vec<AsmRegister> = [AsmRegister::Xmm0, AsmRegister::Xmm1]
+                    .iter()
+                    .take(dbls.len())
+                    .cloned()
+                    .collect();
+
+                (
+                    int_regs.iter().chain(dbl_regs.iter()).cloned().collect(),
+                    false,
+                )
+            }
+        }
+    }
 }
 
 fn classify_return_helper(
@@ -2355,63 +2388,6 @@ fn classify_return_helper(
         t => {
             let typed_operand = (type2asmtype(t), asm_retval.clone());
             (vec![typed_operand], vec![], false)
-        }
-    }
-}
-
-fn type2asmtype(t: &Type) -> AsmType {
-    match t {
-        Type::Char | Type::UChar | Type::SChar => AsmType::Byte,
-        Type::Int | Type::UInt => AsmType::Longword,
-        Type::Long | Type::ULong => AsmType::Quadword,
-        Type::Double => AsmType::Double,
-        Type::Array { element, size } => AsmType::Bytearray {
-            size: get_size_of_type(element) * size,
-            alignment: get_alignment_of_type(t),
-        },
-        Type::Struct { tag } => {
-            let struct_size = TYPE_TABLE.lock().unwrap().get(tag).unwrap().size;
-            let struct_alignment = TYPE_TABLE.lock().unwrap().get(tag).unwrap().alignment;
-            AsmType::Bytearray {
-                size: struct_size,
-                alignment: struct_alignment,
-            }
-        }
-        Type::Pointer(_) => AsmType::Quadword,
-        _ => unreachable!(),
-    }
-}
-
-fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
-    match t {
-        Type::Void => (vec![], false),
-        t => {
-            let asm_val = if is_scalar(t) {
-                AsmOperand::Pseudo("DUMMY".to_string())
-            } else {
-                AsmOperand::PseudoMem("DUMMY".to_string(), 0)
-            };
-
-            let (ints, dbls, return_on_stack) = classify_return_helper(t, &asm_val);
-            if return_on_stack {
-                (vec![AsmRegister::Ax], true)
-            } else {
-                let int_regs: Vec<AsmRegister> = [AsmRegister::Ax, AsmRegister::Dx]
-                    .iter()
-                    .take(ints.len())
-                    .cloned()
-                    .collect();
-                let dbl_regs: Vec<AsmRegister> = [AsmRegister::Xmm0, AsmRegister::Xmm1]
-                    .iter()
-                    .take(dbls.len())
-                    .cloned()
-                    .collect();
-
-                (
-                    int_regs.iter().chain(dbl_regs.iter()).cloned().collect(),
-                    false,
-                )
-            }
         }
     }
 }
@@ -2507,5 +2483,28 @@ fn add_offset(byte_count: usize, operand: &AsmOperand) -> AsmOperand {
         _ => {
             unreachable!()
         }
+    }
+}
+
+fn type2asmtype(t: &Type) -> AsmType {
+    match t {
+        Type::Char | Type::UChar | Type::SChar => AsmType::Byte,
+        Type::Int | Type::UInt => AsmType::Longword,
+        Type::Long | Type::ULong => AsmType::Quadword,
+        Type::Double => AsmType::Double,
+        Type::Array { element, size } => AsmType::Bytearray {
+            size: get_size_of_type(element) * size,
+            alignment: get_alignment_of_type(t),
+        },
+        Type::Struct { tag } => {
+            let struct_size = TYPE_TABLE.lock().unwrap().get(tag).unwrap().size;
+            let struct_alignment = TYPE_TABLE.lock().unwrap().get(tag).unwrap().alignment;
+            AsmType::Bytearray {
+                size: struct_size,
+                alignment: struct_alignment,
+            }
+        }
+        Type::Pointer(_) => AsmType::Quadword,
+        _ => unreachable!(),
     }
 }
