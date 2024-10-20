@@ -16,21 +16,8 @@ impl ReplacePseudo for AsmNode {
             AsmNode::Program(prog) => AsmNode::Program(prog.replace_pseudo()),
             AsmNode::Function(func) => AsmNode::Function(func.replace_pseudo()),
             AsmNode::Operand(op) => AsmNode::Operand(op.replace_pseudo()),
-            AsmNode::Instructions(instrs) => {
-                AsmNode::Instructions(instrs.to_owned().replace_pseudo())
-            }
             _ => unreachable!(),
         }
-    }
-}
-
-impl ReplacePseudo for Vec<AsmInstruction> {
-    fn replace_pseudo(&self) -> Self {
-        let mut instructions = vec![];
-        for instr in self {
-            instructions.push(instr.replace_pseudo());
-        }
-        instructions
     }
 }
 
