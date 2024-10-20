@@ -28,7 +28,7 @@ pub enum AsmNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AsmProgram {
-    pub functions: Vec<AsmNode>,
+    pub functions: Vec<AsmFunction>,
     pub static_vars: Vec<AsmNode>,
     pub static_constants: Vec<AsmStaticConstant>,
 }
@@ -309,7 +309,7 @@ impl Codegen for IRProgram {
     fn codegen(&self) -> AsmNode {
         let mut functions = vec![];
         for func in &self.functions {
-            functions.push(func.codegen());
+            functions.push(func.codegen().into());
         }
 
         let mut static_vars = vec![];

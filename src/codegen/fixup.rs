@@ -23,15 +23,10 @@ impl Fixup for AsmProgram {
         let mut functions = vec![];
 
         for func in &mut self.functions {
-            let func_name = match func {
-                AsmNode::Function(f) => f.name.clone(),
-                _ => unreachable!(),
-            };
-
             let symbol = ASM_SYMBOL_TABLE
                 .lock()
                 .unwrap()
-                .get(&func_name)
+                .get(&func.name)
                 .cloned()
                 .unwrap();
 
