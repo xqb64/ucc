@@ -2067,6 +2067,8 @@ pub enum Class {
 fn classify_structure(struct_entry: &StructEntry) -> Vec<Class> {
     let mut size: isize = struct_entry.size as isize;
 
+    /* If the structure size is greater than 16 bytes, it cannot be returned in registers.
+     * We push Class::Memory for each 8-byte block and return the result. */
     if size > 16 {
         let mut result = vec![];
         while size > 0 {
@@ -2076,11 +2078,18 @@ fn classify_structure(struct_entry: &StructEntry) -> Vec<Class> {
         return result;
     }
 
+    /* If the structure size is equal to 16 bytes or smaller, this means it can be returned
+     * in registers because it fits the two registers (2x 8 bytes). */
     let scalar_types = flatten_member_types(&struct_entry.members);
 
+    /* Since, at this point, we're working with 16 bytes or smaller, and we have two registers,
+     * and the System V AMD64 ABI is only concerned with how the structure's first and last parts
+     * fit into one (or both) registers, we can safely ignore all "in between" members. */
     let first = scalar_types.first().unwrap();
     let last = scalar_types.last().unwrap();
 
+    /* If structure size is between 8 and 16 bytes, it means it fits into two registers, and we
+     * classify accordingly. */
     if size > 8 {
         if first == &Type::Double && last == &Type::Double {
             return vec![Class::Sse, Class::Sse];
@@ -2096,8 +2105,10 @@ fn classify_structure(struct_entry: &StructEntry) -> Vec<Class> {
 
         vec![Class::Integer, Class::Integer]
     } else if first == &Type::Double {
+        /* Less than or equal to 8 bytes. */
         return vec![Class::Sse];
     } else {
+        /* Less than or equal to 8 bytes. */
         return vec![Class::Integer];
     }
 }
