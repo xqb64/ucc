@@ -358,64 +358,30 @@ impl Typecheck for VariableDeclaration {
     }
 }
 
-fn const2type(konst: &Const, t: &Type) -> StaticInit {
-    match konst {
-        Const::Int(i) => match t {
-            Type::Int => StaticInit::Int(*i),
-            Type::UInt => StaticInit::UInt(*i as u32),
-            Type::Long => StaticInit::Long(*i as i64),
-            Type::ULong => StaticInit::ULong(*i as u64),
-            Type::Double => StaticInit::Double(*i as f64),
-            Type::Pointer(_) => StaticInit::ULong(*i as u64),
-            Type::Char | Type::SChar => StaticInit::Char(*i),
-            Type::UChar => StaticInit::UChar(*i as u32),
+macro_rules! convert_to_static {
+    ($konst:expr, $ty:ty, $variant:path) => {
+        match $konst {
+            Const::Int(val) => $variant(*val as $ty),
+            Const::Long(val) => $variant(*val as $ty),
+            Const::UInt(val) => $variant(*val as $ty),
+            Const::ULong(val) => $variant(*val as $ty),
+            Const::Double(val) => $variant(*val as $ty),
             _ => unreachable!(),
-        },
-        Const::Long(l) => match t {
-            Type::Int => StaticInit::Int(*l as i32),
-            Type::UInt => StaticInit::UInt(*l as u32),
-            Type::Long => StaticInit::Long(*l),
-            Type::ULong => StaticInit::ULong(*l as u64),
-            Type::Double => StaticInit::Double(*l as f64),
-            Type::Pointer(_) => StaticInit::ULong(*l as u64),
-            Type::Char | Type::SChar => StaticInit::Char(*l as i32),
-            Type::UChar => StaticInit::UChar(*l as u32),
-            _ => unreachable!(),
-        },
-        Const::UInt(u) => match t {
-            Type::Int => StaticInit::Int(*u as i32),
-            Type::UInt => StaticInit::UInt(*u),
-            Type::Long => StaticInit::Long(*u as i64),
-            Type::ULong => StaticInit::ULong(*u as u64),
-            Type::Double => StaticInit::Double(*u as f64),
-            Type::Pointer(_) => StaticInit::ULong(*u as u64),
-            Type::Char | Type::SChar => StaticInit::Char(*u as i32),
-            Type::UChar => StaticInit::UChar(*u),
-            _ => unreachable!(),
-        },
-        Const::ULong(ul) => match t {
-            Type::Int => StaticInit::Int(*ul as i32),
-            Type::UInt => StaticInit::UInt(*ul as u32),
-            Type::Long => StaticInit::Long(*ul as i64),
-            Type::ULong => StaticInit::ULong(*ul),
-            Type::Double => StaticInit::Double(*ul as f64),
-            Type::Pointer(_) => StaticInit::ULong(*ul),
-            Type::Char | Type::SChar => StaticInit::Char(*ul as i32),
-            Type::UChar => StaticInit::UChar(*ul as u32),
-            _ => unreachable!(),
-        },
-        Const::Double(d) => match t {
-            Type::Int => StaticInit::Int(*d as i32),
-            Type::UInt => StaticInit::UInt(*d as u32),
-            Type::Long => StaticInit::Long(*d as i64),
-            Type::ULong => StaticInit::ULong(*d as u64),
-            Type::Double => StaticInit::Double(*d),
-            Type::Pointer(_) => StaticInit::ULong(*d as u64),
-            Type::Char | Type::SChar => StaticInit::Char(*d as i32),
-            Type::UChar => StaticInit::UChar(*d as u32),
-            _ => unreachable!(),
-        },
-        _ => todo!(),
+        }
+    };
+}
+
+fn const2staticinit(konst: &Const, t: &Type) -> StaticInit {
+    match t {
+        Type::Int => convert_to_static!(konst, i32, StaticInit::Int),
+        Type::UInt => convert_to_static!(konst, u32, StaticInit::UInt),
+        Type::Long => convert_to_static!(konst, i64, StaticInit::Long),
+        Type::ULong => convert_to_static!(konst, u64, StaticInit::ULong),
+        Type::Double => convert_to_static!(konst, f64, StaticInit::Double),
+        Type::Pointer(_) => convert_to_static!(konst, u64, StaticInit::ULong),
+        Type::Char | Type::SChar => convert_to_static!(konst, i32, StaticInit::Char),
+        Type::UChar => convert_to_static!(konst, u32, StaticInit::UChar),
+        _ => unreachable!(),
     }
 }
 
@@ -514,7 +480,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             ) {
                 Ok(vec![StaticInit::Zero(get_size_of_type(t))])
             } else {
-                Ok(vec![const2type(value, t)])
+                Ok(vec![const2staticinit(value, t)])
             }
         }
         (Type::Pointer { .. }, _) => bail!("InvalidPointerInitializer"),
