@@ -1,7 +1,7 @@
 use crate::{
     codegen::gen::{
         AsmFunction, AsmInstruction, AsmNode, AsmOperand, AsmProgram, AsmRegister, AsmSymtabEntry,
-        ASM_SYMBOL_TABLE, STATIC_CONSTANTS, VAR_TO_STACK_POS,
+        ASM_SYMBOL_TABLE, VAR_TO_STACK_POS,
     },
     semantics::typechecker::{IdentifierAttrs, SYMBOL_TABLE},
 };
