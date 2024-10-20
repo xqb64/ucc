@@ -2172,20 +2172,31 @@ fn classify_return_type(t: &Type) -> (Vec<AsmRegister>, bool) {
     }
 }
 
+/* Classifies how a return value should be passed based on its return type. */
 fn classify_return_helper(
     ret_type: &Type,
     asm_retval: &AsmOperand,
 ) -> (Vec<(AsmType, AsmOperand)>, Vec<AsmOperand>, bool) {
     match ret_type {
         Type::Struct { tag } => {
+            /* For structures, we get the struct entry from the type table and classify it. */
+
             let struct_entry = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
             let classes = classify_structure(&struct_entry);
 
             let struct_size = struct_entry.size;
 
+            /* If the structure is classified as Memory, return empty vecs and indicate that
+             * the return value should be passed via memory, not registers. */
             if classes[0] == Class::Memory {
                 (vec![], vec![], true)
             } else {
+                /* If it is not, we iterate over each class, and for each class,
+                 * we push a PseudoMem operand in the corresponding basket (int/double).
+                 * If the class is SSE, the operand is added to double_retvals.
+                 * If the class is Integer, the operand is added to int_retvals along with the
+                 * eightbyte type (AsmType). */
+
                 let mut int_retvals = vec![];
                 let mut double_retvals = vec![];
 
@@ -2208,6 +2219,8 @@ fn classify_return_helper(
                         }
                         Class::Memory => unreachable!(),
                     }
+
+                    /* Finally, we increment the offset. */
                     offset += 8;
                 }
 
@@ -2215,8 +2228,10 @@ fn classify_return_helper(
             }
         }
 
+        /* For doubles, the return value is added to double_retvals. */
         Type::Double => (vec![], vec![asm_retval.clone()], false),
 
+        /* For other types, the return value is added to the integer-like basket. */
         t => {
             let typed_operand = (type2asmtype(t), asm_retval.clone());
             (vec![typed_operand], vec![], false)
