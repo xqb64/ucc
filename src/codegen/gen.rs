@@ -1946,8 +1946,7 @@ fn returns_on_stack(name: &str) -> bool {
                     .unwrap()
                     .get(tag)
                     .cloned()
-                    .unwrap()
-                    .clone();
+                    .unwrap();
 
                 matches!(
                     classify_structure(&struct_entry).as_slice(),
