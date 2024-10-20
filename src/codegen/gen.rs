@@ -2475,9 +2475,12 @@ fn ir2asmtype(value: &IRValue) -> AsmType {
     }
 }
 
+/* Represents a position in the stack with a single i64 value. */
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub struct StackPosition(pub i64);
 
+
+/* A struct to manage the mapping of variables to their stack positions. */
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarToStackPos {
     pub last_used_stack_pos: StackPosition,
@@ -2494,11 +2497,14 @@ impl Default for VarToStackPos {
 }
 
 impl VarToStackPos {
+    /* Maps a variable (by its identifier) to a stack position based on its type. */
     pub fn var_to_stack_pos(&mut self, ident: &str, asm_type: AsmType) -> StackPosition {
+        /* If the variable doesn't already have a stack position, compute and insert one. */
         let pos = self
             .var_to_stack_pos
             .entry(ident.to_owned())
             .or_insert_with(|| {
+                /* Determine the size to allocate based on the operand's byte length. */
                 let alloc = match OperandByteLen::from(asm_type) {
                     OperandByteLen::B1 => 1,
                     OperandByteLen::B4 => 4,
@@ -2507,6 +2513,7 @@ impl VarToStackPos {
                 };
                 self.last_used_stack_pos.0 -= alloc;
 
+                /* Determine the alignment for the operand's type. */
                 let alignment = match Alignment::default_of(asm_type) {
                     Alignment::B1 => 1,
                     Alignment::B4 => 4,
@@ -2514,6 +2521,8 @@ impl VarToStackPos {
                     Alignment::B16 => 16,
                     Alignment::Other(size) => size,
                 };
+
+                /* Ensure stack position is aligned by adjusting for remainder (if any). */
                 let rem = self.last_used_stack_pos.0 % alignment as i64;
                 if rem != 0 {
                     self.last_used_stack_pos.0 -= alignment as i64 + rem;
@@ -2521,6 +2530,7 @@ impl VarToStackPos {
 
                 self.last_used_stack_pos
             });
+
         *pos
     }
 
@@ -2552,8 +2562,8 @@ impl<T: Into<AsmType>> From<T> for OperandByteLen {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Debug)]
 #[repr(usize)]
+#[derive(PartialEq, Eq, Hash, Debug)]
 pub enum Alignment {
     B1 = 1,
     B4 = 4,
