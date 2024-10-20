@@ -12,7 +12,7 @@ use crate::{
     parser::ast::Type,
     semantics::typechecker::{
         get_common_type, get_signedness, get_size_of_type, is_pointer_type, is_scalar,
-        IdentifierAttrs, MemberEntry, StaticInit, SYMBOL_TABLE, TYPE_TABLE,
+        IdentifierAttrs, MemberEntry, StaticInit, SYMBOL_TABLE, TYPE_TABLE, StructEntry,
     },
 };
 
@@ -2240,8 +2240,6 @@ pub enum Class {
     Sse,
     Integer,
 }
-
-use crate::semantics::typechecker::StructEntry;
 
 fn classify_structure(struct_entry: &StructEntry) -> Vec<Class> {
     let mut size: isize = struct_entry.size as isize;
