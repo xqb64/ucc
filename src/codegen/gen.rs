@@ -2315,21 +2315,28 @@ fn copy_bytes_to_reg(
 }
 
 fn copy_bytes(src: &AsmOperand, dst: &AsmOperand, byte_count: usize) -> Vec<AsmInstruction> {
+    /* If there are no bytes to copy, return an empty vector. */
     if byte_count == 0 {
         return vec![];
     }
 
+    /* Determine the appropriate operand type and size based on the number of bytes left to copy. */
     let (operand_type, operand_size) = if byte_count < 4 {
+        /* If fewer than 4 bytes, use `Byte` (1 byte). */
         (AsmType::Byte, 1)
     } else if byte_count < 8 {
+        /* If fewer than 8 bytes but at least 4, use `Longword` (4 bytes). */
         (AsmType::Longword, 4)
     } else {
+        /* If 8 bytes or more, use `Quadword` (8 bytes). */
         (AsmType::Quadword, 8)
     };
 
+    /* Calculate the next source and destination operands. */
     let next_src = add_offset(operand_size, src);
     let next_dst = add_offset(operand_size, dst);
 
+    /* Calculate the number of bytes left to copy after this operation. */
     let bytes_left = byte_count - operand_size;
 
     let mut instructions = vec![AsmInstruction::Mov {
@@ -2337,6 +2344,8 @@ fn copy_bytes(src: &AsmOperand, dst: &AsmOperand, byte_count: usize) -> Vec<AsmI
         src: src.clone(),
         dst: dst.clone(),
     }];
+
+    /* Recursively copy the remaining bytes by calling `copy_bytes` with updated operands and bytes left. */
     instructions.extend(copy_bytes(&next_src, &next_dst, bytes_left));
 
     instructions
