@@ -1815,11 +1815,8 @@ fn classify_params_helper(
         let typed_operand = (type2asmtype(t), operand.clone());
 
         match t {
-            Type::Struct { .. } => {
-                let struct_entry = match t {
-                    Type::Struct { tag } => TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone(),
-                    _ => unreachable!(),
-                };
+            Type::Struct { tag } => {
+                let struct_entry = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
 
                 let classes = classify_structure(&struct_entry);
                 let mut use_stack = true;
