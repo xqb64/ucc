@@ -1805,6 +1805,9 @@ fn classify_params_helper(
     Vec<AsmOperand>,
     Vec<(AsmType, AsmOperand)>,
 ) {
+    /* Set the number of available integer registers depending on whether return is on stack,
+     * because if it is, we will need one register to hold the address of the location where
+     * the return value is stored. */
     let int_regs_available = if return_on_stack { 5 } else { 6 };
 
     let mut int_reg_args = vec![];
@@ -1818,42 +1821,54 @@ fn classify_params_helper(
             Type::Struct { tag } => {
                 let struct_entry = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
 
+                /* Classify the structure into register classes */
                 let classes = classify_structure(&struct_entry);
                 let mut use_stack = true;
 
                 let struct_size = struct_entry.size;
 
+                /* Extract the variable name from the operand */
                 let name_of_v = match operand {
                     AsmOperand::PseudoMem(name, _) => name.clone(),
                     _ => unreachable!(),
                 };
 
+                /* If the first classification class is not 'Memory' */
                 if classes[0] != Class::Memory {
+                    /* Tentatively store register operands for integers and doubles */
                     let mut tentative_ints = vec![];
                     let mut tentative_doubles = vec![];
 
-                    let mut offset = 0;
+                    let mut offset = 0;  /* Offset for each 8-byte section of the structure */
 
+                    /* Iterate over the classification of structure sections */
                     for class in &classes {
-                        let operand = AsmOperand::PseudoMem(name_of_v.clone(), offset);
+                        let operand = AsmOperand::PseudoMem(name_of_v.clone(), offset);  /* Create an operand for this section */
+                        
                         if class == &Class::Sse {
+                            /* If the section is SSE (floating-point), store it as a double register argument */
                             tentative_doubles.push(operand);
                         } else {
+                            /* Otherwise, store it as an integer register argument */
                             let eightbyte_type = get_eightbyte_type(offset, struct_size);
                             tentative_ints.push((eightbyte_type, operand));
                         }
+
+                        /* Move to the next section */
                         offset += 8;
                     }
 
+                    /* If there are enough free registers, use them for this structure */
                     if (tentative_doubles.len() + double_reg_args.len() <= 8)
                         && (tentative_ints.len() + int_reg_args.len() <= int_regs_available)
                     {
-                        double_reg_args.extend(tentative_doubles);
-                        int_reg_args.extend(tentative_ints);
-                        use_stack = false;
+                        double_reg_args.extend(tentative_doubles);  /* Add double register arguments */
+                        int_reg_args.extend(tentative_ints);  /* Add integer register arguments */
+                        use_stack = false;  /* No need to use the stack */
                     }
                 }
 
+                /* If not enough registers, use the stack for this structure */
                 if use_stack {
                     let mut offset = 0;
                     for _ in classes {
@@ -1864,26 +1879,34 @@ fn classify_params_helper(
                 }
             }
 
+            /* If the type is a double (floating-point) */
             Type::Double => {
                 if double_reg_args.len() < 8 {
+                    /* If there are free double registers, use them */
                     double_reg_args.push(operand.clone());
                 } else {
+                    /* Otherwise, use the stack */
                     stack_args.push(typed_operand);
                 }
             }
 
+            /* For all other types (e.g., integers) */
             _ => {
                 if int_reg_args.len() < int_regs_available {
+                    /* If there are free integer registers, use them */
                     int_reg_args.push(typed_operand);
                 } else {
+                    /* Otherwise, use the stack */
                     stack_args.push(typed_operand);
                 }
             }
         }
     }
 
+    /* Return the lists of integer register arguments, double register arguments, and stack arguments */
     (int_reg_args, double_reg_args, stack_args)
 }
+
 
 fn classify_param_types(params: &[Type], return_on_stack: bool) -> Vec<AsmRegister> {
     let f = |t: &Type| {
