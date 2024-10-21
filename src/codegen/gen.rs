@@ -1926,7 +1926,7 @@ fn classify_param_types(params: &[Type], return_on_stack: bool) -> Vec<AsmRegist
     int_regs_final
         .iter()
         .chain(double_regs_final.iter())
-        .map(|x| x.to_owned().to_owned())
+        .map(|&&x| x)
         .collect()
 }
 
