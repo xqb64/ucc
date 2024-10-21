@@ -1811,12 +1811,12 @@ fn classify_params_helper(
     let mut double_reg_args = vec![];
     let mut stack_args = vec![];
 
-    for (tacky_t, operand) in typed_asm_vals {
-        let typed_operand = (type2asmtype(tacky_t), operand.clone());
+    for (t, operand) in typed_asm_vals {
+        let typed_operand = (type2asmtype(t), operand.clone());
 
-        match tacky_t {
+        match t {
             Type::Struct { .. } => {
-                let struct_entry = match tacky_t {
+                let struct_entry = match t {
                     Type::Struct { tag } => TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone(),
                     _ => unreachable!(),
                 };
