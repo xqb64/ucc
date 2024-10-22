@@ -358,8 +358,14 @@ impl Codegen for IRStaticConstant {
 
 impl Codegen for IRFunction {
     fn codegen(&self) -> AsmNode {
+        /* Determine if the function returns a value on the stack.
+         * 
+         * Some functions return large values or structs, which need to be returned
+         * via memory instead of registers. If this is the case, we reserve space for
+         * the return address on the stack. */
         let return_on_stack = returns_on_stack(&self.name);
-        let params_as_tacky = self
+        
+        let params_as_ir = self
             .params
             .iter()
             .map(|x| IRValue::Var(x.clone()))
@@ -367,9 +373,14 @@ impl Codegen for IRFunction {
 
         let mut instructions = vec![];
 
+        /* Split the function parameters into three categories:
+         * 1. Integer register parameters
+         * 2. Floating-point register parameters
+         * 3. Parameters passed via the stack */
         let (int_reg_params, double_reg_params, stack_params) =
-            classify_parameters(&params_as_tacky, return_on_stack);
+            classify_parameters(&params_as_ir, return_on_stack);
 
+        /* The list of integer parameter passing registers. */
         let int_regs: [AsmRegister; 6] = [
             AsmRegister::Di,
             AsmRegister::Si,
@@ -381,15 +392,26 @@ impl Codegen for IRFunction {
 
         let mut reg_index = 0;
 
+        /* If the function returns a value on the stack, we need to store the pointer to 
+         * the return buffer in memory at -8(%bp). This is done because the Di register is
+         * normally used for the first parameter, but if a return buffer is present, it takes
+         * precedence and is saved here before processing the actual parameters. */
         if return_on_stack {
             instructions.push(AsmInstruction::Mov {
                 asm_type: AsmType::Quadword,
                 src: AsmOperand::Register(AsmRegister::Di),
                 dst: AsmOperand::Memory(AsmRegister::Bp, -8),
             });
+
+            /* Skip the first register as it's now used for the return buffer. */
             reg_index = 1;
         }
 
+        /* Process integer register parameters.
+         *
+         * For each parameter passed in an integer register, we move it from the register
+         * to the appropriate location (either a local variable or an argument slot in memory).
+         * If the parameter is a byte array, we use a specialized function to copy it. */
         for (param_type, param) in int_reg_params.iter() {
             let reg = int_regs[reg_index];
 
@@ -410,6 +432,7 @@ impl Codegen for IRFunction {
             reg_index += 1;
         }
 
+        /* The list of double parameter passing registers. */
         let double_regs = [
             AsmRegister::Xmm0,
             AsmRegister::Xmm1,
@@ -421,6 +444,8 @@ impl Codegen for IRFunction {
             AsmRegister::Xmm7,
         ];
 
+        /* Process floating-point register parameters.
+         * Each parameter is moved from the floating-point register (XMM) to its destination. */
         for (idx, param) in double_reg_params.iter().enumerate() {
             let reg = double_regs[idx];
             let instr = AsmInstruction::Mov {
@@ -431,6 +456,11 @@ impl Codegen for IRFunction {
             instructions.push(instr);
         }
 
+        /* Start handling stack parameters (parameters passed on the stack instead of registers).
+         * Stack parameters start 16 bytes above the base pointer (%bp) due to the calling convention.
+         * The first 16 bytes are used for the return address and the previous frame pointer. 
+         * 
+         * See Figure 18-4 in the book. */
         let mut offset = 16;
         for (param_type, param) in stack_params {
             match param_type {
