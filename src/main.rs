@@ -142,7 +142,7 @@ fn run(opts: &Opt) -> Result<()> {
 
     let aliased_pseudos = analyze_program(&optimized_prog);
 
-    let mut asm_prog = optimized_prog
+    let asm_prog = optimized_prog
         .codegen()
         .reg_alloc(&aliased_pseudos)
         .replace_pseudo()
@@ -154,7 +154,7 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let mut f = File::create(opts.path.with_extension("s"))?;
-    asm_prog.emit(&mut f, &mut AsmType::Longword)?;
+    asm_prog.emit(&mut f, AsmType::Longword)?;
 
     if opts.s {
         std::process::exit(0);
