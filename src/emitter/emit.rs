@@ -165,8 +165,7 @@ impl Emit for AsmFunction {
 
 impl Emit for AsmInstruction {
     fn emit(&self, f: &mut File, _asm_type: AsmType) -> Result<()> {
-        if let AsmInstruction::Label(_) = self {
-        } else {
+        if !matches!(self, AsmInstruction::Label(_)) {
             write!(f, "\t")?;
         }
 
