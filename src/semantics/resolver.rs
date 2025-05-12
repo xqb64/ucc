@@ -7,7 +7,7 @@ use crate::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BlockItem,
         BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression,
         ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression,
-        Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement,
+        Expression, ExpressionStatement, ForInit, ForStatement, LabeledStatement, FunctionDeclaration, IfStatement,
         Initializer, MemberDeclaration, Program, ReturnStatement, SizeofExpression,
         SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration,
         SubscriptExpression, Type, UnaryExpression, VariableDeclaration, VariableExpression,
@@ -314,6 +314,12 @@ impl Resolve for Statement {
                 expr.resolve(variable_map, struct_map)?;
             }
 
+            Statement::Goto(_) => {}
+
+            Statement::Labeled(labeled) => {
+                labeled.resolve(variable_map, struct_map)?;
+            }
+
             Statement::Return(ret) => {
                 ret.resolve(variable_map, struct_map)?;
             }
@@ -347,6 +353,20 @@ impl Resolve for Statement {
 
             Statement::Null => {}
         }
+
+        Ok(self)
+    }
+}
+
+impl Resolve for LabeledStatement {
+    fn resolve(
+            &mut self,
+            variable_map: &mut BTreeMap<String, Variable>,
+            struct_map: &mut BTreeMap<String, StructTableEntry>,
+        ) -> Result<&mut Self>
+        where
+            Self: Sized {
+        self.body.resolve(variable_map, struct_map)?;
 
         Ok(self)
     }

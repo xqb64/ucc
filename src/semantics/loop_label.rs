@@ -4,7 +4,7 @@ use crate::{
     ir::gen::make_temporary,
     parser::ast::{
         BlockItem, BlockStatement, BreakStatement, ContinueStatement, Declaration,
-        DoWhileStatement, ExpressionStatement, ForStatement, FunctionDeclaration, IfStatement,
+        DoWhileStatement, ExpressionStatement, ForStatement, GotoStatement, LabeledStatement, FunctionDeclaration, IfStatement,
         Program, ReturnStatement, Statement, WhileStatement,
     },
 };
@@ -112,6 +112,20 @@ impl LoopLabel for ExpressionStatement {
     }
 }
 
+impl LoopLabel for GotoStatement {
+    fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
+        Ok(self)
+    }
+}
+
+impl LoopLabel for LabeledStatement {
+    fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
+        self.body.loop_label(current_label)?;
+
+        Ok(self)
+    }
+}
+
 impl LoopLabel for Statement {
     fn loop_label(&mut self, current_label: &str) -> Result<&mut Self> {
         match self {
@@ -149,6 +163,14 @@ impl LoopLabel for Statement {
 
             Statement::Return(r) => {
                 r.loop_label(current_label)?;
+            }
+
+            Statement::Goto(g) => {
+                g.loop_label(current_label)?;
+            }
+
+            Statement::Labeled(l) => {
+                l.loop_label(current_label)?;
             }
 
             Self::Null => {}

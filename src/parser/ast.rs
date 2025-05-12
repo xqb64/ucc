@@ -63,6 +63,8 @@ pub enum Statement {
     For(ForStatement),
     Break(BreakStatement),
     Continue(ContinueStatement),
+    Goto(GotoStatement),
+    Labeled(LabeledStatement),
     Null,
 }
 
@@ -148,6 +150,17 @@ pub struct BreakStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContinueStatement {
     pub label: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GotoStatement {
+    pub label: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LabeledStatement {
+    pub label: String,
+    pub body: Box<Statement>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

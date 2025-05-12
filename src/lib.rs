@@ -20,6 +20,7 @@ pub mod semantics {
     pub mod loop_label;
     pub mod resolver;
     pub mod typechecker;
+    pub mod label_checker;
 }
 pub mod optimizer {
     pub mod constant_folding;

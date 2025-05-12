@@ -2,14 +2,7 @@ use crate::{
     ir::gen::make_temporary,
     lexer::lex::Const,
     parser::ast::{
-        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
-        BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression,
-        ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement,
-        DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration,
-        IfStatement, Initializer, Program, ReturnStatement, SizeofExpression, SizeofTExpression,
-        Statement, StorageClass, StringExpression, StructDeclaration, SubscriptExpression, Type,
-        UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression,
-        WhileStatement,
+        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, GotoStatement, IfStatement, Initializer, LabeledStatement, Program, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement
     },
 };
 use anyhow::{bail, Result};
@@ -641,6 +634,12 @@ impl Typecheck for Program {
 impl Typecheck for Statement {
     fn typecheck(&mut self) -> Result<&mut Self> {
         match self {
+            Statement::Labeled(LabeledStatement { label, body }) => body.typecheck(),
+
+            Statement::Goto(GotoStatement { label: _ }) => {
+                Ok(self)
+            }
+
             Statement::Expression(ExpressionStatement { expr }) => {
                 *expr = typecheck_and_convert(expr)?;
 

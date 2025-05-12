@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::{collections::VecDeque, fs::File, path::PathBuf};
 
 use anyhow::{bail, Result};
@@ -6,6 +6,7 @@ use structopt::StructOpt;
 
 use ucc::ir::gen::{IRInstruction, IRProgram, IRValue, Optimization};
 use ucc::parser::recursive_descent::Parser;
+use ucc::semantics::label_checker::LabelCheck;
 use ucc::{
     codegen::fixup::Fixup,
     codegen::gen::{build_asm_symbol_table, AsmType, Codegen},
@@ -63,6 +64,7 @@ fn run(opts: &Opt) -> Result<()> {
     let cooked_ast = raw_ast
         .resolve(&mut variable_map, &mut struct_map)?
         .loop_label("")?
+        .label_check(&mut HashSet::new(), "")?
         .typecheck()?;
 
     if opts.validate {
@@ -70,7 +72,7 @@ fn run(opts: &Opt) -> Result<()> {
         std::process::exit(0);
     }
 
-    let mut tac = cooked_ast.irfy().unwrap();
+    let mut tac = cooked_ast.irfy("").unwrap();
     let (static_variables, static_constants) = convert_symbols_to_tacky();
 
     let ir_prog = if let IRNode::Program(prog) = &mut tac {
@@ -101,12 +103,11 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let optimized_prog = ir_prog.optimize(optimizations);
-
+    
     if opts.tacky {
         println!("tac: {:#?}", optimized_prog);
         std::process::exit(0);
     }
-
     build_asm_symbol_table();
 
     fn analyze_program(program: &IRProgram) -> BTreeSet<String> {

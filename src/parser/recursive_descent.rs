@@ -15,6 +15,8 @@ use crate::{
 use anyhow::{bail, Result};
 use std::collections::{BTreeSet, VecDeque};
 
+use super::ast::{GotoStatement, LabeledStatement};
+
 pub struct Parser {
     pub tokens: VecDeque<Token>,
     pub current: Option<Token>,
@@ -91,6 +93,12 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<BlockItem> {
+        if let Some(Token::Identifier(_)) = self.current {
+            if let Some(Token::Colon) = self.tokens.front() {
+                return self.parse_labeled_statement();
+            }
+        }
+
         if self.check_many(&[
             Token::Char,
             Token::Int,
@@ -118,6 +126,8 @@ impl Parser {
             self.parse_break_statement()
         } else if self.is_next(&[Token::Continue]) {
             self.parse_continue_statement()
+        } else if self.is_next(&[Token::Goto]) {
+            self.parse_goto_statement()
         } else if self.is_next(&[Token::LBrace]) {
             self.parse_block_statement()
         } else if self.is_next(&[Token::Semicolon]) {
@@ -729,6 +739,41 @@ impl Parser {
                 label: "".to_owned(),
             },
         )))
+    }
+
+    fn parse_goto_statement(&mut self) -> Result<BlockItem> {
+        let label_token = self.consume(&Token::Identifier("".to_string()))?;
+        let label = if let Some(label_name) = label_token {
+            label_name.as_string()
+        } else {
+            bail!("...")
+        };
+        self.consume(&Token::Semicolon)?;
+        Ok(BlockItem::Statement(Statement::Goto(
+            GotoStatement {
+                label,
+            }
+        )))
+    }
+
+    fn parse_labeled_statement(&mut self) -> Result<BlockItem> {
+        let label_token = self.consume(&Token::Identifier("".to_string()))?;
+        let label = if let Some(label_name) = label_token {
+            label_name.as_string()
+        } else {
+            bail!("expected label identifier");
+        };
+        self.consume(&Token::Colon)?;
+
+        let inner = self.parse_statement()?;
+
+        match inner {
+            BlockItem::Statement(stmt) => Ok(BlockItem::Statement(Statement::Labeled(LabeledStatement {
+                label,
+                body: Box::new(stmt),
+            }))),
+            _ => bail!("label must precede a statement, not a declaration"),
+        }
     }
 
     fn parse_return_statement(&mut self) -> Result<BlockItem> {
