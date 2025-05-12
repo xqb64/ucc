@@ -5,9 +5,10 @@ use crate::{
         BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,
         CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression,
         DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement,
-        FunctionDeclaration, GotoStatement, LabeledStatement, IfStatement, Initializer, Program, ReturnStatement, SizeofExpression,
-        SizeofTExpression, Statement, StringExpression, SubscriptExpression, Type, UnaryExpression,
-        UnaryExpressionKind, VariableDeclaration, WhileStatement,
+        FunctionDeclaration, GotoStatement, IfStatement, Initializer, LabeledStatement, Program,
+        ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StringExpression,
+        SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration,
+        WhileStatement,
     },
     semantics::typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
@@ -258,8 +259,9 @@ impl Irfy for BlockStatement {
                         if !var_decl.is_global && var_decl.storage_class.is_some() {
                             continue;
                         } else {
-                            instructions
-                                .extend::<Vec<IRInstruction>>(var_decl.irfy(funcname).unwrap().into());
+                            instructions.extend::<Vec<IRInstruction>>(
+                                var_decl.irfy(funcname).unwrap().into(),
+                            );
                         }
                     }
 
@@ -330,7 +332,7 @@ impl Irfy for IfStatement {
 }
 
 impl Irfy for BreakStatement {
-    fn irfy(&self, funcname: &str) -> Option<IRNode> {
+    fn irfy(&self, _funcname: &str) -> Option<IRNode> {
         Some(IRNode::Instructions(vec![IRInstruction::Jump(format!(
             "{}.break",
             self.label.clone()
@@ -339,7 +341,7 @@ impl Irfy for BreakStatement {
 }
 
 impl Irfy for ContinueStatement {
-    fn irfy(&self, funcname: &str) -> Option<IRNode> {
+    fn irfy(&self, _funcname: &str) -> Option<IRNode> {
         Some(IRNode::Instructions(vec![IRInstruction::Jump(format!(
             "{}.continue",
             self.label.clone()
@@ -349,7 +351,11 @@ impl Irfy for ContinueStatement {
 
 impl Irfy for GotoStatement {
     fn irfy(&self, funcname: &str) -> Option<IRNode> {
-        Some(IRNode::Instructions(vec![IRInstruction::Jump(format!("{}.{}", self.label.clone(), funcname))]))        
+        Some(IRNode::Instructions(vec![IRInstruction::Jump(format!(
+            "{}.{}",
+            self.label.clone(),
+            funcname
+        ))]))
     }
 }
 
@@ -480,7 +486,7 @@ impl Irfy for ForInit {
 }
 
 impl Irfy for ReturnStatement {
-    fn irfy(&self, funcname: &str) -> Option<IRNode> {
+    fn irfy(&self, _funcname: &str) -> Option<IRNode> {
         let mut instructions = vec![];
         let result = optionally_emit_tacky_and_convert(&self.expr, &mut instructions);
         instructions.push(IRInstruction::Ret(result));
@@ -489,7 +495,7 @@ impl Irfy for ReturnStatement {
 }
 
 impl Irfy for ExpressionStatement {
-    fn irfy(&self, funcname: &str) -> Option<IRNode> {
+    fn irfy(&self, _funcname: &str) -> Option<IRNode> {
         let mut instructions = vec![];
         let _ = emit_tacky(&self.expr, &mut instructions);
         Some(IRNode::Instructions(instructions))
@@ -533,7 +539,7 @@ impl Irfy for FunctionDeclaration {
 }
 
 impl Irfy for VariableDeclaration {
-    fn irfy(&self, funcname: &str) -> Option<IRNode> {
+    fn irfy(&self, _funcname: &str) -> Option<IRNode> {
         let mut instructions = vec![];
 
         if let Some(Initializer::Single(_, Expression::String(_))) = &self.init {
@@ -1330,41 +1336,37 @@ pub fn convert_symbols_to_tacky() -> (Vec<IRStaticVariable>, Vec<IRStaticConstan
         } = entry.attrs.clone()
         {
             match initial_value {
-                InitialValue::Initial(init) => {
-                    static_variables.push(IRStaticVariable {
-                        name: name.clone(),
-                        global,
-                        init: init.clone(),
-                        _type: entry._type.clone(),
-                    })
-                }
-                InitialValue::Tentative => {
-                    static_variables.push(IRStaticVariable {
-                        name: name.clone(),
-                        _type: entry._type.clone(),
-                        global,
-                        init: vec![match &entry._type {
-                            Type::Char => StaticInit::Char(0),
-                            Type::SChar => StaticInit::Char(0),
-                            Type::UChar => StaticInit::UChar(0),
-                            Type::Int => StaticInit::Int(0),
-                            Type::Long => StaticInit::Long(0),
-                            Type::ULong => StaticInit::ULong(0),
-                            Type::UInt => StaticInit::UInt(0),
-                            Type::Double => StaticInit::Double(0.0),
-                            Type::Pointer(_) => StaticInit::ULong(0),
-                            Type::Array { element, size } => {
-                                StaticInit::Zero(get_size_of_type(element) * size)
-                            }
-                            Type::Struct { tag } => {
-                                StaticInit::Zero(TYPE_TABLE.lock().unwrap().get(tag).unwrap().size)
-                            }
-                            _ => {
-                                unimplemented!()
-                            }
-                        }],
-                    })
-                }
+                InitialValue::Initial(init) => static_variables.push(IRStaticVariable {
+                    name: name.clone(),
+                    global,
+                    init: init.clone(),
+                    _type: entry._type.clone(),
+                }),
+                InitialValue::Tentative => static_variables.push(IRStaticVariable {
+                    name: name.clone(),
+                    _type: entry._type.clone(),
+                    global,
+                    init: vec![match &entry._type {
+                        Type::Char => StaticInit::Char(0),
+                        Type::SChar => StaticInit::Char(0),
+                        Type::UChar => StaticInit::UChar(0),
+                        Type::Int => StaticInit::Int(0),
+                        Type::Long => StaticInit::Long(0),
+                        Type::ULong => StaticInit::ULong(0),
+                        Type::UInt => StaticInit::UInt(0),
+                        Type::Double => StaticInit::Double(0.0),
+                        Type::Pointer(_) => StaticInit::ULong(0),
+                        Type::Array { element, size } => {
+                            StaticInit::Zero(get_size_of_type(element) * size)
+                        }
+                        Type::Struct { tag } => {
+                            StaticInit::Zero(TYPE_TABLE.lock().unwrap().get(tag).unwrap().size)
+                        }
+                        _ => {
+                            unimplemented!()
+                        }
+                    }],
+                }),
                 _ => continue,
             }
         }

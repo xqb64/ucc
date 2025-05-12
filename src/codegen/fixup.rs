@@ -70,8 +70,8 @@ impl Fixup for AsmFunction {
          * Then, we add bytes that the locals will occupy, and round this up to the nearest
          * multiple of 16.  Working back from this value, we subtract the number of bytes that
          * the callee-saved registers will occupy, and we come to the exact number by which we
-         * need to adjust the stack to keep it 16-byte aligned as per SystemV ABI. 
-         * 
+         * need to adjust the stack to keep it 16-byte aligned as per SystemV ABI.
+         *
          * For example, if the pseudo-operand replacement pass has allocated 20 bytes of stack
          * space to store the locals of a particular function.  Normally, we'd subtract 32 bytes
          * from %rsp to maintain the proper stack alignment.  However, if the function uses a single
@@ -816,7 +816,7 @@ impl Fixup for AsmFunction {
                 AsmInstruction::Ret => {
                     /* Before returning to the caller, any callee-saved registers must be popped off
                      * of the stack in reverse-order of how we pushed them.
-                     * 
+                     *
                      * Since 'pop' operates only on general purpose registers, for XMM registers we need
                      * to use a combination of mov+add. */
                     let restore_regs: Vec<AsmInstruction> = callee_saved_args

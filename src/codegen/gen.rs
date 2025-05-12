@@ -324,7 +324,13 @@ impl Codegen for IRProgram {
 
         static_constants = static_constants
             .into_iter()
-            .chain(STATIC_CONSTANTS.lock().unwrap().iter().map(|x| x.to_owned()))
+            .chain(
+                STATIC_CONSTANTS
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .map(|x| x.to_owned()),
+            )
             .collect::<Vec<AsmStaticConstant>>();
 
         AsmNode::Program(AsmProgram {
@@ -359,12 +365,12 @@ impl Codegen for IRStaticConstant {
 impl Codegen for IRFunction {
     fn codegen(&self) -> AsmNode {
         /* Determine if the function returns a value on the stack.
-         * 
+         *
          * Some functions return large values or structs, which need to be returned
          * via memory instead of registers. If this is the case, we reserve space for
          * the return address on the stack. */
         let return_on_stack = returns_on_stack(&self.name);
-        
+
         let params_as_ir = self
             .params
             .iter()
@@ -392,7 +398,7 @@ impl Codegen for IRFunction {
 
         let mut reg_index = 0;
 
-        /* If the function returns a value on the stack, we need to store the pointer to 
+        /* If the function returns a value on the stack, we need to store the pointer to
          * the return buffer in memory at -8(%bp). This is done because the Di register is
          * normally used for the first parameter, but if a return buffer is present, it takes
          * precedence and is saved here before processing the actual parameters. */
@@ -458,8 +464,8 @@ impl Codegen for IRFunction {
 
         /* Start handling stack parameters (parameters passed on the stack instead of registers).
          * Stack parameters start 16 bytes above the base pointer (%bp) due to the calling convention.
-         * The first 16 bytes are used for the return address and the previous frame pointer. 
-         * 
+         * The first 16 bytes are used for the return address and the previous frame pointer.
+         *
          * See Figure 18-4 in the book. */
         let mut offset = 16;
         for (param_type, param) in stack_params {
@@ -1869,12 +1875,12 @@ fn classify_params_helper(
                     let mut tentative_ints = vec![];
                     let mut tentative_doubles = vec![];
 
-                    let mut offset = 0;  /* Offset for each 8-byte section of the structure */
+                    let mut offset = 0; /* Offset for each 8-byte section of the structure */
 
                     /* Iterate over the classification of structure sections */
                     for class in &classes {
-                        let operand = AsmOperand::PseudoMem(name_of_v.clone(), offset);  /* Create an operand for this section */
-                        
+                        let operand = AsmOperand::PseudoMem(name_of_v.clone(), offset); /* Create an operand for this section */
+
                         if class == &Class::Sse {
                             /* If the section is SSE (floating-point), store it as a double register argument */
                             tentative_doubles.push(operand);
@@ -1892,9 +1898,9 @@ fn classify_params_helper(
                     if (tentative_doubles.len() + double_reg_args.len() <= 8)
                         && (tentative_ints.len() + int_reg_args.len() <= int_regs_available)
                     {
-                        double_reg_args.extend(tentative_doubles);  /* Add double register arguments */
-                        int_reg_args.extend(tentative_ints);  /* Add integer register arguments */
-                        use_stack = false;  /* No need to use the stack */
+                        double_reg_args.extend(tentative_doubles); /* Add double register arguments */
+                        int_reg_args.extend(tentative_ints); /* Add integer register arguments */
+                        use_stack = false; /* No need to use the stack */
                     }
                 }
 
@@ -1936,7 +1942,6 @@ fn classify_params_helper(
     /* Return the lists of integer register arguments, double register arguments, and stack arguments */
     (int_reg_args, double_reg_args, stack_args)
 }
-
 
 fn classify_param_types(params: &[Type], return_on_stack: bool) -> Vec<AsmRegister> {
     let f = |t: &Type| {
@@ -1991,12 +1996,7 @@ fn returns_on_stack(name: &str) -> bool {
     {
         Type::Func { params: _, ret } => match &*ret {
             Type::Struct { tag } => {
-                let struct_entry = TYPE_TABLE
-                    .lock()
-                    .unwrap()
-                    .get(tag)
-                    .cloned()
-                    .unwrap();
+                let struct_entry = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
 
                 matches!(
                     classify_structure(&struct_entry).as_slice(),
@@ -2338,7 +2338,6 @@ fn copy_bytes_to_reg(
 
     /* Copy each byte from the source operand to the destination register, in reverse order. */
     while offset >= 0 {
-
         /* Move the byte from source operand to destination register. */
         let src_byte = add_offset(offset as usize, &src_op);
         instructions.push(AsmInstruction::Mov {
@@ -2527,7 +2526,6 @@ fn ir2asmtype(value: &IRValue) -> AsmType {
 /* Represents a position in the stack with a single i64 value. */
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub struct StackPosition(pub i64);
-
 
 /* A struct to manage the mapping of variables to their stack positions. */
 #[derive(Debug, Clone, PartialEq)]

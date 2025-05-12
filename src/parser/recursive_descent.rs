@@ -749,11 +749,9 @@ impl Parser {
             bail!("...")
         };
         self.consume(&Token::Semicolon)?;
-        Ok(BlockItem::Statement(Statement::Goto(
-            GotoStatement {
-                label,
-            }
-        )))
+        Ok(BlockItem::Statement(Statement::Goto(GotoStatement {
+            label,
+        })))
     }
 
     fn parse_labeled_statement(&mut self) -> Result<BlockItem> {
@@ -768,10 +766,12 @@ impl Parser {
         let inner = self.parse_statement()?;
 
         match inner {
-            BlockItem::Statement(stmt) => Ok(BlockItem::Statement(Statement::Labeled(LabeledStatement {
-                label,
-                body: Box::new(stmt),
-            }))),
+            BlockItem::Statement(stmt) => {
+                Ok(BlockItem::Statement(Statement::Labeled(LabeledStatement {
+                    label,
+                    body: Box::new(stmt),
+                })))
+            }
             _ => bail!("label must precede a statement, not a declaration"),
         }
     }

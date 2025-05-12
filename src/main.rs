@@ -103,7 +103,7 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let optimized_prog = ir_prog.optimize(optimizations);
-    
+
     if opts.tacky {
         println!("tac: {:#?}", optimized_prog);
         std::process::exit(0);

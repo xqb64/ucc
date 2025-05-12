@@ -12,7 +12,8 @@ impl Lexer {
     pub fn new(src: String) -> Lexer {
         let keywords = vec![
             "int", "long", "char", "signed", "unsigned", "double", "void", "return", "if", "else",
-            "do", "while", "for", "break", "continue", "static", "extern", "sizeof", "struct", "goto",
+            "do", "while", "for", "break", "continue", "static", "extern", "sizeof", "struct",
+            "goto",
         ];
 
         let mut regexes = HashMap::new();

@@ -7,11 +7,11 @@ use crate::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BlockItem,
         BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression,
         ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression,
-        Expression, ExpressionStatement, ForInit, ForStatement, LabeledStatement, FunctionDeclaration, IfStatement,
-        Initializer, MemberDeclaration, Program, ReturnStatement, SizeofExpression,
-        SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration,
-        SubscriptExpression, Type, UnaryExpression, VariableDeclaration, VariableExpression,
-        WhileStatement,
+        Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement,
+        Initializer, LabeledStatement, MemberDeclaration, Program, ReturnStatement,
+        SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
+        StructDeclaration, SubscriptExpression, Type, UnaryExpression, VariableDeclaration,
+        VariableExpression, WhileStatement,
     },
 };
 
@@ -360,12 +360,13 @@ impl Resolve for Statement {
 
 impl Resolve for LabeledStatement {
     fn resolve(
-            &mut self,
-            variable_map: &mut BTreeMap<String, Variable>,
-            struct_map: &mut BTreeMap<String, StructTableEntry>,
-        ) -> Result<&mut Self>
-        where
-            Self: Sized {
+        &mut self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<&mut Self>
+    where
+        Self: Sized,
+    {
         self.body.resolve(variable_map, struct_map)?;
 
         Ok(self)
