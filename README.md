@@ -22,7 +22,7 @@ At the forefront is the compiler driver, which orchestrates the compilation proc
 - [x] for
 - [x] break
 - [x] continue
-- [ ] ConsideredHarmful
+- [x] ConsideredHarmful
 - [x] static
 - [x] extern
 - [x] arrays
