@@ -1,15 +1,6 @@
 use crate::{
     lexer::lex::Const,
-    parser::ast::{
-        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
-        BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,
-        CastExpression, ConditionalExpression, ContinueStatement, Declaration, DerefExpression,
-        DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement,
-        FunctionDeclaration, GotoStatement, IfStatement, Initializer, LabeledStatement, Program,
-        ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StringExpression,
-        SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration,
-        WhileStatement,
-    },
+    parser::ast::*,
     semantics::typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
         IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE, TYPE_TABLE,
@@ -201,6 +192,9 @@ impl Irfy for Statement {
             Statement::For(for_stmt) => for_stmt.irfy(funcname),
             Statement::Goto(goto_stmt) => goto_stmt.irfy(funcname),
             Statement::Labeled(labeled_stmt) => labeled_stmt.irfy(funcname),
+            Statement::Switch(switch_stmt) => switch_stmt.irfy(funcname),
+            Statement::Case(case_stmt) => case_stmt.irfy(funcname),
+            Statement::Default(default_stmt) => default_stmt.irfy(funcname),
             Statement::Null => None,
         }
     }
@@ -331,8 +325,209 @@ impl Irfy for IfStatement {
     }
 }
 
+pub fn expr2const(e: &Expression) -> Const {
+    match e {
+        Expression::Constant(ConstantExpression { value, _type }) => value.clone(),
+        Expression::Cast(CastExpression { target_type, expr, _type }) => {
+            let c = expr2const(&expr);
+            cast_const_to(&c, target_type)
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn cast_const_to(c: &Const, target: &Type) -> Const {
+    use Const::*;
+    use Type::*;
+
+    let result = match target {
+        Type::Int => Const::Int(c.to_i32()),
+        Type::Long => Const::Long(c.to_i64()),
+        Type::UInt => Const::UInt(c.to_u32()),
+        Type::ULong => Const::ULong(c.to_u64()),
+        Type::Double => Const::Double(c.to_f64()),
+        Type::Char => Const::Char(c.to_i8()),
+        Type::UChar => Const::UChar(c.to_u8()),
+        _ => unreachable!(), 
+    };
+
+    result
+}
+
+trait ConstCast {
+    fn to_i32(&self) -> i32;
+    fn to_i64(&self) -> i64;
+    fn to_u32(&self) -> u32;
+    fn to_u64(&self) -> u64;
+    fn to_f64(&self) -> f64;
+    fn to_i8(&self) -> i8;
+    fn to_u8(&self) -> u8;
+}
+
+impl ConstCast for Const {
+    fn to_i32(&self) -> i32 {
+        match *self {
+            Const::Int(v) => v,
+            Const::Long(v) => v as i32,
+            Const::UInt(v) => v as i32,
+            Const::ULong(v) => v as i32,
+            Const::Double(v) => v as i32,
+            Const::Char(v) => v as i32,
+            Const::UChar(v) => v as i32,
+        }
+    }
+
+    fn to_i64(&self) -> i64 {
+        match *self {
+            Const::Int(v) => v as i64,
+            Const::Long(v) => v,
+            Const::UInt(v) => v as i64,
+            Const::ULong(v) => v as i64,
+            Const::Double(v) => v as i64,
+            Const::Char(v) => v as i64,
+            Const::UChar(v) => v as i64,
+        }
+    }
+
+    fn to_u32(&self) -> u32 {
+        match *self {
+            Const::Int(v) => v as u32,
+            Const::Long(v) => v as u32,
+            Const::UInt(v) => v,
+            Const::ULong(v) => v as u32,
+            Const::Double(v) => v as u32,
+            Const::Char(v) => v as u32,
+            Const::UChar(v) => v as u32,
+        }
+    }
+
+    fn to_u64(&self) -> u64 {
+        match *self {
+            Const::Int(v) => v as u64,
+            Const::Long(v) => v as u64,
+            Const::UInt(v) => v as u64,
+            Const::ULong(v) => v,
+            Const::Double(v) => v as u64,
+            Const::Char(v) => v as u64,
+            Const::UChar(v) => v as u64,
+        }
+    }
+
+    fn to_f64(&self) -> f64 {
+        match *self {
+            Const::Int(v) => v as f64,
+            Const::Long(v) => v as f64,
+            Const::UInt(v) => v as f64,
+            Const::ULong(v) => v as f64,
+            Const::Double(v) => v,
+            Const::Char(v) => v as f64,
+            Const::UChar(v) => v as f64,
+        }
+    }
+
+fn to_i8(&self) -> i8 {
+        match *self {
+            Const::Int(v) => v as i8,
+            Const::Long(v) => v as i8,
+            Const::UInt(v) => v as i8,
+            Const::ULong(v) => v as i8,
+            Const::Double(v) => v as i8,
+            Const::Char(v) => v,
+            Const::UChar(v) => v as i8,
+        }
+    }
+
+    fn to_u8(&self) -> u8 {
+        match *self {
+            Const::Int(v) => v as u8,
+            Const::Long(v) => v as u8,
+            Const::UInt(v) => v as u8,
+            Const::ULong(v) => v as u8,
+            Const::Double(v) => v as u8,
+            Const::Char(v) => v as u8,
+            Const::UChar(v) => v,
+        }
+    }
+}
+
+impl Irfy for SwitchStatement {
+    fn irfy(&self, funcname: &str) -> Option<IRNode> {
+        let mut instructions = vec![];
+
+        let condition = emit_tacky_and_convert(&self.condition, &mut instructions);
+
+        for case in self.cases.iter() {
+            if let Statement::Case(CaseStatement {
+                value,
+                body,
+                label: case_label,
+            }) = case
+            {
+                let result = make_tacky_variable(get_type(&self.condition));
+
+                let konst = expr2const(&value);
+
+                instructions.push(IRInstruction::Binary {
+                    op: BinaryOp::Equal,
+                    lhs: condition.clone(),
+                    rhs: IRValue::Constant(konst),
+                    dst: result.clone(),
+                });
+
+                instructions.push(IRInstruction::JumpIfNotZero {
+                    condition: result.clone(),
+                    target: case_label.clone(),
+                });
+            }
+        }
+
+        if let Some(Statement::Default(DefaultStatement { body, label })) = self.cases.iter().find(|stmt| match stmt { Statement::Default(_) => true, _ => false }) {
+            instructions.push(IRInstruction::Jump(label.clone()));
+        }
+
+        let break_label = format!("{}.break", self.label.clone());
+        instructions.push(IRInstruction::Jump(break_label.clone()));
+
+        if let Some(instrs) = self.body.irfy(funcname) {
+            instructions.extend::<Vec<IRInstruction>>(instrs.into());
+        }
+
+        instructions.push(IRInstruction::Label(break_label));
+
+        Some(IRNode::Instructions(instructions))
+    }
+}
+
+impl Irfy for CaseStatement {
+    fn irfy(&self, funcname: &str) -> Option<IRNode> {
+        let mut instructions = vec![];
+
+        instructions.push(IRInstruction::Label(self.label.clone()));
+
+        if let Some(instrs) = self.body.irfy(funcname) {
+            instructions.extend::<Vec<IRInstruction>>(instrs.into());
+        }
+
+        Some(IRNode::Instructions(instructions))
+    }
+}
+
+impl Irfy for DefaultStatement {
+    fn irfy(&self, funcname: &str) -> Option<IRNode> {
+        let mut instructions = vec![];
+        instructions.push(IRInstruction::Label(self.label.clone()));
+        if let Some(instrs) = self.body.irfy(funcname) {
+            instructions.extend::<Vec<IRInstruction>>(instrs.into());
+        }
+
+        Some(IRNode::Instructions(instructions))
+    }
+}
+
 impl Irfy for BreakStatement {
     fn irfy(&self, _funcname: &str) -> Option<IRNode> {
+        println!("Irfy for BreakStatement: self.label is {:?}", self.label);
+
         Some(IRNode::Instructions(vec![IRInstruction::Jump(format!(
             "{}.break",
             self.label.clone()
@@ -380,8 +575,6 @@ impl Irfy for DoWhileStatement {
         let mut instructions = vec![];
 
         let start_label = self.label.clone();
-
-        println!("start_label is: {}", start_label);
 
         let continue_label = format!("{}.continue", self.label);
         let break_label = format!("{}.break", self.label);
@@ -439,6 +632,7 @@ impl Irfy for ForStatement {
 
         let start_label = format!("{}.start", self.label);
         let break_label = format!("{}.break", self.label);
+        println!("break out of for: {:?}", break_label);
         let continue_label = format!("{}.continue", self.label);
 
         instructions.extend::<Vec<IRInstruction>>(self.init.irfy(funcname).unwrap().into());

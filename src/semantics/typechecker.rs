@@ -3,13 +3,14 @@ use crate::{
     lexer::lex::Const,
     parser::ast::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
-        BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CastExpression,
-        ConditionalExpression, ConstantExpression, Declaration, DerefExpression, DoWhileStatement,
-        DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration,
-        GotoStatement, IfStatement, Initializer, LabeledStatement, Program, ReturnStatement,
-        SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
-        StructDeclaration, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind,
-        VariableDeclaration, VariableExpression, WhileStatement,
+        BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CaseStatement,
+        CastExpression, ConditionalExpression, ConstantExpression, Declaration, DefaultStatement,
+        DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit,
+        ForStatement, FunctionDeclaration, GotoStatement, IfStatement, Initializer,
+        LabeledStatement, Program, ReturnStatement, SizeofExpression, SizeofTExpression, Statement,
+        StorageClass, StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement,
+        Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression,
+        WhileStatement,
     },
 };
 use anyhow::{bail, Result};
@@ -753,6 +754,69 @@ impl Typecheck for Statement {
                 } else {
                     bail!("Return statement with no expression in non-void function");
                 }
+            }
+
+            Statement::Switch(SwitchStatement {
+                condition,
+                ref mut body,
+                label,
+                ref mut cases,
+            }) => {
+                let typechecked_expr = typecheck_and_convert(&condition)?;
+
+                if !is_integer_type(&get_type(&typechecked_expr)) {
+                    bail!("controlling expression in switch statement must be of the integer type");
+                } 
+
+                let typechecked_expr = if is_char_type(&get_type(&typechecked_expr)) {
+                    convert_to(&typechecked_expr, &Type::Int)
+                } else {
+                    typechecked_expr
+                };
+
+                *condition = typechecked_expr.clone(); 
+                
+                //let mut cloned_body = body.clone();
+
+                // match &mut *cloned_body {
+                //    Statement::Compound(BlockStatement { stmts }) => {
+                //        for stmt in stmts.iter_mut() {
+                //            if let BlockItem::Statement(Statement::Case(CaseStatement { ref mut value, body, label })) = stmt {
+                //                let typechecked_value = typecheck_and_convert(&value)?;
+                //                if is_integer_type(get_type(&typechecked_value)) && get_type(&typechecked_value) != get_type(&typechecked_expr) {
+                //                    *value = convert_to(&value, get_type(&typechecked_expr));
+                //                }
+                //            }
+                //        }
+                //    }
+                //    _ => bail!("switch body must be a compound statement"),
+                //}
+
+                //*body = cloned_body;
+                
+                body.typecheck()?;
+
+                Ok(self)
+            }
+
+            Statement::Case(CaseStatement { body, label, value }) => {
+                let typechecked_expr = typecheck_and_convert(&value)?;
+
+                if get_type(&typechecked_expr) == &Type::Double {
+                    bail!("Case expression cannot be a double");
+                }
+
+                *value = typechecked_expr;
+
+                body.typecheck()?;
+
+                Ok(self)
+            }
+
+            Statement::Default(DefaultStatement { body, label }) => {
+                body.typecheck()?;
+
+                Ok(self)
             }
 
             Statement::Break(_) | Statement::Continue(_) | Statement::Null => Ok(self),
@@ -1628,7 +1692,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
     }
 }
 
-fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
+pub fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
     let typed_expr = typecheck_expr(e)?;
     let type_of_expr = get_type(&typed_expr);
 
@@ -1791,7 +1855,7 @@ pub fn get_signedness(t: &Type) -> bool {
     }
 }
 
-fn convert_to(e: &Expression, _type: &Type) -> Expression {
+pub fn convert_to(e: &Expression, _type: &Type) -> Expression {
     if get_type(e) == _type {
         return e.clone();
     }

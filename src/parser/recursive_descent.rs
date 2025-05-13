@@ -15,7 +15,9 @@ use crate::{
 use anyhow::{bail, Result};
 use std::collections::{BTreeSet, VecDeque};
 
-use super::ast::{GotoStatement, LabeledStatement};
+use super::ast::{
+    CaseStatement, DefaultStatement, GotoStatement, LabeledStatement, SwitchStatement,
+};
 
 pub struct Parser {
     pub tokens: VecDeque<Token>,
@@ -128,6 +130,12 @@ impl Parser {
             self.parse_continue_statement()
         } else if self.is_next(&[Token::Goto]) {
             self.parse_goto_statement()
+        } else if self.is_next(&[Token::Switch]) {
+            self.parse_switch_statement()
+        } else if self.is_next(&[Token::Case]) {
+            self.parse_case_statement()
+        } else if self.is_next(&[Token::Default]) {
+            self.parse_default_statement()
         } else if self.is_next(&[Token::LBrace]) {
             self.parse_block_statement()
         } else if self.is_next(&[Token::Semicolon]) {
@@ -624,6 +632,54 @@ impl Parser {
         self.depth -= 1;
         Ok(BlockItem::Statement(Statement::Compound(BlockStatement {
             stmts,
+        })))
+    }
+
+    fn parse_switch_statement(&mut self) -> Result<BlockItem> {
+        self.consume(&Token::LParen)?;
+        let condition = self.parse_expression()?;
+        self.consume(&Token::RParen)?;
+        let body = match self.parse_statement() {
+            Ok(BlockItem::Statement(stmt)) => stmt,
+            _ => {
+                bail!("...");
+            }
+        };
+        Ok(BlockItem::Statement(Statement::Switch(SwitchStatement {
+            condition,
+            body: body.into(),
+            label: String::new(),
+            cases: vec![],
+        })))
+    }
+
+    fn parse_case_statement(&mut self) -> Result<BlockItem> {
+        let value = self.parse_expression()?;
+        self.consume(&Token::Colon)?;
+        let body = match self.parse_statement() {
+            Ok(BlockItem::Statement(stmt)) => stmt,
+            _ => {
+                bail!("...");
+            }
+        };
+        Ok(BlockItem::Statement(Statement::Case(CaseStatement {
+            value,
+            body: body.into(),
+            label: String::new(),
+        })))
+    }
+
+    fn parse_default_statement(&mut self) -> Result<BlockItem> {
+        self.consume(&Token::Colon)?;
+        let body = match self.parse_statement() {
+            Ok(BlockItem::Statement(stmt)) => stmt,
+            _ => {
+                bail!("...");
+            }
+        };
+        Ok(BlockItem::Statement(Statement::Default(DefaultStatement {
+            body: body.into(),
+            label: String::new(),
         })))
     }
 

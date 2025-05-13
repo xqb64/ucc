@@ -5,8 +5,11 @@ use anyhow::{bail, Result};
 use structopt::StructOpt;
 
 use ucc::ir::gen::{IRInstruction, IRProgram, IRValue, Optimization};
+use ucc::parser::ast::Type;
 use ucc::parser::recursive_descent::Parser;
+use ucc::semantics::collecting_cases::SwitchCaseCollect;
 use ucc::semantics::label_checker::LabelCheck;
+use ucc::semantics::loop_label::{LabelContext, LabelKind};
 use ucc::{
     codegen::fixup::Fixup,
     codegen::gen::{build_asm_symbol_table, AsmType, Codegen},
@@ -63,9 +66,10 @@ fn run(opts: &Opt) -> Result<()> {
 
     let cooked_ast = raw_ast
         .resolve(&mut variable_map, &mut struct_map)?
-        .loop_label("")?
+        .loop_label(LabelContext { innermost: LabelKind::None, loop_label: "", switch_label: "" })?
         .label_check(&mut HashSet::new(), "")?
-        .typecheck()?;
+        .typecheck()?
+        .collect_switch_cases(&mut vec![], &Type::Dummy)?;
 
     if opts.validate {
         println!("{:#?}", cooked_ast);

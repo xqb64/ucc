@@ -34,7 +34,7 @@ pub struct VariableDeclaration {
     pub is_global: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Int,
     Long,
@@ -65,6 +65,9 @@ pub enum Statement {
     Continue(ContinueStatement),
     Goto(GotoStatement),
     Labeled(LabeledStatement),
+    Switch(SwitchStatement),
+    Case(CaseStatement),
+    Default(DefaultStatement),
     Null,
 }
 
@@ -101,6 +104,27 @@ pub struct IfStatement {
     pub condition: Expression,
     pub then_branch: Box<BlockItem>,
     pub else_branch: Box<Option<BlockItem>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SwitchStatement {
+    pub condition: Expression,
+    pub body: Box<Statement>,
+    pub label: String,
+    pub cases: Vec<Statement>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CaseStatement {
+    pub value: Expression,
+    pub body: Box<Statement>,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DefaultStatement {
+    pub body: Box<Statement>,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -163,7 +187,7 @@ pub struct LabeledStatement {
     pub body: Box<Statement>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expression {
     Constant(ConstantExpression),
     String(StringExpression),
@@ -184,97 +208,97 @@ pub enum Expression {
     Arrow(ArrowExpression),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ArrowExpression {
     pub pointer: Box<Expression>,
     pub member: String,
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DotExpression {
     pub structure: Box<Expression>,
     pub member: String,
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SizeofExpression {
     pub expr: Box<Expression>,
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SizeofTExpression {
     pub t: Type,
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StringExpression {
     pub value: String,
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LiteralExpression {
     pub name: String,
     pub value: Box<Initializer>,
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Initializer {
     Single(String, Expression),
     Compound(String, Type, Vec<Initializer>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SubscriptExpression {
     pub expr: Box<Expression>,
     pub index: Box<Expression>,
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AddrOfExpression {
     pub expr: Box<Expression>,
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DerefExpression {
     pub expr: Box<Expression>,
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ConstantExpression {
     pub value: Const,
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VariableExpression {
     pub value: String,
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UnaryExpression {
     pub kind: UnaryExpressionKind,
     pub expr: Box<Expression>,
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnaryExpressionKind {
     Negate,
     Complement,
     Not,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BinaryExpression {
     pub kind: BinaryExpressionKind,
     pub lhs: Box<Expression>,
@@ -282,7 +306,7 @@ pub struct BinaryExpression {
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BinaryExpressionKind {
     Add,
     Sub,
@@ -299,7 +323,7 @@ pub enum BinaryExpressionKind {
     Or,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AssignExpression {
     pub lhs: Box<Expression>,
     pub rhs: Box<Expression>,
@@ -307,7 +331,7 @@ pub struct AssignExpression {
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ConditionalExpression {
     pub condition: Box<Expression>,
     pub then_expr: Box<Expression>,
@@ -315,14 +339,14 @@ pub struct ConditionalExpression {
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CallExpression {
     pub name: String,
     pub args: Vec<Expression>,
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CastExpression {
     pub target_type: Type,
     pub expr: Box<Expression>,

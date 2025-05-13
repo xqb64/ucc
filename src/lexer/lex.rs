@@ -13,7 +13,7 @@ impl Lexer {
         let keywords = vec![
             "int", "long", "char", "signed", "unsigned", "double", "void", "return", "if", "else",
             "do", "while", "for", "break", "continue", "static", "extern", "sizeof", "struct",
-            "goto",
+            "goto", "switch", "case", "default",
         ];
 
         let mut regexes = HashMap::new();
@@ -101,6 +101,9 @@ impl Iterator for Lexer {
                 "sizeof" => Token::Sizeof,
                 "struct" => Token::Struct,
                 "goto" => Token::Goto,
+                "switch" => Token::Switch,
+                "case" => Token::Case,
+                "default" => Token::Default,
                 _ => unreachable!(),
             }
         } else if let Some(m) = self.regexes["double_constant"].find(src) {
@@ -254,6 +257,9 @@ pub enum Token {
     Sizeof,
     Struct,
     Goto,
+    Switch,
+    Case,
+    Default,
     LParen,
     RParen,
     LBrace,

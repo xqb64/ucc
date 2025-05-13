@@ -5,13 +5,13 @@ use crate::{
     ir::gen::make_temporary,
     parser::ast::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BlockItem,
-        BlockStatement, BreakStatement, CallExpression, CastExpression, ConditionalExpression,
-        ContinueStatement, Declaration, DerefExpression, DoWhileStatement, DotExpression,
-        Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement,
-        Initializer, LabeledStatement, MemberDeclaration, Program, ReturnStatement,
-        SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
-        StructDeclaration, SubscriptExpression, Type, UnaryExpression, VariableDeclaration,
-        VariableExpression, WhileStatement,
+        BlockStatement, BreakStatement, CallExpression, CaseStatement, CastExpression,
+        ConditionalExpression, ContinueStatement, Declaration, DefaultStatement, DerefExpression,
+        DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement,
+        FunctionDeclaration, IfStatement, Initializer, LabeledStatement, MemberDeclaration,
+        Program, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
+        StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement, Type,
+        UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement,
     },
 };
 
@@ -352,7 +352,65 @@ impl Resolve for Statement {
             }
 
             Statement::Null => {}
+
+            Statement::Switch(switch_stmt) => {
+                switch_stmt.resolve(variable_map, struct_map)?;
+            }
+
+            Statement::Case(case_stmt) => {
+                case_stmt.resolve(variable_map, struct_map)?;
+            }
+
+            Statement::Default(default_stmt) => {
+                default_stmt.resolve(variable_map, struct_map)?;
+            }
         }
+
+        Ok(self)
+    }
+}
+
+impl Resolve for SwitchStatement {
+    fn resolve(
+        &mut self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<&mut Self>
+    where
+        Self: Sized,
+    {
+        self.condition = resolve_exp(&self.condition, variable_map, struct_map)?;
+        self.body.resolve(variable_map, struct_map)?;
+
+        Ok(self)
+    }
+}
+
+impl Resolve for CaseStatement {
+    fn resolve(
+        &mut self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<&mut Self>
+    where
+        Self: Sized,
+    {
+        self.body.resolve(variable_map, struct_map)?;
+
+        Ok(self)
+    }
+}
+
+impl Resolve for DefaultStatement {
+    fn resolve(
+        &mut self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<&mut Self>
+    where
+        Self: Sized,
+    {
+        self.body.resolve(variable_map, struct_map)?;
 
         Ok(self)
     }

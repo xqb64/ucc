@@ -17,6 +17,7 @@ pub mod parser {
     pub mod recursive_descent;
 }
 pub mod semantics {
+    pub mod collecting_cases;
     pub mod label_checker;
     pub mod loop_label;
     pub mod resolver;

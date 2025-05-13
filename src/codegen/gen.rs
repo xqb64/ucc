@@ -2432,7 +2432,9 @@ fn type2asmtype(t: &Type) -> AsmType {
             }
         }
         Type::Pointer(_) => AsmType::Quadword,
-        _ => unreachable!(),
+        _ => {
+            unreachable!()
+        }
     }
 }
 

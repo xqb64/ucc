@@ -1,7 +1,8 @@
 use crate::parser::ast::{
-    BlockItem, BlockStatement, BreakStatement, ContinueStatement, Declaration, DoWhileStatement,
-    ExpressionStatement, ForStatement, FunctionDeclaration, GotoStatement, IfStatement,
-    LabeledStatement, Program, ReturnStatement, Statement, WhileStatement,
+    BlockItem, BlockStatement, BreakStatement, CaseStatement, ContinueStatement, Declaration,
+    DefaultStatement, DoWhileStatement, ExpressionStatement, ForStatement, FunctionDeclaration,
+    GotoStatement, IfStatement, LabeledStatement, Program, ReturnStatement, Statement,
+    SwitchStatement, WhileStatement,
 };
 use anyhow::{bail, Result};
 use std::collections::HashSet;
@@ -125,6 +126,18 @@ impl LabelCollect for Statement {
                 l.collect_labels(labels, funcname)?;
             }
 
+            Statement::Switch(s) => {
+                s.collect_labels(labels, funcname)?;
+            }
+
+            Statement::Case(c) => {
+                c.collect_labels(labels, funcname)?;
+            }
+
+            Statement::Default(d) => {
+                d.collect_labels(labels, funcname)?;
+            }
+
             Self::Null => {}
         }
 
@@ -141,6 +154,42 @@ impl LabelCollect for BlockStatement {
         for stmt in self.stmts.iter_mut() {
             stmt.collect_labels(labels, funcname)?;
         }
+        Ok(self)
+    }
+}
+
+impl LabelCollect for SwitchStatement {
+    fn collect_labels(
+        &mut self,
+        labels: &mut HashSet<String>,
+        funcname: &str,
+    ) -> Result<&mut Self> {
+        self.body.collect_labels(labels, funcname)?;
+
+        Ok(self)
+    }
+}
+
+impl LabelCollect for CaseStatement {
+    fn collect_labels(
+        &mut self,
+        labels: &mut HashSet<String>,
+        funcname: &str,
+    ) -> Result<&mut Self> {
+        self.body.collect_labels(labels, funcname)?;
+
+        Ok(self)
+    }
+}
+
+impl LabelCollect for DefaultStatement {
+    fn collect_labels(
+        &mut self,
+        labels: &mut HashSet<String>,
+        funcname: &str,
+    ) -> Result<&mut Self> {
+        self.body.collect_labels(labels, funcname)?;
+
         Ok(self)
     }
 }
@@ -363,6 +412,18 @@ impl LabelCheck for Statement {
                 l.label_check(labels, funcname)?;
             }
 
+            Statement::Switch(s) => {
+                s.label_check(labels, funcname)?;
+            }
+
+            Statement::Case(c) => {
+                c.label_check(labels, funcname)?;
+            }
+
+            Statement::Default(d) => {
+                d.label_check(labels, funcname)?;
+            }
+
             Self::Null => {}
         }
 
@@ -375,6 +436,30 @@ impl LabelCheck for BlockStatement {
         for stmt in self.stmts.iter_mut() {
             stmt.label_check(labels, funcname)?;
         }
+        Ok(self)
+    }
+}
+
+impl LabelCheck for SwitchStatement {
+    fn label_check(&mut self, labels: &mut HashSet<String>, funcname: &str) -> Result<&mut Self> {
+        self.body.label_check(labels, funcname)?;
+
+        Ok(self)
+    }
+}
+
+impl LabelCheck for CaseStatement {
+    fn label_check(&mut self, labels: &mut HashSet<String>, funcname: &str) -> Result<&mut Self> {
+        self.body.label_check(labels, funcname)?;
+
+        Ok(self)
+    }
+}
+
+impl LabelCheck for DefaultStatement {
+    fn label_check(&mut self, labels: &mut HashSet<String>, funcname: &str) -> Result<&mut Self> {
+        self.body.label_check(labels, funcname)?;
+
         Ok(self)
     }
 }
