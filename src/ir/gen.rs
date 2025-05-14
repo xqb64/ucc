@@ -328,7 +328,11 @@ impl Irfy for IfStatement {
 pub fn expr2const(e: &Expression) -> Const {
     match e {
         Expression::Constant(ConstantExpression { value, _type }) => value.clone(),
-        Expression::Cast(CastExpression { target_type, expr, _type }) => {
+        Expression::Cast(CastExpression {
+            target_type,
+            expr,
+            _type,
+        }) => {
             let c = expr2const(&expr);
             cast_const_to(&c, target_type)
         }
@@ -348,7 +352,7 @@ fn cast_const_to(c: &Const, target: &Type) -> Const {
         Type::Double => Const::Double(c.to_f64()),
         Type::Char => Const::Char(c.to_i8()),
         Type::UChar => Const::UChar(c.to_u8()),
-        _ => unreachable!(), 
+        _ => unreachable!(),
     };
 
     result
@@ -425,7 +429,7 @@ impl ConstCast for Const {
         }
     }
 
-fn to_i8(&self) -> i8 {
+    fn to_i8(&self) -> i8 {
         match *self {
             Const::Int(v) => v as i8,
             Const::Long(v) => v as i8,
@@ -481,7 +485,12 @@ impl Irfy for SwitchStatement {
             }
         }
 
-        if let Some(Statement::Default(DefaultStatement { body, label })) = self.cases.iter().find(|stmt| match stmt { Statement::Default(_) => true, _ => false }) {
+        if let Some(Statement::Default(DefaultStatement { body, label })) =
+            self.cases.iter().find(|stmt| match stmt {
+                Statement::Default(_) => true,
+                _ => false,
+            })
+        {
             instructions.push(IRInstruction::Jump(label.clone()));
         }
 

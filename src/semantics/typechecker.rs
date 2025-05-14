@@ -766,7 +766,7 @@ impl Typecheck for Statement {
 
                 if !is_integer_type(&get_type(&typechecked_expr)) {
                     bail!("controlling expression in switch statement must be of the integer type");
-                } 
+                }
 
                 let typechecked_expr = if is_char_type(&get_type(&typechecked_expr)) {
                     convert_to(&typechecked_expr, &Type::Int)
@@ -774,8 +774,8 @@ impl Typecheck for Statement {
                     typechecked_expr
                 };
 
-                *condition = typechecked_expr.clone(); 
-                
+                *condition = typechecked_expr.clone();
+
                 //let mut cloned_body = body.clone();
 
                 // match &mut *cloned_body {
@@ -793,7 +793,7 @@ impl Typecheck for Statement {
                 //}
 
                 //*body = cloned_body;
-                
+
                 body.typecheck()?;
 
                 Ok(self)

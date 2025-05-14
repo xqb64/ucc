@@ -66,7 +66,11 @@ fn run(opts: &Opt) -> Result<()> {
 
     let cooked_ast = raw_ast
         .resolve(&mut variable_map, &mut struct_map)?
-        .loop_label(LabelContext { innermost: LabelKind::None, loop_label: "", switch_label: "" })?
+        .loop_label(LabelContext {
+            innermost: LabelKind::None,
+            loop_label: "",
+            switch_label: "",
+        })?
         .label_check(&mut HashSet::new(), "")?
         .typecheck()?
         .collect_switch_cases(&mut vec![], &Type::Dummy)?;
