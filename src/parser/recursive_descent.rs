@@ -877,7 +877,7 @@ impl Parser {
             }
 
             self.consume(&Token::Colon)?;
-            let else_expr = self.parse_expression()?;
+            let else_expr = self.conditional()?;
             result = Expression::Conditional(ConditionalExpression {
                 condition: result.into(),
                 then_expr: then_expr.into(),
@@ -902,10 +902,49 @@ impl Parser {
     }
 
     fn and(&mut self) -> Result<Expression> {
-        let mut result = self.equality()?;
+        let mut result = self.bitwise_or()?;
         while self.is_next(&[Token::DoubleAmpersand]) {
             result = Expression::Binary(BinaryExpression {
                 kind: BinaryExpressionKind::And,
+                lhs: result.into(),
+                rhs: self.bitwise_or()?.into(),
+                _type: Type::Dummy,
+            });
+        }
+        Ok(result)
+    }
+
+    fn bitwise_or(&mut self) -> Result<Expression> {
+        let mut result = self.bitwise_xor()?;
+        while self.is_next(&[Token::Pipe]) {
+            result = Expression::Binary(BinaryExpression {
+                kind: BinaryExpressionKind::BitwiseOr,
+                lhs: result.into(),
+                rhs: self.bitwise_xor()?.into(),
+                _type: Type::Dummy,
+            });
+        }
+        Ok(result)
+    }
+
+    fn bitwise_xor(&mut self) -> Result<Expression> {
+        let mut result = self.bitwise_and()?;
+        while self.is_next(&[Token::Caret]) {
+            result = Expression::Binary(BinaryExpression {
+                kind: BinaryExpressionKind::BitwiseXor,
+                lhs: result.into(),
+                rhs: self.bitwise_and()?.into(),
+                _type: Type::Dummy,
+            });
+        }
+        Ok(result)
+    }
+
+    fn bitwise_and(&mut self) -> Result<Expression> {
+        let mut result = self.equality()?;
+        while self.is_next(&[Token::Ampersand]) {
+            result = Expression::Binary(BinaryExpression {
+                kind: BinaryExpressionKind::BitwiseAnd,
                 lhs: result.into(),
                 rhs: self.equality()?.into(),
                 _type: Type::Dummy,
@@ -936,7 +975,7 @@ impl Parser {
     }
 
     fn relational(&mut self) -> Result<Expression> {
-        let mut result = self.term()?;
+        let mut result = self.bitwise_shift()?;
         while self.is_next(&[
             Token::Less,
             Token::Greater,
@@ -949,6 +988,27 @@ impl Parser {
                     Token::Greater => BinaryExpressionKind::Greater,
                     Token::LessEqual => BinaryExpressionKind::LessEqual,
                     Token::GreaterEqual => BinaryExpressionKind::GreaterEqual,
+                    _ => unreachable!(),
+                },
+                None => unreachable!(),
+            };
+            result = Expression::Binary(BinaryExpression {
+                kind,
+                lhs: result.into(),
+                rhs: self.bitwise_shift()?.into(),
+                _type: Type::Dummy,
+            });
+        }
+        Ok(result)
+    }
+
+    fn bitwise_shift(&mut self) -> Result<Expression> {
+        let mut result = self.term()?;
+        while self.is_next(&[Token::GreaterGreater, Token::LessLess]) {
+            let kind = match self.previous.as_ref() {
+                Some(token) => match token {
+                    Token::GreaterGreater => BinaryExpressionKind::BitwiseShr,
+                    Token::LessLess => BinaryExpressionKind::BitwiseShl,
                     _ => unreachable!(),
                 },
                 None => unreachable!(),

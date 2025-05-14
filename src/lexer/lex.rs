@@ -20,11 +20,11 @@ impl Lexer {
 
         regexes.insert(
             "punctuation",
-            Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\].]").unwrap(),
+            Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\].^|]").unwrap(),
         );
         regexes.insert(
             "punctuation_double",
-            Regex::new(r"^--|^==|^!=|^>=|^<=|^&&|^\|\||^->").unwrap(),
+            Regex::new(r"^(--|==|!=|>=|<=|&&|\|\||->|>>|<<)").unwrap(),
         );
         regexes.insert(
             "keyword",
@@ -146,7 +146,12 @@ impl Iterator for Lexer {
                 "&&" => Token::DoubleAmpersand,
                 "||" => Token::DoublePipe,
                 "->" => Token::Arrow,
-                _ => unreachable!(),
+                ">>" => Token::GreaterGreater,
+                "<<" => Token::LessLess,
+                _ => {
+                    println!("m.as_str() is: {:?}", m.as_str());
+                    unreachable!()
+                }
             }
         } else if let Some(m) = self.regexes["punctuation"].find(src) {
             self.pos += m.as_str().len();
@@ -173,6 +178,8 @@ impl Iterator for Lexer {
                 "," => Token::Comma,
                 "&" => Token::Ampersand,
                 ";" => Token::Semicolon,
+                "^" => Token::Caret,
+                "|" => Token::Pipe,
                 "." => {
                     if self.regexes["constant"].is_match(&self.src[self.pos..]) {
                         return Some(Token::Error);
@@ -280,6 +287,10 @@ pub enum Token {
     DoublePipe,
     DoubleEqual,
     BangEqual,
+    GreaterGreater,
+    LessLess,
+    Caret,
+    Pipe,
     Dot,
     Arrow,
     Less,
@@ -322,6 +333,56 @@ pub enum Const {
     Double(f64),
     Char(i8),
     UChar(u8),
+}
+
+use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
+
+impl BitAnd for Const {
+    type Output = Const;
+
+    fn bitand(self, rhs: Const) -> Self::Output {
+        match (self, rhs) {
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs & rhs),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs & rhs),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs & rhs),
+            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs & rhs),
+            (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs & rhs),
+            (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs & rhs),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl BitOr for Const {
+    type Output = Const;
+
+    fn bitor(self, rhs: Const) -> Self::Output {
+        match (self, rhs) {
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs | rhs),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs | rhs),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs | rhs),
+            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs | rhs),
+            (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs | rhs),
+            (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs | rhs),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl BitXor for Const {
+    type Output = Const;
+
+    fn bitxor(self, rhs: Const) -> Self::Output {
+        match (self, rhs) {
+            (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs ^ rhs),
+            (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs ^ rhs),
+            (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs ^ rhs),
+            (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs ^ rhs),
+            (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs ^ rhs),
+            (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs ^ rhs),
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl std::ops::Add for Const {
@@ -518,6 +579,20 @@ impl ToString for Const {
             Const::Double(d) => d.to_string(),
             Const::Char(c) => c.to_string(),
             Const::UChar(uc) => uc.to_string(),
+        }
+    }
+}
+
+impl Const {
+    pub fn to_u32(&self) -> Option<u32> {
+        match self {
+            Const::Int(x) if *x >= 0 => Some(*x as u32),
+            Const::UInt(x) => Some(*x as u32),
+            Const::Long(x) if *x >= 0 => Some(*x as u32),
+            Const::ULong(x) => Some(*x as u32),
+            Const::Char(x) if *x >= 0 => Some(*x as u32),
+            Const::UChar(x) => Some(*x as u32),
+            _ => None, // Includes Double and invalid conversions
         }
     }
 }

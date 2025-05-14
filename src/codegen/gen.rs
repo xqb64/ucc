@@ -275,6 +275,8 @@ pub enum AsmBinaryOp {
     And,
     Or,
     Xor,
+    Sal,
+    Sar,
     Shl,
     ShrTwoOp,
 }
@@ -1024,6 +1026,96 @@ impl Codegen for IRInstruction {
                                 ])
                             }
                         }
+                    }
+                    BinaryOp::BitwiseShl | BinaryOp::BitwiseShr => {
+                        fn convert_shift_op(op: &BinaryOp, signed: bool) -> AsmBinaryOp {
+                            match op {
+                                BinaryOp::BitwiseShl => {
+                                    if signed {
+                                        AsmBinaryOp::Sal
+                                    } else {
+                                        AsmBinaryOp::Shl
+                                    }
+                                }
+                                BinaryOp::BitwiseShr => {
+                                    if signed {
+                                        AsmBinaryOp::Sar
+                                    } else {
+                                        AsmBinaryOp::ShrTwoOp
+                                    }
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+
+                        let is_signed = get_signedness(&ir2type(lhs));
+
+                        let asm_lhs = lhs.codegen().into();
+                        let asm_rhs = rhs.codegen().into();
+                        
+                        let asm_dst: AsmOperand = dst.codegen().into();
+                        
+                        let asm_op = convert_shift_op(op, is_signed);
+
+                        match asm_rhs {
+                            AsmOperand::Imm(_) => AsmNode::Instructions(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: ir2asmtype(lhs),
+                                    src: asm_lhs,
+                                    dst: asm_dst.clone(),
+                                },
+                                AsmInstruction::Binary {
+                                    asm_type: ir2asmtype(lhs),
+                                    op: asm_op,
+                                    lhs: asm_rhs,
+                                    rhs: asm_dst.clone(),
+                                },
+                            ]),
+                            _ => AsmNode::Instructions(vec![
+                                AsmInstruction::Mov {
+                                    asm_type: ir2asmtype(lhs),
+                                    src: asm_lhs,
+                                    dst: asm_dst.clone(),
+                                },
+                                AsmInstruction::Mov {
+                                    asm_type: AsmType::Byte,
+                                    src: asm_rhs,
+                                    dst: AsmOperand::Register(AsmRegister::Cx),
+                                },
+                                AsmInstruction::Binary {
+                                    asm_type: ir2asmtype(lhs),
+                                    op: asm_op,
+                                    lhs: AsmOperand::Register(AsmRegister::Cx),
+                                    rhs: asm_dst.clone(),
+                                },
+                            ]),
+                        }
+                    }
+                    _ => {
+                        let asm_lhs = lhs.codegen().into();
+                        let asm_rhs = rhs.codegen().into();
+                        let asm_dst: AsmOperand = dst.codegen().into();
+
+                        let op = match op {
+                            BinaryOp::BitwiseAnd => AsmBinaryOp::And,
+                            BinaryOp::BitwiseOr => AsmBinaryOp::Or,
+                            BinaryOp::BitwiseXor => AsmBinaryOp::Xor,
+                            _ => unreachable!(),
+                        };
+
+                        AsmNode::Instructions(vec![
+                            AsmInstruction::Mov {
+                                asm_type: ir2asmtype(lhs),
+                                src: asm_lhs,
+                                dst: asm_dst.clone(),
+                            },
+                            AsmInstruction::Binary {
+                                asm_type: ir2asmtype(lhs),
+                                op: op,
+                                lhs: asm_rhs,
+                                rhs: asm_dst.clone(),
+                            },
+                        ])
                     }
                 }
             }

@@ -321,6 +321,11 @@ pub enum BinaryExpressionKind {
     GreaterEqual,
     And,
     Or,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseAnd,
+    BitwiseShl,
+    BitwiseShr,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

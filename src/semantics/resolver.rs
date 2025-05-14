@@ -674,14 +674,6 @@ fn resolve_exp(
             let resolved_then_expr = resolve_exp(&then_expr, variable_map, struct_map)?;
             let resolved_else_expr = resolve_exp(&else_expr, variable_map, struct_map)?;
 
-            if let (Expression::Binary(_), Expression::Assign(_), Expression::Assign(_)) = (
-                &resolved_condition,
-                &resolved_then_expr,
-                &resolved_else_expr,
-            ) {
-                bail!("invalid ternary assignment")
-            }
-
             Ok(Expression::Conditional(ConditionalExpression {
                 condition: resolved_condition.into(),
                 then_expr: resolved_then_expr.into(),

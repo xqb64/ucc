@@ -165,6 +165,11 @@ pub enum BinaryOp {
     NotEqual,
     LessEqual,
     GreaterEqual,
+    BitwiseOr,
+    BitwiseAnd,
+    BitwiseXor,
+    BitwiseShl,
+    BitwiseShr,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -347,7 +352,7 @@ fn cast_const_to(c: &Const, target: &Type) -> Const {
     let result = match target {
         Type::Int => Const::Int(c.to_i32()),
         Type::Long => Const::Long(c.to_i64()),
-        Type::UInt => Const::UInt(c.to_u32()),
+        Type::UInt => Const::UInt(c.to_u32().expect("")),
         Type::ULong => Const::ULong(c.to_u64()),
         Type::Double => Const::Double(c.to_f64()),
         Type::Char => Const::Char(c.to_i8()),
@@ -1023,6 +1028,11 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                     BinaryExpressionKind::NotEqual => BinaryOp::NotEqual,
                     BinaryExpressionKind::GreaterEqual => BinaryOp::GreaterEqual,
                     BinaryExpressionKind::LessEqual => BinaryOp::LessEqual,
+                    BinaryExpressionKind::BitwiseOr => BinaryOp::BitwiseOr,
+                    BinaryExpressionKind::BitwiseXor => BinaryOp::BitwiseXor,
+                    BinaryExpressionKind::BitwiseAnd => BinaryOp::BitwiseAnd,
+                    BinaryExpressionKind::BitwiseShl => BinaryOp::BitwiseShl,
+                    BinaryExpressionKind::BitwiseShr => BinaryOp::BitwiseShr,
                     _ => unreachable!(),
                 };
                 instructions.push(IRInstruction::Binary {

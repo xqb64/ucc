@@ -1022,6 +1022,69 @@ fn typecheck_logical(
     }))
 }
 
+fn typecheck_bitwise(
+    kind: &BinaryExpressionKind,
+    lhs: &Expression,
+    rhs: &Expression,
+) -> Result<Expression> {
+    let typed_lhs = typecheck_and_convert(lhs)?;
+    let typed_rhs = typecheck_and_convert(rhs)?;
+
+    let lhs_type = get_type(&typed_lhs);
+    let rhs_type = get_type(&typed_rhs);
+
+    if !(is_integer_type(lhs_type) && is_integer_type(rhs_type)) {
+        bail!("both operands in a bitwise op must be integers");
+    }
+
+    let common_type = get_common_type(lhs_type, rhs_type);
+
+    let converted_lhs = convert_to(&typed_lhs, common_type);
+    let converted_rhs = convert_to(&typed_rhs, common_type);
+
+    Ok(Expression::Binary(BinaryExpression {
+        kind: kind.clone(),
+        lhs: converted_lhs.into(),
+        rhs: converted_rhs.into(),
+        _type: common_type.clone(),
+    }))
+}
+
+fn typecheck_bitshift(
+    kind: &BinaryExpressionKind,
+    lhs: &Expression,
+    rhs: &Expression,
+) -> Result<Expression> {
+    let typed_lhs = typecheck_and_convert(lhs)?;
+    let typed_rhs = typecheck_and_convert(rhs)?;
+
+    let lhs_type = get_type(&typed_lhs);
+    let rhs_type = get_type(&typed_rhs);
+
+    if !(is_integer_type(lhs_type) && is_integer_type(rhs_type)) {
+        bail!("both operands in a bitshift operation must be integers");
+    }
+
+    let typed_lhs = if is_char_type(lhs_type) {
+        convert_to(&typed_lhs, &Type::Int)
+    } else {
+        typed_lhs.clone()
+    };
+
+    let typed_rhs = if is_char_type(rhs_type) {
+        convert_to(&typed_rhs, &Type::Int)
+    } else {
+        typed_rhs.clone()
+    };
+
+    Ok(Expression::Binary(BinaryExpression {
+        kind: kind.clone(),
+        lhs: typed_lhs.clone().into(),
+        rhs: typed_rhs.into(),
+        _type: get_type(&typed_lhs).clone(),
+    }))
+}
+
 fn typecheck_addition(lhs: &Expression, rhs: &Expression) -> Result<Expression> {
     let typed_lhs = typecheck_and_convert(lhs)?;
     let typed_rhs = typecheck_and_convert(rhs)?;
@@ -1364,6 +1427,12 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             | BinaryExpressionKind::LessEqual
             | BinaryExpressionKind::Greater
             | BinaryExpressionKind::GreaterEqual => typecheck_relational(kind, lhs, rhs),
+            BinaryExpressionKind::BitwiseOr
+            | BinaryExpressionKind::BitwiseXor
+            | BinaryExpressionKind::BitwiseAnd => typecheck_bitwise(kind, lhs, rhs),
+            BinaryExpressionKind::BitwiseShl | BinaryExpressionKind::BitwiseShr => {
+                typecheck_bitshift(kind, lhs, rhs)
+            }
         },
 
         Expression::Assign(AssignExpression {
@@ -1372,17 +1441,11 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             rhs,
             _type,
         }) => {
-            if is_lvalue(lhs) {
-                let typed_lhs = typecheck_and_convert(lhs)?;
-
-                if !is_lvalue(&typed_lhs) {
-                    bail!("Invalid lvalue in assignment");
-                }
-
+            let typed_lhs = typecheck_and_convert(lhs)?;
+            
+            if is_lvalue(&typed_lhs) {
                 let typed_rhs = typecheck_and_convert(rhs)?;
-
                 let left_type = get_type(&typed_lhs);
-
                 let converted_right = convert_by_assignment(&typed_rhs, left_type)?;
 
                 Ok(Expression::Assign(AssignExpression {
