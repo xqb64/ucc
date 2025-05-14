@@ -776,24 +776,6 @@ impl Typecheck for Statement {
 
                 *condition = typechecked_expr.clone();
 
-                //let mut cloned_body = body.clone();
-
-                // match &mut *cloned_body {
-                //    Statement::Compound(BlockStatement { stmts }) => {
-                //        for stmt in stmts.iter_mut() {
-                //            if let BlockItem::Statement(Statement::Case(CaseStatement { ref mut value, body, label })) = stmt {
-                //                let typechecked_value = typecheck_and_convert(&value)?;
-                //                if is_integer_type(get_type(&typechecked_value)) && get_type(&typechecked_value) != get_type(&typechecked_expr) {
-                //                    *value = convert_to(&value, get_type(&typechecked_expr));
-                //                }
-                //            }
-                //        }
-                //    }
-                //    _ => bail!("switch body must be a compound statement"),
-                //}
-
-                //*body = cloned_body;
-
                 body.typecheck()?;
 
                 Ok(self)
