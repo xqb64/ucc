@@ -8,7 +8,7 @@ At the forefront is the compiler driver, which orchestrates the compilation proc
 
 ## Status
 
-- [ ] compound assingment
+- [ ] compound assignment
 - [ ] bitwise ops
 - [x] char (in both unsigned and signed variants)
 - [ ] short
