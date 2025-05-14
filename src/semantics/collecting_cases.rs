@@ -236,8 +236,6 @@ impl SwitchCaseCollect for CaseStatement {
         }
 
         let this_value = &self.value;
-        println!("this_value is: {:?}", this_value);
-        println!("cases is: {:?}", cases);
         if {
             cases.iter().any(|stmt| {
                 if let Statement::Case(case_stmt) = stmt {

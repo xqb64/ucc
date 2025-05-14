@@ -526,8 +526,6 @@ impl Irfy for DefaultStatement {
 
 impl Irfy for BreakStatement {
     fn irfy(&self, _funcname: &str) -> Option<IRNode> {
-        println!("Irfy for BreakStatement: self.label is {:?}", self.label);
-
         Some(IRNode::Instructions(vec![IRInstruction::Jump(format!(
             "{}.break",
             self.label.clone()
@@ -632,7 +630,6 @@ impl Irfy for ForStatement {
 
         let start_label = format!("{}.start", self.label);
         let break_label = format!("{}.break", self.label);
-        println!("break out of for: {:?}", break_label);
         let continue_label = format!("{}.continue", self.label);
 
         instructions.extend::<Vec<IRInstruction>>(self.init.irfy(funcname).unwrap().into());
