@@ -8,6 +8,8 @@ At the forefront is the compiler driver, which orchestrates the compilation proc
 
 ## Status
 
+- [ ] compound assingment
+- [ ] bitwise ops
 - [x] char (in both unsigned and signed variants)
 - [ ] short
 - [x] int (in both unsigned and signed variants)
@@ -16,7 +18,7 @@ At the forefront is the compiler driver, which orchestrates the compilation proc
 - [x] double
 - [x] void
 - [x] if/else
-- [ ] switch
+- [x] switch
 - [x] while
 - [x] do while
 - [x] for
