@@ -1052,9 +1052,9 @@ impl Codegen for IRInstruction {
 
                         let asm_lhs = lhs.codegen().into();
                         let asm_rhs = rhs.codegen().into();
-                        
+
                         let asm_dst: AsmOperand = dst.codegen().into();
-                        
+
                         let asm_op = convert_shift_op(op, is_signed);
 
                         match asm_rhs {

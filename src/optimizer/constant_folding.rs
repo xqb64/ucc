@@ -18,9 +18,9 @@ fn evaluate_leftshift(val: &Const, shift: u32) -> Const {
 
 fn evaluate_rightshift(val: &Const, shift: u32) -> Const {
     match val {
-        Const::Int(v) => Const::Int(*v >> shift),     // arithmetic shift
-        Const::Long(v) => Const::Long(*v >> shift),   // arithmetic shift
-        Const::UInt(v) => Const::UInt(*v >> shift),   // logical shift
+        Const::Int(v) => Const::Int(*v >> shift), // arithmetic shift
+        Const::Long(v) => Const::Long(*v >> shift), // arithmetic shift
+        Const::UInt(v) => Const::UInt(*v >> shift), // logical shift
         Const::ULong(v) => Const::ULong(*v >> shift), // logical shift
         Const::Char(v) => Const::Char(*v >> shift),
         Const::UChar(v) => Const::UChar(*v >> shift),

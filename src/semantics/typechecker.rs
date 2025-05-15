@@ -1442,7 +1442,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             _type,
         }) => {
             let typed_lhs = typecheck_and_convert(lhs)?;
-            
+
             if is_lvalue(&typed_lhs) {
                 let typed_rhs = typecheck_and_convert(rhs)?;
                 let left_type = get_type(&typed_lhs);

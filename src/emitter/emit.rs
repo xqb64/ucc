@@ -270,7 +270,7 @@ impl Emit for AsmInstruction {
                     AsmBinaryOp::Shl => "shl",
                     AsmBinaryOp::Sal => "sal",
                     AsmBinaryOp::Sar => "sar",
-               };
+                };
 
                 let suffix = match asm_type {
                     AsmType::Longword => "l",
