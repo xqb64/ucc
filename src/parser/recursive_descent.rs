@@ -16,7 +16,8 @@ use anyhow::{bail, Result};
 use std::collections::{BTreeSet, VecDeque};
 
 use super::ast::{
-    CaseStatement, DefaultStatement, GotoStatement, LabeledStatement, SwitchStatement,
+    CaseStatement, DefaultStatement, GotoStatement, LabeledStatement, PostfixExpression,
+    PostfixExpressionKind, SwitchStatement,
 };
 
 pub struct Parser {
@@ -1077,7 +1078,13 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<Expression> {
-        if self.is_next(&[Token::Hyphen, Token::Tilde, Token::Bang]) {
+        if self.is_next(&[
+            Token::Hyphen,
+            Token::Tilde,
+            Token::Bang,
+            Token::DoublePlus,
+            Token::DoubleHyphen,
+        ]) {
             let op = self.previous.clone().unwrap();
 
             let expr = self.unary()?;
@@ -1087,6 +1094,8 @@ impl Parser {
                     Token::Hyphen => UnaryExpressionKind::Negate,
                     Token::Tilde => UnaryExpressionKind::Complement,
                     Token::Bang => UnaryExpressionKind::Not,
+                    Token::DoublePlus => UnaryExpressionKind::Inc,
+                    Token::DoubleHyphen => UnaryExpressionKind::Dec,
                     _ => unreachable!(),
                 },
                 _type: Type::Dummy,
@@ -1222,6 +1231,18 @@ impl Parser {
                 expr = Expression::Arrow(ArrowExpression {
                     pointer: expr.into(),
                     member,
+                    _type: Type::Dummy,
+                });
+            } else if self.is_next(&[Token::DoublePlus, Token::DoubleHyphen]) {
+                let kind = match self.previous.clone() {
+                    Some(Token::DoublePlus) => PostfixExpressionKind::Inc,
+                    Some(Token::DoubleHyphen) => PostfixExpressionKind::Dec,
+                    _ => unreachable!(),
+                };
+
+                expr = Expression::Postfix(PostfixExpression {
+                    kind,
+                    expr: expr.into(),
                     _type: Type::Dummy,
                 });
             } else {

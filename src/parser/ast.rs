@@ -206,6 +206,20 @@ pub enum Expression {
     SizeofT(SizeofTExpression),
     Dot(DotExpression),
     Arrow(ArrowExpression),
+    Postfix(PostfixExpression),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PostfixExpression {
+    pub expr: Box<Expression>,
+    pub kind: PostfixExpressionKind,
+    pub _type: Type,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PostfixExpressionKind {
+    Inc,
+    Dec,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -296,6 +310,8 @@ pub enum UnaryExpressionKind {
     Negate,
     Complement,
     Not,
+    Inc,
+    Dec,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

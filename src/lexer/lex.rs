@@ -24,7 +24,7 @@ impl Lexer {
         );
         regexes.insert(
             "punctuation_double",
-            Regex::new(r"^(--|==|!=|>=|<=|&&|\|\||->|>>|<<)").unwrap(),
+            Regex::new(r"^(--|==|!=|>=|<=|&&|\|\||->|>>|<<|\+\+)").unwrap(),
         );
         regexes.insert(
             "keyword",
@@ -138,6 +138,7 @@ impl Iterator for Lexer {
         } else if let Some(m) = self.regexes["punctuation_double"].find(src) {
             self.pos += m.as_str().len();
             match m.as_str() {
+                "++" => Token::DoublePlus,
                 "--" => Token::DoubleHyphen,
                 "==" => Token::DoubleEqual,
                 "!=" => Token::BangEqual,
@@ -282,6 +283,7 @@ pub enum Token {
     Bang,
     QuestionMark,
     Colon,
+    DoublePlus,
     DoubleHyphen,
     DoubleAmpersand,
     DoublePipe,

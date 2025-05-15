@@ -7,10 +7,10 @@ use crate::{
         CastExpression, ConditionalExpression, ConstantExpression, Declaration, DefaultStatement,
         DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit,
         ForStatement, FunctionDeclaration, GotoStatement, IfStatement, Initializer,
-        LabeledStatement, Program, ReturnStatement, SizeofExpression, SizeofTExpression, Statement,
-        StorageClass, StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement,
-        Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression,
-        WhileStatement,
+        LabeledStatement, PostfixExpression, PostfixExpressionKind, Program, ReturnStatement,
+        SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
+        StructDeclaration, SubscriptExpression, SwitchStatement, Type, UnaryExpression,
+        UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement,
     },
 };
 use anyhow::{bail, Result};
@@ -759,8 +759,8 @@ impl Typecheck for Statement {
             Statement::Switch(SwitchStatement {
                 condition,
                 ref mut body,
-                label,
-                ref mut cases,
+                label: _,
+                cases: _,
             }) => {
                 let typechecked_expr = typecheck_and_convert(&condition)?;
 
@@ -781,7 +781,11 @@ impl Typecheck for Statement {
                 Ok(self)
             }
 
-            Statement::Case(CaseStatement { body, label, value }) => {
+            Statement::Case(CaseStatement {
+                body,
+                label: _,
+                value,
+            }) => {
                 let typechecked_expr = typecheck_and_convert(&value)?;
 
                 if get_type(&typechecked_expr) == &Type::Double {
@@ -795,7 +799,7 @@ impl Typecheck for Statement {
                 Ok(self)
             }
 
-            Statement::Default(DefaultStatement { body, label }) => {
+            Statement::Default(DefaultStatement { body, label: _ }) => {
                 body.typecheck()?;
 
                 Ok(self)
@@ -1319,6 +1323,54 @@ fn typecheck_negate(expr: &Expression) -> Result<Expression> {
     }))
 }
 
+fn typecheck_incr(expr: &Expression, kind: UnaryExpressionKind) -> Result<Expression> {
+    let typed_expr = typecheck_and_convert(expr)?;
+
+    if is_lvalue(&typed_expr)
+        && (is_arithmetic(get_type(&typed_expr)) || is_ptr_to_complete(get_type(&typed_expr)))
+    {
+        return Ok(Expression::Unary(UnaryExpression {
+            kind,
+            expr: typed_expr.clone().into(),
+            _type: get_type(&typed_expr).to_owned(),
+        }));
+    }
+
+    bail!("operand of ++/-- must be an lvalue with arithemtic or ptr type");
+}
+
+fn typecheck_postfix_inc(expr: &Expression) -> Result<Expression> {
+    let typed_expr = typecheck_and_convert(expr)?;
+
+    if is_lvalue(&typed_expr)
+        && (is_arithmetic(get_type(&typed_expr)) || is_ptr_to_complete(get_type(&typed_expr)))
+    {
+        return Ok(Expression::Postfix(PostfixExpression {
+            expr: typed_expr.clone().into(),
+            kind: PostfixExpressionKind::Inc,
+            _type: get_type(&typed_expr).to_owned(),
+        }));
+    }
+
+    bail!("operand of postfix ++ must be an lvalue with arithemtic or ptr type");
+}
+
+fn typecheck_postfix_dec(expr: &Expression) -> Result<Expression> {
+    let typed_expr = typecheck_and_convert(expr)?;
+
+    if is_lvalue(&typed_expr)
+        && (is_arithmetic(get_type(&typed_expr)) || is_ptr_to_complete(get_type(&typed_expr)))
+    {
+        return Ok(Expression::Postfix(PostfixExpression {
+            expr: typed_expr.clone().into(),
+            kind: PostfixExpressionKind::Dec,
+            _type: get_type(&typed_expr).to_owned(),
+        }));
+    }
+
+    bail!("operand of postfix -- must be an lvalue with arithemtic or ptr type");
+}
+
 fn typecheck_subscript(expr: &Expression, index: &Expression) -> Result<Expression> {
     let typed_e1 = typecheck_and_convert(expr)?;
     let typed_e2 = typecheck_and_convert(index)?;
@@ -1349,6 +1401,11 @@ fn typecheck_subscript(expr: &Expression, index: &Expression) -> Result<Expressi
 
 fn typecheck_expr(expr: &Expression) -> Result<Expression> {
     match expr {
+        Expression::Postfix(PostfixExpression { kind, expr, _type }) => match kind {
+            PostfixExpressionKind::Inc => typecheck_postfix_inc(expr),
+            PostfixExpressionKind::Dec => typecheck_postfix_dec(expr),
+        },
+
         Expression::Call(CallExpression { name, args, _type }) => {
             let f = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
             let f_type = f._type.clone();
@@ -1506,6 +1563,9 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             UnaryExpressionKind::Complement => typecheck_complement(expr),
             UnaryExpressionKind::Negate => typecheck_negate(expr),
             UnaryExpressionKind::Not => typecheck_not(expr),
+            UnaryExpressionKind::Inc | UnaryExpressionKind::Dec => {
+                typecheck_incr(expr, kind.clone())
+            }
         },
 
         Expression::Constant(ConstantExpression { value, _type }) => match value {
@@ -1930,6 +1990,7 @@ pub fn get_type(e: &Expression) -> &Type {
         Expression::SizeofT(sizeof_t) => &sizeof_t._type,
         Expression::Arrow(arrow) => &arrow._type,
         Expression::Dot(dot) => &dot._type,
+        Expression::Postfix(postfix) => &postfix._type,
     }
 }
 

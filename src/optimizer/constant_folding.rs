@@ -99,6 +99,20 @@ pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
                                 Const::Int(0)
                             }
                         }
+                        UnaryOp::Inc => match src_val {
+                            Const::Int(i) => Const::Int(i + 1),
+                            Const::Long(i) => Const::Long(i + 1),
+                            Const::UInt(i) => Const::UInt(i.wrapping_add(1)),
+                            Const::ULong(i) => Const::ULong(i.wrapping_add(1)),
+                            _ => panic!("Increment requires numeric type"),
+                        },
+                        UnaryOp::Dec => match src_val {
+                            Const::Int(i) => Const::Int(i - 1),
+                            Const::Long(i) => Const::Long(i - 1),
+                            Const::UInt(i) => Const::UInt(i.wrapping_sub(1)),
+                            Const::ULong(i) => Const::ULong(i.wrapping_sub(1)),
+                            _ => panic!("Decrement requires numeric type"),
+                        },
                     };
                     optimized_instructions.push(IRInstruction::Copy {
                         src: IRValue::Constant(result),

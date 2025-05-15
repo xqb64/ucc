@@ -663,6 +663,18 @@ impl Codegen for IRInstruction {
                             ])
                         }
                     }
+                    UnaryOp::Inc | UnaryOp::Dec => AsmNode::Instructions(vec![
+                        AsmInstruction::Mov {
+                            asm_type: asm_type.clone(),
+                            src: src.codegen().into(),
+                            dst: dst.codegen().into(),
+                        },
+                        AsmInstruction::Unary {
+                            asm_type: asm_type.clone(),
+                            op: (*op).into(),
+                            operand: dst.codegen().into(),
+                        },
+                    ]),
                 }
             }
 
@@ -1893,7 +1905,10 @@ impl From<UnaryOp> for AsmUnaryOp {
         match op {
             UnaryOp::Negate => AsmUnaryOp::Neg,
             UnaryOp::Complement => AsmUnaryOp::Not,
-            _ => unreachable!(),
+            _ => {
+                println!("got op: {:?}", op);
+                unreachable!()
+            }
         }
     }
 }

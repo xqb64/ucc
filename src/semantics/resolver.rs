@@ -9,9 +9,10 @@ use crate::{
         ConditionalExpression, ContinueStatement, Declaration, DefaultStatement, DerefExpression,
         DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement,
         FunctionDeclaration, IfStatement, Initializer, LabeledStatement, MemberDeclaration,
-        Program, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
-        StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement, Type,
-        UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement,
+        PostfixExpression, Program, ReturnStatement, SizeofExpression, SizeofTExpression,
+        Statement, StorageClass, StringExpression, StructDeclaration, SubscriptExpression,
+        SwitchStatement, Type, UnaryExpression, VariableDeclaration, VariableExpression,
+        WhileStatement,
     },
 };
 
@@ -788,6 +789,17 @@ fn resolve_exp(
             Ok(Expression::SizeofT(SizeofTExpression {
                 t: resolved_type,
                 _type,
+            }))
+        }
+
+        Expression::Postfix(PostfixExpression { kind, expr, _type }) => {
+            let resolved_type = resolve_type(&_type, struct_map)?;
+            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
+
+            Ok(Expression::Postfix(PostfixExpression {
+                expr: resolved_expr.into(),
+                kind,
+                _type: resolved_type,
             }))
         }
 
