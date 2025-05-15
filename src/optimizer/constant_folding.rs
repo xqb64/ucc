@@ -57,7 +57,6 @@ pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
                             if let Some(shift) = rhs_val.to_u32() {
                                 evaluate_leftshift(&lhs_val, shift)
                             } else {
-                                // Cannot fold: invalid shift amount (e.g. float)
                                 optimized_instructions.push(instr.clone());
                                 continue;
                             }
@@ -223,6 +222,7 @@ fn evaluate_cast(konst: &Const, dst: &IRValue) -> Vec<IRInstruction> {
     use crate::codegen::gen::ir2type;
 
     let dst_type = ir2type(dst);
+
     let converted_src = const_convert(konst, &dst_type);
 
     vec![IRInstruction::Copy {

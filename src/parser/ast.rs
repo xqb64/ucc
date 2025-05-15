@@ -207,6 +207,30 @@ pub enum Expression {
     Dot(DotExpression),
     Arrow(ArrowExpression),
     Postfix(PostfixExpression),
+    Compound(CompoundExpression),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CompoundExpression {
+    pub kind: CompoundExpressionKind,
+    pub lhs: Box<Expression>,
+    pub rhs: Box<Expression>,
+    pub result_t: Type,
+    pub _type: Type,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CompoundExpressionKind {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseShl,
+    BitwiseShr,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

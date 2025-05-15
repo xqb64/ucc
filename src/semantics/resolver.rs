@@ -6,13 +6,13 @@ use crate::{
     parser::ast::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BlockItem,
         BlockStatement, BreakStatement, CallExpression, CaseStatement, CastExpression,
-        ConditionalExpression, ContinueStatement, Declaration, DefaultStatement, DerefExpression,
-        DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit, ForStatement,
-        FunctionDeclaration, IfStatement, Initializer, LabeledStatement, MemberDeclaration,
-        PostfixExpression, Program, ReturnStatement, SizeofExpression, SizeofTExpression,
-        Statement, StorageClass, StringExpression, StructDeclaration, SubscriptExpression,
-        SwitchStatement, Type, UnaryExpression, VariableDeclaration, VariableExpression,
-        WhileStatement,
+        CompoundExpression, ConditionalExpression, ContinueStatement, Declaration,
+        DefaultStatement, DerefExpression, DoWhileStatement, DotExpression, Expression,
+        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer,
+        LabeledStatement, MemberDeclaration, PostfixExpression, Program, ReturnStatement,
+        SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
+        StructDeclaration, SubscriptExpression, SwitchStatement, Type, UnaryExpression,
+        VariableDeclaration, VariableExpression, WhileStatement,
     },
 };
 
@@ -608,6 +608,25 @@ fn resolve_exp(
     struct_map: &mut BTreeMap<String, StructTableEntry>,
 ) -> Result<Expression> {
     match exp.to_owned() {
+        Expression::Compound(CompoundExpression {
+            kind,
+            lhs,
+            rhs,
+            result_t,
+            _type,
+        }) => {
+            let resolved_lhs = resolve_exp(&lhs, variable_map, struct_map)?;
+            let resolved_rhs = resolve_exp(&rhs, variable_map, struct_map)?;
+
+            Ok(Expression::Compound(CompoundExpression {
+                kind,
+                lhs: resolved_lhs.into(),
+                rhs: resolved_rhs.into(),
+                result_t,
+                _type,
+            }))
+        }
+
         Expression::Assign(AssignExpression {
             op,
             ref lhs,

@@ -4,13 +4,14 @@ use crate::{
     parser::ast::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
         BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CaseStatement,
-        CastExpression, ConditionalExpression, ConstantExpression, Declaration, DefaultStatement,
-        DerefExpression, DoWhileStatement, DotExpression, Expression, ExpressionStatement, ForInit,
-        ForStatement, FunctionDeclaration, GotoStatement, IfStatement, Initializer,
-        LabeledStatement, PostfixExpression, PostfixExpressionKind, Program, ReturnStatement,
-        SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
-        StructDeclaration, SubscriptExpression, SwitchStatement, Type, UnaryExpression,
-        UnaryExpressionKind, VariableDeclaration, VariableExpression, WhileStatement,
+        CastExpression, CompoundExpression, ConditionalExpression, ConstantExpression, Declaration,
+        DefaultStatement, DerefExpression, DoWhileStatement, DotExpression, Expression,
+        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, GotoStatement,
+        IfStatement, Initializer, LabeledStatement, PostfixExpression, PostfixExpressionKind,
+        Program, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
+        StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement, Type,
+        UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression,
+        WhileStatement,
     },
 };
 use anyhow::{bail, Result};
@@ -1399,8 +1400,117 @@ fn typecheck_subscript(expr: &Expression, index: &Expression) -> Result<Expressi
     }))
 }
 
+fn typecheck_compound(
+    kind: &BinaryExpressionKind,
+    lhs: &Expression,
+    rhs: &Expression,
+) -> Result<Expression> {
+    let typed_lhs = typecheck_and_convert(lhs)?;
+    if is_lvalue(&typed_lhs) {
+        let lhs_type = get_type(&typed_lhs);
+        let typed_rhs = typecheck_and_convert(rhs)?;
+        let rhs_type = get_type(&typed_rhs);
+
+        let _ = match kind {
+            BinaryExpressionKind::Rem
+            | BinaryExpressionKind::BitwiseAnd
+            | BinaryExpressionKind::BitwiseOr
+            | BinaryExpressionKind::BitwiseXor
+            | BinaryExpressionKind::BitwiseShl
+            | BinaryExpressionKind::BitwiseShr => {
+                if !is_integer_type(lhs_type) || !is_integer_type(rhs_type) {
+                    bail!("operand only supports integer types");
+                }
+            }
+            BinaryExpressionKind::Mul | BinaryExpressionKind::Div => {
+                if !is_arithmetic(lhs_type) || !is_arithmetic(rhs_type) {
+                    bail!("operand only supports arithmetic types");
+                }
+            }
+            BinaryExpressionKind::Add | BinaryExpressionKind::Sub => {
+                if !( (is_arithmetic(lhs_type) && is_arithmetic(rhs_type))
+                       || (is_ptr_to_complete(lhs_type) && is_integer_type(rhs_type)) )
+                    {
+                        bail!("invalid types for += / -=");
+                    }
+            }
+            _ => (),
+        };
+
+        let (result_t, converted_rhs) = {
+            if kind == &BinaryExpressionKind::BitwiseShl
+                || kind == &BinaryExpressionKind::BitwiseShr
+            {
+                let lhs_type = if is_char_type(lhs_type) {
+                    Type::Int
+                } else {
+                    lhs_type.clone()
+                };
+                let converted_rhs = if is_char_type(get_type(&typed_rhs)) {
+                    convert_to(&typed_rhs, &Type::Int)
+                } else {
+                    typed_rhs.clone()
+                };
+
+                (lhs_type.clone(), converted_rhs.clone())
+            } else if is_pointer_type(lhs_type) {
+                (lhs_type.clone(), convert_to(&typed_rhs, &Type::Long))
+            } else {
+                let common_type = get_common_type(lhs_type, rhs_type);
+                (common_type.clone(), convert_to(&typed_rhs, common_type))
+            }
+        };
+
+        Ok(Expression::Compound(CompoundExpression {
+            kind: match kind {
+                BinaryExpressionKind::Add => crate::parser::ast::CompoundExpressionKind::Add,
+                BinaryExpressionKind::Sub => crate::parser::ast::CompoundExpressionKind::Sub,
+                BinaryExpressionKind::Mul => crate::parser::ast::CompoundExpressionKind::Mul,
+                BinaryExpressionKind::Div => crate::parser::ast::CompoundExpressionKind::Div,
+                BinaryExpressionKind::Rem => crate::parser::ast::CompoundExpressionKind::Mod,
+                BinaryExpressionKind::BitwiseShr => {
+                    crate::parser::ast::CompoundExpressionKind::BitwiseShr
+                }
+                BinaryExpressionKind::BitwiseShl => {
+                    crate::parser::ast::CompoundExpressionKind::BitwiseShl
+                }
+                BinaryExpressionKind::BitwiseXor => {
+                    crate::parser::ast::CompoundExpressionKind::BitwiseXor
+                }
+                BinaryExpressionKind::BitwiseOr => {
+                    crate::parser::ast::CompoundExpressionKind::BitwiseOr
+                }
+                BinaryExpressionKind::BitwiseAnd => {
+                    crate::parser::ast::CompoundExpressionKind::BitwiseAnd
+                }
+                _ => unreachable!(),
+            },
+            lhs: typed_lhs.clone().into(),
+            rhs: converted_rhs.into(),
+            result_t,
+            _type: lhs_type.to_owned(),
+        }))
+    } else {
+        bail!("lhs of compound assignment must be an lvalue");
+    }
+}
+
 fn typecheck_expr(expr: &Expression) -> Result<Expression> {
     match expr {
+        Expression::Compound(CompoundExpression {
+            kind,
+            lhs,
+            rhs,
+            result_t: _,
+            _type: _,
+        }) => {
+            let k = (*kind).into();
+            println!("kind is: {:?}", kind);
+            println!("lhs is: {:?}", lhs);
+            println!("rhs is: {:?}", rhs);
+            typecheck_compound(&k, lhs, rhs)
+        }
+
         Expression::Postfix(PostfixExpression { kind, expr, _type }) => match kind {
             PostfixExpressionKind::Inc => typecheck_postfix_inc(expr),
             PostfixExpressionKind::Dec => typecheck_postfix_dec(expr),
@@ -1956,7 +2066,10 @@ pub fn get_signedness(t: &Type) -> bool {
         Type::Pointer(_) => false,
         Type::Char | Type::SChar => true,
         Type::UChar => false,
-        _ => unreachable!(),
+        _ => {
+            println!("t is: {:?}", t);
+            unreachable!()
+        }
     }
 }
 
@@ -1991,6 +2104,7 @@ pub fn get_type(e: &Expression) -> &Type {
         Expression::Arrow(arrow) => &arrow._type,
         Expression::Dot(dot) => &dot._type,
         Expression::Postfix(postfix) => &postfix._type,
+        Expression::Compound(compound) => &compound._type,
     }
 }
 

@@ -16,8 +16,8 @@ use anyhow::{bail, Result};
 use std::collections::{BTreeSet, VecDeque};
 
 use super::ast::{
-    CaseStatement, DefaultStatement, GotoStatement, LabeledStatement, PostfixExpression,
-    PostfixExpressionKind, SwitchStatement,
+    CaseStatement, CompoundExpression, CompoundExpressionKind, DefaultStatement, GotoStatement,
+    LabeledStatement, PostfixExpression, PostfixExpressionKind, SwitchStatement,
 };
 
 pub struct Parser {
@@ -857,13 +857,49 @@ impl Parser {
 
     fn assignment(&mut self) -> Result<Expression> {
         let mut result = self.conditional()?;
-        while self.is_next(&[Token::Equal]) {
-            result = Expression::Assign(AssignExpression {
-                lhs: result.into(),
-                rhs: self.assignment()?.into(),
-                op: Token::Equal,
-                _type: Type::Dummy,
-            });
+        while self.is_next(&[
+            Token::Equal,
+            Token::PlusEqual,
+            Token::MinusEqual,
+            Token::StarEqual,
+            Token::SlashEqual,
+            Token::ModEqual,
+            Token::AmpersandEqual,
+            Token::PipeEqual,
+            Token::CaretEqual,
+            Token::GreaterGreaterEqual,
+            Token::LessLessEqual,
+        ]) {
+            if let Some(Token::Equal) = self.previous.clone() {
+                result = Expression::Assign(AssignExpression {
+                    lhs: result.into(),
+                    rhs: self.assignment()?.into(),
+                    op: Token::Equal,
+                    _type: Type::Dummy,
+                });
+            } else {
+                let op = match self.previous.clone() {
+                    Some(Token::PlusEqual) => CompoundExpressionKind::Add,
+                    Some(Token::MinusEqual) => CompoundExpressionKind::Sub,
+                    Some(Token::StarEqual) => CompoundExpressionKind::Mul,
+                    Some(Token::SlashEqual) => CompoundExpressionKind::Div,
+                    Some(Token::CaretEqual) => CompoundExpressionKind::BitwiseXor,
+                    Some(Token::AmpersandEqual) => CompoundExpressionKind::BitwiseAnd,
+                    Some(Token::PipeEqual) => CompoundExpressionKind::BitwiseOr,
+                    Some(Token::GreaterGreaterEqual) => CompoundExpressionKind::BitwiseShr,
+                    Some(Token::LessLessEqual) => CompoundExpressionKind::BitwiseShl,
+                    Some(Token::ModEqual) => CompoundExpressionKind::Mod,
+                    _ => unreachable!(),
+                };
+
+                result = Expression::Compound(CompoundExpression {
+                    kind: op,
+                    lhs: result.into(),
+                    rhs: self.assignment()?.into(),
+                    result_t: Type::Dummy,
+                    _type: Type::Dummy,
+                });
+            }
         }
         Ok(result)
     }

@@ -658,7 +658,9 @@ impl Irfy for ForStatement {
             });
         }
 
-        instructions.extend::<Vec<IRInstruction>>(self.body.irfy(funcname).unwrap().into());
+        if let Some(instrs) = self.body.irfy(funcname) {
+            instructions.extend::<Vec<IRInstruction>>(instrs.into());
+        }
 
         instructions.push(IRInstruction::Label(continue_label.clone()));
 
@@ -865,7 +867,7 @@ fn emit_compound_expression(
     kind: BinaryExpressionKind,
     lhs: &Expression,
     rhs: &Expression,
-    result_ty: &Type,
+    result_t: &Type,
     instructions: &mut Vec<IRInstruction>,
 ) -> ExpResult {
     let lhs_ty = get_type(&lhs).to_owned();
@@ -915,7 +917,7 @@ fn emit_compound_expression(
         src_t: &Type,
         dst_t: &Type,
     ) -> IRInstruction {
-        match (src_t, dst_t) {
+        match (dst_t, src_t) {
             (Type::Double, _) => {
                 if get_signedness(&src_t) {
                     IRInstruction::IntToDouble {
@@ -968,18 +970,18 @@ fn emit_compound_expression(
         }
     }
 
-    let (result_var, cast_to, cast_from) = if &lhs_ty == result_ty {
+    let (result_var, cast_to, cast_from) = if &lhs_ty == result_t {
         (dst.clone(), None, None)
     } else {
-        let tmp = make_tacky_variable(&result_ty);
-        let cast_lhs_to_tmp = get_cast_instruction(&dst, &tmp, &lhs_ty, result_ty);
-        let cast_tmp_to_lhs = get_cast_instruction(&tmp, &dst, result_ty, &lhs_ty);
+        let tmp = make_tacky_variable(&result_t);
+        let cast_lhs_to_tmp = get_cast_instruction(&dst, &tmp, &lhs_ty, result_t);
+        let cast_tmp_to_lhs = get_cast_instruction(&tmp, &dst, result_t, &lhs_ty);
 
         (tmp.clone(), Some(cast_lhs_to_tmp), Some(cast_tmp_to_lhs))
     };
 
-    let do_operation = if is_pointer_type(result_ty) {
-        let scale = get_ptr_scale(&result_ty);
+    let do_operation = if is_pointer_type(result_t) {
+        let scale = get_ptr_scale(&result_t);
 
         match kind {
             BinaryExpressionKind::Add => {
@@ -1012,6 +1014,14 @@ fn emit_compound_expression(
         let binop = match kind {
             BinaryExpressionKind::Add => BinaryOp::Add,
             BinaryExpressionKind::Sub => BinaryOp::Sub,
+            BinaryExpressionKind::Mul => BinaryOp::Mul,
+            BinaryExpressionKind::Div => BinaryOp::Div,
+            BinaryExpressionKind::Rem => BinaryOp::Rem,
+            BinaryExpressionKind::BitwiseAnd => BinaryOp::BitwiseAnd,
+            BinaryExpressionKind::BitwiseOr => BinaryOp::BitwiseOr,
+            BinaryExpressionKind::BitwiseXor => BinaryOp::BitwiseXor,
+            BinaryExpressionKind::BitwiseShl => BinaryOp::BitwiseShl,
+            BinaryExpressionKind::BitwiseShr => BinaryOp::BitwiseShr,
             _ => unreachable!(),
         };
         vec![IRInstruction::Binary {
@@ -1031,9 +1041,34 @@ fn emit_compound_expression(
     ExpResult::PlainOperand(dst)
 }
 
+impl From<CompoundExpressionKind> for BinaryExpressionKind {
+    fn from(value: CompoundExpressionKind) -> Self {
+        match value {
+            CompoundExpressionKind::Add => BinaryExpressionKind::Add,
+            CompoundExpressionKind::Sub => BinaryExpressionKind::Sub,
+            CompoundExpressionKind::Mul => BinaryExpressionKind::Mul,
+            CompoundExpressionKind::Div => BinaryExpressionKind::Div,
+            CompoundExpressionKind::Mod => BinaryExpressionKind::Rem,
+            CompoundExpressionKind::BitwiseOr => BinaryExpressionKind::BitwiseOr,
+            CompoundExpressionKind::BitwiseAnd => BinaryExpressionKind::BitwiseAnd,
+            CompoundExpressionKind::BitwiseXor => BinaryExpressionKind::BitwiseXor,
+            CompoundExpressionKind::BitwiseShl => BinaryExpressionKind::BitwiseShl,
+            CompoundExpressionKind::BitwiseShr => BinaryExpressionKind::BitwiseShr,
+        }
+    }
+}
+
 fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResult {
     let t = get_type(e);
     match e {
+        Expression::Compound(CompoundExpression {
+            kind,
+            lhs,
+            rhs,
+            result_t,
+            _type,
+        }) => emit_compound_expression((*kind).into(), &lhs, &rhs, result_t, instructions),
+
         Expression::Constant(const_expr) => {
             ExpResult::PlainOperand(IRValue::Constant(const_expr.value))
         }
@@ -1106,13 +1141,23 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                 };
 
                 if is_pointer_type(get_type(&expr)) {
-                    IRInstruction::AddPtr { ptr: src.clone(), index: index.clone(), scale: get_ptr_scale(get_type(&expr)), dst: dst.clone() }
+                    IRInstruction::AddPtr {
+                        ptr: src.clone(),
+                        index: index.clone(),
+                        scale: get_ptr_scale(get_type(&expr)),
+                        dst: dst.clone(),
+                    }
                 } else {
                     let one = IRValue::Constant(make_const(1, get_type(&expr).to_owned()));
-                    IRInstruction::Binary { op: match op { 
-                        PostfixExpressionKind::Inc => BinaryOp::Add,
-                        PostfixExpressionKind::Dec => BinaryOp::Sub,
-                    }, lhs: src.clone(), rhs: one, dst: dst.clone() }
+                    IRInstruction::Binary {
+                        op: match op {
+                            PostfixExpressionKind::Inc => BinaryOp::Add,
+                            PostfixExpressionKind::Dec => BinaryOp::Sub,
+                        },
+                        lhs: src.clone(),
+                        rhs: one,
+                        dst: dst.clone(),
+                    }
                 }
             };
 
@@ -1123,8 +1168,12 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                             src: IRValue::Var(var.clone()),
                             dst: dst.clone(),
                         },
-                        do_op(kind.clone(), IRValue::Var(var.to_owned()), IRValue::Var(var.to_owned()))
-                   ]
+                        do_op(
+                            kind.clone(),
+                            IRValue::Var(var.to_owned()),
+                            IRValue::Var(var.to_owned()),
+                        ),
+                    ]
                 }
 
                 ExpResult::DereferencedPointer(ptr) => {

@@ -1,5 +1,6 @@
 use crate::lexer::util::parse_integer;
 use regex::Regex;
+use std::i32;
 use std::{collections::HashMap, hash::Hash};
 
 pub struct Lexer {
@@ -22,9 +23,11 @@ impl Lexer {
             "punctuation",
             Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\].^|]").unwrap(),
         );
+        regexes.insert("punctuation_triple", Regex::new(r"^(<<=|>>=)").unwrap());
         regexes.insert(
             "punctuation_double",
-            Regex::new(r"^(--|==|!=|>=|<=|&&|\|\||->|>>|<<|\+\+)").unwrap(),
+            Regex::new(r"^(--|==|!=|>=|<=|&&|\|\||->|>>|<<|\+\+|\+=|-=|\*=|/=|\|=|\^=|&=|%=)")
+                .unwrap(),
         );
         regexes.insert(
             "keyword",
@@ -135,6 +138,13 @@ impl Iterator for Lexer {
                 Ok(konst) => Token::Constant(konst),
                 Err(_) => Token::Error,
             }
+        } else if let Some(m) = self.regexes["punctuation_triple"].find(src) {
+            self.pos += m.as_str().len();
+            match m.as_str() {
+                ">>=" => Token::GreaterGreaterEqual,
+                "<<=" => Token::LessLessEqual,
+                _ => unreachable!(),
+            }
         } else if let Some(m) = self.regexes["punctuation_double"].find(src) {
             self.pos += m.as_str().len();
             match m.as_str() {
@@ -149,6 +159,14 @@ impl Iterator for Lexer {
                 "->" => Token::Arrow,
                 ">>" => Token::GreaterGreater,
                 "<<" => Token::LessLess,
+                "+=" => Token::PlusEqual,
+                "-=" => Token::MinusEqual,
+                "*=" => Token::StarEqual,
+                "/=" => Token::SlashEqual,
+                "^=" => Token::CaretEqual,
+                "%=" => Token::ModEqual,
+                "&=" => Token::AmpersandEqual,
+                "|=" => Token::PipeEqual,
                 _ => {
                     println!("m.as_str() is: {:?}", m.as_str());
                     unreachable!()
@@ -283,6 +301,16 @@ pub enum Token {
     Bang,
     QuestionMark,
     Colon,
+    PlusEqual,
+    MinusEqual,
+    StarEqual,
+    SlashEqual,
+    CaretEqual,
+    ModEqual,
+    AmpersandEqual,
+    PipeEqual,
+    GreaterGreaterEqual,
+    LessLessEqual,
     DoublePlus,
     DoubleHyphen,
     DoubleAmpersand,
@@ -337,7 +365,7 @@ pub enum Const {
     UChar(u8),
 }
 
-use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
+use std::ops::{BitAnd, BitOr, BitXor};
 
 impl BitAnd for Const {
     type Output = Const;
