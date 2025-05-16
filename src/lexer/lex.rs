@@ -1,7 +1,5 @@
-use crate::ir::gen::ConstCast;
 use crate::lexer::util::parse_integer;
 use regex::Regex;
-use std::i32;
 use std::{collections::HashMap, hash::Hash};
 
 pub struct Lexer {

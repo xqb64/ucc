@@ -358,13 +358,13 @@ impl Irfy for IfStatement {
 
 pub fn expr2const(e: &Expression) -> Const {
     match e {
-        Expression::Constant(ConstantExpression { value, _type }) => value.clone(),
+        Expression::Constant(ConstantExpression { value, _type }) => *value,
         Expression::Cast(CastExpression {
             target_type,
             expr,
             _type,
         }) => {
-            let c = expr2const(&expr);
+            let c = expr2const(expr);
             cast_const_to(&c, target_type)
         }
         _ => unreachable!(),
@@ -372,7 +372,7 @@ pub fn expr2const(e: &Expression) -> Const {
 }
 
 fn cast_const_to(c: &Const, target: &Type) -> Const {
-    let result = match target {
+    match target {
         Type::Int => Const::Int(c.to_i32()),
         Type::Long => Const::Long(c.to_i64()),
         Type::UInt => Const::UInt(c.to_u32()),
@@ -381,9 +381,7 @@ fn cast_const_to(c: &Const, target: &Type) -> Const {
         Type::Char => Const::Char(c.to_i8()),
         Type::UChar => Const::UChar(c.to_u8()),
         _ => unreachable!(),
-    };
-
-    result
+    }
 }
 
 pub trait ConstCast {
@@ -497,7 +495,7 @@ impl Irfy for SwitchStatement {
             {
                 let result = make_tacky_variable(get_type(&self.condition));
 
-                let konst = expr2const(&value);
+                let konst = expr2const(value);
 
                 instructions.push(IRInstruction::Binary {
                     op: BinaryOp::Equal,
@@ -514,10 +512,7 @@ impl Irfy for SwitchStatement {
         }
 
         if let Some(Statement::Default(DefaultStatement { body: _, label })) =
-            self.cases.iter().find(|stmt| match stmt {
-                Statement::Default(_) => true,
-                _ => false,
-            })
+            self.cases.iter().find(|stmt| matches!(stmt, Statement::Default(_)))
         {
             instructions.push(IRInstruction::Jump(label.clone()));
         }
@@ -894,7 +889,7 @@ fn emit_compound_expression(
     result_t: &Type,
     instructions: &mut Vec<IRInstruction>,
 ) -> ExpResult {
-    let lhs_ty = get_type(&lhs).to_owned();
+    let lhs_ty = get_type(lhs).to_owned();
 
     let eval_lhs = emit_tacky(lhs, instructions);
     let eval_rhs = emit_tacky_and_convert(rhs, instructions);
@@ -923,13 +918,13 @@ fn emit_compound_expression(
                 dst.clone(),
                 Some(IRInstruction::CopyFromOffset {
                     src: base.clone(),
-                    offset: offset.clone(),
+                    offset,
                     dst: dst.clone(),
                 }),
                 Some(IRInstruction::CopyToOffset {
                     src: dst.clone(),
                     dst: base.clone(),
-                    offset: offset.clone(),
+                    offset,
                 }),
             )
         }
@@ -943,7 +938,7 @@ fn emit_compound_expression(
     ) -> IRInstruction {
         match (dst_t, src_t) {
             (Type::Double, _) => {
-                if get_signedness(&src_t) {
+                if get_signedness(src_t) {
                     IRInstruction::IntToDouble {
                         src: src.clone(),
                         dst: dst.clone(),
@@ -956,7 +951,7 @@ fn emit_compound_expression(
                 }
             }
             (_, Type::Double) => {
-                if get_signedness(&dst_t) {
+                if get_signedness(dst_t) {
                     IRInstruction::DoubleToInt {
                         src: src.clone(),
                         dst: dst.clone(),
@@ -969,17 +964,17 @@ fn emit_compound_expression(
                 }
             }
             _ => {
-                if get_size_of_type(&dst_t) == get_size_of_type(&src_t) {
+                if get_size_of_type(dst_t) == get_size_of_type(src_t) {
                     IRInstruction::Copy {
                         src: src.clone(),
                         dst: dst.clone(),
                     }
-                } else if get_size_of_type(&dst_t) < get_size_of_type(&src_t) {
+                } else if get_size_of_type(dst_t) < get_size_of_type(src_t) {
                     IRInstruction::Truncate {
                         src: src.clone(),
                         dst: dst.clone(),
                     }
-                } else if get_signedness(&src_t) {
+                } else if get_signedness(src_t) {
                     IRInstruction::SignExtend {
                         src: src.clone(),
                         dst: dst.clone(),
@@ -997,7 +992,7 @@ fn emit_compound_expression(
     let (result_var, cast_to, cast_from) = if &lhs_ty == result_t {
         (dst.clone(), None, None)
     } else {
-        let tmp = make_tacky_variable(&result_t);
+        let tmp = make_tacky_variable(result_t);
         let cast_lhs_to_tmp = get_cast_instruction(&dst, &tmp, &lhs_ty, result_t);
         let cast_tmp_to_lhs = get_cast_instruction(&tmp, &dst, result_t, &lhs_ty);
 
@@ -1005,14 +1000,14 @@ fn emit_compound_expression(
     };
 
     let do_operation = if is_pointer_type(result_t) {
-        let scale = get_ptr_scale(&result_t);
+        let scale = get_ptr_scale(result_t);
 
         match kind {
             BinaryExpressionKind::Add => {
                 vec![IRInstruction::AddPtr {
                     ptr: result_var.clone(),
                     index: eval_rhs.clone(),
-                    scale: scale.clone(),
+                    scale,
                     dst: result_var.clone(),
                 }]
             }
@@ -1027,7 +1022,7 @@ fn emit_compound_expression(
                     IRInstruction::AddPtr {
                         ptr: result_var.clone(),
                         index: negated_index.clone(),
-                        scale: scale.clone(),
+                        scale,
                         dst: result_var.clone(),
                     },
                 ]
@@ -1078,7 +1073,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             rhs,
             result_t,
             _type,
-        }) => emit_compound_expression((*kind).into(), &lhs, &rhs, result_t, instructions),
+        }) => emit_compound_expression((*kind).into(), lhs, rhs, result_t, instructions),
 
         Expression::Constant(const_expr) => {
             ExpResult::PlainOperand(IRValue::Constant(const_expr.value))
@@ -1089,7 +1084,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             expr,
             _type,
         }) => {
-            let const_t = if is_pointer_type(&_type) {
+            let const_t = if is_pointer_type(_type) {
                 Type::Long
             } else {
                 _type.clone()
@@ -1098,7 +1093,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                 BinaryExpressionKind::Add,
                 expr,
                 &make_constexpr(1, const_t),
-                &_type,
+                _type,
                 instructions,
             )
         }
@@ -1108,7 +1103,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             expr,
             _type,
         }) => {
-            let const_t = if is_pointer_type(&_type) {
+            let const_t = if is_pointer_type(_type) {
                 Type::Long
             } else {
                 _type.clone()
@@ -1117,7 +1112,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                 BinaryExpressionKind::Sub,
                 expr,
                 &make_constexpr(1, const_t),
-                &_type,
+                _type,
                 instructions,
             )
         }
@@ -1151,15 +1146,15 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                     PostfixExpressionKind::Dec => IRValue::Constant(make_const(-1, Type::Long)),
                 };
 
-                if is_pointer_type(get_type(&expr)) {
+                if is_pointer_type(get_type(expr)) {
                     IRInstruction::AddPtr {
                         ptr: src.clone(),
                         index: index.clone(),
-                        scale: get_ptr_scale(get_type(&expr)),
+                        scale: get_ptr_scale(get_type(expr)),
                         dst: dst.clone(),
                     }
                 } else {
-                    let one = IRValue::Constant(make_const(1, get_type(&expr).to_owned()));
+                    let one = IRValue::Constant(make_const(1, get_type(expr).to_owned()));
                     IRInstruction::Binary {
                         op: match op {
                             PostfixExpressionKind::Inc => BinaryOp::Add,
@@ -1180,7 +1175,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                             dst: dst.clone(),
                         },
                         do_op(
-                            kind.clone(),
+                            *kind,
                             IRValue::Var(var.to_owned()),
                             IRValue::Var(var.to_owned()),
                         ),
@@ -1194,7 +1189,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                             src_ptr: ptr.clone(),
                             dst: dst.clone(),
                         },
-                        do_op(kind.clone(), dst.clone(), tmp.clone()),
+                        do_op(*kind, dst.clone(), tmp.clone()),
                         IRInstruction::Store {
                             src: tmp,
                             dst_ptr: ptr.clone(),
@@ -1207,14 +1202,14 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                     vec![
                         IRInstruction::CopyFromOffset {
                             src: base.clone(),
-                            offset: offset.clone(),
+                            offset: *offset,
                             dst: tmp.clone(),
                         },
-                        do_op(kind.clone(), dst.clone(), tmp.clone()),
+                        do_op(*kind, dst.clone(), tmp.clone()),
                         IRInstruction::CopyToOffset {
                             src: tmp,
                             dst: base.clone(),
-                            offset: offset.clone(),
+                            offset: *offset,
                         },
                     ]
                 }

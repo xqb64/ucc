@@ -4,14 +4,14 @@ use crate::{
     parser::ast::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
         BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CaseStatement,
-        CastExpression, CompoundExpression, CompoundExpressionKind, ConditionalExpression,
-        ConstantExpression, Declaration, DefaultStatement, DerefExpression, DoWhileStatement,
-        DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration,
-        GotoStatement, IfStatement, Initializer, LabeledStatement, PostfixExpression,
-        PostfixExpressionKind, Program, ReturnStatement, SizeofExpression, SizeofTExpression,
-        Statement, StorageClass, StringExpression, StructDeclaration, SubscriptExpression,
-        SwitchStatement, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration,
-        VariableExpression, WhileStatement,
+        CastExpression, CompoundExpression, ConditionalExpression, ConstantExpression, Declaration,
+        DefaultStatement, DerefExpression, DoWhileStatement, DotExpression, Expression,
+        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, GotoStatement,
+        IfStatement, Initializer, LabeledStatement, PostfixExpression, PostfixExpressionKind,
+        Program, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
+        StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement, Type,
+        UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression,
+        WhileStatement,
     },
 };
 use anyhow::{bail, Result};
@@ -763,13 +763,13 @@ impl Typecheck for Statement {
                 label: _,
                 cases: _,
             }) => {
-                let typechecked_expr = typecheck_and_convert(&condition)?;
+                let typechecked_expr = typecheck_and_convert(condition)?;
 
-                if !is_integer_type(&get_type(&typechecked_expr)) {
+                if !is_integer_type(get_type(&typechecked_expr)) {
                     bail!("controlling expression in switch statement must be of the integer type");
                 }
 
-                let typechecked_expr = if is_char_type(&get_type(&typechecked_expr)) {
+                let typechecked_expr = if is_char_type(get_type(&typechecked_expr)) {
                     convert_to(&typechecked_expr, &Type::Int)
                 } else {
                     typechecked_expr
@@ -787,7 +787,7 @@ impl Typecheck for Statement {
                 label: _,
                 value,
             }) => {
-                let typechecked_expr = typecheck_and_convert(&value)?;
+                let typechecked_expr = typecheck_and_convert(value)?;
 
                 if get_type(&typechecked_expr) == &Type::Double {
                     bail!("Case expression cannot be a double");
@@ -921,11 +921,8 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
 fn optionally_typecheck_block_item(
     block_item: &mut Option<BlockItem>,
 ) -> Result<&mut Option<BlockItem>> {
-    match block_item {
-        Some(item) => {
-            item.typecheck()?;
-        }
-        None => {}
+    if let Some(item) = block_item {
+        item.typecheck()?;
     }
     Ok(block_item)
 }
@@ -1020,7 +1017,7 @@ fn typecheck_logical(
     let typed_rhs = typecheck_scalar(rhs)?;
 
     Ok(Expression::Binary(BinaryExpression {
-        kind: kind.clone(),
+        kind: *kind,
         lhs: Box::new(typed_lhs),
         rhs: Box::new(typed_rhs),
         _type: Type::Int,
@@ -1048,7 +1045,7 @@ fn typecheck_bitwise(
     let converted_rhs = convert_to(&typed_rhs, common_type);
 
     Ok(Expression::Binary(BinaryExpression {
-        kind: kind.clone(),
+        kind: *kind,
         lhs: converted_lhs.into(),
         rhs: converted_rhs.into(),
         _type: common_type.clone(),
@@ -1083,7 +1080,7 @@ fn typecheck_bitshift(
     };
 
     Ok(Expression::Binary(BinaryExpression {
-        kind: kind.clone(),
+        kind: *kind,
         lhs: typed_lhs.clone().into(),
         rhs: typed_rhs.into(),
         _type: get_type(&typed_lhs).clone(),
@@ -1190,7 +1187,7 @@ fn typecheck_multiplicative(
             }
             BinaryExpressionKind::Mul | BinaryExpressionKind::Div | BinaryExpressionKind::Rem => {
                 Ok(Expression::Binary(BinaryExpression {
-                    kind: kind.clone(),
+                    kind: *kind,
                     lhs: Box::new(converted_lhs),
                     rhs: Box::new(converted_rhs),
                     _type: common_type.to_owned(),
@@ -1226,7 +1223,7 @@ fn typecheck_equality(
     let converted_rhs = convert_to(&typed_rhs, &common_type);
 
     Ok(Expression::Binary(BinaryExpression {
-        kind: kind.clone(),
+        kind: *kind,
         lhs: Box::new(converted_lhs),
         rhs: Box::new(converted_rhs),
         _type: Type::Int,
@@ -1256,7 +1253,7 @@ fn typecheck_relational(
     let converted_rhs = convert_to(&typed_rhs, common_type);
 
     Ok(Expression::Binary(BinaryExpression {
-        kind: kind.clone(),
+        kind: *kind,
         lhs: Box::new(converted_lhs),
         rhs: Box::new(converted_rhs),
         _type: Type::Int,
@@ -1411,7 +1408,7 @@ fn typecheck_compound(
         let typed_rhs = typecheck_and_convert(rhs)?;
         let rhs_type = get_type(&typed_rhs);
 
-        let _ = match kind {
+        match kind {
             BinaryExpressionKind::Rem
             | BinaryExpressionKind::BitwiseAnd
             | BinaryExpressionKind::BitwiseOr
@@ -1435,7 +1432,7 @@ fn typecheck_compound(
                 }
             }
             _ => (),
-        };
+        }
 
         let (result_t, converted_rhs) = {
             if kind == &BinaryExpressionKind::BitwiseShl
@@ -1649,7 +1646,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             UnaryExpressionKind::Negate => typecheck_negate(expr),
             UnaryExpressionKind::Not => typecheck_not(expr),
             UnaryExpressionKind::Inc | UnaryExpressionKind::Dec => {
-                typecheck_incr(expr, kind.clone())
+                typecheck_incr(expr, kind.to_owned())
             }
         },
 

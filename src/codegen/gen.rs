@@ -665,12 +665,12 @@ impl Codegen for IRInstruction {
                     }
                     UnaryOp::Inc | UnaryOp::Dec => AsmNode::Instructions(vec![
                         AsmInstruction::Mov {
-                            asm_type: asm_type.clone(),
+                            asm_type,
                             src: src.codegen().into(),
                             dst: dst.codegen().into(),
                         },
                         AsmInstruction::Unary {
-                            asm_type: asm_type.clone(),
+                            asm_type,
                             op: (*op).into(),
                             operand: dst.codegen().into(),
                         },
@@ -906,7 +906,7 @@ impl Codegen for IRInstruction {
                             dst: AsmOperand::Register(AsmRegister::Ax),
                         }];
 
-                        let t = ir2type(&lhs);
+                        let t = ir2type(lhs);
                         let signedness = get_signedness(&t);
 
                         if signedness {
@@ -1123,7 +1123,7 @@ impl Codegen for IRInstruction {
                             },
                             AsmInstruction::Binary {
                                 asm_type: ir2asmtype(lhs),
-                                op: op,
+                                op,
                                 lhs: asm_rhs,
                                 rhs: asm_dst.clone(),
                             },

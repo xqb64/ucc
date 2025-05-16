@@ -187,7 +187,7 @@ impl SwitchCaseCollect for BreakStatement {
     fn collect_switch_cases(
         &mut self,
         _cases: &mut Vec<Statement>,
-        control: &Type,
+        _control: &Type,
     ) -> Result<&mut Self> {
         Ok(self)
     }
@@ -197,7 +197,7 @@ impl SwitchCaseCollect for ContinueStatement {
     fn collect_switch_cases(
         &mut self,
         _cases: &mut Vec<Statement>,
-        control: &Type,
+        _control: &Type,
     ) -> Result<&mut Self> {
         Ok(self)
     }
@@ -240,7 +240,7 @@ impl SwitchCaseCollect for ReturnStatement {
     fn collect_switch_cases(
         &mut self,
         _cases: &mut Vec<Statement>,
-        control: &Type,
+        _control: &Type,
     ) -> Result<&mut Self> {
         Ok(self)
     }
@@ -250,7 +250,7 @@ impl SwitchCaseCollect for ExpressionStatement {
     fn collect_switch_cases(
         &mut self,
         _cases: &mut Vec<Statement>,
-        control: &Type,
+        _control: &Type,
     ) -> Result<&mut Self> {
         Ok(self)
     }
@@ -260,7 +260,7 @@ impl SwitchCaseCollect for GotoStatement {
     fn collect_switch_cases(
         &mut self,
         _cases: &mut Vec<Statement>,
-        control: &Type,
+        _control: &Type,
     ) -> Result<&mut Self> {
         Ok(self)
     }
@@ -281,8 +281,8 @@ impl SwitchCaseCollect for LabeledStatement {
 impl SwitchCaseCollect for SwitchStatement {
     fn collect_switch_cases(
         &mut self,
-        cases: &mut Vec<Statement>,
-        control: &Type,
+        _cases: &mut Vec<Statement>,
+        _control: &Type,
     ) -> Result<&mut Self> {
         let mut new_cases = vec![];
 
@@ -324,15 +324,13 @@ impl SwitchCaseCollect for CaseStatement {
         }
 
         let this_value = &self.value;
-        if {
-            cases.iter().any(|stmt| {
-                if let Statement::Case(case_stmt) = stmt {
-                    case_stmt.value == *this_value
-                } else {
-                    false
-                }
-            })
-        } {
+        if cases.iter().any(|stmt| {
+            if let Statement::Case(case_stmt) = stmt {
+                case_stmt.value == *this_value
+            } else {
+                false
+            }
+        }) {
             bail!("duplicate case value");
         }
 

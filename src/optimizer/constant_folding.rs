@@ -18,10 +18,10 @@ fn evaluate_leftshift(val: &Const, shift: u32) -> Const {
 
 fn evaluate_rightshift(val: &Const, shift: u32) -> Const {
     match val {
-        Const::Int(v) => Const::Int(*v >> shift), // arithmetic shift
-        Const::Long(v) => Const::Long(*v >> shift), // arithmetic shift
-        Const::UInt(v) => Const::UInt(*v >> shift), // logical shift
-        Const::ULong(v) => Const::ULong(*v >> shift), // logical shift
+        Const::Int(v) => Const::Int(*v >> shift),
+        Const::Long(v) => Const::Long(*v >> shift),
+        Const::UInt(v) => Const::UInt(*v >> shift),
+        Const::ULong(v) => Const::ULong(*v >> shift),
         Const::Char(v) => Const::Char(*v >> shift),
         Const::UChar(v) => Const::UChar(*v >> shift),
         Const::Double(_) => panic!("bitshift operation applied to double!"),
@@ -50,9 +50,9 @@ pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
                         BinaryOp::NotEqual => (lhs_val != rhs_val).into(),
                         BinaryOp::GreaterEqual => (lhs_val >= rhs_val).into(),
                         BinaryOp::LessEqual => (lhs_val <= rhs_val).into(),
-                        BinaryOp::BitwiseOr => (lhs_val | rhs_val).into(),
-                        BinaryOp::BitwiseXor => (lhs_val ^ rhs_val).into(),
-                        BinaryOp::BitwiseAnd => (lhs_val & rhs_val).into(),
+                        BinaryOp::BitwiseOr => lhs_val | rhs_val,
+                        BinaryOp::BitwiseXor => lhs_val ^ rhs_val,
+                        BinaryOp::BitwiseAnd => lhs_val & rhs_val,
                         BinaryOp::BitwiseShl => evaluate_leftshift(&lhs_val, rhs_val.to_u32()),
                         BinaryOp::BitwiseShr => evaluate_rightshift(&lhs_val, rhs_val.to_u32()),
                     };
