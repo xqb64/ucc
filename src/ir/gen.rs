@@ -1035,21 +1035,8 @@ fn emit_compound_expression(
             _ => unreachable!(),
         }
     } else {
-        let binop = match kind {
-            BinaryExpressionKind::Add => BinaryOp::Add,
-            BinaryExpressionKind::Sub => BinaryOp::Sub,
-            BinaryExpressionKind::Mul => BinaryOp::Mul,
-            BinaryExpressionKind::Div => BinaryOp::Div,
-            BinaryExpressionKind::Rem => BinaryOp::Rem,
-            BinaryExpressionKind::BitwiseAnd => BinaryOp::BitwiseAnd,
-            BinaryExpressionKind::BitwiseOr => BinaryOp::BitwiseOr,
-            BinaryExpressionKind::BitwiseXor => BinaryOp::BitwiseXor,
-            BinaryExpressionKind::BitwiseShl => BinaryOp::BitwiseShl,
-            BinaryExpressionKind::BitwiseShr => BinaryOp::BitwiseShr,
-            _ => unreachable!(),
-        };
-        vec![IRInstruction::Binary {
-            op: binop,
+       vec![IRInstruction::Binary {
+            op: kind.into(),
             lhs: result_var.clone(),
             rhs: eval_rhs.clone(),
             dst: result_var.clone(),
