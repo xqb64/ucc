@@ -233,6 +233,24 @@ pub enum CompoundExpressionKind {
     BitwiseShr,
 }
 
+impl From<BinaryExpressionKind> for CompoundExpressionKind {
+    fn from(value: BinaryExpressionKind) -> Self {
+        match value {
+            BinaryExpressionKind::Add => CompoundExpressionKind::Add,
+            BinaryExpressionKind::Sub => CompoundExpressionKind::Sub,
+            BinaryExpressionKind::Mul => CompoundExpressionKind::Mul,
+            BinaryExpressionKind::Div => CompoundExpressionKind::Div,
+            BinaryExpressionKind::Rem => CompoundExpressionKind::Mod,
+            BinaryExpressionKind::BitwiseOr => CompoundExpressionKind::BitwiseOr,
+            BinaryExpressionKind::BitwiseAnd => CompoundExpressionKind::BitwiseAnd,
+            BinaryExpressionKind::BitwiseXor => CompoundExpressionKind::BitwiseXor,
+            BinaryExpressionKind::BitwiseShl => CompoundExpressionKind::BitwiseShl,
+            BinaryExpressionKind::BitwiseShr => CompoundExpressionKind::BitwiseShr,
+            _ => unimplemented!(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PostfixExpression {
     pub expr: Box<Expression>,

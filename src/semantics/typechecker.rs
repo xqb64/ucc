@@ -4,14 +4,14 @@ use crate::{
     parser::ast::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
         BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CaseStatement,
-        CastExpression, CompoundExpression, ConditionalExpression, ConstantExpression, Declaration,
-        DefaultStatement, DerefExpression, DoWhileStatement, DotExpression, Expression,
-        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, GotoStatement,
-        IfStatement, Initializer, LabeledStatement, PostfixExpression, PostfixExpressionKind,
-        Program, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
-        StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement, Type,
-        UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression,
-        WhileStatement,
+        CastExpression, CompoundExpression, CompoundExpressionKind, ConditionalExpression,
+        ConstantExpression, Declaration, DefaultStatement, DerefExpression, DoWhileStatement,
+        DotExpression, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration,
+        GotoStatement, IfStatement, Initializer, LabeledStatement, PostfixExpression,
+        PostfixExpressionKind, Program, ReturnStatement, SizeofExpression, SizeofTExpression,
+        Statement, StorageClass, StringExpression, StructDeclaration, SubscriptExpression,
+        SwitchStatement, Type, UnaryExpression, UnaryExpressionKind, VariableDeclaration,
+        VariableExpression, WhileStatement,
     },
 };
 use anyhow::{bail, Result};
@@ -1462,29 +1462,7 @@ fn typecheck_compound(
         };
 
         Ok(Expression::Compound(CompoundExpression {
-            kind: match kind {
-                BinaryExpressionKind::Add => crate::parser::ast::CompoundExpressionKind::Add,
-                BinaryExpressionKind::Sub => crate::parser::ast::CompoundExpressionKind::Sub,
-                BinaryExpressionKind::Mul => crate::parser::ast::CompoundExpressionKind::Mul,
-                BinaryExpressionKind::Div => crate::parser::ast::CompoundExpressionKind::Div,
-                BinaryExpressionKind::Rem => crate::parser::ast::CompoundExpressionKind::Mod,
-                BinaryExpressionKind::BitwiseShr => {
-                    crate::parser::ast::CompoundExpressionKind::BitwiseShr
-                }
-                BinaryExpressionKind::BitwiseShl => {
-                    crate::parser::ast::CompoundExpressionKind::BitwiseShl
-                }
-                BinaryExpressionKind::BitwiseXor => {
-                    crate::parser::ast::CompoundExpressionKind::BitwiseXor
-                }
-                BinaryExpressionKind::BitwiseOr => {
-                    crate::parser::ast::CompoundExpressionKind::BitwiseOr
-                }
-                BinaryExpressionKind::BitwiseAnd => {
-                    crate::parser::ast::CompoundExpressionKind::BitwiseAnd
-                }
-                _ => unreachable!(),
-            },
+            kind: (*kind).into(),
             lhs: typed_lhs.clone().into(),
             rhs: converted_rhs.into(),
             result_t,
