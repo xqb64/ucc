@@ -454,7 +454,11 @@ impl Fixup for AsmFunction {
                 } if is_large(*imm)
                     && matches!(
                         op,
-                        AsmBinaryOp::Add | AsmBinaryOp::Sub | AsmBinaryOp::And | AsmBinaryOp::Or | AsmBinaryOp::Xor
+                        AsmBinaryOp::Add
+                            | AsmBinaryOp::Sub
+                            | AsmBinaryOp::And
+                            | AsmBinaryOp::Or
+                            | AsmBinaryOp::Xor
                     ) =>
                 {
                     instructions.extend(vec![

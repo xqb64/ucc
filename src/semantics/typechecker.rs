@@ -1428,11 +1428,11 @@ fn typecheck_compound(
                 }
             }
             BinaryExpressionKind::Add | BinaryExpressionKind::Sub => {
-                if !( (is_arithmetic(lhs_type) && is_arithmetic(rhs_type))
-                       || (is_ptr_to_complete(lhs_type) && is_integer_type(rhs_type)) )
-                    {
-                        bail!("invalid types for += / -=");
-                    }
+                if !((is_arithmetic(lhs_type) && is_arithmetic(rhs_type))
+                    || (is_ptr_to_complete(lhs_type) && is_integer_type(rhs_type)))
+                {
+                    bail!("invalid types for += / -=");
+                }
             }
             _ => (),
         };
