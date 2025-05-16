@@ -174,6 +174,30 @@ pub enum BinaryOp {
     BitwiseShr,
 }
 
+impl From<BinaryExpressionKind> for BinaryOp {
+    fn from(value: BinaryExpressionKind) -> Self {
+        match value {
+            BinaryExpressionKind::Add => BinaryOp::Add,
+            BinaryExpressionKind::Sub => BinaryOp::Sub,
+            BinaryExpressionKind::Mul => BinaryOp::Mul,
+            BinaryExpressionKind::Div => BinaryOp::Div,
+            BinaryExpressionKind::Rem => BinaryOp::Rem,
+            BinaryExpressionKind::Less => BinaryOp::Less,
+            BinaryExpressionKind::Greater => BinaryOp::Greater,
+            BinaryExpressionKind::Equal => BinaryOp::Equal,
+            BinaryExpressionKind::NotEqual => BinaryOp::NotEqual,
+            BinaryExpressionKind::GreaterEqual => BinaryOp::GreaterEqual,
+            BinaryExpressionKind::LessEqual => BinaryOp::LessEqual,
+            BinaryExpressionKind::BitwiseOr => BinaryOp::BitwiseOr,
+            BinaryExpressionKind::BitwiseXor => BinaryOp::BitwiseXor,
+            BinaryExpressionKind::BitwiseAnd => BinaryOp::BitwiseAnd,
+            BinaryExpressionKind::BitwiseShl => BinaryOp::BitwiseShl,
+            BinaryExpressionKind::BitwiseShr => BinaryOp::BitwiseShr,
+            _ => unimplemented!(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum ExpResult {
     PlainOperand(IRValue),
@@ -351,7 +375,7 @@ fn cast_const_to(c: &Const, target: &Type) -> Const {
     let result = match target {
         Type::Int => Const::Int(c.to_i32()),
         Type::Long => Const::Long(c.to_i64()),
-        Type::UInt => Const::UInt(c.to_u32().expect("")),
+        Type::UInt => Const::UInt(c.to_u32()),
         Type::ULong => Const::ULong(c.to_u64()),
         Type::Double => Const::Double(c.to_f64()),
         Type::Char => Const::Char(c.to_i8()),
@@ -362,7 +386,7 @@ fn cast_const_to(c: &Const, target: &Type) -> Const {
     result
 }
 
-trait ConstCast {
+pub trait ConstCast {
     fn to_i32(&self) -> i32;
     fn to_i64(&self) -> i64;
     fn to_u32(&self) -> u32;
@@ -1401,25 +1425,8 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
 
                 let dst = make_tacky_variable(t);
 
-                let op = match kind {
-                    BinaryExpressionKind::Mul => BinaryOp::Mul,
-                    BinaryExpressionKind::Div => BinaryOp::Div,
-                    BinaryExpressionKind::Rem => BinaryOp::Rem,
-                    BinaryExpressionKind::Less => BinaryOp::Less,
-                    BinaryExpressionKind::Greater => BinaryOp::Greater,
-                    BinaryExpressionKind::Equal => BinaryOp::Equal,
-                    BinaryExpressionKind::NotEqual => BinaryOp::NotEqual,
-                    BinaryExpressionKind::GreaterEqual => BinaryOp::GreaterEqual,
-                    BinaryExpressionKind::LessEqual => BinaryOp::LessEqual,
-                    BinaryExpressionKind::BitwiseOr => BinaryOp::BitwiseOr,
-                    BinaryExpressionKind::BitwiseXor => BinaryOp::BitwiseXor,
-                    BinaryExpressionKind::BitwiseAnd => BinaryOp::BitwiseAnd,
-                    BinaryExpressionKind::BitwiseShl => BinaryOp::BitwiseShl,
-                    BinaryExpressionKind::BitwiseShr => BinaryOp::BitwiseShr,
-                    _ => unreachable!(),
-                };
                 instructions.push(IRInstruction::Binary {
-                    op,
+                    op: (*kind).into(),
                     lhs,
                     rhs,
                     dst: dst.clone(),

@@ -346,7 +346,7 @@ pub struct BinaryExpression {
     pub _type: Type,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinaryExpressionKind {
     Add,
     Sub,

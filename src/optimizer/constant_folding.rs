@@ -1,5 +1,5 @@
 use crate::{
-    ir::gen::{BinaryOp, IRInstruction, IRValue, UnaryOp},
+    ir::gen::{BinaryOp, ConstCast, IRInstruction, IRValue, UnaryOp},
     lexer::lex::Const,
     parser::ast::Type,
 };
@@ -53,23 +53,10 @@ pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
                         BinaryOp::BitwiseOr => (lhs_val | rhs_val).into(),
                         BinaryOp::BitwiseXor => (lhs_val ^ rhs_val).into(),
                         BinaryOp::BitwiseAnd => (lhs_val & rhs_val).into(),
-                        BinaryOp::BitwiseShl => {
-                            if let Some(shift) = rhs_val.to_u32() {
-                                evaluate_leftshift(&lhs_val, shift)
-                            } else {
-                                optimized_instructions.push(instr.clone());
-                                continue;
-                            }
-                        }
-                        BinaryOp::BitwiseShr => {
-                            if let Some(shift) = rhs_val.to_u32() {
-                                evaluate_rightshift(&lhs_val, shift)
-                            } else {
-                                optimized_instructions.push(instr.clone());
-                                continue;
-                            }
-                        }
+                        BinaryOp::BitwiseShl => evaluate_leftshift(&lhs_val, rhs_val.to_u32()),
+                        BinaryOp::BitwiseShr => evaluate_rightshift(&lhs_val, rhs_val.to_u32()),
                     };
+
                     optimized_instructions.push(IRInstruction::Copy {
                         src: IRValue::Constant(result),
                         dst: dst.clone(),
