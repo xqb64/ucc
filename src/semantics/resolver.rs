@@ -204,10 +204,10 @@ fn resolve_init(
             Ok(Initializer::Single(name.clone(), resolved_expr))
         }
         Initializer::Compound(name, _type, compound_init) => {
-            let mut resolved_inits = vec![];
-            for init in compound_init {
-                resolved_inits.push(resolve_init(init, variable_map, struct_map)?);
-            }
+            let resolved_inits = compound_init
+                .iter()
+                .map(|init| resolve_init(init, variable_map, struct_map))
+                .collect::<Result<Vec<_>>>()?;
             Ok(Initializer::Compound(
                 name.clone(),
                 _type.clone(),
