@@ -168,10 +168,7 @@ impl Iterator for Lexer {
                 "%=" => Token::ModEqual,
                 "&=" => Token::AmpersandEqual,
                 "|=" => Token::PipeEqual,
-                _ => {
-                    println!("m.as_str() is: {:?}", m.as_str());
-                    unreachable!()
-                }
+                _ => unreachable!(),
             }
         } else if let Some(m) = self.regexes["punctuation"].find(src) {
             self.pos += m.as_str().len();

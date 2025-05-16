@@ -1905,10 +1905,7 @@ impl From<UnaryOp> for AsmUnaryOp {
         match op {
             UnaryOp::Negate => AsmUnaryOp::Neg,
             UnaryOp::Complement => AsmUnaryOp::Not,
-            _ => {
-                println!("got op: {:?}", op);
-                unreachable!()
-            }
+            _ => unreachable!(),
         }
     }
 }

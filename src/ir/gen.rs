@@ -1035,7 +1035,7 @@ fn emit_compound_expression(
             _ => unreachable!(),
         }
     } else {
-       vec![IRInstruction::Binary {
+        vec![IRInstruction::Binary {
             op: kind.into(),
             lhs: result_var.clone(),
             rhs: eval_rhs.clone(),

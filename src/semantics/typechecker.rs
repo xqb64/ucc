@@ -1505,9 +1505,6 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             _type: _,
         }) => {
             let k = (*kind).into();
-            println!("kind is: {:?}", kind);
-            println!("lhs is: {:?}", lhs);
-            println!("rhs is: {:?}", rhs);
             typecheck_compound(&k, lhs, rhs)
         }
 
@@ -2066,10 +2063,7 @@ pub fn get_signedness(t: &Type) -> bool {
         Type::Pointer(_) => false,
         Type::Char | Type::SChar => true,
         Type::UChar => false,
-        _ => {
-            println!("t is: {:?}", t);
-            unreachable!()
-        }
+        _ => unreachable!(),
     }
 }
 
