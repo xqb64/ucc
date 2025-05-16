@@ -106,19 +106,6 @@ impl Resolve for StructDeclaration {
     }
 }
 
-fn optionally_resolve_init(
-    init: &Option<Initializer>,
-    variable_map: &mut BTreeMap<String, Variable>,
-    struct_map: &mut BTreeMap<String, StructTableEntry>,
-) -> Result<Option<Initializer>> {
-    if init.is_some() {
-        let resolved_init = resolve_init(init.as_ref().unwrap(), variable_map, struct_map)?;
-        Ok(Some(resolved_init))
-    } else {
-        Ok(None)
-    }
-}
-
 impl Resolve for VariableDeclaration {
     fn resolve(
         &mut self,
@@ -136,7 +123,7 @@ impl Resolve for VariableDeclaration {
                     },
                 );
 
-                self.init = optionally_resolve_init(&self.init, variable_map, struct_map)?;
+                self.init = self.init.as_ref().map(|init| resolve_init(init, variable_map, struct_map)).transpose()?;
                 self._type = resolve_type(&self._type, struct_map)?;
 
                 Ok(self)
@@ -167,7 +154,7 @@ impl Resolve for VariableDeclaration {
                         },
                     );
 
-                    self.init = optionally_resolve_init(&self.init, variable_map, struct_map)?;
+                    self.init = self.init.as_ref().map(|init| resolve_init(init, variable_map, struct_map)).transpose()?;
                     self._type = resolve_type(&self._type, struct_map)?;
 
                     Ok(self)
@@ -184,7 +171,7 @@ impl Resolve for VariableDeclaration {
                     );
 
                     self.name = unique_name;
-                    self.init = optionally_resolve_init(&self.init, variable_map, struct_map)?;
+                    self.init = self.init.as_ref().map(|init| resolve_init(init, variable_map, struct_map)).transpose()?;
                     self._type = resolve_type(&self._type, struct_map)?;
 
                     Ok(self)
@@ -451,23 +438,11 @@ impl Resolve for ReturnStatement {
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<&mut Self> {
-        self.expr = resolve_optional_expr(&self.expr, variable_map, struct_map)?;
-        self.target_type = optionally_resolve_type(&self.target_type, struct_map)?;
+        self.expr = self.expr.as_ref().map(|expr| resolve_exp(expr, variable_map, struct_map)).transpose()?;
+        self.target_type = self.target_type.as_ref().map(|ty| resolve_type(ty, struct_map)).transpose()?;
+
 
         Ok(self)
-    }
-}
-
-fn optionally_resolve_type(
-    target_type: &Option<Type>,
-    struct_map: &mut BTreeMap<String, StructTableEntry>,
-) -> Result<Option<Type>> {
-    if target_type.is_some() {
-        let resolved_type = resolve_type(target_type.as_ref().unwrap(), struct_map)?;
-
-        Ok(Some(resolved_type))
-    } else {
-        Ok(None)
     }
 }
 
