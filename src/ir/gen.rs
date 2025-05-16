@@ -511,8 +511,10 @@ impl Irfy for SwitchStatement {
             }
         }
 
-        if let Some(Statement::Default(DefaultStatement { body: _, label })) =
-            self.cases.iter().find(|stmt| matches!(stmt, Statement::Default(_)))
+        if let Some(Statement::Default(DefaultStatement { body: _, label })) = self
+            .cases
+            .iter()
+            .find(|stmt| matches!(stmt, Statement::Default(_)))
         {
             instructions.push(IRInstruction::Jump(label.clone()));
         }
