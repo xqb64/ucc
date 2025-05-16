@@ -55,54 +55,55 @@ impl Resolve for Declaration {
                 Ok(self)
             }
             Declaration::Struct(struct_decl) => {
-                resolve_structure_declaration(struct_decl, struct_map)?;
+                struct_decl.resolve(variable_map, struct_map)?;
                 Ok(self)
             }
         }
     }
 }
 
-fn resolve_structure_declaration<'a>(
-    decl: &'a mut StructDeclaration,
-    struct_map: &'a mut BTreeMap<String, StructTableEntry>,
-) -> Result<StructDeclaration> {
-    let prev_entry = struct_map.get(&decl.tag);
+impl Resolve for StructDeclaration {
+    fn resolve(
+        &mut self,
+        _variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<&mut Self>
+    where
+        Self: Sized,
+    {
+        let prev_entry = struct_map.get(&self.tag);
 
-    let unique_tag;
-    if prev_entry.is_none() || !prev_entry.as_ref().unwrap().from_current_scope {
-        unique_tag = format!("struct.{}.{}", decl.tag.clone(), make_temporary());
-        struct_map.insert(
-            decl.tag.clone(),
-            StructTableEntry {
-                name: unique_tag.clone(),
-                from_current_scope: true,
-            },
-        );
-    } else {
-        unique_tag = prev_entry.unwrap().name.clone();
+        let unique_tag;
+        if prev_entry.is_none() || !prev_entry.as_ref().unwrap().from_current_scope {
+            unique_tag = format!("struct.{}.{}", self.tag.clone(), make_temporary());
+            struct_map.insert(
+                self.tag.clone(),
+                StructTableEntry {
+                    name: unique_tag.clone(),
+                    from_current_scope: true,
+                },
+            );
+        } else {
+            unique_tag = prev_entry.unwrap().name.clone();
+        }
+
+        let mut processed_members = vec![];
+
+        for member in self.members.iter() {
+            let processed_type = resolve_type(&member._type, struct_map)?;
+            let processed_member = MemberDeclaration {
+                name: member.name.clone(),
+                _type: processed_type,
+            };
+
+            processed_members.push(processed_member);
+        }
+
+        self.tag = unique_tag;
+        self.members = processed_members;
+
+        Ok(self)
     }
-
-    let mut processed_members = vec![];
-
-    for member in &decl.members {
-        let processed_type = resolve_type(&member._type, struct_map)?;
-        let processed_member = MemberDeclaration {
-            name: member.name.clone(),
-            _type: processed_type,
-        };
-
-        processed_members.push(processed_member);
-    }
-
-    *decl = StructDeclaration {
-        tag: unique_tag.clone(),
-        members: processed_members.clone(),
-    };
-
-    Ok(StructDeclaration {
-        tag: unique_tag.clone(),
-        members: processed_members,
-    })
 }
 
 fn optionally_resolve_init(
