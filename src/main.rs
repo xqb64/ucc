@@ -8,7 +8,7 @@ use ucc::ir::gen::{IRInstruction, IRProgram, IRValue, Optimization};
 use ucc::parser::ast::Type;
 use ucc::parser::recursive_descent::Parser;
 use ucc::semantics::collecting_cases::SwitchCaseCollect;
-use ucc::semantics::label_checker::LabelCheck;
+use ucc::semantics::label_checker::{LabelCheck, LabelCollect};
 use ucc::semantics::loop_label::{LabelContext, LabelKind};
 use ucc::{
     codegen::fixup::Fixup,
@@ -63,7 +63,8 @@ fn run(opts: &Opt) -> Result<()> {
 
     let mut variable_map = BTreeMap::new();
     let mut struct_map = BTreeMap::new();
-
+    let mut labels = HashSet::new();
+    
     // tmp
     let mut labeled_ast = raw_ast
         .resolve(&mut variable_map, &mut struct_map)?
@@ -71,10 +72,11 @@ fn run(opts: &Opt) -> Result<()> {
             innermost: LabelKind::None,
             loop_label: "",
             switch_label: "",
-        })?;
-    let cooked_ast = labeled_ast
-        .label_check(&mut HashSet::new(), "")?
-        .typecheck()?
+        })?
+        .collect_labels(&mut labels, "")?
+        .label_check(&mut labels, "")?;
+
+    let cooked_ast = labeled_ast.typecheck()?
         .collect_switch_cases(&mut vec![], &Type::Dummy)?;
 
     if opts.validate {
