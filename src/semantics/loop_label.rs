@@ -374,7 +374,7 @@ impl LoopLabel for FunctionDeclaration {
 
         Ok(FunctionDeclaration {
             name: self.name.clone(),
-            _type: self._type.clone(),
+            ty: self.ty.clone(),
             params: self.params.clone(),
             body: labeled_body.into(),
             is_global: self.is_global,

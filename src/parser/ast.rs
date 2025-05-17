@@ -22,13 +22,13 @@ pub struct StructDeclaration {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MemberDeclaration {
     pub name: String,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariableDeclaration {
     pub name: String,
-    pub _type: Type,
+    pub ty: Type,
     pub init: Option<Initializer>,
     pub storage_class: Option<StorageClass>,
     pub is_global: bool,
@@ -79,7 +79,7 @@ pub struct Program {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionDeclaration {
     pub name: String,
-    pub _type: Type,
+    pub ty: Type,
     pub params: Vec<String>,
     pub body: Box<Option<BlockItem>>,
     pub is_global: bool,
@@ -216,7 +216,7 @@ pub struct CompoundExpression {
     pub lhs: Box<Expression>,
     pub rhs: Box<Expression>,
     pub result_t: Type,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -255,7 +255,7 @@ impl From<BinaryExpressionKind> for CompoundExpressionKind {
 pub struct PostfixExpression {
     pub expr: Box<Expression>,
     pub kind: PostfixExpressionKind,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -268,39 +268,39 @@ pub enum PostfixExpressionKind {
 pub struct ArrowExpression {
     pub pointer: Box<Expression>,
     pub member: String,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DotExpression {
     pub structure: Box<Expression>,
     pub member: String,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SizeofExpression {
     pub expr: Box<Expression>,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SizeofTExpression {
     pub t: Type,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StringExpression {
     pub value: String,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LiteralExpression {
     pub name: String,
     pub value: Box<Initializer>,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -313,38 +313,38 @@ pub enum Initializer {
 pub struct SubscriptExpression {
     pub expr: Box<Expression>,
     pub index: Box<Expression>,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AddrOfExpression {
     pub expr: Box<Expression>,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DerefExpression {
     pub expr: Box<Expression>,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ConstantExpression {
     pub value: Const,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VariableExpression {
     pub value: String,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UnaryExpression {
     pub kind: UnaryExpressionKind,
     pub expr: Box<Expression>,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -361,7 +361,7 @@ pub struct BinaryExpression {
     pub kind: BinaryExpressionKind,
     pub lhs: Box<Expression>,
     pub rhs: Box<Expression>,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -391,7 +391,7 @@ pub struct AssignExpression {
     pub lhs: Box<Expression>,
     pub rhs: Box<Expression>,
     pub op: Token,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -399,21 +399,21 @@ pub struct ConditionalExpression {
     pub condition: Box<Expression>,
     pub then_expr: Box<Expression>,
     pub else_expr: Box<Expression>,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CallExpression {
     pub name: String,
     pub args: Vec<Expression>,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CastExpression {
     pub target_type: Type,
     pub expr: Box<Expression>,
-    pub _type: Type,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]

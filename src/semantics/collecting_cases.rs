@@ -70,7 +70,7 @@ impl SwitchCaseCollect for FunctionDeclaration {
         };
         Ok(FunctionDeclaration {
             name: self.name.clone(),
-            _type: self._type.clone(),
+            ty: self.ty.clone(),
             params: self.params.clone(),
             body: collected_body.into(),
             is_global: self.is_global,
@@ -299,7 +299,7 @@ impl SwitchCaseCollect for CaseStatement {
             {
                 new_val = Some(Expression::Constant(ConstantExpression {
                     value: expr2const(&convert_to(&self.value, control)),
-                    _type: control.clone(),
+                    ty: control.clone(),
                 }));
             }
         }

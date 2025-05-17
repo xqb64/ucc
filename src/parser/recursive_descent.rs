@@ -192,7 +192,7 @@ impl Parser {
                 let (name, decl_type, _) = self.process_declarator(&declarator, &base_type)?;
                 Ok(MemberDeclaration {
                     name,
-                    _type: decl_type,
+                    ty: decl_type,
                 })
             }
         }
@@ -248,7 +248,7 @@ impl Parser {
                 Ok(BlockItem::Declaration(Declaration::Variable(
                     VariableDeclaration {
                         name,
-                        _type: decl_type,
+                        ty: decl_type,
                         init: unwrapped,
                         storage_class,
                         is_global: self.depth == 0,
@@ -267,12 +267,12 @@ impl Parser {
                     Initializer::Single(name.to_string(), expr.clone())
                 }
             }
-            Initializer::Compound(_, _type, elems) => {
+            Initializer::Compound(_, ty, elems) => {
                 let new_elems = elems
                     .iter()
                     .map(|elem| self.transform_initializer(name, elem))
                     .collect();
-                Initializer::Compound(name.to_string(), _type.clone(), new_elems)
+                Initializer::Compound(name.to_string(), ty.clone(), new_elems)
             }
         }
     }
@@ -493,10 +493,10 @@ impl Parser {
         &mut self,
         name: &str,
         params: &[String],
-        _type: Type,
+        ty: Type,
         storage_class: Option<StorageClass>,
     ) -> Result<BlockItem> {
-        self.current_target_type = Some(match _type.clone() {
+        self.current_target_type = Some(match ty.clone() {
             Type::Func { params: _, ret } => *ret,
             _ => unreachable!(),
         });
@@ -527,7 +527,7 @@ impl Parser {
                 body: body.into(),
                 is_global: self.depth == 0,
                 storage_class,
-                _type: _type.clone(),
+                ty: ty.clone(),
             },
         )))
     }
@@ -591,7 +591,7 @@ impl Parser {
             }
         }
 
-        let _type = self.parse_type(types)?;
+        let ty = self.parse_type(types)?;
 
         if storage_classes.len() > 1 {
             bail!(
@@ -612,7 +612,7 @@ impl Parser {
             None
         };
 
-        Ok((_type, storage_class))
+        Ok((ty, storage_class))
     }
 
     fn parse_expression_statement(&mut self) -> Result<BlockItem> {
@@ -875,7 +875,7 @@ impl Parser {
                     lhs: result.into(),
                     rhs: self.assignment()?.into(),
                     op: Token::Equal,
-                    _type: Type::Dummy,
+                    ty: Type::Dummy,
                 });
             } else {
                 let op = match self.previous.clone() {
@@ -897,7 +897,7 @@ impl Parser {
                     lhs: result.into(),
                     rhs: self.assignment()?.into(),
                     result_t: Type::Dummy,
-                    _type: Type::Dummy,
+                    ty: Type::Dummy,
                 });
             }
         }
@@ -919,7 +919,7 @@ impl Parser {
                 condition: result.into(),
                 then_expr: then_expr.into(),
                 else_expr: else_expr.into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             });
         }
         Ok(result)
@@ -932,7 +932,7 @@ impl Parser {
                 kind: BinaryExpressionKind::Or,
                 lhs: result.into(),
                 rhs: self.and()?.into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             });
         }
         Ok(result)
@@ -945,7 +945,7 @@ impl Parser {
                 kind: BinaryExpressionKind::And,
                 lhs: result.into(),
                 rhs: self.bitwise_or()?.into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             });
         }
         Ok(result)
@@ -958,7 +958,7 @@ impl Parser {
                 kind: BinaryExpressionKind::BitwiseOr,
                 lhs: result.into(),
                 rhs: self.bitwise_xor()?.into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             });
         }
         Ok(result)
@@ -971,7 +971,7 @@ impl Parser {
                 kind: BinaryExpressionKind::BitwiseXor,
                 lhs: result.into(),
                 rhs: self.bitwise_and()?.into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             });
         }
         Ok(result)
@@ -984,7 +984,7 @@ impl Parser {
                 kind: BinaryExpressionKind::BitwiseAnd,
                 lhs: result.into(),
                 rhs: self.equality()?.into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             });
         }
         Ok(result)
@@ -1005,7 +1005,7 @@ impl Parser {
                 },
                 lhs: result.into(),
                 rhs: self.relational()?.into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             });
         }
         Ok(result)
@@ -1033,7 +1033,7 @@ impl Parser {
                 kind,
                 lhs: result.into(),
                 rhs: self.bitwise_shift()?.into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             });
         }
         Ok(result)
@@ -1054,7 +1054,7 @@ impl Parser {
                 kind,
                 lhs: result.into(),
                 rhs: self.term()?.into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             });
         }
         Ok(result)
@@ -1075,7 +1075,7 @@ impl Parser {
                 kind,
                 lhs: result.into(),
                 rhs: self.factor()?.into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             });
         }
         Ok(result)
@@ -1097,7 +1097,7 @@ impl Parser {
                 kind,
                 lhs: result.into(),
                 rhs: self.unary()?.into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             });
         }
         Ok(result)
@@ -1134,19 +1134,19 @@ impl Parser {
                     Token::DoubleHyphen => UnaryExpressionKind::Dec,
                     _ => unreachable!(),
                 },
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             }));
         } else if self.is_next(&[Token::Star]) {
             let expr = self.unary()?;
             return Ok(Expression::Deref(DerefExpression {
                 expr: expr.into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             }));
         } else if self.is_next(&[Token::Ampersand]) {
             let expr = self.unary()?;
             return Ok(Expression::AddrOf(AddrOfExpression {
                 expr: expr.into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             }));
         } else {
             let next_three_tokens = self.peek(3);
@@ -1159,14 +1159,14 @@ impl Parser {
                         self.consume(&Token::RParen)?;
                         return Ok(Expression::SizeofT(SizeofTExpression {
                             t: base_type,
-                            _type: Type::Dummy,
+                            ty: Type::Dummy,
                         }));
                     } else {
                         self.consume(&Token::Sizeof)?;
                         let expr = self.unary()?;
                         return Ok(Expression::Sizeof(SizeofExpression {
                             expr: expr.into(),
-                            _type: Type::Dummy,
+                            ty: Type::Dummy,
                         }));
                     }
                 }
@@ -1175,7 +1175,7 @@ impl Parser {
                     let expr = self.unary()?;
                     return Ok(Expression::Sizeof(SizeofExpression {
                         expr: expr.into(),
-                        _type: Type::Dummy,
+                        ty: Type::Dummy,
                     }));
                 }
                 [Token::LParen, _, _] => {
@@ -1187,7 +1187,7 @@ impl Parser {
                         return Ok(Expression::Cast(CastExpression {
                             target_type: base_type,
                             expr: expr.into(),
-                            _type: Type::Dummy,
+                            ty: Type::Dummy,
                         }));
                     }
                 }
@@ -1239,7 +1239,7 @@ impl Parser {
                         _ => bail!("expected a variable"),
                     },
                     args,
-                    _type: Type::Dummy,
+                    ty: Type::Dummy,
                 });
             } else if self.is_next(&[Token::LBracket]) {
                 let index = self.parse_expression()?;
@@ -1247,7 +1247,7 @@ impl Parser {
                 expr = Expression::Subscript(SubscriptExpression {
                     expr: expr.into(),
                     index: index.into(),
-                    _type: Type::Dummy,
+                    ty: Type::Dummy,
                 });
             } else if self.is_next(&[Token::Dot]) {
                 let member = self
@@ -1257,7 +1257,7 @@ impl Parser {
                 expr = Expression::Dot(DotExpression {
                     structure: expr.into(),
                     member,
-                    _type: Type::Dummy,
+                    ty: Type::Dummy,
                 });
             } else if self.is_next(&[Token::Arrow]) {
                 let member = self
@@ -1267,7 +1267,7 @@ impl Parser {
                 expr = Expression::Arrow(ArrowExpression {
                     pointer: expr.into(),
                     member,
-                    _type: Type::Dummy,
+                    ty: Type::Dummy,
                 });
             } else if self.is_next(&[Token::DoublePlus, Token::DoubleHyphen]) {
                 let kind = match self.previous.clone() {
@@ -1279,7 +1279,7 @@ impl Parser {
                 expr = Expression::Postfix(PostfixExpression {
                     kind,
                     expr: expr.into(),
-                    _type: Type::Dummy,
+                    ty: Type::Dummy,
                 });
             } else {
                 break;
@@ -1322,7 +1322,7 @@ impl Parser {
             Ok(Expression::Literal(LiteralExpression {
                 name: String::new(),
                 value: Initializer::Compound(String::new(), Type::Dummy, inits).into(),
-                _type: Type::Dummy,
+                ty: Type::Dummy,
             }))
         } else if self.is_next(&[Token::CharLiteral('a')]) {
             match self.previous.as_ref().unwrap() {
@@ -1343,21 +1343,21 @@ impl Parser {
     fn parse_number(&self, n: &Const) -> Result<Expression> {
         Ok(Expression::Constant(ConstantExpression {
             value: *n,
-            _type: Type::Dummy,
+            ty: Type::Dummy,
         }))
     }
 
     fn parse_variable(&self, var: &str) -> Result<Expression> {
         Ok(Expression::Variable(VariableExpression {
             value: var.to_owned(),
-            _type: Type::Dummy,
+            ty: Type::Dummy,
         }))
     }
 
     fn parse_char(&self, c: &char) -> Result<Expression> {
         Ok(Expression::Constant(ConstantExpression {
             value: Const::Int(*c as i32),
-            _type: Type::Dummy,
+            ty: Type::Dummy,
         }))
     }
 
@@ -1371,7 +1371,7 @@ impl Parser {
         }
         Ok(Expression::String(StringExpression {
             value: s.to_owned(),
-            _type: Type::Dummy,
+            ty: Type::Dummy,
         }))
     }
 

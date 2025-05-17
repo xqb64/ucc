@@ -134,7 +134,7 @@ impl ReplacePseudo for AsmOperand {
                             global: _,
                         } => AsmOperand::Data(name.clone(), 0),
                         _ => {
-                            let _type = match ASM_SYMBOL_TABLE
+                            let ty = match ASM_SYMBOL_TABLE
                                 .lock()
                                 .unwrap()
                                 .get(name)
@@ -142,10 +142,10 @@ impl ReplacePseudo for AsmOperand {
                                 .unwrap()
                             {
                                 AsmSymtabEntry::Object {
-                                    _type,
+                                    ty,
                                     is_static: _,
                                     is_constant: _,
-                                } => _type,
+                                } => ty,
                                 _ => unreachable!(),
                             };
 
@@ -154,7 +154,7 @@ impl ReplacePseudo for AsmOperand {
                                 VAR_TO_STACK_POS
                                     .lock()
                                     .unwrap()
-                                    .var_to_stack_pos(name, _type)
+                                    .var_to_stack_pos(name, ty)
                                     .0
                                     .try_into()
                                     .unwrap(),
@@ -162,12 +162,12 @@ impl ReplacePseudo for AsmOperand {
                         }
                     }
                 } else {
-                    let _type = match ASM_SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap() {
+                    let ty = match ASM_SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap() {
                         AsmSymtabEntry::Object {
-                            _type,
+                            ty,
                             is_static: _,
                             is_constant: _,
-                        } => _type,
+                        } => ty,
                         _ => unreachable!(),
                     };
 
@@ -176,7 +176,7 @@ impl ReplacePseudo for AsmOperand {
                         VAR_TO_STACK_POS
                             .lock()
                             .unwrap()
-                            .var_to_stack_pos(name, _type)
+                            .var_to_stack_pos(name, ty)
                             .0
                             .try_into()
                             .unwrap(),
@@ -184,13 +184,13 @@ impl ReplacePseudo for AsmOperand {
                 }
             }
             AsmOperand::PseudoMem(name, offset) => {
-                let (is_static, is_constant, _type) =
+                let (is_static, is_constant, ty) =
                     match ASM_SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap() {
                         AsmSymtabEntry::Object {
-                            _type,
+                            ty,
                             is_static,
                             is_constant,
-                        } => (is_static, is_constant, _type),
+                        } => (is_static, is_constant, ty),
                         _ => unreachable!(),
                     };
 
@@ -198,7 +198,7 @@ impl ReplacePseudo for AsmOperand {
                     let previously_assigned: isize = VAR_TO_STACK_POS
                         .lock()
                         .unwrap()
-                        .var_to_stack_pos(name, _type)
+                        .var_to_stack_pos(name, ty)
                         .0
                         .try_into()
                         .unwrap();

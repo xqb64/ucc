@@ -107,11 +107,11 @@ impl Resolve for VariableDeclaration {
                     .map(|init| init.resolve(variable_map, struct_map))
                     .transpose()?;
 
-                let resolved_type = self._type.resolve(variable_map, struct_map)?;
+                let resolved_type = self.ty.resolve(variable_map, struct_map)?;
 
                 Ok(VariableDeclaration {
                     init: resolved_init,
-                    _type: resolved_type,
+                    ty: resolved_type,
                     storage_class: self.storage_class.clone(),
                     is_global: self.is_global,
                     name: self.name.clone(),
@@ -148,11 +148,11 @@ impl Resolve for VariableDeclaration {
                         .map(|init| init.resolve(variable_map, struct_map))
                         .transpose()?;
 
-                    let resolved_type = self._type.resolve(variable_map, struct_map)?;
+                    let resolved_type = self.ty.resolve(variable_map, struct_map)?;
 
                     Ok(VariableDeclaration {
                         name: self.name.clone(),
-                        _type: resolved_type,
+                        ty: resolved_type,
                         init: resolved_init,
                         storage_class: self.storage_class.clone(),
                         is_global: self.is_global,
@@ -174,11 +174,11 @@ impl Resolve for VariableDeclaration {
                         .map(|init| init.resolve(variable_map, struct_map))
                         .transpose()?;
 
-                    let resolved_type = self._type.resolve(variable_map, struct_map)?;
+                    let resolved_type = self.ty.resolve(variable_map, struct_map)?;
 
                     Ok(VariableDeclaration {
                         name: unique_name,
-                        _type: resolved_type,
+                        ty: resolved_type,
                         init: resolved_init,
                         storage_class: self.storage_class.clone(),
                         is_global: self.is_global,
@@ -252,11 +252,11 @@ impl Resolve for FunctionDeclaration {
             None => None,
         };
 
-        let resolved_type = self._type.resolve(&mut inner_map, &mut new_struct_map)?;
+        let resolved_type = self.ty.resolve(&mut inner_map, &mut new_struct_map)?;
 
         Ok(FunctionDeclaration {
             name: self.name.clone(),
-            _type: resolved_type,
+            ty: resolved_type,
             params: resolved_params,
             body: resolved_body.into(),
             is_global: self.is_global,
@@ -293,10 +293,10 @@ impl Resolve for StructDeclaration {
         let mut processed_members = vec![];
 
         for member in self.members.into_iter() {
-            let processed_type = member._type.resolve(_variable_map, struct_map)?;
+            let processed_type = member.ty.resolve(_variable_map, struct_map)?;
             let processed_member = MemberDeclaration {
                 name: member.name.clone(),
-                _type: processed_type,
+                ty: processed_type,
             };
 
             processed_members.push(processed_member);
@@ -336,7 +336,7 @@ impl Resolve for Initializer {
                 let resolved_expr = single_init.resolve(variable_map, struct_map)?;
                 Ok(Initializer::Single(name.to_owned(), resolved_expr))
             }
-            Initializer::Compound(name, _type, compound_init) => {
+            Initializer::Compound(name, ty, compound_init) => {
                 let resolved_inits = compound_init
                     .into_iter()
                     .map(|init| init.resolve(variable_map, struct_map))
@@ -344,7 +344,7 @@ impl Resolve for Initializer {
 
                 Ok(Initializer::Compound(
                     name.to_owned(),
-                    _type.to_owned(),
+                    ty.to_owned(),
                     resolved_inits,
                 ))
             }
@@ -728,7 +728,7 @@ impl Resolve for Expression {
                 lhs,
                 rhs,
                 result_t,
-                _type,
+                ty,
             }) => {
                 let resolved_lhs = lhs.resolve(variable_map, struct_map)?;
                 let resolved_rhs = rhs.resolve(variable_map, struct_map)?;
@@ -738,7 +738,7 @@ impl Resolve for Expression {
                     lhs: resolved_lhs.into(),
                     rhs: resolved_rhs.into(),
                     result_t,
-                    _type,
+                    ty,
                 }))
             }
 
@@ -746,7 +746,7 @@ impl Resolve for Expression {
                 op,
                 lhs,
                 rhs,
-                _type,
+                ty,
             }) => {
                 let resolved_lhs = lhs.resolve(variable_map, struct_map)?;
                 let resolved_rhs = rhs.resolve(variable_map, struct_map)?;
@@ -755,7 +755,7 @@ impl Resolve for Expression {
                     op,
                     lhs: resolved_lhs.into(),
                     rhs: resolved_rhs.into(),
-                    _type,
+                    ty,
                 }))
             }
 
@@ -766,19 +766,19 @@ impl Resolve for Expression {
 
                 Ok(Expression::Variable(VariableExpression {
                     value: variable.name.clone(),
-                    _type: Type::Dummy,
+                    ty: Type::Dummy,
                 }))
             }
 
             Expression::Constant(konst) => Ok(Expression::Constant(konst)),
 
-            Expression::Unary(UnaryExpression { kind, expr, _type }) => {
+            Expression::Unary(UnaryExpression { kind, expr, ty }) => {
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
 
                 Ok(Expression::Unary(UnaryExpression {
                     kind,
                     expr: resolved_expr.into(),
-                    _type,
+                    ty,
                 }))
             }
 
@@ -786,7 +786,7 @@ impl Resolve for Expression {
                 kind,
                 lhs,
                 rhs,
-                _type,
+                ty,
             }) => {
                 let resolved_lhs = lhs.resolve(variable_map, struct_map)?;
                 let resolved_rhs = rhs.resolve(variable_map, struct_map)?;
@@ -795,7 +795,7 @@ impl Resolve for Expression {
                     kind,
                     lhs: resolved_lhs.into(),
                     rhs: resolved_rhs.into(),
-                    _type,
+                    ty,
                 }))
             }
 
@@ -803,7 +803,7 @@ impl Resolve for Expression {
                 condition,
                 then_expr,
                 else_expr,
-                _type,
+                ty,
             }) => {
                 let resolved_condition = condition.resolve(variable_map, struct_map)?;
                 let resolved_then_expr = then_expr.resolve(variable_map, struct_map)?;
@@ -813,11 +813,11 @@ impl Resolve for Expression {
                     condition: resolved_condition.into(),
                     then_expr: resolved_then_expr.into(),
                     else_expr: resolved_else_expr.into(),
-                    _type,
+                    ty,
                 }))
             }
 
-            Expression::Call(CallExpression { name, args, _type }) => {
+            Expression::Call(CallExpression { name, args, ty }) => {
                 if variable_map.contains_key(&name) {
                     let new_func_name = variable_map.get(&name).unwrap().name.clone();
                     let resolved_args = args
@@ -828,7 +828,7 @@ impl Resolve for Expression {
                     Ok(Expression::Call(CallExpression {
                         name: new_func_name,
                         args: resolved_args,
-                        _type,
+                        ty,
                     }))
                 } else {
                     bail!("undeclared function");
@@ -838,7 +838,7 @@ impl Resolve for Expression {
             Expression::Cast(CastExpression {
                 target_type,
                 expr,
-                _type,
+                ty,
             }) => {
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
                 let resolved_type = target_type.resolve(variable_map, struct_map)?;
@@ -846,94 +846,94 @@ impl Resolve for Expression {
                 Ok(Expression::Cast(CastExpression {
                     target_type: resolved_type,
                     expr: resolved_expr.into(),
-                    _type,
+                    ty,
                 }))
             }
 
-            Expression::AddrOf(AddrOfExpression { expr, _type }) => {
+            Expression::AddrOf(AddrOfExpression { expr, ty }) => {
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
 
                 Ok(Expression::AddrOf(AddrOfExpression {
                     expr: resolved_expr.into(),
-                    _type,
+                    ty,
                 }))
             }
 
-            Expression::Deref(DerefExpression { expr, _type }) => {
+            Expression::Deref(DerefExpression { expr, ty }) => {
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
 
                 Ok(Expression::Deref(DerefExpression {
                     expr: resolved_expr.into(),
-                    _type,
+                    ty,
                 }))
             }
 
-            Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
+            Expression::Subscript(SubscriptExpression { expr, index, ty }) => {
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
                 let resolved_index = index.resolve(variable_map, struct_map)?;
 
                 Ok(Expression::Subscript(SubscriptExpression {
                     expr: resolved_expr.into(),
                     index: resolved_index.into(),
-                    _type,
+                    ty,
                 }))
             }
 
-            Expression::String(StringExpression { value, _type }) => {
-                Ok(Expression::String(StringExpression { value, _type }))
+            Expression::String(StringExpression { value, ty }) => {
+                Ok(Expression::String(StringExpression { value, ty }))
             }
 
-            Expression::Sizeof(SizeofExpression { expr, _type }) => {
+            Expression::Sizeof(SizeofExpression { expr, ty }) => {
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
-                let resolved_type = _type.resolve(variable_map, struct_map)?;
+                let resolved_type = ty.resolve(variable_map, struct_map)?;
                 Ok(Expression::Sizeof(SizeofExpression {
                     expr: resolved_expr.into(),
-                    _type: resolved_type,
+                    ty: resolved_type,
                 }))
             }
 
             Expression::Dot(DotExpression {
                 structure,
                 member,
-                _type,
+                ty,
             }) => {
                 let resolved_structure = structure.resolve(variable_map, struct_map)?;
                 Ok(Expression::Dot(DotExpression {
                     structure: resolved_structure.into(),
                     member,
-                    _type,
+                    ty,
                 }))
             }
 
             Expression::Arrow(ArrowExpression {
                 pointer,
                 member,
-                _type,
+                ty,
             }) => {
                 let resolved_pointer = pointer.resolve(variable_map, struct_map)?;
                 Ok(Expression::Arrow(ArrowExpression {
                     pointer: resolved_pointer.into(),
                     member,
-                    _type,
+                    ty,
                 }))
             }
 
-            Expression::SizeofT(SizeofTExpression { t, _type }) => {
+            Expression::SizeofT(SizeofTExpression { t, ty }) => {
                 let resolved_type = t.resolve(variable_map, struct_map)?;
                 Ok(Expression::SizeofT(SizeofTExpression {
                     t: resolved_type,
-                    _type,
+                    ty,
                 }))
             }
 
-            Expression::Postfix(PostfixExpression { kind, expr, _type }) => {
-                let resolved_type = _type.resolve(variable_map, struct_map)?;
+            Expression::Postfix(PostfixExpression { kind, expr, ty }) => {
+                let resolved_type = ty.resolve(variable_map, struct_map)?;
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
 
                 Ok(Expression::Postfix(PostfixExpression {
                     expr: resolved_expr.into(),
                     kind,
-                    _type: resolved_type,
+                    ty: resolved_type,
                 }))
             }
 

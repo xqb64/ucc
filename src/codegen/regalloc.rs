@@ -468,20 +468,20 @@ fn pseudo_is_current_type(pseudo: &str, register_class: &RegisterClass) -> bool 
     if register_class == &RegisterClass::Gp {
         match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
             AsmSymtabEntry::Object {
-                _type,
+                ty,
                 is_static: _,
                 is_constant: _,
-            } => _type != &AsmType::Double,
+            } => ty != &AsmType::Double,
             _ => false,
         }
     } else if register_class == &RegisterClass::Xmm {
         match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
             AsmSymtabEntry::Object {
-                _type,
+                ty,
                 is_static: _,
                 is_constant: _,
             } => {
-                return _type == &AsmType::Double;
+                return ty == &AsmType::Double;
             }
             _ => false,
         }
@@ -508,7 +508,7 @@ fn get_pseudo_nodes(
     fn is_static(pseudo: &str) -> bool {
         match ASM_SYMBOL_TABLE.lock().unwrap().get(pseudo).unwrap() {
             AsmSymtabEntry::Object {
-                _type,
+                ty: _,
                 is_static,
                 is_constant: _,
             } => *is_static,

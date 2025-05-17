@@ -65,7 +65,7 @@ impl LabelCollect for FunctionDeclaration {
 
         Ok(FunctionDeclaration {
             name: self.name.clone(),
-            _type: self._type.clone(),
+            ty: self.ty.clone(),
             params: self.params.clone(),
             body: collected.into(),
             is_global: self.is_global,
@@ -357,7 +357,7 @@ impl LabelCheck for FunctionDeclaration {
 
         Ok(FunctionDeclaration {
             name: self.name.clone(),
-            _type: self._type.clone(),
+            ty: self.ty.clone(),
             params: self.params.clone(),
             body: checked_body.into(),
             is_global: self.is_global,

@@ -349,7 +349,7 @@ impl Codegen for IRStaticVariable {
             name: self.name.clone(),
             init: self.init.clone(),
             global: self.global,
-            alignment: get_alignment_of_type(&self._type),
+            alignment: get_alignment_of_type(&self.ty),
         })
     }
 }
@@ -359,7 +359,7 @@ impl Codegen for IRStaticConstant {
         AsmNode::StaticConstant(AsmStaticConstant {
             name: self.name.clone(),
             init: self.init.clone(),
-            alignment: get_alignment_of_type(&self._type),
+            alignment: get_alignment_of_type(&self.ty),
         })
     }
 }
@@ -548,7 +548,7 @@ impl Codegen for IRValue {
             },
             IRValue::Var(name) => {
                 let symbol = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
-                let type_of_symbol = symbol._type.clone();
+                let type_of_symbol = symbol.ty.clone();
 
                 match type_of_symbol {
                     _ if is_scalar(&type_of_symbol) => {
@@ -780,7 +780,7 @@ impl Codegen for IRInstruction {
                             (IRValue::Var(var1), IRValue::Constant(Const::Double(_))) => {
                                 let var1_type =
                                     match SYMBOL_TABLE.lock().unwrap().get(var1).cloned() {
-                                        Some(symbol) => symbol._type,
+                                        Some(symbol) => symbol.ty,
                                         None => unreachable!(),
                                     };
 
@@ -803,7 +803,7 @@ impl Codegen for IRInstruction {
                             (IRValue::Constant(Const::Double(_)), IRValue::Var(var2)) => {
                                 let var2_type =
                                     match SYMBOL_TABLE.lock().unwrap().get(var2).cloned() {
-                                        Some(symbol) => symbol._type,
+                                        Some(symbol) => symbol.ty,
                                         None => unreachable!(),
                                     };
 
@@ -826,13 +826,13 @@ impl Codegen for IRInstruction {
                             (IRValue::Var(var1), IRValue::Var(var2)) => {
                                 let var1_type =
                                     match SYMBOL_TABLE.lock().unwrap().get(var1).cloned() {
-                                        Some(symbol) => symbol._type,
+                                        Some(symbol) => symbol.ty,
                                         None => unreachable!(),
                                     };
 
                                 let var2_type =
                                     match SYMBOL_TABLE.lock().unwrap().get(var2).cloned() {
-                                        Some(symbol) => symbol._type,
+                                        Some(symbol) => symbol.ty,
                                         None => unreachable!(),
                                     };
 
@@ -2096,7 +2096,7 @@ fn returns_on_stack(name: &str) -> bool {
         .get(name)
         .cloned()
         .unwrap()
-        ._type
+        .ty
     {
         Type::Func { params: _, ret } => match &*ret {
             Type::Struct { tag } => {
@@ -2121,7 +2121,7 @@ pub fn build_asm_symbol_table() {
 
     for (identifier, symbol) in frontend_symtab.iter() {
         let entry = match symbol.attrs {
-            IdentifierAttrs::FuncAttr { defined, .. } => match &symbol._type {
+            IdentifierAttrs::FuncAttr { defined, .. } => match &symbol.ty {
                 Type::Func { params, ret } => {
                     if is_complete(ret) || ret == &Type::Void.into() {
                         let (return_regs, returns_on_stack) = classify_return_type(ret);
@@ -2154,16 +2154,16 @@ pub fn build_asm_symbol_table() {
             IdentifierAttrs::StaticAttr {
                 initial_value: _, ..
             } => {
-                if is_complete(&symbol._type) {
-                    let asm_type = type2asmtype(&symbol._type);
+                if is_complete(&symbol.ty) {
+                    let asm_type = type2asmtype(&symbol.ty);
                     AsmSymtabEntry::Object {
-                        _type: asm_type,
+                        ty: asm_type,
                         is_static: true,
                         is_constant: false,
                     }
                 } else {
                     AsmSymtabEntry::Object {
-                        _type: AsmType::Byte,
+                        ty: AsmType::Byte,
                         is_static: true,
                         is_constant: false,
                     }
@@ -2171,18 +2171,18 @@ pub fn build_asm_symbol_table() {
             }
 
             IdentifierAttrs::LocalAttr => {
-                let asm_type = type2asmtype(&symbol._type);
+                let asm_type = type2asmtype(&symbol.ty);
                 AsmSymtabEntry::Object {
-                    _type: asm_type,
+                    ty: asm_type,
                     is_static: false,
                     is_constant: false,
                 }
             }
 
             IdentifierAttrs::ConstantAttr(_) => {
-                let asm_type = type2asmtype(&symbol._type);
+                let asm_type = type2asmtype(&symbol.ty);
                 AsmSymtabEntry::Object {
-                    _type: asm_type,
+                    ty: asm_type,
                     is_static: false,
                     is_constant: true,
                 }
@@ -2204,7 +2204,7 @@ pub enum AsmSymtabEntry {
         callee_saved_regs_used: BTreeSet<AsmRegister>,
     },
     Object {
-        _type: AsmType,
+        ty: AsmType,
         is_static: bool,
         is_constant: bool,
     },
@@ -2269,7 +2269,7 @@ fn classify_structure(struct_entry: &StructEntry) -> Vec<Class> {
 fn flatten_member_types(members: &Vec<MemberEntry>) -> Vec<Type> {
     let mut result = vec![];
     for member in members {
-        match &member._type {
+        match &member.ty {
             Type::Struct { tag } => {
                 let struct_entry = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
                 result.extend(flatten_member_types(&struct_entry.members));
@@ -2279,7 +2279,7 @@ fn flatten_member_types(members: &Vec<MemberEntry>) -> Vec<Type> {
                     result.push(*element.clone());
                 }
             }
-            _ => result.push(member._type.clone()),
+            _ => result.push(member.ty.clone()),
         }
     }
     result
@@ -2555,7 +2555,7 @@ pub fn ir2type(value: &IRValue) -> Type {
         },
         IRValue::Var(var_name) => {
             let symbol = SYMBOL_TABLE.lock().unwrap().get(var_name).cloned().unwrap();
-            symbol._type
+            symbol.ty
         }
     }
 }
@@ -2616,15 +2616,15 @@ fn ir2asmtype(value: &IRValue) -> AsmType {
             Const::Double(_) => AsmType::Double,
         },
         IRValue::Var(var_name) => {
-            let _type = SYMBOL_TABLE
+            let ty = SYMBOL_TABLE
                 .lock()
                 .unwrap()
                 .get(var_name)
                 .cloned()
                 .unwrap()
-                ._type;
+                .ty;
 
-            type2asmtype(&_type)
+            type2asmtype(&ty)
         }
     }
 }

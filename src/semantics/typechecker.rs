@@ -82,15 +82,15 @@ impl Typecheck for Declaration {
 
 impl Typecheck for VariableDeclaration {
     fn typecheck(self) -> Result<Self> {
-        if self._type == Type::Void {
+        if self.ty == Type::Void {
             bail!("Variable declared with void type");
         } else {
-            validate_type_specifier(&self._type)?;
+            validate_type_specifier(&self.ty)?;
         }
 
         match self.is_global {
             true => {
-                if !is_complete(&self._type) && self.storage_class != Some(StorageClass::Extern) {
+                if !is_complete(&self.ty) && self.storage_class != Some(StorageClass::Extern) {
                     bail!("Variable declared with incomplete type");
                 }
 
@@ -101,7 +101,7 @@ impl Typecheck for VariableDeclaration {
                 };
 
                 let static_init = match &self.init {
-                    Some(init) => to_static_init(init, &self._type)?,
+                    Some(init) => to_static_init(init, &self.ty)?,
                     None => default_init,
                 };
 
@@ -110,7 +110,7 @@ impl Typecheck for VariableDeclaration {
                 let old_decl = SYMBOL_TABLE.lock().unwrap().get(&self.name).cloned();
 
                 let check_against_previous = |old_d: &Symbol| -> Result<(bool, InitialValue)> {
-                    if old_d._type != self._type {
+                    if old_d.ty != self.ty {
                         bail!("Variable redeclaration with different type");
                     }
 
@@ -154,7 +154,7 @@ impl Typecheck for VariableDeclaration {
                 };
 
                 let symbol = Symbol {
-                    _type: self._type.clone(),
+                    ty: self.ty.clone(),
                     attrs: IdentifierAttrs::StaticAttr {
                         initial_value: init,
                         global,
@@ -169,19 +169,19 @@ impl Typecheck for VariableDeclaration {
                 let typechecked_init = self
                     .init
                     .as_ref()
-                    .map(|init| typecheck_init(&self._type, init))
+                    .map(|init| typecheck_init(&self.ty, init))
                     .transpose()?;
 
                 Ok(VariableDeclaration {
                     name: self.name.clone(),
-                    _type: self._type.clone(),
+                    ty: self.ty.clone(),
                     init: typechecked_init,
                     storage_class: self.storage_class.clone(),
                     is_global: self.is_global,
                 })
             }
             false => {
-                if !is_complete(&self._type) {
+                if !is_complete(&self.ty) {
                     bail!("Variable declared with incomplete type");
                 }
 
@@ -195,13 +195,13 @@ impl Typecheck for VariableDeclaration {
 
                         match symbol {
                             Some(sym) => {
-                                if sym._type != self._type {
+                                if sym.ty != self.ty {
                                     bail!("Variable redeclaration with different type");
                                 }
                             }
                             None => {
                                 let symbol = Symbol {
-                                    _type: self._type.clone(),
+                                    ty: self.ty.clone(),
                                     attrs: IdentifierAttrs::StaticAttr {
                                         initial_value: InitialValue::NoInitializer,
                                         global: true,
@@ -218,12 +218,12 @@ impl Typecheck for VariableDeclaration {
                         let typechecked_init = self
                             .init
                             .as_ref()
-                            .map(|init| typecheck_init(&self._type, init))
+                            .map(|init| typecheck_init(&self.ty, init))
                             .transpose()?;
 
                         Ok(VariableDeclaration {
                             name: self.name.clone(),
-                            _type: self._type.clone(),
+                            ty: self.ty.clone(),
                             init: typechecked_init,
                             storage_class: self.storage_class.clone(),
                             is_global: self.is_global,
@@ -231,15 +231,15 @@ impl Typecheck for VariableDeclaration {
                     }
                     Some(StorageClass::Static) => {
                         let zero_init = InitialValue::Initial(vec![StaticInit::Zero(
-                            get_size_of_type(&self._type),
+                            get_size_of_type(&self.ty),
                         )]);
                         let static_init = match &self.init {
-                            Some(init) => to_static_init(init, &self._type)?,
+                            Some(init) => to_static_init(init, &self.ty)?,
                             None => zero_init,
                         };
 
                         let symbol = Symbol {
-                            _type: self._type.clone(),
+                            ty: self.ty.clone(),
                             attrs: IdentifierAttrs::StaticAttr {
                                 initial_value: static_init,
                                 global: false,
@@ -253,12 +253,12 @@ impl Typecheck for VariableDeclaration {
                         let typechecked_init = self
                             .init
                             .as_ref()
-                            .map(|init| typecheck_init(&self._type, init))
+                            .map(|init| typecheck_init(&self.ty, init))
                             .transpose()?;
 
                         Ok(VariableDeclaration {
                             name: self.name.clone(),
-                            _type: self._type.clone(),
+                            ty: self.ty.clone(),
                             init: typechecked_init,
                             storage_class: self.storage_class.clone(),
                             is_global: self.is_global,
@@ -266,7 +266,7 @@ impl Typecheck for VariableDeclaration {
                     }
                     None => {
                         let symbol = Symbol {
-                            _type: self._type.clone(),
+                            ty: self.ty.clone(),
                             attrs: IdentifierAttrs::LocalAttr,
                         };
                         SYMBOL_TABLE
@@ -277,12 +277,12 @@ impl Typecheck for VariableDeclaration {
                         let typechecked_init = self
                             .init
                             .as_ref()
-                            .map(|init| typecheck_init(&self._type, init))
+                            .map(|init| typecheck_init(&self.ty, init))
                             .transpose()?;
 
                         Ok(VariableDeclaration {
                             name: self.name.clone(),
-                            _type: self._type.clone(),
+                            ty: self.ty.clone(),
                             init: typechecked_init,
                             storage_class: self.storage_class.clone(),
                             is_global: self.is_global,
@@ -322,10 +322,10 @@ fn validate_type_specifier(t: &Type) -> Result<()> {
 
 impl Typecheck for FunctionDeclaration {
     fn typecheck(self) -> Result<Self> {
-        if self._type == Type::Void {
+        if self.ty == Type::Void {
             bail!("Variable declared with void type");
         } else {
-            validate_type_specifier(&self._type)?;
+            validate_type_specifier(&self.ty)?;
         }
 
         let adjust_param_type = |t: Type| -> Result<Type> {
@@ -336,7 +336,7 @@ impl Typecheck for FunctionDeclaration {
             }
         };
 
-        let (param_ts, _, fun_type) = match self._type.clone() {
+        let (param_ts, _, fun_type) = match self.ty.clone() {
             Type::Func { params, ret } => {
                 if let Type::Array { .. } = *ret {
                     bail!("Function return type is an array");
@@ -366,7 +366,7 @@ impl Typecheck for FunctionDeclaration {
                 }
             }
 
-            let ret_type = match &self._type {
+            let ret_type = match &self.ty {
                 Type::Func { ret, .. } => ret,
                 _ => unreachable!(),
             };
@@ -381,7 +381,7 @@ impl Typecheck for FunctionDeclaration {
         let global = self.storage_class != Some(StorageClass::Static);
 
         let check_against_previous = |prev: &Symbol| -> Result<(bool, bool)> {
-            if prev._type != fun_type {
+            if prev.ty != fun_type {
                 bail!("RedeclaredFunction");
             }
 
@@ -412,7 +412,7 @@ impl Typecheck for FunctionDeclaration {
         SYMBOL_TABLE.lock().unwrap().insert(
             self.name.clone(),
             Symbol {
-                _type: fun_type,
+                ty: fun_type,
                 attrs: IdentifierAttrs::FuncAttr { global, defined },
             },
         );
@@ -420,7 +420,7 @@ impl Typecheck for FunctionDeclaration {
         if has_body {
             for (param, param_t) in self.params.iter().zip(param_ts) {
                 let symbol = Symbol {
-                    _type: param_t,
+                    ty: param_t,
                     attrs: IdentifierAttrs::LocalAttr,
                 };
                 SYMBOL_TABLE.lock().unwrap().insert(param.clone(), symbol);
@@ -431,7 +431,7 @@ impl Typecheck for FunctionDeclaration {
 
         Ok(FunctionDeclaration {
             name: self.name.clone(),
-            _type: self._type.clone(),
+            ty: self.ty.clone(),
             params: self.params.clone(),
             body: typechecked_body.into(),
             is_global: self.is_global,
@@ -456,18 +456,18 @@ impl Typecheck for StructDeclaration {
         let mut struct_alignment = 1;
 
         for member in &self.members {
-            let member_alignment = alignment(&member._type);
+            let member_alignment = alignment(&member.ty);
             let member_offset = round_up(struct_size, member_alignment);
             let m = MemberEntry {
                 name: member.name.clone(),
-                _type: member._type.clone(),
+                ty: member.ty.clone(),
                 offset: member_offset,
             };
 
             member_entries.push(m);
 
             struct_alignment = max(struct_alignment, member_alignment);
-            struct_size = member_offset + get_size_of_type(&member._type);
+            struct_size = member_offset + get_size_of_type(&member.ty);
         }
 
         struct_size = round_up(struct_size, struct_alignment);
@@ -506,14 +506,14 @@ fn validate_struct_definition(definition: &StructDeclaration) -> Result<StructDe
                 member_names.insert(member_name.clone());
             }
 
-            validate_type_specifier(&member._type)?;
+            validate_type_specifier(&member.ty)?;
 
-            match &member._type {
+            match &member.ty {
                 Type::Func { .. } => {
                     bail!("Can't declare structure member with function type");
                 }
                 _ => {
-                    if !is_complete(&member._type) {
+                    if !is_complete(&member.ty) {
                         bail!("Cannot declare structure member with incomplete type");
                     }
                 }
@@ -645,7 +645,7 @@ impl Typecheck for Statement {
                         .get(&belongs_to)
                         .cloned()
                         .unwrap()
-                        ._type;
+                        .ty;
 
                     let tt = match ret_type {
                         Type::Func { ret, .. } => ret,
@@ -739,7 +739,7 @@ impl Typecheck for Statement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Symbol {
-    pub _type: Type,
+    pub ty: Type,
     pub attrs: IdentifierAttrs,
 }
 
@@ -753,7 +753,7 @@ pub struct StructEntry {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MemberEntry {
     pub name: String,
-    pub _type: Type,
+    pub ty: Type,
     pub offset: usize,
 }
 
@@ -804,7 +804,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         (Type::Pointer(_), Initializer::Single(_, Expression::String(string_expr))) => {
             let str_id = format!("string.{}", make_temporary());
             let symbol = Symbol {
-                _type: Type::Array {
+                ty: Type::Array {
                     element: Box::new(Type::Char),
                     size: string_expr.value.len() + 1,
                 },
@@ -816,7 +816,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             SYMBOL_TABLE.lock().unwrap().insert(str_id.clone(), symbol);
             Ok(vec![StaticInit::Pointer(str_id)])
         }
-        (Type::Struct { tag }, Initializer::Compound(_name, _type, compound_init)) => {
+        (Type::Struct { tag }, Initializer::Compound(_name, _ty, compound_init)) => {
             let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
 
             if compound_init.len() > struct_def.members.len() {
@@ -833,10 +833,10 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                     static_inits.push(StaticInit::Zero(member.offset - current_offset));
                 }
 
-                let more_static_inits = static_init_helper(init_elem, &member._type)?;
+                let more_static_inits = static_init_helper(init_elem, &member.ty)?;
                 static_inits.extend(more_static_inits);
 
-                current_offset = member.offset + get_size_of_type(&member._type);
+                current_offset = member.offset + get_size_of_type(&member.ty);
             }
 
             if struct_def.size != current_offset {
@@ -873,7 +873,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 bail!("Can't initialize array with non-string");
             }
         }
-        (_, Initializer::Single(_, Expression::Constant(ConstantExpression { value, _type }))) => {
+        (_, Initializer::Single(_, Expression::Constant(ConstantExpression { value, ty: _ }))) => {
             if matches!(
                 value,
                 Const::Int(0)
@@ -889,7 +889,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         }
         (Type::Pointer { .. }, _) => bail!("InvalidPointerInitializer"),
         (_, Initializer::Single(_, _)) => bail!("StaticInitError::NonConstantInitializer"),
-        (Type::Array { element, size }, Initializer::Compound(_, _type, inits)) => {
+        (Type::Array { element, size }, Initializer::Compound(_, _, inits)) => {
             let mut static_inits = Vec::with_capacity(inits.len());
             for init in inits.iter() {
                 let static_init = static_init_helper(init, element)?;
@@ -937,7 +937,7 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
     match (target_type, init) {
         (
             Type::Array { element, size },
-            Initializer::Single(name, Expression::String(StringExpression { value, _type })),
+            Initializer::Single(name, Expression::String(StringExpression { value, ty: _ })),
         ) => {
             if !is_char_type(element) {
                 bail!("Can't initialize array with non-char type");
@@ -951,11 +951,11 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
                 name.to_owned(),
                 Expression::String(StringExpression {
                     value: value.clone(),
-                    _type: target_type.clone(),
+                    ty: target_type.clone(),
                 }),
             ))
         }
-        (Type::Struct { tag }, Initializer::Compound(name, _type, compound_init)) => {
+        (Type::Struct { tag }, Initializer::Compound(name, _, compound_init)) => {
             let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
 
             if compound_init.len() > struct_def.members.len() {
@@ -967,14 +967,14 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
 
             for init_elem in compound_init.iter() {
                 let member = &struct_def.members[i];
-                let typechecked_init = typecheck_init(&member._type, init_elem)?;
+                let typechecked_init = typecheck_init(&member.ty, init_elem)?;
                 typechecked_inits.push(typechecked_init);
                 i += 1;
             }
 
             while i < struct_def.members.len() {
                 let member = &struct_def.members[i];
-                typechecked_inits.push(zero_initializer(&member._type));
+                typechecked_inits.push(zero_initializer(&member.ty));
                 i += 1;
             }
 
@@ -989,7 +989,7 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             let converted_expr = convert_by_assignment(&typechecked_expr, target_type)?;
             Ok(Initializer::Single(name.clone(), converted_expr))
         }
-        (Type::Array { element, size }, Initializer::Compound(name, _type, inits)) => {
+        (Type::Array { element, size }, Initializer::Compound(name, _, inits)) => {
             if inits.len() > *size {
                 bail!("Too many initializers");
             }
@@ -1023,56 +1023,56 @@ fn zero_initializer(t: &Type) -> Initializer {
             String::new(),
             Expression::Constant(ConstantExpression {
                 value: Const::Int(0),
-                _type: Type::Int,
+                ty: Type::Int,
             }),
         ),
         Type::UInt => Initializer::Single(
             String::new(),
             Expression::Constant(ConstantExpression {
                 value: Const::UInt(0),
-                _type: Type::UInt,
+                ty: Type::UInt,
             }),
         ),
         Type::Long => Initializer::Single(
             String::new(),
             Expression::Constant(ConstantExpression {
                 value: Const::Long(0),
-                _type: Type::Long,
+                ty: Type::Long,
             }),
         ),
         Type::ULong => Initializer::Single(
             String::new(),
             Expression::Constant(ConstantExpression {
                 value: Const::ULong(0),
-                _type: Type::ULong,
+                ty: Type::ULong,
             }),
         ),
         Type::Double => Initializer::Single(
             String::new(),
             Expression::Constant(ConstantExpression {
                 value: Const::Double(0.0),
-                _type: Type::Double,
+                ty: Type::Double,
             }),
         ),
         Type::Char | Type::SChar => Initializer::Single(
             String::new(),
             Expression::Constant(ConstantExpression {
                 value: Const::Char(0),
-                _type: Type::Char,
+                ty: Type::Char,
             }),
         ),
         Type::UChar => Initializer::Single(
             String::new(),
             Expression::Constant(ConstantExpression {
                 value: Const::UChar(0),
-                _type: Type::UChar,
+                ty: Type::UChar,
             }),
         ),
         Type::Pointer(_) => Initializer::Single(
             String::new(),
             Expression::Constant(ConstantExpression {
                 value: Const::ULong(0),
-                _type: Type::Int,
+                ty: Type::Int,
             }),
         ),
         Type::Array { element, size } => {
@@ -1089,7 +1089,7 @@ fn zero_initializer(t: &Type) -> Initializer {
             let mut inits = vec![];
 
             for member in struct_def.members.iter() {
-                inits.push(zero_initializer(&member._type));
+                inits.push(zero_initializer(&member.ty));
             }
 
             Initializer::Compound(String::new(), Type::Struct { tag: tag.clone() }, inits)
@@ -1110,7 +1110,7 @@ fn typecheck_logical(
         kind: *kind,
         lhs: Box::new(typed_lhs),
         rhs: Box::new(typed_rhs),
-        _type: Type::Int,
+        ty: Type::Int,
     }))
 }
 
@@ -1138,7 +1138,7 @@ fn typecheck_bitwise(
         kind: *kind,
         lhs: converted_lhs.into(),
         rhs: converted_rhs.into(),
-        _type: common_type.clone(),
+        ty: common_type.clone(),
     }))
 }
 
@@ -1173,7 +1173,7 @@ fn typecheck_bitshift(
         kind: *kind,
         lhs: typed_lhs.clone().into(),
         rhs: typed_rhs.into(),
-        _type: get_type(&typed_lhs).clone(),
+        ty: get_type(&typed_lhs).clone(),
     }))
 }
 
@@ -1191,7 +1191,7 @@ fn typecheck_addition(lhs: &Expression, rhs: &Expression) -> Result<Expression> 
             kind: BinaryExpressionKind::Add,
             lhs: Box::new(converted_lhs),
             rhs: Box::new(converted_rhs),
-            _type: common_type.to_owned(),
+            ty: common_type.to_owned(),
         }))
     } else if is_ptr_to_complete(get_type(&typed_lhs)) && is_integer_type(get_type(&typed_rhs)) {
         let converted_rhs = convert_to(&typed_rhs, &Type::Long);
@@ -1200,7 +1200,7 @@ fn typecheck_addition(lhs: &Expression, rhs: &Expression) -> Result<Expression> 
             kind: BinaryExpressionKind::Add,
             lhs: Box::new(typed_lhs.clone()),
             rhs: Box::new(converted_rhs),
-            _type: get_type(&typed_lhs).to_owned(),
+            ty: get_type(&typed_lhs).to_owned(),
         }))
     } else if is_ptr_to_complete(get_type(&typed_rhs)) && is_integer_type(get_type(&typed_lhs)) {
         let converted_lhs = convert_to(&typed_lhs, &Type::Long);
@@ -1209,7 +1209,7 @@ fn typecheck_addition(lhs: &Expression, rhs: &Expression) -> Result<Expression> 
             kind: BinaryExpressionKind::Add,
             lhs: Box::new(converted_lhs),
             rhs: Box::new(typed_rhs.clone()),
-            _type: get_type(&typed_rhs).to_owned(),
+            ty: get_type(&typed_rhs).to_owned(),
         }))
     } else {
         bail!("Invalid operands for addition");
@@ -1232,7 +1232,7 @@ fn typecheck_subtraction(lhs: &Expression, rhs: &Expression) -> Result<Expressio
             kind: BinaryExpressionKind::Sub,
             lhs: Box::new(converted_lhs),
             rhs: Box::new(converted_rhs),
-            _type: common_type.to_owned(),
+            ty: common_type.to_owned(),
         }))
     } else if is_ptr_to_complete(t1) && is_integer_type(t2) {
         let converted_rhs = convert_to(&typed_rhs, &Type::Long);
@@ -1241,14 +1241,14 @@ fn typecheck_subtraction(lhs: &Expression, rhs: &Expression) -> Result<Expressio
             kind: BinaryExpressionKind::Sub,
             lhs: Box::new(typed_lhs.clone()),
             rhs: Box::new(converted_rhs),
-            _type: t1.to_owned(),
+            ty: t1.to_owned(),
         }))
     } else if is_ptr_to_complete(t1) && get_type(&typed_lhs) == get_type(&typed_rhs) {
         Ok(Expression::Binary(BinaryExpression {
             kind: BinaryExpressionKind::Sub,
             lhs: Box::new(typed_lhs.clone()),
             rhs: Box::new(typed_rhs.clone()),
-            _type: Type::Long,
+            ty: Type::Long,
         }))
     } else {
         bail!("Invalid operands for subtraction");
@@ -1280,7 +1280,7 @@ fn typecheck_multiplicative(
                     kind: *kind,
                     lhs: Box::new(converted_lhs),
                     rhs: Box::new(converted_rhs),
-                    _type: common_type.to_owned(),
+                    ty: common_type.to_owned(),
                 }))
             }
             _ => unreachable!(),
@@ -1316,7 +1316,7 @@ fn typecheck_equality(
         kind: *kind,
         lhs: Box::new(converted_lhs),
         rhs: Box::new(converted_rhs),
-        _type: Type::Int,
+        ty: Type::Int,
     }))
 }
 
@@ -1346,7 +1346,7 @@ fn typecheck_relational(
         kind: *kind,
         lhs: Box::new(converted_lhs),
         rhs: Box::new(converted_rhs),
-        _type: Type::Int,
+        ty: Type::Int,
     }))
 }
 
@@ -1360,7 +1360,7 @@ fn typecheck_not(expr: &Expression) -> Result<Expression> {
     Ok(Expression::Unary(UnaryExpression {
         kind: UnaryExpressionKind::Not,
         expr: Box::new(typed_expr),
-        _type: Type::Int,
+        ty: Type::Int,
     }))
 }
 
@@ -1378,14 +1378,14 @@ fn typecheck_complement(expr: &Expression) -> Result<Expression> {
         return Ok(Expression::Unary(UnaryExpression {
             kind: UnaryExpressionKind::Complement,
             expr: Box::new(typed_expr),
-            _type: Type::Int,
+            ty: Type::Int,
         }));
     }
 
     Ok(Expression::Unary(UnaryExpression {
         kind: UnaryExpressionKind::Complement,
         expr: Box::new(typed_expr.clone()),
-        _type: t.to_owned(),
+        ty: t.to_owned(),
     }))
 }
 
@@ -1407,7 +1407,7 @@ fn typecheck_negate(expr: &Expression) -> Result<Expression> {
     Ok(Expression::Unary(UnaryExpression {
         kind: UnaryExpressionKind::Negate,
         expr: Box::new(typed_expr.clone()),
-        _type: get_type(&typed_expr).to_owned(),
+        ty: get_type(&typed_expr).to_owned(),
     }))
 }
 
@@ -1420,7 +1420,7 @@ fn typecheck_incr(expr: &Expression, kind: UnaryExpressionKind) -> Result<Expres
         return Ok(Expression::Unary(UnaryExpression {
             kind,
             expr: typed_expr.clone().into(),
-            _type: get_type(&typed_expr).to_owned(),
+            ty: get_type(&typed_expr).to_owned(),
         }));
     }
 
@@ -1436,7 +1436,7 @@ fn typecheck_postfix_inc(expr: &Expression) -> Result<Expression> {
         return Ok(Expression::Postfix(PostfixExpression {
             expr: typed_expr.clone().into(),
             kind: PostfixExpressionKind::Inc,
-            _type: get_type(&typed_expr).to_owned(),
+            ty: get_type(&typed_expr).to_owned(),
         }));
     }
 
@@ -1452,7 +1452,7 @@ fn typecheck_postfix_dec(expr: &Expression) -> Result<Expression> {
         return Ok(Expression::Postfix(PostfixExpression {
             expr: typed_expr.clone().into(),
             kind: PostfixExpressionKind::Dec,
-            _type: get_type(&typed_expr).to_owned(),
+            ty: get_type(&typed_expr).to_owned(),
         }));
     }
 
@@ -1483,7 +1483,7 @@ fn typecheck_subscript(expr: &Expression, index: &Expression) -> Result<Expressi
     Ok(Expression::Subscript(SubscriptExpression {
         expr: Box::new(converted_lhs),
         index: Box::new(converted_rhs),
-        _type: *result_type.clone(),
+        ty: *result_type.clone(),
     }))
 }
 
@@ -1553,7 +1553,7 @@ fn typecheck_compound(
             lhs: typed_lhs.clone().into(),
             rhs: converted_rhs.into(),
             result_t,
-            _type: lhs_type.to_owned(),
+            ty: lhs_type.to_owned(),
         }))
     } else {
         bail!("lhs of compound assignment must be an lvalue");
@@ -1567,20 +1567,20 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             lhs,
             rhs,
             result_t: _,
-            _type: _,
+            ty: _,
         }) => {
             let k = (*kind).into();
             typecheck_compound(&k, lhs, rhs)
         }
 
-        Expression::Postfix(PostfixExpression { kind, expr, _type }) => match kind {
+        Expression::Postfix(PostfixExpression { kind, expr, ty: _ }) => match kind {
             PostfixExpressionKind::Inc => typecheck_postfix_inc(expr),
             PostfixExpressionKind::Dec => typecheck_postfix_dec(expr),
         },
 
-        Expression::Call(CallExpression { name, args, _type }) => {
+        Expression::Call(CallExpression { name, args, ty: _ }) => {
             let f = SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap();
-            let f_type = f._type.clone();
+            let f_type = f.ty.clone();
 
             match f_type {
                 Type::Func { params, ret } => {
@@ -1604,21 +1604,21 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     Ok(Expression::Call(CallExpression {
                         name: name.clone(),
                         args: converted_args,
-                        _type: *ret,
+                        ty: *ret,
                     }))
                 }
                 _ => bail!("Variable used as function name"),
             }
         }
 
-        Expression::Variable(VariableExpression { value, _type }) => {
+        Expression::Variable(VariableExpression { value, ty: _ }) => {
             let v_type = SYMBOL_TABLE
                 .lock()
                 .unwrap()
                 .get(value)
                 .cloned()
                 .unwrap()
-                ._type;
+                .ty;
 
             let some_fn_type = Type::Func {
                 params: vec![Type::Int],
@@ -1631,7 +1631,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
             Ok(Expression::Variable(VariableExpression {
                 value: value.clone(),
-                _type: v_type,
+                ty: v_type,
             }))
         }
 
@@ -1639,7 +1639,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             kind,
             lhs,
             rhs,
-            _type,
+            ty: _,
         }) => match kind {
             BinaryExpressionKind::And | BinaryExpressionKind::Or => {
                 typecheck_logical(kind, lhs, rhs)
@@ -1668,7 +1668,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             op,
             lhs,
             rhs,
-            _type,
+            ty: _,
         }) => {
             let typed_lhs = typecheck_and_convert(lhs)?;
 
@@ -1681,7 +1681,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     op: op.clone(),
                     lhs: Box::new(typed_lhs.to_owned()),
                     rhs: Box::new(converted_right),
-                    _type: left_type.to_owned(),
+                    ty: left_type.to_owned(),
                 }))
             } else {
                 bail!("Invalid lvalue in assignment");
@@ -1692,7 +1692,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             condition,
             then_expr,
             else_expr,
-            _type,
+            ty: _,
         }) => {
             let typed_condition = typecheck_scalar(condition)?;
 
@@ -1724,14 +1724,14 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     condition: typed_condition.into(),
                     then_expr: converted_then_expr.into(),
                     else_expr: converted_else_expr.into(),
-                    _type: common_type.clone(),
+                    ty: common_type.clone(),
                 })
                 .into(),
-                _type: common_type.to_owned(),
+                ty: common_type.to_owned(),
             }))
         }
 
-        Expression::Unary(UnaryExpression { kind, expr, _type }) => match kind {
+        Expression::Unary(UnaryExpression { kind, expr, ty: _ }) => match kind {
             UnaryExpressionKind::Complement => typecheck_complement(expr),
             UnaryExpressionKind::Negate => typecheck_negate(expr),
             UnaryExpressionKind::Not => typecheck_not(expr),
@@ -1740,41 +1740,41 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }
         },
 
-        Expression::Constant(ConstantExpression { value, _type }) => match value {
+        Expression::Constant(ConstantExpression { value, ty: _ }) => match value {
             Const::Int(i) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::Int(*i),
-                _type: Type::Int,
+                ty: Type::Int,
             })),
             Const::Long(l) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::Long(*l),
-                _type: Type::Long,
+                ty: Type::Long,
             })),
             Const::UInt(u) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::UInt(*u),
-                _type: Type::UInt,
+                ty: Type::UInt,
             })),
             Const::ULong(ul) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::ULong(*ul),
-                _type: Type::ULong,
+                ty: Type::ULong,
             })),
             Const::Double(d) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::Double(*d),
-                _type: Type::Double,
+                ty: Type::Double,
             })),
             Const::Char(c) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::Char(*c),
-                _type: Type::Int,
+                ty: Type::Int,
             })),
             Const::UChar(uc) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::UChar(*uc),
-                _type: Type::UInt,
+                ty: Type::UInt,
             })),
         },
 
         Expression::Cast(CastExpression {
             target_type,
             expr,
-            _type,
+            ty: _,
         }) => {
             validate_type_specifier(target_type)?;
             let typed_inner = typecheck_and_convert(expr)?;
@@ -1802,7 +1802,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 return Ok(Expression::Cast(CastExpression {
                     target_type: target_type.clone(),
                     expr: Box::new(typed_inner),
-                    _type: target_type.clone(),
+                    ty: target_type.clone(),
                 }));
             }
 
@@ -1817,11 +1817,11 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             Ok(Expression::Cast(CastExpression {
                 target_type: target_type.clone(),
                 expr: Box::new(typed_inner),
-                _type: target_type.clone(),
+                ty: target_type.clone(),
             }))
         }
 
-        Expression::Deref(DerefExpression { expr, _type }) => {
+        Expression::Deref(DerefExpression { expr, ty: _ }) => {
             let typed_inner = typecheck_and_convert(expr)?;
 
             let inner_type = get_type(&typed_inner);
@@ -1833,7 +1833,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     }
                     let deref_expr = Expression::Deref(DerefExpression {
                         expr: Box::new(typed_inner.to_owned()),
-                        _type: *inner_type.to_owned(),
+                        ty: *inner_type.to_owned(),
                     });
                     Ok(deref_expr)
                 }
@@ -1841,59 +1841,59 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }
         }
 
-        Expression::AddrOf(AddrOfExpression { expr, _type }) => {
+        Expression::AddrOf(AddrOfExpression { expr, ty: _ }) => {
             if is_lvalue(expr) {
                 let typed_inner = typecheck_expr(expr)?;
                 let referenced_type = get_type(&typed_inner);
                 Ok(Expression::AddrOf(AddrOfExpression {
                     expr: Box::new(typed_inner.to_owned()),
-                    _type: Type::Pointer(Box::new(referenced_type.to_owned())),
+                    ty: Type::Pointer(Box::new(referenced_type.to_owned())),
                 }))
             } else {
                 bail!("Can't take address of a non-lvalue");
             }
         }
 
-        Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
+        Expression::Subscript(SubscriptExpression { expr, index, ty: _ }) => {
             typecheck_subscript(expr, index)
         }
 
-        Expression::String(StringExpression { value, _type }) => {
+        Expression::String(StringExpression { value, ty: _ }) => {
             Ok(Expression::String(StringExpression {
                 value: value.clone(),
-                _type: Type::Array {
+                ty: Type::Array {
                     element: Type::Char.into(),
                     size: value.len() + 1,
                 },
             }))
         }
 
-        Expression::SizeofT(SizeofTExpression { t, _type }) => {
+        Expression::SizeofT(SizeofTExpression { t, ty: _ }) => {
             validate_type_specifier(t)?;
             if !is_complete(t) {
                 bail!("Sizeof operator applied to incomplete type");
             }
             Ok(Expression::SizeofT(SizeofTExpression {
                 t: t.clone(),
-                _type: Type::ULong,
+                ty: Type::ULong,
             }))
         }
 
-        Expression::Sizeof(SizeofExpression { expr, _type }) => {
+        Expression::Sizeof(SizeofExpression { expr, ty: _ }) => {
             let typed_inner = typecheck_expr(expr)?;
             if !is_complete(get_type(&typed_inner)) {
                 bail!("Sizeof operator applied to incomplete type");
             }
             Ok(Expression::Sizeof(SizeofExpression {
                 expr: Box::new(typed_inner),
-                _type: Type::ULong,
+                ty: Type::ULong,
             }))
         }
 
         Expression::Dot(DotExpression {
             structure,
             member,
-            _type,
+            ty: _,
         }) => {
             let typed_structure = typecheck_and_convert(structure)?;
             match get_type(&typed_structure) {
@@ -1919,7 +1919,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     Ok(Expression::Dot(DotExpression {
                         structure: Box::new(typed_structure),
                         member: member.clone(),
-                        _type: member_def._type.to_owned(),
+                        ty: member_def.ty.to_owned(),
                     }))
                 }
                 _ => bail!("Non-struct type in dot expression"),
@@ -1929,7 +1929,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
         Expression::Arrow(ArrowExpression {
             pointer,
             member,
-            _type,
+            ty: _,
         }) => {
             let typed_pointer = typecheck_and_convert(pointer)?;
             match get_type(&typed_pointer) {
@@ -1955,7 +1955,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                         Ok(Expression::Arrow(ArrowExpression {
                             pointer: Box::new(typed_pointer),
                             member: member.clone(),
-                            _type: member_def._type.to_owned(),
+                            ty: member_def.ty.to_owned(),
                         }))
                     } else {
                         bail!("Non-struct type in arrow expression");
@@ -1976,7 +1976,7 @@ pub fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
     match type_of_expr {
         Type::Array { element, .. } => Ok(Expression::AddrOf(AddrOfExpression {
             expr: typed_expr.to_owned().into(),
-            _type: Type::Pointer(element.to_owned()),
+            ty: Type::Pointer(element.to_owned()),
         })),
 
         Type::Struct { .. } => {
@@ -2031,7 +2031,7 @@ pub fn is_pointer_type(t: &Type) -> bool {
 
 fn is_null_ptr_constant(e: &Expression) -> bool {
     match e {
-        Expression::Constant(ConstantExpression { value, _type }) => matches!(
+        Expression::Constant(ConstantExpression { value, ty: _ }) => matches!(
             value,
             Const::Int(0)
                 | Const::Long(0)
@@ -2132,38 +2132,38 @@ pub fn get_signedness(t: &Type) -> bool {
     }
 }
 
-pub fn convert_to(e: &Expression, _type: &Type) -> Expression {
-    if get_type(e) == _type {
+pub fn convert_to(e: &Expression, ty: &Type) -> Expression {
+    if get_type(e) == ty {
         return e.clone();
     }
     Expression::Cast(CastExpression {
-        target_type: _type.clone(),
+        target_type: ty.clone(),
         expr: Box::new(e.clone()),
-        _type: _type.clone(),
+        ty: ty.clone(),
     })
 }
 
 pub fn get_type(e: &Expression) -> &Type {
     match e {
-        Expression::Assign(assign) => &assign._type,
-        Expression::Binary(binary) => &binary._type,
-        Expression::Call(call) => &call._type,
-        Expression::Cast(cast) => &cast._type,
-        Expression::Conditional(conditional) => &conditional._type,
-        Expression::Constant(constant) => &constant._type,
-        Expression::Unary(unary) => &unary._type,
-        Expression::Variable(variable) => &variable._type,
-        Expression::Deref(deref) => &deref._type,
-        Expression::AddrOf(addr_of) => &addr_of._type,
-        Expression::Literal(literal) => &literal._type,
-        Expression::Subscript(subscript) => &subscript._type,
-        Expression::String(string) => &string._type,
-        Expression::Sizeof(sizeof) => &sizeof._type,
-        Expression::SizeofT(sizeof_t) => &sizeof_t._type,
-        Expression::Arrow(arrow) => &arrow._type,
-        Expression::Dot(dot) => &dot._type,
-        Expression::Postfix(postfix) => &postfix._type,
-        Expression::Compound(compound) => &compound._type,
+        Expression::Assign(assign) => &assign.ty,
+        Expression::Binary(binary) => &binary.ty,
+        Expression::Call(call) => &call.ty,
+        Expression::Cast(cast) => &cast.ty,
+        Expression::Conditional(conditional) => &conditional.ty,
+        Expression::Constant(constant) => &constant.ty,
+        Expression::Unary(unary) => &unary.ty,
+        Expression::Variable(variable) => &variable.ty,
+        Expression::Deref(deref) => &deref.ty,
+        Expression::AddrOf(addr_of) => &addr_of.ty,
+        Expression::Literal(literal) => &literal.ty,
+        Expression::Subscript(subscript) => &subscript.ty,
+        Expression::String(string) => &string.ty,
+        Expression::Sizeof(sizeof) => &sizeof.ty,
+        Expression::SizeofT(sizeof_t) => &sizeof_t.ty,
+        Expression::Arrow(arrow) => &arrow.ty,
+        Expression::Dot(dot) => &dot.ty,
+        Expression::Postfix(postfix) => &postfix.ty,
+        Expression::Compound(compound) => &compound.ty,
     }
 }
 
