@@ -275,9 +275,10 @@ impl Resolve for FunctionDeclaration {
             .map(|param| resolve_param(param, &mut inner_map))
             .collect::<Result<Vec<_>>>()?;
 
-        self.body =
-            resolve_optional_block_item(&mut self.body, &mut inner_map, &mut new_struct_map)?
-                .into();
+        if let Some(body) = self.body.as_mut() {
+            body.resolve(&mut inner_map, &mut new_struct_map)?;
+        }
+
         self.params = new_params;
         self._type = resolve_type(&self._type, &mut new_struct_map)?;
 
@@ -491,8 +492,10 @@ impl Resolve for IfStatement {
             .resolve(variable_map, struct_map)?
             .to_owned()
             .into();
-        self.else_branch =
-            resolve_optional_block_item(&mut self.else_branch, variable_map, struct_map)?.into();
+
+        if let Some(else_branch) = self.else_branch.as_mut() {
+            else_branch.resolve(variable_map, struct_map)?;
+        }
 
         Ok(self)
     }
@@ -525,8 +528,15 @@ impl Resolve for ForStatement {
         let mut new_struct_map = copy_struct_map(struct_map);
 
         self.init = resolve_for_init(&mut self.init, &mut new_variable_map, &mut new_struct_map)?;
-        self.condition = resolve_optional_expr(&self.condition, &mut new_variable_map, struct_map)?;
-        self.post = resolve_optional_expr(&self.post, &mut new_variable_map, struct_map)?;
+
+        if let Some(condition) = self.condition.as_mut() {
+            *condition = resolve_exp(condition, &mut new_variable_map, struct_map)?;
+        }
+
+        if let Some(post) = self.post.as_mut() {
+            *post = resolve_exp(post, &mut new_variable_map, struct_map)?;
+        }
+
         self.body = self
             .body
             .resolve(&mut new_variable_map, &mut new_struct_map)?
@@ -551,6 +561,7 @@ impl Resolve for DoWhileStatement {
             .resolve(&mut new_variable_map, &mut new_struct_map)?
             .to_owned()
             .into();
+
         self.condition = resolve_exp(&self.condition, &mut new_variable_map, struct_map)?;
 
         Ok(self)
@@ -567,6 +578,7 @@ impl Resolve for WhileStatement {
         let mut new_struct_map = copy_struct_map(struct_map);
 
         self.condition = resolve_exp(&self.condition, &mut new_variable_map, struct_map)?;
+
         self.body = self
             .body
             .resolve(&mut new_variable_map, &mut new_struct_map)?
@@ -863,42 +875,15 @@ fn resolve_for_init<'a>(
 ) -> Result<ForInit> {
     match init {
         ForInit::Expression(expr) => {
-            let resolved_expr = resolve_optional_expr(expr, variable_map, struct_map)?;
-            Ok(ForInit::Expression(resolved_expr))
+            if let Some(expr) = expr.as_mut() {
+                *expr = resolve_exp(expr, variable_map, struct_map)?;
+            }
+            Ok(ForInit::Expression(expr.to_owned()))
         }
         ForInit::Declaration(ref mut decl) => {
             let resolved_decl = decl.resolve(variable_map, struct_map)?;
             Ok(ForInit::Declaration(resolved_decl.to_owned()))
         }
-    }
-}
-
-fn resolve_optional_expr(
-    expr: &Option<Expression>,
-    variable_map: &mut BTreeMap<String, Variable>,
-    struct_map: &mut BTreeMap<String, StructTableEntry>,
-) -> Result<Option<Expression>> {
-    if expr.is_some() {
-        let resolved_expr = resolve_exp(expr.as_ref().unwrap(), variable_map, struct_map)?;
-        Ok(Some(resolved_expr))
-    } else {
-        Ok(None)
-    }
-}
-
-fn resolve_optional_block_item(
-    block_item: &mut Option<BlockItem>,
-    variable_map: &mut BTreeMap<String, Variable>,
-    struct_map: &mut BTreeMap<String, StructTableEntry>,
-) -> Result<Option<BlockItem>> {
-    if block_item.is_some() {
-        let resolved_block_item = block_item
-            .as_mut()
-            .unwrap()
-            .resolve(variable_map, struct_map)?;
-        Ok(Some(resolved_block_item.to_owned()))
-    } else {
-        Ok(None)
     }
 }
 
