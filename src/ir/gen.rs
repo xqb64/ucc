@@ -1223,12 +1223,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             ExpResult::PlainOperand(dst)
         }
 
-        Expression::Binary(BinaryExpression {
-            kind,
-            lhs,
-            rhs,
-            ty,
-        }) => match kind {
+        Expression::Binary(BinaryExpression { kind, lhs, rhs, ty }) => match kind {
             BinaryExpressionKind::And => {
                 let tmp = make_temporary();
 

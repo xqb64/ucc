@@ -2090,14 +2090,7 @@ fn classify_param_types(params: &[Type], return_on_stack: bool) -> Vec<AsmRegist
 }
 
 fn returns_on_stack(name: &str) -> bool {
-    match SYMBOL_TABLE
-        .lock()
-        .unwrap()
-        .get(name)
-        .cloned()
-        .unwrap()
-        .ty
-    {
+    match SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap().ty {
         Type::Func { params: _, ret } => match &*ret {
             Type::Struct { tag } => {
                 let struct_entry = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();

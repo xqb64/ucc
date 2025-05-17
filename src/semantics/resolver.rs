@@ -742,12 +742,7 @@ impl Resolve for Expression {
                 }))
             }
 
-            Expression::Assign(AssignExpression {
-                op,
-                lhs,
-                rhs,
-                ty,
-            }) => {
+            Expression::Assign(AssignExpression { op, lhs, rhs, ty }) => {
                 let resolved_lhs = lhs.resolve(variable_map, struct_map)?;
                 let resolved_rhs = rhs.resolve(variable_map, struct_map)?;
 
@@ -782,12 +777,7 @@ impl Resolve for Expression {
                 }))
             }
 
-            Expression::Binary(BinaryExpression {
-                kind,
-                lhs,
-                rhs,
-                ty,
-            }) => {
+            Expression::Binary(BinaryExpression { kind, lhs, rhs, ty }) => {
                 let resolved_lhs = lhs.resolve(variable_map, struct_map)?;
                 let resolved_rhs = rhs.resolve(variable_map, struct_map)?;
 

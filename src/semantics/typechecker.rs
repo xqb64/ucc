@@ -1612,13 +1612,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
         }
 
         Expression::Variable(VariableExpression { value, ty: _ }) => {
-            let v_type = SYMBOL_TABLE
-                .lock()
-                .unwrap()
-                .get(value)
-                .cloned()
-                .unwrap()
-                .ty;
+            let v_type = SYMBOL_TABLE.lock().unwrap().get(value).cloned().unwrap().ty;
 
             let some_fn_type = Type::Func {
                 params: vec![Type::Int],
