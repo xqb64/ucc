@@ -8,110 +8,89 @@ use crate::{
         BlockStatement, BreakStatement, CallExpression, CaseStatement, CastExpression,
         CompoundExpression, ConditionalExpression, ContinueStatement, Declaration,
         DefaultStatement, DerefExpression, DoWhileStatement, DotExpression, Expression,
-        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer,
-        LabeledStatement, MemberDeclaration, PostfixExpression, Program, ReturnStatement,
-        SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
-        StructDeclaration, SubscriptExpression, SwitchStatement, Type, UnaryExpression,
-        VariableDeclaration, VariableExpression, WhileStatement,
+        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, GotoStatement,
+        IfStatement, Initializer, LabeledStatement, MemberDeclaration, PostfixExpression, Program,
+        ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
+        StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement, Type,
+        UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement,
     },
 };
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Variable {
-    name: String,
-    from_current_scope: bool,
-    has_linkage: bool,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct StructTableEntry {
-    name: String,
-    from_current_scope: bool,
-}
-
 pub trait Resolve {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self>
+    ) -> Result<Self>
     where
         Self: Sized;
 }
 
-impl Resolve for Declaration {
+impl Resolve for Program {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
+    ) -> Result<Self> {
+        let resolved_block_items = self
+            .block_items
+            .iter()
+            .map(|block_item| block_item.resolve(variable_map, struct_map))
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(Program {
+            block_items: resolved_block_items,
+        })
+    }
+}
+
+impl Resolve for BlockItem {
+    fn resolve(
+        &self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self> {
         match self {
-            Declaration::Variable(var_decl) => {
-                var_decl.resolve(variable_map, struct_map)?;
-                Ok(self)
+            BlockItem::Declaration(decl) => {
+                let resolved = decl.resolve(variable_map, struct_map)?;
+                Ok(BlockItem::Declaration(resolved))
             }
-            Declaration::Function(func_decl) => {
-                func_decl.resolve(variable_map, struct_map)?;
-                Ok(self)
-            }
-            Declaration::Struct(struct_decl) => {
-                struct_decl.resolve(variable_map, struct_map)?;
-                Ok(self)
+            BlockItem::Statement(stmt) => {
+                let resolved = stmt.resolve(variable_map, struct_map)?;
+                Ok(BlockItem::Statement(resolved))
             }
         }
     }
 }
-
-impl Resolve for StructDeclaration {
+impl Resolve for Declaration {
     fn resolve(
-        &mut self,
-        _variable_map: &mut BTreeMap<String, Variable>,
+        &self,
+        variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self>
-    where
-        Self: Sized,
-    {
-        let prev_entry = struct_map.get(&self.tag);
-
-        let unique_tag;
-        if prev_entry.is_none() || !prev_entry.as_ref().unwrap().from_current_scope {
-            unique_tag = format!("struct.{}.{}", self.tag.clone(), make_temporary());
-            struct_map.insert(
-                self.tag.clone(),
-                StructTableEntry {
-                    name: unique_tag.clone(),
-                    from_current_scope: true,
-                },
-            );
-        } else {
-            unique_tag = prev_entry.unwrap().name.clone();
+    ) -> Result<Self> {
+        match self {
+            Declaration::Variable(var_decl) => {
+                let resolved = var_decl.resolve(variable_map, struct_map)?;
+                Ok(Declaration::Variable(resolved))
+            }
+            Declaration::Function(func_decl) => {
+                let resolved = func_decl.resolve(variable_map, struct_map)?;
+                Ok(Declaration::Function(resolved))
+            }
+            Declaration::Struct(struct_decl) => {
+                let resolved = struct_decl.resolve(variable_map, struct_map)?;
+                Ok(Declaration::Struct(resolved))
+            }
         }
-
-        let mut processed_members = vec![];
-
-        for member in self.members.iter() {
-            let processed_type = resolve_type(&member._type, struct_map)?;
-            let processed_member = MemberDeclaration {
-                name: member.name.clone(),
-                _type: processed_type,
-            };
-
-            processed_members.push(processed_member);
-        }
-
-        self.tag = unique_tag;
-        self.members = processed_members;
-
-        Ok(self)
     }
 }
 
 impl Resolve for VariableDeclaration {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
+    ) -> Result<Self> {
         match self.is_global {
             true => {
                 variable_map.insert(
@@ -123,14 +102,21 @@ impl Resolve for VariableDeclaration {
                     },
                 );
 
-                self.init = self
+                let resolved_init = self
                     .init
                     .as_ref()
-                    .map(|init| resolve_init(init, variable_map, struct_map))
+                    .map(|init| init.resolve(variable_map, struct_map))
                     .transpose()?;
-                self._type = resolve_type(&self._type, struct_map)?;
 
-                Ok(self)
+                let resolved_type = self._type.resolve(variable_map, struct_map)?;
+
+                Ok(VariableDeclaration {
+                    init: resolved_init,
+                    _type: resolved_type,
+                    storage_class: self.storage_class.clone(),
+                    is_global: self.is_global,
+                    name: self.name.clone(),
+                })
             }
             false => {
                 if variable_map.contains_key(&self.name) {
@@ -158,14 +144,21 @@ impl Resolve for VariableDeclaration {
                         },
                     );
 
-                    self.init = self
+                    let resolved_init = self
                         .init
                         .as_ref()
-                        .map(|init| resolve_init(init, variable_map, struct_map))
+                        .map(|init| init.resolve(variable_map, struct_map))
                         .transpose()?;
-                    self._type = resolve_type(&self._type, struct_map)?;
 
-                    Ok(self)
+                    let resolved_type = self._type.resolve(variable_map, struct_map)?;
+
+                    Ok(VariableDeclaration {
+                        name: self.name.clone(),
+                        _type: resolved_type,
+                        init: resolved_init,
+                        storage_class: self.storage_class.clone(),
+                        is_global: self.is_global,
+                    })
                 } else {
                     let unique_name = format!("var.{}.{}", self.name, make_temporary());
 
@@ -178,51 +171,33 @@ impl Resolve for VariableDeclaration {
                         },
                     );
 
-                    self.name = unique_name;
-                    self.init = self
+                    let resolved_init = self
                         .init
                         .as_ref()
-                        .map(|init| resolve_init(init, variable_map, struct_map))
+                        .map(|init| init.resolve(variable_map, struct_map))
                         .transpose()?;
-                    self._type = resolve_type(&self._type, struct_map)?;
 
-                    Ok(self)
+                    let resolved_type = self._type.resolve(variable_map, struct_map)?;
+
+                    Ok(VariableDeclaration {
+                        name: unique_name,
+                        _type: resolved_type,
+                        init: resolved_init,
+                        storage_class: self.storage_class.clone(),
+                        is_global: self.is_global,
+                    })
                 }
             }
         }
     }
 }
 
-fn resolve_init(
-    init: &Initializer,
-    variable_map: &mut BTreeMap<String, Variable>,
-    struct_map: &mut BTreeMap<String, StructTableEntry>,
-) -> Result<Initializer> {
-    match init {
-        Initializer::Single(name, single_init) => {
-            let resolved_expr = resolve_exp(single_init, variable_map, struct_map)?;
-            Ok(Initializer::Single(name.clone(), resolved_expr))
-        }
-        Initializer::Compound(name, _type, compound_init) => {
-            let resolved_inits = compound_init
-                .iter()
-                .map(|init| resolve_init(init, variable_map, struct_map))
-                .collect::<Result<Vec<_>>>()?;
-            Ok(Initializer::Compound(
-                name.clone(),
-                _type.clone(),
-                resolved_inits,
-            ))
-        }
-    }
-}
-
 impl Resolve for FunctionDeclaration {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
+    ) -> Result<Self> {
         if self.body.is_some() && !self.is_global {
             bail!("function definition in non-global scope");
         }
@@ -269,37 +244,112 @@ impl Resolve for FunctionDeclaration {
         let mut inner_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
 
-        let new_params = self
+        let resolved_params = self
             .params
             .iter()
             .map(|param| resolve_param(param, &mut inner_map))
             .collect::<Result<Vec<_>>>()?;
 
-        if let Some(body) = self.body.as_mut() {
-            body.resolve(&mut inner_map, &mut new_struct_map)?;
-        }
+        let resolved_body = match &*self.body {
+            Some(body) => body.resolve(&mut inner_map, &mut new_struct_map)?.into(),
+            None => None,
+        };
 
-        self.params = new_params;
-        self._type = resolve_type(&self._type, &mut new_struct_map)?;
+        let resolved_type = self._type.resolve(&mut inner_map, &mut new_struct_map)?;
 
-        Ok(self)
+        Ok(FunctionDeclaration {
+            name: self.name.clone(),
+            _type: resolved_type,
+            params: resolved_params,
+            body: resolved_body.into(),
+            is_global: self.is_global,
+            storage_class: self.storage_class.clone(),
+        })
     }
 }
 
-impl Resolve for BlockItem {
+impl Resolve for StructDeclaration {
     fn resolve(
-        &mut self,
+        &self,
+        _variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let prev_entry = struct_map.get(&self.tag);
+
+        let unique_tag;
+        if prev_entry.is_none() || !prev_entry.as_ref().unwrap().from_current_scope {
+            unique_tag = format!("struct.{}.{}", self.tag.clone(), make_temporary());
+            struct_map.insert(
+                self.tag.clone(),
+                StructTableEntry {
+                    name: unique_tag.clone(),
+                    from_current_scope: true,
+                },
+            );
+        } else {
+            unique_tag = prev_entry.unwrap().name.clone();
+        }
+
+        let mut processed_members = vec![];
+
+        for member in self.members.iter() {
+            let processed_type = member._type.resolve(_variable_map, struct_map)?;
+            let processed_member = MemberDeclaration {
+                name: member.name.clone(),
+                _type: processed_type,
+            };
+
+            processed_members.push(processed_member);
+        }
+
+        Ok(StructDeclaration {
+            tag: unique_tag,
+            members: processed_members,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Variable {
+    name: String,
+    from_current_scope: bool,
+    has_linkage: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructTableEntry {
+    name: String,
+    from_current_scope: bool,
+}
+
+impl Resolve for Initializer {
+    fn resolve(
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
+    ) -> Result<Self>
+    where
+        Self: Sized,
+    {
         match self {
-            BlockItem::Declaration(decl) => {
-                decl.resolve(variable_map, struct_map)?;
-                Ok(self)
+            Initializer::Single(name, single_init) => {
+                let resolved_expr = single_init.resolve(variable_map, struct_map)?;
+                Ok(Initializer::Single(name.to_owned(), resolved_expr))
             }
-            BlockItem::Statement(stmt) => {
-                stmt.resolve(variable_map, struct_map)?;
-                Ok(self)
+            Initializer::Compound(name, _type, compound_init) => {
+                let resolved_inits = compound_init
+                    .iter()
+                    .map(|init| init.resolve(variable_map, struct_map))
+                    .collect::<Result<Vec<_>>>()?;
+
+                Ok(Initializer::Compound(
+                    name.to_owned(),
+                    _type.to_owned(),
+                    resolved_inits,
+                ))
             }
         }
     }
@@ -307,529 +357,593 @@ impl Resolve for BlockItem {
 
 impl Resolve for Statement {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
+    ) -> Result<Self> {
         match self {
-            Statement::Expression(expr) => {
-                expr.resolve(variable_map, struct_map)?;
+            Statement::Expression(stmt_expr) => {
+                let resolved = stmt_expr.resolve(variable_map, struct_map)?;
+                Ok(Statement::Expression(resolved))
             }
 
-            Statement::Goto(_) => {}
-
-            Statement::Labeled(labeled) => {
-                labeled.resolve(variable_map, struct_map)?;
+            Statement::Goto(stmt_goto) => {
+                let resolved = stmt_goto.resolve(variable_map, struct_map)?;
+                Ok(Statement::Goto(resolved))
             }
 
-            Statement::Return(ret) => {
-                ret.resolve(variable_map, struct_map)?;
+            Statement::Labeled(stmt_labeled) => {
+                let resolved = stmt_labeled.resolve(variable_map, struct_map)?;
+                Ok(Statement::Labeled(resolved))
             }
-            Statement::If(if_stmt) => {
-                if_stmt.resolve(variable_map, struct_map)?;
+
+            Statement::Return(stmt_return) => {
+                let resolved = stmt_return.resolve(variable_map, struct_map)?;
+                Ok(Statement::Return(resolved))
+            }
+            Statement::If(stmt_if) => {
+                let resolved = stmt_if.resolve(variable_map, struct_map)?;
+                Ok(Statement::If(resolved))
             }
 
             Statement::Compound(block) => {
-                block.resolve(variable_map, struct_map)?;
+                let resolved = block.resolve(variable_map, struct_map)?;
+                Ok(Statement::Compound(resolved))
             }
 
-            Statement::For(for_stmt) => {
-                for_stmt.resolve(variable_map, struct_map)?;
+            Statement::For(stmt_for) => {
+                let resolved = stmt_for.resolve(variable_map, struct_map)?;
+                Ok(Statement::For(resolved))
             }
 
-            Statement::DoWhile(do_while) => {
-                do_while.resolve(variable_map, struct_map)?;
+            Statement::DoWhile(stmt_do_while) => {
+                let resolved = stmt_do_while.resolve(variable_map, struct_map)?;
+                Ok(Statement::DoWhile(resolved))
             }
 
-            Statement::While(while_stmt) => {
-                while_stmt.resolve(variable_map, struct_map)?;
+            Statement::While(stmt_while) => {
+                let resolved = stmt_while.resolve(variable_map, struct_map)?;
+                Ok(Statement::While(resolved))
             }
 
-            Statement::Break(break_stmt) => {
-                break_stmt.resolve(variable_map, struct_map)?;
+            Statement::Break(stmt_break) => {
+                let resolved = stmt_break.resolve(variable_map, struct_map)?;
+                Ok(Statement::Break(resolved))
             }
 
-            Statement::Continue(continue_stmt) => {
-                continue_stmt.resolve(variable_map, struct_map)?;
+            Statement::Continue(stmt_continue) => {
+                let resolved = stmt_continue.resolve(variable_map, struct_map)?;
+                Ok(Statement::Continue(resolved))
             }
 
-            Statement::Null => {}
+            Statement::Null => Ok(Statement::Null),
 
-            Statement::Switch(switch_stmt) => {
-                switch_stmt.resolve(variable_map, struct_map)?;
+            Statement::Switch(stmt_switch) => {
+                let resolved = stmt_switch.resolve(variable_map, struct_map)?;
+                Ok(Statement::Switch(resolved))
             }
 
-            Statement::Case(case_stmt) => {
-                case_stmt.resolve(variable_map, struct_map)?;
+            Statement::Case(stmt_case) => {
+                let resolved = stmt_case.resolve(variable_map, struct_map)?;
+                Ok(Statement::Case(resolved))
             }
 
-            Statement::Default(default_stmt) => {
-                default_stmt.resolve(variable_map, struct_map)?;
+            Statement::Default(stmt_default) => {
+                let resolved = stmt_default.resolve(variable_map, struct_map)?;
+                Ok(Statement::Default(resolved))
             }
         }
-
-        Ok(self)
     }
 }
 
 impl Resolve for SwitchStatement {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self>
+    ) -> Result<Self>
     where
         Self: Sized,
     {
-        self.condition = resolve_exp(&self.condition, variable_map, struct_map)?;
-        self.body.resolve(variable_map, struct_map)?;
+        let resolved_condition = self.condition.resolve(variable_map, struct_map)?;
+        let resolved_body = self.body.resolve(variable_map, struct_map)?;
 
-        Ok(self)
+        Ok(SwitchStatement {
+            condition: resolved_condition,
+            body: resolved_body.into(),
+            label: self.label.clone(),
+            cases: self.cases.clone(),
+        })
     }
 }
 
 impl Resolve for CaseStatement {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self>
+    ) -> Result<Self>
     where
         Self: Sized,
     {
-        self.body.resolve(variable_map, struct_map)?;
+        let resolved_body = self.body.resolve(variable_map, struct_map)?;
 
-        Ok(self)
+        Ok(CaseStatement {
+            value: self.value.clone(),
+            body: resolved_body.into(),
+            label: self.label.clone(),
+        })
     }
 }
 
 impl Resolve for DefaultStatement {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self>
+    ) -> Result<Self>
     where
         Self: Sized,
     {
-        self.body.resolve(variable_map, struct_map)?;
+        let resolved_body = self.body.resolve(variable_map, struct_map)?;
 
-        Ok(self)
+        Ok(DefaultStatement {
+            body: resolved_body.into(),
+            label: self.label.clone(),
+        })
     }
 }
 
 impl Resolve for LabeledStatement {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self>
+    ) -> Result<Self>
     where
         Self: Sized,
     {
-        self.body.resolve(variable_map, struct_map)?;
+        let resolved_body = self.body.resolve(variable_map, struct_map)?;
 
-        Ok(self)
+        Ok(LabeledStatement {
+            label: self.label.clone(),
+            body: resolved_body.into(),
+        })
     }
 }
 
 impl Resolve for ExpressionStatement {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
-        self.expr = resolve_exp(&self.expr, variable_map, struct_map)?;
+    ) -> Result<Self> {
+        let resolved_expr = self.expr.resolve(variable_map, struct_map)?;
 
-        Ok(self)
+        Ok(ExpressionStatement {
+            expr: resolved_expr,
+        })
     }
 }
 
 impl Resolve for ReturnStatement {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
-        self.expr = self
+    ) -> Result<Self> {
+        let resolved_expr = self
             .expr
             .as_ref()
-            .map(|expr| resolve_exp(expr, variable_map, struct_map))
+            .map(|expr| expr.resolve(variable_map, struct_map))
             .transpose()?;
-        self.target_type = self
+
+        let resolved_target_type = self
             .target_type
             .as_ref()
-            .map(|ty| resolve_type(ty, struct_map))
+            .map(|ty| ty.resolve(variable_map, struct_map))
             .transpose()?;
 
-        Ok(self)
-    }
-}
-
-impl Resolve for Program {
-    fn resolve(
-        &mut self,
-        variable_map: &mut BTreeMap<String, Variable>,
-        struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
-        for block_item in &mut self.block_items {
-            block_item.resolve(variable_map, struct_map)?;
-        }
-
-        Ok(self)
+        Ok(ReturnStatement {
+            expr: resolved_expr,
+            target_type: resolved_target_type,
+            belongs_to: self.belongs_to.clone(),
+        })
     }
 }
 
 impl Resolve for IfStatement {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
-        self.condition = resolve_exp(&self.condition, variable_map, struct_map)?;
-        self.then_branch = self
+    ) -> Result<Self> {
+        let resolved_condition = self.condition.resolve(variable_map, struct_map)?;
+        let resolved_then_branch = self
             .then_branch
             .resolve(variable_map, struct_map)?
             .to_owned()
             .into();
 
-        if let Some(else_branch) = self.else_branch.as_mut() {
-            else_branch.resolve(variable_map, struct_map)?;
-        }
+        let resolved_else_branch = match &*self.else_branch {
+            Some(else_branch) => else_branch.resolve(variable_map, struct_map)?.into(),
+            None => None,
+        };
 
-        Ok(self)
+        Ok(IfStatement {
+            condition: resolved_condition,
+            then_branch: resolved_then_branch,
+            else_branch: resolved_else_branch.into(),
+        })
     }
 }
 
 impl Resolve for BlockStatement {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
+    ) -> Result<Self> {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
 
-        for stmt in &mut self.stmts {
-            stmt.resolve(&mut new_variable_map, &mut new_struct_map)?;
-        }
+        let resolved_stmts = self
+            .stmts
+            .iter()
+            .map(|stmt| stmt.resolve(&mut new_variable_map, &mut new_struct_map))
+            .collect::<Result<Vec<_>>>()?;
 
-        Ok(self)
+        Ok(BlockStatement {
+            stmts: resolved_stmts,
+        })
     }
 }
 
 impl Resolve for ForStatement {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
+    ) -> Result<Self> {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
 
-        self.init = resolve_for_init(&mut self.init, &mut new_variable_map, &mut new_struct_map)?;
+        let resolved_init = self
+            .init
+            .resolve(&mut new_variable_map, &mut new_struct_map)?;
 
-        if let Some(condition) = self.condition.as_mut() {
-            *condition = resolve_exp(condition, &mut new_variable_map, struct_map)?;
-        }
+        let resolved_condition = match &self.condition {
+            Some(condition) => condition.resolve(&mut new_variable_map, struct_map)?.into(),
+            None => None,
+        };
 
-        if let Some(post) = self.post.as_mut() {
-            *post = resolve_exp(post, &mut new_variable_map, struct_map)?;
-        }
+        let resolved_post = match &self.post {
+            Some(post) => post.resolve(&mut new_variable_map, struct_map)?.into(),
+            None => None,
+        };
 
-        self.body = self
+        let resolved_body = self
             .body
             .resolve(&mut new_variable_map, &mut new_struct_map)?
             .to_owned()
             .into();
 
-        Ok(self)
+        Ok(ForStatement {
+            init: resolved_init,
+            condition: resolved_condition,
+            post: resolved_post,
+            body: resolved_body,
+            label: self.label.clone(),
+        })
     }
 }
 
 impl Resolve for DoWhileStatement {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
+    ) -> Result<Self> {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
 
-        self.body = self
+        let resolved_body = self
             .body
             .resolve(&mut new_variable_map, &mut new_struct_map)?
             .to_owned()
             .into();
 
-        self.condition = resolve_exp(&self.condition, &mut new_variable_map, struct_map)?;
+        let resolved_condition = self.condition.resolve(&mut new_variable_map, struct_map)?;
 
-        Ok(self)
+        Ok(DoWhileStatement {
+            condition: resolved_condition,
+            body: resolved_body,
+            label: self.label.clone(),
+        })
     }
 }
 
 impl Resolve for WhileStatement {
     fn resolve(
-        &mut self,
+        &self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
+    ) -> Result<Self> {
         let mut new_variable_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
 
-        self.condition = resolve_exp(&self.condition, &mut new_variable_map, struct_map)?;
+        let resolved_condition = self.condition.resolve(&mut new_variable_map, struct_map)?;
 
-        self.body = self
+        let resolved_body = self
             .body
             .resolve(&mut new_variable_map, &mut new_struct_map)?
             .to_owned()
             .into();
 
-        Ok(self)
+        Ok(WhileStatement {
+            condition: resolved_condition,
+            body: resolved_body,
+            label: self.label.clone(),
+        })
+    }
+}
+
+impl Resolve for GotoStatement {
+    fn resolve(
+        &self,
+        _variable_map: &mut BTreeMap<String, Variable>,
+        _struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self> {
+        Ok(self.to_owned())
     }
 }
 
 impl Resolve for BreakStatement {
     fn resolve(
-        &mut self,
+        &self,
         _variable_map: &mut BTreeMap<String, Variable>,
         _struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
-        Ok(self)
+    ) -> Result<Self> {
+        Ok(self.to_owned())
     }
 }
 
 impl Resolve for ContinueStatement {
     fn resolve(
-        &mut self,
+        &self,
         _variable_map: &mut BTreeMap<String, Variable>,
         _struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<&mut Self> {
-        Ok(self)
+    ) -> Result<Self> {
+        Ok(self.to_owned())
     }
 }
 
-fn resolve_exp(
-    exp: &Expression,
-    variable_map: &mut BTreeMap<String, Variable>,
-    struct_map: &mut BTreeMap<String, StructTableEntry>,
-) -> Result<Expression> {
-    match exp.to_owned() {
-        Expression::Compound(CompoundExpression {
-            kind,
-            lhs,
-            rhs,
-            result_t,
-            _type,
-        }) => {
-            let resolved_lhs = resolve_exp(&lhs, variable_map, struct_map)?;
-            let resolved_rhs = resolve_exp(&rhs, variable_map, struct_map)?;
-
-            Ok(Expression::Compound(CompoundExpression {
+impl Resolve for Expression {
+    fn resolve(
+        &self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        match self.to_owned() {
+            Expression::Compound(CompoundExpression {
                 kind,
-                lhs: resolved_lhs.into(),
-                rhs: resolved_rhs.into(),
+                lhs,
+                rhs,
                 result_t,
                 _type,
-            }))
-        }
+            }) => {
+                let resolved_lhs = lhs.resolve(variable_map, struct_map)?;
+                let resolved_rhs = rhs.resolve(variable_map, struct_map)?;
 
-        Expression::Assign(AssignExpression {
-            op,
-            ref lhs,
-            rhs,
-            _type,
-        }) => {
-            let resolved_lhs = resolve_exp(lhs, variable_map, struct_map)?;
-            let resolved_rhs = resolve_exp(&rhs, variable_map, struct_map)?;
-
-            Ok(Expression::Assign(AssignExpression {
-                op,
-                lhs: resolved_lhs.into(),
-                rhs: resolved_rhs.into(),
-                _type,
-            }))
-        }
-
-        Expression::Variable(var) => {
-            let variable = variable_map
-                .get(&var.value)
-                .ok_or_else(|| anyhow::anyhow!("undeclared variable: {}", var.value))?;
-
-            Ok(Expression::Variable(VariableExpression {
-                value: variable.name.clone(),
-                _type: Type::Dummy,
-            }))
-        }
-
-        Expression::Constant(konst) => Ok(Expression::Constant(konst)),
-
-        Expression::Unary(UnaryExpression { kind, expr, _type }) => {
-            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
-
-            Ok(Expression::Unary(UnaryExpression {
-                kind,
-                expr: resolved_expr.into(),
-                _type,
-            }))
-        }
-
-        Expression::Binary(BinaryExpression {
-            kind,
-            lhs,
-            rhs,
-            _type,
-        }) => {
-            let resolved_lhs = resolve_exp(&lhs, variable_map, struct_map)?;
-            let resolved_rhs = resolve_exp(&rhs, variable_map, struct_map)?;
-
-            Ok(Expression::Binary(BinaryExpression {
-                kind,
-                lhs: resolved_lhs.into(),
-                rhs: resolved_rhs.into(),
-                _type,
-            }))
-        }
-
-        Expression::Conditional(ConditionalExpression {
-            condition,
-            then_expr,
-            else_expr,
-            _type,
-        }) => {
-            let resolved_condition = resolve_exp(&condition, variable_map, struct_map)?;
-            let resolved_then_expr = resolve_exp(&then_expr, variable_map, struct_map)?;
-            let resolved_else_expr = resolve_exp(&else_expr, variable_map, struct_map)?;
-
-            Ok(Expression::Conditional(ConditionalExpression {
-                condition: resolved_condition.into(),
-                then_expr: resolved_then_expr.into(),
-                else_expr: resolved_else_expr.into(),
-                _type,
-            }))
-        }
-
-        Expression::Call(CallExpression { name, args, _type }) => {
-            if variable_map.contains_key(&name) {
-                let new_func_name = variable_map.get(&name).unwrap().name.clone();
-                let resolved_args = args
-                    .iter()
-                    .map(|arg| resolve_exp(arg, variable_map, struct_map))
-                    .collect::<Result<Vec<_>>>()?;
-
-                Ok(Expression::Call(CallExpression {
-                    name: new_func_name,
-                    args: resolved_args,
+                Ok(Expression::Compound(CompoundExpression {
+                    kind,
+                    lhs: resolved_lhs.into(),
+                    rhs: resolved_rhs.into(),
+                    result_t,
                     _type,
                 }))
-            } else {
-                bail!("undeclared function");
             }
-        }
 
-        Expression::Cast(CastExpression {
-            target_type,
-            expr,
-            _type,
-        }) => {
-            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
-            let resolved_type = resolve_type(&target_type, struct_map)?;
-
-            Ok(Expression::Cast(CastExpression {
-                target_type: resolved_type,
-                expr: resolved_expr.into(),
+            Expression::Assign(AssignExpression {
+                op,
+                ref lhs,
+                rhs,
                 _type,
-            }))
-        }
+            }) => {
+                let resolved_lhs = lhs.resolve(variable_map, struct_map)?;
+                let resolved_rhs = rhs.resolve(variable_map, struct_map)?;
 
-        Expression::AddrOf(AddrOfExpression { expr, _type }) => {
-            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
+                Ok(Expression::Assign(AssignExpression {
+                    op,
+                    lhs: resolved_lhs.into(),
+                    rhs: resolved_rhs.into(),
+                    _type,
+                }))
+            }
 
-            Ok(Expression::AddrOf(AddrOfExpression {
-                expr: resolved_expr.into(),
-                _type,
-            }))
-        }
+            Expression::Variable(var) => {
+                let variable = variable_map
+                    .get(&var.value)
+                    .ok_or_else(|| anyhow::anyhow!("undeclared variable: {}", var.value))?;
 
-        Expression::Deref(DerefExpression { expr, _type }) => {
-            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
+                Ok(Expression::Variable(VariableExpression {
+                    value: variable.name.clone(),
+                    _type: Type::Dummy,
+                }))
+            }
 
-            Ok(Expression::Deref(DerefExpression {
-                expr: resolved_expr.into(),
-                _type,
-            }))
-        }
+            Expression::Constant(konst) => Ok(Expression::Constant(konst)),
 
-        Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
-            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
-            let resolved_index = resolve_exp(&index, variable_map, struct_map)?;
+            Expression::Unary(UnaryExpression { kind, expr, _type }) => {
+                let resolved_expr = expr.resolve(variable_map, struct_map)?;
 
-            Ok(Expression::Subscript(SubscriptExpression {
-                expr: resolved_expr.into(),
-                index: resolved_index.into(),
-                _type,
-            }))
-        }
+                Ok(Expression::Unary(UnaryExpression {
+                    kind,
+                    expr: resolved_expr.into(),
+                    _type,
+                }))
+            }
 
-        Expression::String(StringExpression { value, _type }) => {
-            Ok(Expression::String(StringExpression { value, _type }))
-        }
-
-        Expression::Sizeof(SizeofExpression { expr, _type }) => {
-            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
-            let resolved_type = resolve_type(&_type, struct_map)?;
-            Ok(Expression::Sizeof(SizeofExpression {
-                expr: resolved_expr.into(),
-                _type: resolved_type,
-            }))
-        }
-
-        Expression::Dot(DotExpression {
-            structure,
-            member,
-            _type,
-        }) => {
-            let resolved_structure = resolve_exp(&structure, variable_map, struct_map)?;
-            Ok(Expression::Dot(DotExpression {
-                structure: resolved_structure.into(),
-                member,
-                _type,
-            }))
-        }
-
-        Expression::Arrow(ArrowExpression {
-            pointer,
-            member,
-            _type,
-        }) => {
-            let resolved_pointer = resolve_exp(&pointer, variable_map, struct_map)?;
-            Ok(Expression::Arrow(ArrowExpression {
-                pointer: resolved_pointer.into(),
-                member,
-                _type,
-            }))
-        }
-
-        Expression::SizeofT(SizeofTExpression { t, _type }) => {
-            let resolved_type = resolve_type(&t, struct_map)?;
-            Ok(Expression::SizeofT(SizeofTExpression {
-                t: resolved_type,
-                _type,
-            }))
-        }
-
-        Expression::Postfix(PostfixExpression { kind, expr, _type }) => {
-            let resolved_type = resolve_type(&_type, struct_map)?;
-            let resolved_expr = resolve_exp(&expr, variable_map, struct_map)?;
-
-            Ok(Expression::Postfix(PostfixExpression {
-                expr: resolved_expr.into(),
+            Expression::Binary(BinaryExpression {
                 kind,
-                _type: resolved_type,
-            }))
-        }
+                lhs,
+                rhs,
+                _type,
+            }) => {
+                let resolved_lhs = lhs.resolve(variable_map, struct_map)?;
+                let resolved_rhs = rhs.resolve(variable_map, struct_map)?;
 
-        _ => unreachable!(),
+                Ok(Expression::Binary(BinaryExpression {
+                    kind,
+                    lhs: resolved_lhs.into(),
+                    rhs: resolved_rhs.into(),
+                    _type,
+                }))
+            }
+
+            Expression::Conditional(ConditionalExpression {
+                condition,
+                then_expr,
+                else_expr,
+                _type,
+            }) => {
+                let resolved_condition = condition.resolve(variable_map, struct_map)?;
+                let resolved_then_expr = then_expr.resolve(variable_map, struct_map)?;
+                let resolved_else_expr = else_expr.resolve(variable_map, struct_map)?;
+
+                Ok(Expression::Conditional(ConditionalExpression {
+                    condition: resolved_condition.into(),
+                    then_expr: resolved_then_expr.into(),
+                    else_expr: resolved_else_expr.into(),
+                    _type,
+                }))
+            }
+
+            Expression::Call(CallExpression { name, args, _type }) => {
+                if variable_map.contains_key(&name) {
+                    let new_func_name = variable_map.get(&name).unwrap().name.clone();
+                    let resolved_args = args
+                        .iter()
+                        .map(|arg| arg.resolve(variable_map, struct_map))
+                        .collect::<Result<Vec<_>>>()?;
+
+                    Ok(Expression::Call(CallExpression {
+                        name: new_func_name,
+                        args: resolved_args,
+                        _type,
+                    }))
+                } else {
+                    bail!("undeclared function");
+                }
+            }
+
+            Expression::Cast(CastExpression {
+                target_type,
+                expr,
+                _type,
+            }) => {
+                let resolved_expr = expr.resolve(variable_map, struct_map)?;
+                let resolved_type = target_type.resolve(variable_map, struct_map)?;
+
+                Ok(Expression::Cast(CastExpression {
+                    target_type: resolved_type,
+                    expr: resolved_expr.into(),
+                    _type,
+                }))
+            }
+
+            Expression::AddrOf(AddrOfExpression { expr, _type }) => {
+                let resolved_expr = expr.resolve(variable_map, struct_map)?;
+
+                Ok(Expression::AddrOf(AddrOfExpression {
+                    expr: resolved_expr.into(),
+                    _type,
+                }))
+            }
+
+            Expression::Deref(DerefExpression { expr, _type }) => {
+                let resolved_expr = expr.resolve(variable_map, struct_map)?;
+
+                Ok(Expression::Deref(DerefExpression {
+                    expr: resolved_expr.into(),
+                    _type,
+                }))
+            }
+
+            Expression::Subscript(SubscriptExpression { expr, index, _type }) => {
+                let resolved_expr = expr.resolve(variable_map, struct_map)?;
+                let resolved_index = index.resolve(variable_map, struct_map)?;
+
+                Ok(Expression::Subscript(SubscriptExpression {
+                    expr: resolved_expr.into(),
+                    index: resolved_index.into(),
+                    _type,
+                }))
+            }
+
+            Expression::String(StringExpression { value, _type }) => {
+                Ok(Expression::String(StringExpression { value, _type }))
+            }
+
+            Expression::Sizeof(SizeofExpression { expr, _type }) => {
+                let resolved_expr = expr.resolve(variable_map, struct_map)?;
+                let resolved_type = _type.resolve(variable_map, struct_map)?;
+                Ok(Expression::Sizeof(SizeofExpression {
+                    expr: resolved_expr.into(),
+                    _type: resolved_type,
+                }))
+            }
+
+            Expression::Dot(DotExpression {
+                structure,
+                member,
+                _type,
+            }) => {
+                let resolved_structure = structure.resolve(variable_map, struct_map)?;
+                Ok(Expression::Dot(DotExpression {
+                    structure: resolved_structure.into(),
+                    member,
+                    _type,
+                }))
+            }
+
+            Expression::Arrow(ArrowExpression {
+                pointer,
+                member,
+                _type,
+            }) => {
+                let resolved_pointer = pointer.resolve(variable_map, struct_map)?;
+                Ok(Expression::Arrow(ArrowExpression {
+                    pointer: resolved_pointer.into(),
+                    member,
+                    _type,
+                }))
+            }
+
+            Expression::SizeofT(SizeofTExpression { t, _type }) => {
+                let resolved_type = t.resolve(variable_map, struct_map)?;
+                Ok(Expression::SizeofT(SizeofTExpression {
+                    t: resolved_type,
+                    _type,
+                }))
+            }
+
+            Expression::Postfix(PostfixExpression { kind, expr, _type }) => {
+                let resolved_type = _type.resolve(variable_map, struct_map)?;
+                let resolved_expr = expr.resolve(variable_map, struct_map)?;
+
+                Ok(Expression::Postfix(PostfixExpression {
+                    expr: resolved_expr.into(),
+                    kind,
+                    _type: resolved_type,
+                }))
+            }
+
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -868,21 +982,28 @@ fn copy_struct_map(
     spam
 }
 
-fn resolve_for_init<'a>(
-    init: &'a mut ForInit,
-    variable_map: &'a mut BTreeMap<String, Variable>,
-    struct_map: &'a mut BTreeMap<String, StructTableEntry>,
-) -> Result<ForInit> {
-    match init {
-        ForInit::Expression(expr) => {
-            if let Some(expr) = expr.as_mut() {
-                *expr = resolve_exp(expr, variable_map, struct_map)?;
+impl Resolve for ForInit {
+    fn resolve(
+        &self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        match self {
+            ForInit::Expression(expr) => {
+                if let Some(expr) = expr {
+                    let resolved_expr = expr.resolve(variable_map, struct_map)?;
+                    Ok(ForInit::Expression(resolved_expr.into()))
+                } else {
+                    Ok(ForInit::Expression(expr.to_owned()))
+                }
             }
-            Ok(ForInit::Expression(expr.to_owned()))
-        }
-        ForInit::Declaration(ref mut decl) => {
-            let resolved_decl = decl.resolve(variable_map, struct_map)?;
-            Ok(ForInit::Declaration(resolved_decl.to_owned()))
+            ForInit::Declaration(decl) => {
+                let resolved_decl = decl.resolve(variable_map, struct_map)?;
+                Ok(ForInit::Declaration(resolved_decl.to_owned()))
+            }
         }
     }
 }
@@ -906,45 +1027,51 @@ fn resolve_param(param: &str, variable_map: &mut BTreeMap<String, Variable>) -> 
     Ok(unique_name)
 }
 
-fn resolve_type(
-    type_specifier: &Type,
-    struct_map: &mut BTreeMap<String, StructTableEntry>,
-) -> Result<Type> {
-    match type_specifier {
-        Type::Struct { tag } => {
-            if struct_map.contains_key(tag) {
-                let unique_tag = struct_map.get(tag).cloned().unwrap().name.clone();
-                Ok(Type::Struct { tag: unique_tag })
-            } else {
-                bail!("Specified an undeclared structure tag.")
+impl Resolve for Type {
+    fn resolve(
+        &self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        match self {
+            Type::Struct { tag } => {
+                if struct_map.contains_key(tag) {
+                    let unique_tag = struct_map.get(tag).cloned().unwrap().name.clone();
+                    Ok(Type::Struct { tag: unique_tag })
+                } else {
+                    bail!("Specified an undeclared structure tag.")
+                }
             }
-        }
 
-        Type::Pointer(referenced) => {
-            let resolved_referenced = resolve_type(referenced, struct_map)?;
-            Ok(Type::Pointer(Box::new(resolved_referenced)))
-        }
-
-        Type::Array { element, size } => {
-            let resolved_element = resolve_type(element, struct_map)?;
-            Ok(Type::Array {
-                element: Box::new(resolved_element),
-                size: *size,
-            })
-        }
-
-        Type::Func { params, ret } => {
-            let mut resolved_params = vec![];
-            for param in params {
-                resolved_params.push(resolve_type(param, struct_map)?);
+            Type::Pointer(referenced) => {
+                let resolved_referenced = referenced.resolve(variable_map, struct_map)?;
+                Ok(Type::Pointer(Box::new(resolved_referenced)))
             }
-            let resolved_ret = resolve_type(ret, struct_map)?;
-            Ok(Type::Func {
-                params: resolved_params,
-                ret: Box::new(resolved_ret),
-            })
-        }
 
-        _ => Ok(type_specifier.clone()),
+            Type::Array { element, size } => {
+                let resolved_element = element.resolve(variable_map, struct_map)?;
+                Ok(Type::Array {
+                    element: Box::new(resolved_element),
+                    size: *size,
+                })
+            }
+
+            Type::Func { params, ret } => {
+                let mut resolved_params = vec![];
+                for param in params {
+                    resolved_params.push(param.resolve(variable_map, struct_map)?);
+                }
+                let resolved_ret = ret.resolve(variable_map, struct_map)?;
+                Ok(Type::Func {
+                    params: resolved_params,
+                    ret: Box::new(resolved_ret),
+                })
+            }
+
+            _ => Ok(self.clone()),
+        }
     }
 }

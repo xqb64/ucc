@@ -54,7 +54,7 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let mut parser = Parser::new(tokens);
-    let mut raw_ast = parser.parse()?;
+    let raw_ast = parser.parse()?;
 
     if opts.parse {
         println!("{:#?}", raw_ast);
@@ -64,8 +64,10 @@ fn run(opts: &Opt) -> Result<()> {
     let mut variable_map = BTreeMap::new();
     let mut struct_map = BTreeMap::new();
 
-    let cooked_ast = raw_ast
-        .resolve(&mut variable_map, &mut struct_map)?
+    // tmp
+    let mut resolved_ast = raw_ast.resolve(&mut variable_map, &mut struct_map)?;
+
+    let cooked_ast = resolved_ast
         .loop_label(LabelContext {
             innermost: LabelKind::None,
             loop_label: "",
