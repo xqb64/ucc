@@ -123,7 +123,11 @@ impl Resolve for VariableDeclaration {
                     },
                 );
 
-                self.init = self.init.as_ref().map(|init| resolve_init(init, variable_map, struct_map)).transpose()?;
+                self.init = self
+                    .init
+                    .as_ref()
+                    .map(|init| resolve_init(init, variable_map, struct_map))
+                    .transpose()?;
                 self._type = resolve_type(&self._type, struct_map)?;
 
                 Ok(self)
@@ -154,7 +158,11 @@ impl Resolve for VariableDeclaration {
                         },
                     );
 
-                    self.init = self.init.as_ref().map(|init| resolve_init(init, variable_map, struct_map)).transpose()?;
+                    self.init = self
+                        .init
+                        .as_ref()
+                        .map(|init| resolve_init(init, variable_map, struct_map))
+                        .transpose()?;
                     self._type = resolve_type(&self._type, struct_map)?;
 
                     Ok(self)
@@ -171,7 +179,11 @@ impl Resolve for VariableDeclaration {
                     );
 
                     self.name = unique_name;
-                    self.init = self.init.as_ref().map(|init| resolve_init(init, variable_map, struct_map)).transpose()?;
+                    self.init = self
+                        .init
+                        .as_ref()
+                        .map(|init| resolve_init(init, variable_map, struct_map))
+                        .transpose()?;
                     self._type = resolve_type(&self._type, struct_map)?;
 
                     Ok(self)
@@ -257,11 +269,11 @@ impl Resolve for FunctionDeclaration {
         let mut inner_map = copy_variable_map(variable_map);
         let mut new_struct_map = copy_struct_map(struct_map);
 
-        let mut new_params = vec![];
-
-        for param in &self.params {
-            new_params.push(resolve_param(param, &mut inner_map)?);
-        }
+        let new_params = self
+            .params
+            .iter()
+            .map(|param| resolve_param(param, &mut inner_map))
+            .collect::<Result<Vec<_>>>()?;
 
         self.body =
             resolve_optional_block_item(&mut self.body, &mut inner_map, &mut new_struct_map)?
@@ -438,9 +450,16 @@ impl Resolve for ReturnStatement {
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<&mut Self> {
-        self.expr = self.expr.as_ref().map(|expr| resolve_exp(expr, variable_map, struct_map)).transpose()?;
-        self.target_type = self.target_type.as_ref().map(|ty| resolve_type(ty, struct_map)).transpose()?;
-
+        self.expr = self
+            .expr
+            .as_ref()
+            .map(|expr| resolve_exp(expr, variable_map, struct_map))
+            .transpose()?;
+        self.target_type = self
+            .target_type
+            .as_ref()
+            .map(|ty| resolve_type(ty, struct_map))
+            .transpose()?;
 
         Ok(self)
     }
