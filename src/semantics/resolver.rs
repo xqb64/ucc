@@ -18,7 +18,7 @@ use crate::{
 
 pub trait Resolve {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self>
@@ -28,13 +28,13 @@ pub trait Resolve {
 
 impl Resolve for Program {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
         let resolved_block_items = self
             .block_items
-            .iter()
+            .into_iter()
             .map(|block_item| block_item.resolve(variable_map, struct_map))
             .collect::<Result<Vec<_>>>()?;
 
@@ -46,7 +46,7 @@ impl Resolve for Program {
 
 impl Resolve for BlockItem {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -64,7 +64,7 @@ impl Resolve for BlockItem {
 }
 impl Resolve for Declaration {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -87,7 +87,7 @@ impl Resolve for Declaration {
 
 impl Resolve for VariableDeclaration {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -104,7 +104,6 @@ impl Resolve for VariableDeclaration {
 
                 let resolved_init = self
                     .init
-                    .as_ref()
                     .map(|init| init.resolve(variable_map, struct_map))
                     .transpose()?;
 
@@ -146,7 +145,6 @@ impl Resolve for VariableDeclaration {
 
                     let resolved_init = self
                         .init
-                        .as_ref()
                         .map(|init| init.resolve(variable_map, struct_map))
                         .transpose()?;
 
@@ -173,7 +171,6 @@ impl Resolve for VariableDeclaration {
 
                     let resolved_init = self
                         .init
-                        .as_ref()
                         .map(|init| init.resolve(variable_map, struct_map))
                         .transpose()?;
 
@@ -194,7 +191,7 @@ impl Resolve for VariableDeclaration {
 
 impl Resolve for FunctionDeclaration {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -250,7 +247,7 @@ impl Resolve for FunctionDeclaration {
             .map(|param| resolve_param(param, &mut inner_map))
             .collect::<Result<Vec<_>>>()?;
 
-        let resolved_body = match &*self.body {
+        let resolved_body = match *self.body {
             Some(body) => body.resolve(&mut inner_map, &mut new_struct_map)?.into(),
             None => None,
         };
@@ -270,7 +267,7 @@ impl Resolve for FunctionDeclaration {
 
 impl Resolve for StructDeclaration {
     fn resolve(
-        &self,
+        self,
         _variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self>
@@ -295,7 +292,7 @@ impl Resolve for StructDeclaration {
 
         let mut processed_members = vec![];
 
-        for member in self.members.iter() {
+        for member in self.members.into_iter() {
             let processed_type = member._type.resolve(_variable_map, struct_map)?;
             let processed_member = MemberDeclaration {
                 name: member.name.clone(),
@@ -327,7 +324,7 @@ pub struct StructTableEntry {
 
 impl Resolve for Initializer {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self>
@@ -341,7 +338,7 @@ impl Resolve for Initializer {
             }
             Initializer::Compound(name, _type, compound_init) => {
                 let resolved_inits = compound_init
-                    .iter()
+                    .into_iter()
                     .map(|init| init.resolve(variable_map, struct_map))
                     .collect::<Result<Vec<_>>>()?;
 
@@ -357,7 +354,7 @@ impl Resolve for Initializer {
 
 impl Resolve for Statement {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -438,7 +435,7 @@ impl Resolve for Statement {
 
 impl Resolve for SwitchStatement {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self>
@@ -459,7 +456,7 @@ impl Resolve for SwitchStatement {
 
 impl Resolve for CaseStatement {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self>
@@ -478,7 +475,7 @@ impl Resolve for CaseStatement {
 
 impl Resolve for DefaultStatement {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self>
@@ -496,7 +493,7 @@ impl Resolve for DefaultStatement {
 
 impl Resolve for LabeledStatement {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self>
@@ -514,7 +511,7 @@ impl Resolve for LabeledStatement {
 
 impl Resolve for ExpressionStatement {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -528,19 +525,17 @@ impl Resolve for ExpressionStatement {
 
 impl Resolve for ReturnStatement {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
         let resolved_expr = self
             .expr
-            .as_ref()
             .map(|expr| expr.resolve(variable_map, struct_map))
             .transpose()?;
 
         let resolved_target_type = self
             .target_type
-            .as_ref()
             .map(|ty| ty.resolve(variable_map, struct_map))
             .transpose()?;
 
@@ -554,7 +549,7 @@ impl Resolve for ReturnStatement {
 
 impl Resolve for IfStatement {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -565,7 +560,7 @@ impl Resolve for IfStatement {
             .to_owned()
             .into();
 
-        let resolved_else_branch = match &*self.else_branch {
+        let resolved_else_branch = match *self.else_branch {
             Some(else_branch) => else_branch.resolve(variable_map, struct_map)?.into(),
             None => None,
         };
@@ -580,7 +575,7 @@ impl Resolve for IfStatement {
 
 impl Resolve for BlockStatement {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -589,7 +584,7 @@ impl Resolve for BlockStatement {
 
         let resolved_stmts = self
             .stmts
-            .iter()
+            .into_iter()
             .map(|stmt| stmt.resolve(&mut new_variable_map, &mut new_struct_map))
             .collect::<Result<Vec<_>>>()?;
 
@@ -601,7 +596,7 @@ impl Resolve for BlockStatement {
 
 impl Resolve for ForStatement {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -612,12 +607,12 @@ impl Resolve for ForStatement {
             .init
             .resolve(&mut new_variable_map, &mut new_struct_map)?;
 
-        let resolved_condition = match &self.condition {
+        let resolved_condition = match self.condition {
             Some(condition) => condition.resolve(&mut new_variable_map, struct_map)?.into(),
             None => None,
         };
 
-        let resolved_post = match &self.post {
+        let resolved_post = match self.post {
             Some(post) => post.resolve(&mut new_variable_map, struct_map)?.into(),
             None => None,
         };
@@ -640,7 +635,7 @@ impl Resolve for ForStatement {
 
 impl Resolve for DoWhileStatement {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -665,7 +660,7 @@ impl Resolve for DoWhileStatement {
 
 impl Resolve for WhileStatement {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -690,7 +685,7 @@ impl Resolve for WhileStatement {
 
 impl Resolve for GotoStatement {
     fn resolve(
-        &self,
+        self,
         _variable_map: &mut BTreeMap<String, Variable>,
         _struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -700,7 +695,7 @@ impl Resolve for GotoStatement {
 
 impl Resolve for BreakStatement {
     fn resolve(
-        &self,
+        self,
         _variable_map: &mut BTreeMap<String, Variable>,
         _struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -710,7 +705,7 @@ impl Resolve for BreakStatement {
 
 impl Resolve for ContinueStatement {
     fn resolve(
-        &self,
+        self,
         _variable_map: &mut BTreeMap<String, Variable>,
         _struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
@@ -720,7 +715,7 @@ impl Resolve for ContinueStatement {
 
 impl Resolve for Expression {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self>
@@ -749,7 +744,7 @@ impl Resolve for Expression {
 
             Expression::Assign(AssignExpression {
                 op,
-                ref lhs,
+                lhs,
                 rhs,
                 _type,
             }) => {
@@ -826,7 +821,7 @@ impl Resolve for Expression {
                 if variable_map.contains_key(&name) {
                     let new_func_name = variable_map.get(&name).unwrap().name.clone();
                     let resolved_args = args
-                        .iter()
+                        .into_iter()
                         .map(|arg| arg.resolve(variable_map, struct_map))
                         .collect::<Result<Vec<_>>>()?;
 
@@ -984,7 +979,7 @@ fn copy_struct_map(
 
 impl Resolve for ForInit {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self>
@@ -1029,7 +1024,7 @@ fn resolve_param(param: &str, variable_map: &mut BTreeMap<String, Variable>) -> 
 
 impl Resolve for Type {
     fn resolve(
-        &self,
+        self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self>
@@ -1038,8 +1033,8 @@ impl Resolve for Type {
     {
         match self {
             Type::Struct { tag } => {
-                if struct_map.contains_key(tag) {
-                    let unique_tag = struct_map.get(tag).cloned().unwrap().name.clone();
+                if struct_map.contains_key(&tag) {
+                    let unique_tag = struct_map.get(&tag).cloned().unwrap().name.clone();
                     Ok(Type::Struct { tag: unique_tag })
                 } else {
                     bail!("Specified an undeclared structure tag.")
@@ -1055,7 +1050,7 @@ impl Resolve for Type {
                 let resolved_element = element.resolve(variable_map, struct_map)?;
                 Ok(Type::Array {
                     element: Box::new(resolved_element),
-                    size: *size,
+                    size,
                 })
             }
 

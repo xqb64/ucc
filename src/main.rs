@@ -65,8 +65,8 @@ fn run(opts: &Opt) -> Result<()> {
     let mut struct_map = BTreeMap::new();
 
     // tmp
-    let resolved_ast = raw_ast.resolve(&mut variable_map, &mut struct_map)?;
-    let mut labeled_ast = resolved_ast
+    let mut labeled_ast = raw_ast
+        .resolve(&mut variable_map, &mut struct_map)?
         .loop_label(LabelContext {
             innermost: LabelKind::None,
             loop_label: "",
