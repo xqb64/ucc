@@ -65,14 +65,14 @@ fn run(opts: &Opt) -> Result<()> {
     let mut struct_map = BTreeMap::new();
 
     // tmp
-    let mut resolved_ast = raw_ast.resolve(&mut variable_map, &mut struct_map)?;
-
-    let cooked_ast = resolved_ast
+    let resolved_ast = raw_ast.resolve(&mut variable_map, &mut struct_map)?;
+    let mut labeled_ast = resolved_ast
         .loop_label(LabelContext {
             innermost: LabelKind::None,
             loop_label: "",
             switch_label: "",
-        })?
+        })?;
+    let cooked_ast = labeled_ast
         .label_check(&mut HashSet::new(), "")?
         .typecheck()?
         .collect_switch_cases(&mut vec![], &Type::Dummy)?;

@@ -25,63 +25,79 @@ pub enum LabelKind<'a> {
 }
 
 pub trait LoopLabel {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self>;
+    fn loop_label(self, ctx: LabelContext) -> Result<Self>
+    where
+        Self: Sized;
 }
 
 impl LoopLabel for Program {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
-        for block_item in self.block_items.iter_mut() {
-            block_item.loop_label(ctx)?;
-        }
-        Ok(self)
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
+        let labeled_block_items = self
+            .block_items
+            .into_iter()
+            .map(|block_item| block_item.loop_label(ctx))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Program {
+            block_items: labeled_block_items,
+        })
     }
 }
 
 impl LoopLabel for BlockStatement {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
-        for stmt in self.stmts.iter_mut() {
-            stmt.loop_label(ctx)?;
-        }
-        Ok(self)
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
+        let labeled_stmts = self
+            .stmts
+            .into_iter()
+            .map(|stmt| stmt.loop_label(ctx))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(BlockStatement {
+            stmts: labeled_stmts.into(),
+        })
     }
 }
 
 impl LoopLabel for IfStatement {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
-        self.then_branch.loop_label(ctx)?;
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
+        let labeled_then = self.then_branch.loop_label(ctx)?;
 
-        if let Some(ref mut else_branch) = *self.else_branch {
-            else_branch.loop_label(ctx)?;
-        }
+        let labeled_else = match *self.else_branch {
+            Some(else_branch) => else_branch.loop_label(ctx)?.into(),
+            None => None,
+        };
 
-        Ok(self)
+        Ok(IfStatement {
+            condition: self.condition.clone(),
+            then_branch: labeled_then.into(),
+            else_branch: labeled_else.into(),
+        })
     }
 }
 
 impl LoopLabel for BreakStatement {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
         match ctx.innermost {
-            LabelKind::Loop(label) | LabelKind::Switch(label) => {
-                self.label = label.to_string();
-                Ok(self)
-            }
+            LabelKind::Loop(label) | LabelKind::Switch(label) => Ok(BreakStatement {
+                label: label.to_string(),
+            }),
             LabelKind::None => bail!("break statement not within loop or switch"),
         }
     }
 }
 
 impl LoopLabel for ContinueStatement {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
         if ctx.loop_label.is_empty() {
             bail!("continue statement not within loop");
         }
-        self.label = ctx.loop_label.to_string();
-        Ok(self)
+
+        Ok(ContinueStatement {
+            label: ctx.loop_label.to_string(),
+        })
     }
 }
 
 impl LoopLabel for SwitchStatement {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
         let new_switch_label = format!(
             "{}{}Switch.{}",
             ctx.loop_label,
@@ -89,36 +105,48 @@ impl LoopLabel for SwitchStatement {
             make_temporary()
         );
 
-        self.label = new_switch_label.clone();
-
         let new_ctx = LabelContext {
             loop_label: ctx.loop_label,
             switch_label: &new_switch_label,
             innermost: LabelKind::Switch(&new_switch_label),
         };
-        self.body.loop_label(new_ctx)?;
-        Ok(self)
+
+        let labeled_body = self.body.loop_label(new_ctx)?;
+
+        Ok(SwitchStatement {
+            condition: self.condition.clone(),
+            body: labeled_body.into(),
+            label: new_switch_label,
+            cases: self.cases.clone(),
+        })
     }
 }
 
 impl LoopLabel for CaseStatement {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
-        self.body.loop_label(ctx)?;
-        self.label = format!("{}.case.{}", ctx.switch_label, make_temporary());
-        Ok(self)
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
+        let labeled_body = self.body.loop_label(ctx)?;
+        let label = format!("{}.case.{}", ctx.switch_label, make_temporary());
+        Ok(CaseStatement {
+            value: self.value.clone(),
+            body: labeled_body.into(),
+            label,
+        })
     }
 }
 
 impl LoopLabel for DefaultStatement {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
-        self.body.loop_label(ctx)?;
-        self.label = format!("{}.default", ctx.switch_label);
-        Ok(self)
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
+        let labeled_body = self.body.loop_label(ctx)?;
+        let label = format!("{}.default", ctx.switch_label);
+        Ok(DefaultStatement {
+            body: labeled_body.into(),
+            label,
+        })
     }
 }
 
 impl LoopLabel for WhileStatement {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
         let new_loop_label = format!(
             "{}{}While.{}",
             ctx.loop_label,
@@ -126,20 +154,24 @@ impl LoopLabel for WhileStatement {
             make_temporary()
         );
 
-        self.label = new_loop_label.clone();
-
         let new_ctx = LabelContext {
             loop_label: &new_loop_label,
             switch_label: ctx.switch_label,
             innermost: LabelKind::Loop(&new_loop_label),
         };
-        self.body.loop_label(new_ctx)?;
-        Ok(self)
+
+        let labeled_body = self.body.loop_label(new_ctx)?;
+
+        Ok(WhileStatement {
+            condition: self.condition.clone(),
+            body: labeled_body.into(),
+            label: new_loop_label,
+        })
     }
 }
 
 impl LoopLabel for DoWhileStatement {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
         let new_loop_label = format!(
             "{}{}DoWhile.{}",
             ctx.loop_label,
@@ -147,20 +179,24 @@ impl LoopLabel for DoWhileStatement {
             make_temporary()
         );
 
-        self.label = new_loop_label.clone();
-
         let new_ctx = LabelContext {
             loop_label: &new_loop_label,
             switch_label: ctx.switch_label,
             innermost: LabelKind::Loop(&new_loop_label),
         };
-        self.body.loop_label(new_ctx)?;
-        Ok(self)
+
+        let labeled_body = self.body.loop_label(new_ctx)?;
+
+        Ok(DoWhileStatement {
+            condition: self.condition.clone(),
+            body: labeled_body.into(),
+            label: new_loop_label,
+        })
     }
 }
 
 impl LoopLabel for ForStatement {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
         let new_loop_label = format!(
             "{}{}For.{}",
             ctx.loop_label,
@@ -168,133 +204,161 @@ impl LoopLabel for ForStatement {
             make_temporary()
         );
 
-        self.label = new_loop_label.clone();
-
         let new_ctx = LabelContext {
             loop_label: &new_loop_label,
             switch_label: ctx.switch_label,
             innermost: LabelKind::Loop(&new_loop_label),
         };
-        self.body.loop_label(new_ctx)?;
-        Ok(self)
+        let labeled_body = self.body.loop_label(new_ctx)?;
+
+        Ok(ForStatement {
+            init: self.init.clone(),
+            condition: self.condition.clone(),
+            post: self.post.clone(),
+            body: labeled_body.into(),
+            label: new_loop_label,
+        })
     }
 }
 
 impl LoopLabel for ReturnStatement {
-    fn loop_label(&mut self, _ctx: LabelContext) -> Result<&mut Self> {
-        Ok(self)
+    fn loop_label(self, _ctx: LabelContext) -> Result<Self> {
+        Ok(ReturnStatement {
+            expr: self.expr.clone(),
+            target_type: self.target_type.clone(),
+            belongs_to: self.belongs_to.clone(),
+        })
     }
 }
 
 impl LoopLabel for ExpressionStatement {
-    fn loop_label(&mut self, _ctx: LabelContext) -> Result<&mut Self> {
-        Ok(self)
+    fn loop_label(self, _ctx: LabelContext) -> Result<Self> {
+        Ok(ExpressionStatement {
+            expr: self.expr.clone(),
+        })
     }
 }
 
 impl LoopLabel for GotoStatement {
-    fn loop_label(&mut self, _ctx: LabelContext) -> Result<&mut Self> {
-        Ok(self)
+    fn loop_label(self, _ctx: LabelContext) -> Result<Self> {
+        Ok(GotoStatement {
+            label: self.label.clone(),
+        })
     }
 }
 
 impl LoopLabel for LabeledStatement {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
-        self.body.loop_label(ctx)?;
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
+        let labeled_body = self.body.loop_label(ctx)?;
 
-        Ok(self)
+        Ok(LabeledStatement {
+            label: self.label.clone(),
+            body: labeled_body.into(),
+        })
     }
 }
 
 impl LoopLabel for Statement {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
         match self {
-            Statement::Compound(b) => {
-                b.loop_label(ctx)?;
+            Statement::Compound(stmt_block) => {
+                let labeled = stmt_block.loop_label(ctx)?;
+                Ok(Statement::Compound(labeled))
             }
 
-            Statement::If(i) => {
-                i.loop_label(ctx)?;
+            Statement::If(stmt_if) => {
+                let labeled = stmt_if.loop_label(ctx)?;
+                Ok(Statement::If(labeled))
             }
 
-            Statement::Break(b) => {
-                b.loop_label(ctx)?;
+            Statement::Break(stmt_break) => {
+                let labeled = stmt_break.loop_label(ctx)?;
+                Ok(Statement::Break(labeled))
             }
 
-            Statement::Continue(c) => {
-                c.loop_label(ctx)?;
+            Statement::Continue(stmt_continue) => {
+                let labeled = stmt_continue.loop_label(ctx)?;
+                Ok(Statement::Continue(labeled))
             }
 
-            Statement::While(w) => {
-                w.loop_label(ctx)?;
+            Statement::While(stmt_while) => {
+                let labeled = stmt_while.loop_label(ctx)?;
+                Ok(Statement::While(labeled))
             }
 
-            Statement::DoWhile(d) => {
-                d.loop_label(ctx)?;
+            Statement::DoWhile(stmt_do_while) => {
+                let labeled = stmt_do_while.loop_label(ctx)?;
+                Ok(Statement::DoWhile(labeled))
             }
 
-            Statement::For(f) => {
-                f.loop_label(ctx)?;
+            Statement::For(stmt_for) => {
+                let labeled = stmt_for.loop_label(ctx)?;
+                Ok(Statement::For(labeled))
             }
 
-            Statement::Expression(e) => {
-                e.loop_label(ctx)?;
+            Statement::Expression(stmt_expr) => {
+                let labeled = stmt_expr.loop_label(ctx)?;
+                Ok(Statement::Expression(labeled))
             }
 
-            Statement::Return(r) => {
-                r.loop_label(ctx)?;
+            Statement::Return(stmt_return) => {
+                let labeled = stmt_return.loop_label(ctx)?;
+                Ok(Statement::Return(labeled))
             }
 
-            Statement::Goto(g) => {
-                g.loop_label(ctx)?;
+            Statement::Goto(stmt_goto) => {
+                let labeled = stmt_goto.loop_label(ctx)?;
+                Ok(Statement::Goto(labeled))
             }
 
-            Statement::Labeled(l) => {
-                l.loop_label(ctx)?;
+            Statement::Labeled(stmt_labeled) => {
+                let labeled = stmt_labeled.loop_label(ctx)?;
+                Ok(Statement::Labeled(labeled))
             }
 
-            Statement::Switch(s) => {
-                s.loop_label(ctx)?;
+            Statement::Switch(stmt_switch) => {
+                let labeled = stmt_switch.loop_label(ctx)?;
+                Ok(Statement::Switch(labeled))
             }
 
-            Statement::Case(c) => {
-                c.loop_label(ctx)?;
+            Statement::Case(stmt_case) => {
+                let labeled = stmt_case.loop_label(ctx)?;
+                Ok(Statement::Case(labeled))
             }
 
-            Statement::Default(d) => {
-                d.loop_label(ctx)?;
+            Statement::Default(stmt_default) => {
+                let labeled = stmt_default.loop_label(ctx)?;
+                Ok(Statement::Default(labeled))
             }
 
-            Self::Null => {}
+            Self::Null => Ok(Statement::Null),
         }
-
-        Ok(self)
     }
 }
 
 impl LoopLabel for BlockItem {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
         match self {
-            BlockItem::Statement(s) => {
-                s.loop_label(ctx)?;
-                Ok(self)
+            BlockItem::Statement(stmt) => {
+                let labeled_stmt = stmt.loop_label(ctx)?;
+                Ok(BlockItem::Statement(labeled_stmt))
             }
 
             BlockItem::Declaration(decl) => {
-                decl.loop_label(ctx)?;
-                Ok(self)
+                let labeled_decl = decl.loop_label(ctx)?;
+                Ok(BlockItem::Declaration(labeled_decl))
             }
         }
     }
 }
 
 impl LoopLabel for Declaration {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
         match self {
             Declaration::Variable(_) => Ok(self),
-            Declaration::Function(f) => {
-                f.loop_label(ctx)?;
-                Ok(self)
+            Declaration::Function(func_decl) => {
+                let labeled = func_decl.loop_label(ctx)?;
+                Ok(Declaration::Function(labeled))
             }
             Declaration::Struct(_) => Ok(self),
         }
@@ -302,10 +366,19 @@ impl LoopLabel for Declaration {
 }
 
 impl LoopLabel for FunctionDeclaration {
-    fn loop_label(&mut self, ctx: LabelContext) -> Result<&mut Self> {
-        if let Some(ref mut body) = *self.body {
-            body.loop_label(ctx)?;
-        }
-        Ok(self)
+    fn loop_label(self, ctx: LabelContext) -> Result<Self> {
+        let labeled_body = match *self.body {
+            Some(body) => body.loop_label(ctx)?.into(),
+            None => None,
+        };
+
+        Ok(FunctionDeclaration {
+            name: self.name.clone(),
+            _type: self._type.clone(),
+            params: self.params.clone(),
+            body: labeled_body.into(),
+            is_global: self.is_global,
+            storage_class: self.storage_class.clone(),
+        })
     }
 }
