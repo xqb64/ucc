@@ -112,7 +112,7 @@ impl Resolve for VariableDeclaration {
                 Ok(VariableDeclaration {
                     init: resolved_init,
                     ty: resolved_type,
-                    storage_class: self.storage_class.clone(),
+                    storage_class: self.storage_class,
                     is_global: self.is_global,
                     name: self.name.clone(),
                 })
@@ -154,7 +154,7 @@ impl Resolve for VariableDeclaration {
                         name: self.name.clone(),
                         ty: resolved_type,
                         init: resolved_init,
-                        storage_class: self.storage_class.clone(),
+                        storage_class: self.storage_class,
                         is_global: self.is_global,
                     })
                 } else {
@@ -180,7 +180,7 @@ impl Resolve for VariableDeclaration {
                         name: unique_name,
                         ty: resolved_type,
                         init: resolved_init,
-                        storage_class: self.storage_class.clone(),
+                        storage_class: self.storage_class,
                         is_global: self.is_global,
                     })
                 }
@@ -260,7 +260,7 @@ impl Resolve for FunctionDeclaration {
             params: resolved_params,
             body: resolved_body.into(),
             is_global: self.is_global,
-            storage_class: self.storage_class.clone(),
+            storage_class: self.storage_class,
         })
     }
 }

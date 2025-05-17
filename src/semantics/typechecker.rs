@@ -176,7 +176,7 @@ impl Typecheck for VariableDeclaration {
                     name: self.name.clone(),
                     ty: self.ty.clone(),
                     init: typechecked_init,
-                    storage_class: self.storage_class.clone(),
+                    storage_class: self.storage_class,
                     is_global: self.is_global,
                 })
             }
@@ -225,7 +225,7 @@ impl Typecheck for VariableDeclaration {
                             name: self.name.clone(),
                             ty: self.ty.clone(),
                             init: typechecked_init,
-                            storage_class: self.storage_class.clone(),
+                            storage_class: self.storage_class,
                             is_global: self.is_global,
                         })
                     }
@@ -260,7 +260,7 @@ impl Typecheck for VariableDeclaration {
                             name: self.name.clone(),
                             ty: self.ty.clone(),
                             init: typechecked_init,
-                            storage_class: self.storage_class.clone(),
+                            storage_class: self.storage_class,
                             is_global: self.is_global,
                         })
                     }
@@ -284,7 +284,7 @@ impl Typecheck for VariableDeclaration {
                             name: self.name.clone(),
                             ty: self.ty.clone(),
                             init: typechecked_init,
-                            storage_class: self.storage_class.clone(),
+                            storage_class: self.storage_class,
                             is_global: self.is_global,
                         })
                     }
@@ -435,7 +435,7 @@ impl Typecheck for FunctionDeclaration {
             params: self.params.clone(),
             body: typechecked_body.into(),
             is_global: self.is_global,
-            storage_class: self.storage_class.clone(),
+            storage_class: self.storage_class,
         })
     }
 }

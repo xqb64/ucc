@@ -378,7 +378,7 @@ impl LoopLabel for FunctionDeclaration {
             params: self.params.clone(),
             body: labeled_body.into(),
             is_global: self.is_global,
-            storage_class: self.storage_class.clone(),
+            storage_class: self.storage_class,
         })
     }
 }

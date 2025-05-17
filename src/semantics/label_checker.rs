@@ -69,7 +69,7 @@ impl LabelCollect for FunctionDeclaration {
             params: self.params.clone(),
             body: collected.into(),
             is_global: self.is_global,
-            storage_class: self.storage_class.clone(),
+            storage_class: self.storage_class,
         })
     }
 }
@@ -361,7 +361,7 @@ impl LabelCheck for FunctionDeclaration {
             params: self.params.clone(),
             body: checked_body.into(),
             is_global: self.is_global,
-            storage_class: self.storage_class.clone(),
+            storage_class: self.storage_class,
         })
     }
 }
