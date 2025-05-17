@@ -304,7 +304,11 @@ impl SwitchCaseCollect for CaseStatement {
             }
         }
 
-        let this_value = if new_val.is_some() { new_val.as_ref().unwrap() } else { &self.value };
+        let this_value = if new_val.is_some() {
+            new_val.as_ref().unwrap()
+        } else {
+            &self.value
+        };
         if cases.iter().any(|stmt| {
             if let Statement::Case(case_stmt) = stmt {
                 case_stmt.value == *this_value
@@ -315,11 +319,15 @@ impl SwitchCaseCollect for CaseStatement {
             bail!("duplicate case value");
         }
 
-        cases.push(Statement::Case(CaseStatement { value: if new_val.is_some() {
+        cases.push(Statement::Case(CaseStatement {
+            value: if new_val.is_some() {
                 new_val.clone().unwrap()
             } else {
                 self.value.clone()
-            }, body: self.body.clone(), label: self.label.clone() }));
+            },
+            body: self.body.clone(),
+            label: self.label.clone(),
+        }));
 
         let collected_body = self.body.collect_switch_cases(cases, control)?;
 
