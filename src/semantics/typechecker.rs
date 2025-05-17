@@ -22,172 +22,66 @@ use std::{
     sync::Mutex,
 };
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Symbol {
-    pub _type: Type,
-    pub attrs: IdentifierAttrs,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct StructEntry {
-    pub alignment: usize,
-    pub size: usize,
-    pub members: Vec<MemberEntry>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct MemberEntry {
-    pub name: String,
-    pub _type: Type,
-    pub offset: usize,
-}
-
 lazy_static::lazy_static! {
     pub static ref SYMBOL_TABLE: Mutex<BTreeMap<String, Symbol>> = Mutex::new(BTreeMap::new());
     pub static ref TYPE_TABLE: Mutex<BTreeMap<String, StructEntry>> = Mutex::new(BTreeMap::new());
 }
 
 pub trait Typecheck {
-    fn typecheck(&mut self) -> Result<&mut Self>
+    fn typecheck(self) -> Result<Self>
     where
         Self: Sized;
 }
 
+impl Typecheck for Program {
+    fn typecheck(self) -> Result<Self> {
+        let typechecked_block_items = self
+            .block_items
+            .into_iter()
+            .map(|block_item| block_item.typecheck())
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Program {
+            block_items: typechecked_block_items,
+        })
+    }
+}
+
 impl Typecheck for BlockItem {
-    fn typecheck(&mut self) -> Result<&mut Self> {
+    fn typecheck(self) -> Result<Self> {
         match self {
             BlockItem::Declaration(decl) => {
-                decl.typecheck()?;
-                Ok(self)
+                let typecheck_decl = decl.typecheck()?;
+                Ok(BlockItem::Declaration(typecheck_decl))
             }
             BlockItem::Statement(stmt) => {
-                stmt.typecheck()?;
-                Ok(self)
+                let typechecked_stmt = stmt.typecheck()?;
+                Ok(BlockItem::Statement(typechecked_stmt))
             }
         }
     }
 }
 
 impl Typecheck for Declaration {
-    fn typecheck(&mut self) -> Result<&mut Self> {
+    fn typecheck(self) -> Result<Self> {
         match self {
             Declaration::Variable(var_decl) => {
-                var_decl.typecheck()?;
-                Ok(self)
+                let typechecked = var_decl.typecheck()?;
+                Ok(Declaration::Variable(typechecked))
             }
             Declaration::Function(func_decl) => {
-                func_decl.typecheck()?;
-                Ok(self)
+                let typechecked = func_decl.typecheck()?;
+                Ok(Declaration::Function(typechecked))
             }
             Declaration::Struct(struct_decl) => {
-                struct_decl.typecheck()?;
-                Ok(self)
+                let typechecked = struct_decl.typecheck()?;
+                Ok(Declaration::Struct(typechecked))
             }
         }
-    }
-}
-
-fn alignment(t: &Type) -> usize {
-    match t {
-        Type::Char | Type::UChar | Type::SChar => 1,
-        Type::Int | Type::UInt => 4,
-        Type::Double | Type::Long | Type::ULong | Type::Pointer(_) => 8,
-        Type::Struct { tag } => TYPE_TABLE.lock().unwrap()[tag].alignment,
-        Type::Array { element, size: _ } => alignment(element),
-        Type::Dummy | Type::Void | Type::Func { .. } => unreachable!(),
-    }
-}
-
-pub fn round_up(value: usize, alignment: usize) -> usize {
-    (value + alignment - 1) & !(alignment - 1)
-}
-
-fn validate_struct_definition(definition: &mut StructDeclaration) -> Result<()> {
-    use std::collections::BTreeSet;
-
-    let tag = &definition.tag;
-
-    if TYPE_TABLE.lock().unwrap().contains_key(tag) {
-        panic!("Structure was already declared");
-    } else {
-        let mut member_names = BTreeSet::new();
-
-        for member in &definition.members {
-            let member_name = &member.name;
-
-            if member_names.contains(member_name) {
-                bail!(
-                    "Duplicate declaration of member {} in structure {}",
-                    member_name,
-                    tag
-                );
-            } else {
-                member_names.insert(member_name.clone());
-            }
-
-            validate_type_specifier(&member._type)?;
-
-            match &member._type {
-                Type::Func { .. } => {
-                    bail!("Can't declare structure member with function type");
-                }
-                _ => {
-                    if !is_complete(&member._type) {
-                        bail!("Cannot declare structure member with incomplete type");
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-impl Typecheck for StructDeclaration {
-    fn typecheck(&mut self) -> Result<&mut Self>
-    where
-        Self: Sized,
-    {
-        if self.members.is_empty() {
-            return Ok(self);
-        }
-
-        validate_struct_definition(self)?;
-
-        let mut member_entries = vec![];
-        let mut struct_size = 0;
-        let mut struct_alignment = 1;
-
-        for member in &self.members {
-            let member_alignment = alignment(&member._type);
-            let member_offset = round_up(struct_size, member_alignment);
-            let m = MemberEntry {
-                name: member.name.clone(),
-                _type: member._type.clone(),
-                offset: member_offset,
-            };
-
-            member_entries.push(m);
-
-            struct_alignment = max(struct_alignment, member_alignment);
-            struct_size = member_offset + get_size_of_type(&member._type);
-        }
-
-        struct_size = round_up(struct_size, struct_alignment);
-        let s = StructEntry {
-            alignment: struct_alignment,
-            size: struct_size,
-            members: member_entries,
-        };
-
-        TYPE_TABLE.lock().unwrap().insert(self.tag.clone(), s);
-
-        Ok(self)
     }
 }
 
 impl Typecheck for VariableDeclaration {
-    fn typecheck(&mut self) -> Result<&mut Self> {
+    fn typecheck(self) -> Result<Self> {
         if self._type == Type::Void {
             bail!("Variable declared with void type");
         } else {
@@ -272,9 +166,19 @@ impl Typecheck for VariableDeclaration {
                     .unwrap()
                     .insert(self.name.clone(), symbol);
 
-                self.init = optionally_typecheck_init(&self.init, &self._type)?;
+                let typechecked_init = self
+                    .init
+                    .as_ref()
+                    .map(|init| typecheck_init(&self._type, init))
+                    .transpose()?;
 
-                Ok(self)
+                Ok(VariableDeclaration {
+                    name: self.name.clone(),
+                    _type: self._type.clone(),
+                    init: typechecked_init,
+                    storage_class: self.storage_class.clone(),
+                    is_global: self.is_global,
+                })
             }
             false => {
                 if !is_complete(&self._type) {
@@ -311,9 +215,19 @@ impl Typecheck for VariableDeclaration {
                             }
                         }
 
-                        self.init = optionally_typecheck_init(&self.init, &self._type)?;
+                        let typechecked_init = self
+                            .init
+                            .as_ref()
+                            .map(|init| typecheck_init(&self._type, init))
+                            .transpose()?;
 
-                        Ok(self)
+                        Ok(VariableDeclaration {
+                            name: self.name.clone(),
+                            _type: self._type.clone(),
+                            init: typechecked_init,
+                            storage_class: self.storage_class.clone(),
+                            is_global: self.is_global,
+                        })
                     }
                     Some(StorageClass::Static) => {
                         let zero_init = InitialValue::Initial(vec![StaticInit::Zero(
@@ -336,9 +250,19 @@ impl Typecheck for VariableDeclaration {
                             .unwrap()
                             .insert(self.name.clone(), symbol);
 
-                        self.init = optionally_typecheck_init(&self.init, &self._type)?;
+                        let typechecked_init = self
+                            .init
+                            .as_ref()
+                            .map(|init| typecheck_init(&self._type, init))
+                            .transpose()?;
 
-                        Ok(self)
+                        Ok(VariableDeclaration {
+                            name: self.name.clone(),
+                            _type: self._type.clone(),
+                            init: typechecked_init,
+                            storage_class: self.storage_class.clone(),
+                            is_global: self.is_global,
+                        })
                     }
                     None => {
                         let symbol = Symbol {
@@ -350,14 +274,502 @@ impl Typecheck for VariableDeclaration {
                             .unwrap()
                             .insert(self.name.clone(), symbol);
 
-                        self.init = optionally_typecheck_init(&self.init, &self._type)?;
+                        let typechecked_init = self
+                            .init
+                            .as_ref()
+                            .map(|init| typecheck_init(&self._type, init))
+                            .transpose()?;
 
-                        Ok(self)
+                        Ok(VariableDeclaration {
+                            name: self.name.clone(),
+                            _type: self._type.clone(),
+                            init: typechecked_init,
+                            storage_class: self.storage_class.clone(),
+                            is_global: self.is_global,
+                        })
                     }
                 }
             }
         }
     }
+}
+
+fn validate_type_specifier(t: &Type) -> Result<()> {
+    match t {
+        Type::Array { element, size: _ } => {
+            if !is_complete(element) {
+                bail!("Incomplete type");
+            }
+            validate_type_specifier(element)?;
+        }
+
+        Type::Pointer(referenced) => {
+            validate_type_specifier(referenced)?;
+        }
+
+        Type::Func { params, ret } => {
+            for param in params {
+                validate_type_specifier(param)?;
+            }
+            validate_type_specifier(ret)?;
+        }
+
+        _ => {}
+    }
+
+    Ok(())
+}
+
+impl Typecheck for FunctionDeclaration {
+    fn typecheck(self) -> Result<Self> {
+        if self._type == Type::Void {
+            bail!("Variable declared with void type");
+        } else {
+            validate_type_specifier(&self._type)?;
+        }
+
+        let adjust_param_type = |t: Type| -> Result<Type> {
+            match t {
+                Type::Array { element, .. } => Ok(Type::Pointer(element)),
+                Type::Void => bail!("Function parameter has void type"),
+                t => Ok(t),
+            }
+        };
+
+        let (param_ts, _, fun_type) = match self._type.clone() {
+            Type::Func { params, ret } => {
+                if let Type::Array { .. } = *ret {
+                    bail!("Function return type is an array");
+                }
+                let param_types: Vec<Type> = params
+                    .into_iter()
+                    .map(adjust_param_type)
+                    .collect::<Result<Vec<_>>>()?;
+                (
+                    param_types.clone(),
+                    ret.clone(),
+                    Type::Func {
+                        params: param_types.clone(),
+                        ret: ret.clone(),
+                    },
+                )
+            }
+            _ => bail!("Function has non-function type"),
+        };
+
+        let has_body = self.body.is_some();
+
+        if has_body {
+            for param in param_ts.iter() {
+                if !is_complete(param) {
+                    bail!("Function parameter has incomplete type");
+                }
+            }
+
+            let ret_type = match &self._type {
+                Type::Func { ret, .. } => ret,
+                _ => unreachable!(),
+            };
+
+            if let Type::Struct { tag } = &**ret_type {
+                if !TYPE_TABLE.lock().unwrap().contains_key(tag) {
+                    bail!("Function return type is incomplete");
+                }
+            }
+        }
+
+        let global = self.storage_class != Some(StorageClass::Static);
+
+        let check_against_previous = |prev: &Symbol| -> Result<(bool, bool)> {
+            if prev._type != fun_type {
+                bail!("RedeclaredFunction");
+            }
+
+            match &prev.attrs {
+                IdentifierAttrs::FuncAttr {
+                    global: prev_global,
+                    defined: prev_defined,
+                } => {
+                    if *prev_defined && has_body {
+                        bail!("FunctionDefinedTwice");
+                    } else if *prev_global && self.storage_class == Some(StorageClass::Static) {
+                        bail!("StaticFunctionDeclarationAfterNonStatic");
+                    }
+
+                    let defined = has_body || *prev_defined;
+                    Ok((defined, *prev_global))
+                }
+                _ => bail!("Symbol has function type but not function attributes"),
+            }
+        };
+
+        let old_decl = SYMBOL_TABLE.lock().unwrap().get(&self.name).cloned();
+        let (defined, global) = match old_decl {
+            Some(old_d) => check_against_previous(&old_d)?,
+            None => (has_body, global),
+        };
+
+        SYMBOL_TABLE.lock().unwrap().insert(
+            self.name.clone(),
+            Symbol {
+                _type: fun_type,
+                attrs: IdentifierAttrs::FuncAttr { global, defined },
+            },
+        );
+
+        if has_body {
+            for (param, param_t) in self.params.iter().zip(param_ts) {
+                let symbol = Symbol {
+                    _type: param_t,
+                    attrs: IdentifierAttrs::LocalAttr,
+                };
+                SYMBOL_TABLE.lock().unwrap().insert(param.clone(), symbol);
+            }
+        }
+
+        let typechecked_body = self.body.map(|body| body.typecheck()).transpose()?;
+
+        Ok(FunctionDeclaration {
+            name: self.name.clone(),
+            _type: self._type.clone(),
+            params: self.params.clone(),
+            body: typechecked_body.into(),
+            is_global: self.is_global,
+            storage_class: self.storage_class.clone(),
+        })
+    }
+}
+
+impl Typecheck for StructDeclaration {
+    fn typecheck(self) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        if self.members.is_empty() {
+            return Ok(self);
+        }
+
+        validate_struct_definition(&self)?;
+
+        let mut member_entries = vec![];
+        let mut struct_size = 0;
+        let mut struct_alignment = 1;
+
+        for member in &self.members {
+            let member_alignment = alignment(&member._type);
+            let member_offset = round_up(struct_size, member_alignment);
+            let m = MemberEntry {
+                name: member.name.clone(),
+                _type: member._type.clone(),
+                offset: member_offset,
+            };
+
+            member_entries.push(m);
+
+            struct_alignment = max(struct_alignment, member_alignment);
+            struct_size = member_offset + get_size_of_type(&member._type);
+        }
+
+        struct_size = round_up(struct_size, struct_alignment);
+        let s = StructEntry {
+            alignment: struct_alignment,
+            size: struct_size,
+            members: member_entries,
+        };
+
+        TYPE_TABLE.lock().unwrap().insert(self.tag.clone(), s);
+
+        Ok(self)
+    }
+}
+
+fn validate_struct_definition(definition: &StructDeclaration) -> Result<StructDeclaration> {
+    use std::collections::BTreeSet;
+
+    let tag = &definition.tag;
+
+    if TYPE_TABLE.lock().unwrap().contains_key(tag) {
+        panic!("Structure was already declared");
+    } else {
+        let mut member_names = BTreeSet::new();
+
+        for member in &definition.members {
+            let member_name = &member.name;
+
+            if member_names.contains(member_name) {
+                bail!(
+                    "Duplicate declaration of member {} in structure {}",
+                    member_name,
+                    tag
+                );
+            } else {
+                member_names.insert(member_name.clone());
+            }
+
+            validate_type_specifier(&member._type)?;
+
+            match &member._type {
+                Type::Func { .. } => {
+                    bail!("Can't declare structure member with function type");
+                }
+                _ => {
+                    if !is_complete(&member._type) {
+                        bail!("Cannot declare structure member with incomplete type");
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(definition.to_owned())
+}
+
+impl Typecheck for Statement {
+    fn typecheck(self) -> Result<Self> {
+        match self {
+            Statement::Labeled(LabeledStatement { label, body }) => {
+                let typechecked_body = body.typecheck()?;
+                Ok(Statement::Labeled(LabeledStatement {
+                    label,
+                    body: typechecked_body.into(),
+                }))
+            }
+
+            Statement::Goto(GotoStatement { label: _ }) => Ok(self),
+
+            Statement::Expression(ExpressionStatement { expr }) => {
+                let typechecked_expr = typecheck_and_convert(&expr)?;
+                Ok(Statement::Expression(ExpressionStatement {
+                    expr: typechecked_expr,
+                }))
+            }
+
+            Statement::Compound(BlockStatement { stmts }) => {
+                let typechecked_stmts = stmts
+                    .into_iter()
+                    .map(|stmt| stmt.typecheck())
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Statement::Compound(BlockStatement {
+                    stmts: typechecked_stmts,
+                }))
+            }
+
+            Statement::If(IfStatement {
+                condition,
+                then_branch,
+                else_branch,
+            }) => {
+                let typechecked_condition = typecheck_scalar(&condition)?;
+                let typechecked_then = then_branch.typecheck()?;
+                let typechecked_else = match *else_branch {
+                    Some(else_branch) => else_branch.typecheck()?.into(),
+                    None => None,
+                };
+
+                Ok(Statement::If(IfStatement {
+                    condition: typechecked_condition,
+                    then_branch: typechecked_then.into(),
+                    else_branch: typechecked_else.into(),
+                }))
+            }
+
+            Statement::While(WhileStatement {
+                condition,
+                body,
+                label,
+            }) => {
+                let typechecked_condition = typecheck_scalar(&condition)?;
+                let typechecked_body = body.typecheck()?;
+
+                Ok(Statement::While(WhileStatement {
+                    condition: typechecked_condition,
+                    body: typechecked_body.into(),
+                    label,
+                }))
+            }
+
+            Statement::DoWhile(DoWhileStatement {
+                condition,
+                body,
+                label,
+            }) => {
+                let typechecked_condition = typecheck_scalar(&condition)?;
+                let typechecked_body = body.typecheck()?;
+
+                Ok(Statement::DoWhile(DoWhileStatement {
+                    condition: typechecked_condition,
+                    body: typechecked_body.into(),
+                    label,
+                }))
+            }
+
+            Statement::For(ForStatement {
+                init,
+                condition,
+                post,
+                body,
+                label,
+            }) => {
+                if let ForInit::Declaration(decl) = &init {
+                    if decl.storage_class.is_some() {
+                        bail!("Storage class specifier in for loop initializer");
+                    }
+                }
+
+                let typechecked_init = optionally_typecheck_for_init(init)?;
+                let typechecked_condition = optionally_typecheck_scalar(&condition)?;
+                let typechecked_post = post.map(|expr| typecheck_and_convert(&expr)).transpose()?;
+
+                let typechecked_body = body.typecheck()?;
+
+                Ok(Statement::For(ForStatement {
+                    init: typechecked_init,
+                    condition: typechecked_condition,
+                    post: typechecked_post,
+                    body: typechecked_body.into(),
+                    label,
+                }))
+            }
+
+            Statement::Return(ReturnStatement {
+                expr: Some(expression),
+                target_type,
+                belongs_to,
+            }) => {
+                if target_type == Some(Type::Void) {
+                    bail!("Return statement with expression in void function");
+                } else {
+                    let ret_type = SYMBOL_TABLE
+                        .lock()
+                        .unwrap()
+                        .get(&belongs_to)
+                        .cloned()
+                        .unwrap()
+                        ._type;
+
+                    let tt = match ret_type {
+                        Type::Func { ret, .. } => ret,
+                        _ => unreachable!(),
+                    };
+
+                    let typechecked_expr = typecheck_and_convert(&expression)?;
+                    let converted_expr = convert_by_assignment(&typechecked_expr, &tt)?;
+
+                    Ok(Statement::Return(ReturnStatement {
+                        expr: converted_expr.into(),
+                        target_type,
+                        belongs_to,
+                    }))
+                }
+            }
+
+            Statement::Return(ReturnStatement {
+                expr: None,
+                target_type,
+                belongs_to,
+            }) => {
+                if target_type == Some(Type::Void) {
+                    Ok(Statement::Return(ReturnStatement {
+                        expr: None,
+                        target_type,
+                        belongs_to,
+                    }))
+                } else {
+                    bail!("Return statement with no expression in non-void function");
+                }
+            }
+
+            Statement::Switch(SwitchStatement {
+                condition,
+                body,
+                label,
+                cases,
+            }) => {
+                let typechecked_expr = typecheck_and_convert(&condition)?;
+
+                if !is_integer_type(get_type(&typechecked_expr)) {
+                    bail!("controlling expression in switch statement must be of the integer type");
+                }
+
+                let typechecked_expr = if is_char_type(get_type(&typechecked_expr)) {
+                    convert_to(&typechecked_expr, &Type::Int)
+                } else {
+                    typechecked_expr
+                };
+
+                let typechecked_body = body.typecheck()?;
+
+                Ok(Statement::Switch(SwitchStatement {
+                    condition: typechecked_expr,
+                    body: typechecked_body.into(),
+                    label,
+                    cases,
+                }))
+            }
+
+            Statement::Case(CaseStatement { body, label, value }) => {
+                let typechecked_expr = typecheck_and_convert(&value)?;
+
+                if get_type(&typechecked_expr) == &Type::Double {
+                    bail!("Case expression cannot be a double");
+                }
+
+                let typechecked_body = body.typecheck()?;
+
+                Ok(Statement::Case(CaseStatement {
+                    value: typechecked_expr,
+                    body: typechecked_body.into(),
+                    label,
+                }))
+            }
+
+            Statement::Default(DefaultStatement { body, label }) => {
+                let typechecked_body = body.typecheck()?;
+
+                Ok(Statement::Default(DefaultStatement {
+                    body: typechecked_body.into(),
+                    label,
+                }))
+            }
+
+            Statement::Break(_) | Statement::Continue(_) | Statement::Null => Ok(self),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Symbol {
+    pub _type: Type,
+    pub attrs: IdentifierAttrs,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructEntry {
+    pub alignment: usize,
+    pub size: usize,
+    pub members: Vec<MemberEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MemberEntry {
+    pub name: String,
+    pub _type: Type,
+    pub offset: usize,
+}
+
+fn alignment(t: &Type) -> usize {
+    match t {
+        Type::Char | Type::UChar | Type::SChar => 1,
+        Type::Int | Type::UInt => 4,
+        Type::Double | Type::Long | Type::ULong | Type::Pointer(_) => 8,
+        Type::Struct { tag } => TYPE_TABLE.lock().unwrap()[tag].alignment,
+        Type::Array { element, size: _ } => alignment(element),
+        Type::Dummy | Type::Void | Type::Func { .. } => unreachable!(),
+    }
+}
+
+pub fn round_up(value: usize, alignment: usize) -> usize {
+    (value + alignment - 1) & !(alignment - 1)
 }
 
 macro_rules! convert_to_static {
@@ -384,16 +796,6 @@ fn const2staticinit(konst: &Const, t: &Type) -> StaticInit {
         Type::Char | Type::SChar => convert_to_static!(konst, i32, StaticInit::Char),
         Type::UChar => convert_to_static!(konst, u32, StaticInit::UChar),
         _ => unreachable!(),
-    }
-}
-
-fn optionally_typecheck_init(init: &Option<Initializer>, t: &Type) -> Result<Option<Initializer>> {
-    match init {
-        Some(init) => {
-            let typechecked_init = typecheck_init(t, init)?;
-            Ok(Some(typechecked_init))
-        }
-        None => Ok(None),
     }
 }
 
@@ -517,321 +919,18 @@ fn to_static_init(init: &Initializer, t: &Type) -> Result<InitialValue> {
     Ok(InitialValue::Initial(init_list))
 }
 
-impl Typecheck for FunctionDeclaration {
-    fn typecheck(&mut self) -> Result<&mut Self> {
-        if self._type == Type::Void {
-            bail!("Variable declared with void type");
-        } else {
-            validate_type_specifier(&self._type)?;
-        }
-
-        let adjust_param_type = |t: Type| -> Result<Type> {
-            match t {
-                Type::Array { element, .. } => Ok(Type::Pointer(element)),
-                Type::Void => bail!("Function parameter has void type"),
-                t => Ok(t),
-            }
-        };
-
-        let (param_ts, _, fun_type) = match self._type.clone() {
-            Type::Func { params, ret } => {
-                if let Type::Array { .. } = *ret {
-                    bail!("Function return type is an array");
-                }
-                let param_types: Vec<Type> = params
-                    .into_iter()
-                    .map(adjust_param_type)
-                    .collect::<Result<Vec<_>>>()?;
-                (
-                    param_types.clone(),
-                    ret.clone(),
-                    Type::Func {
-                        params: param_types.clone(),
-                        ret: ret.clone(),
-                    },
-                )
-            }
-            _ => bail!("Function has non-function type"),
-        };
-
-        let has_body = self.body.is_some();
-
-        if has_body {
-            for param in param_ts.iter() {
-                if !is_complete(param) {
-                    bail!("Function parameter has incomplete type");
-                }
-            }
-
-            let ret_type = match &self._type {
-                Type::Func { ret, .. } => ret,
-                _ => unreachable!(),
-            };
-
-            if let Type::Struct { tag } = &**ret_type {
-                if !TYPE_TABLE.lock().unwrap().contains_key(tag) {
-                    bail!("Function return type is incomplete");
-                }
-            }
-        }
-
-        let global = self.storage_class != Some(StorageClass::Static);
-
-        let check_against_previous = |prev: &Symbol| -> Result<(bool, bool)> {
-            if prev._type != fun_type {
-                bail!("RedeclaredFunction");
-            }
-
-            match &prev.attrs {
-                IdentifierAttrs::FuncAttr {
-                    global: prev_global,
-                    defined: prev_defined,
-                } => {
-                    if *prev_defined && has_body {
-                        bail!("FunctionDefinedTwice");
-                    } else if *prev_global && self.storage_class == Some(StorageClass::Static) {
-                        bail!("StaticFunctionDeclarationAfterNonStatic");
-                    }
-
-                    let defined = has_body || *prev_defined;
-                    Ok((defined, *prev_global))
-                }
-                _ => bail!("Symbol has function type but not function attributes"),
-            }
-        };
-
-        let old_decl = SYMBOL_TABLE.lock().unwrap().get(&self.name).cloned();
-        let (defined, global) = match old_decl {
-            Some(old_d) => check_against_previous(&old_d)?,
-            None => (has_body, global),
-        };
-
-        SYMBOL_TABLE.lock().unwrap().insert(
-            self.name.clone(),
-            Symbol {
-                _type: fun_type,
-                attrs: IdentifierAttrs::FuncAttr { global, defined },
-            },
-        );
-
-        if has_body {
-            for (param, param_t) in self.params.iter().zip(param_ts) {
-                let symbol = Symbol {
-                    _type: param_t,
-                    attrs: IdentifierAttrs::LocalAttr,
-                };
-                SYMBOL_TABLE.lock().unwrap().insert(param.clone(), symbol);
-            }
-        }
-
-        optionally_typecheck_block_item(&mut self.body)?;
-
-        Ok(self)
-    }
-}
-
-impl Typecheck for Program {
-    fn typecheck(&mut self) -> Result<&mut Self> {
-        for decl in &mut self.block_items {
-            decl.typecheck()?;
-        }
-
-        Ok(self)
-    }
-}
-
-impl Typecheck for Statement {
-    fn typecheck(&mut self) -> Result<&mut Self> {
-        match self {
-            Statement::Labeled(LabeledStatement { label: _, body }) => body.typecheck(),
-
-            Statement::Goto(GotoStatement { label: _ }) => Ok(self),
-
-            Statement::Expression(ExpressionStatement { expr }) => {
-                *expr = typecheck_and_convert(expr)?;
-
-                Ok(self)
-            }
-
-            Statement::Compound(BlockStatement { stmts }) => {
-                for stmt in stmts {
-                    stmt.typecheck()?;
-                }
-
-                Ok(self)
-            }
-
-            Statement::If(IfStatement {
-                condition,
-                then_branch,
-                else_branch,
-            }) => {
-                *condition = typecheck_scalar(condition)?;
-
-                then_branch.typecheck()?;
-                optionally_typecheck_block_item(else_branch)?;
-
-                Ok(self)
-            }
-
-            Statement::While(WhileStatement {
-                condition,
-                body,
-                label: _,
-            }) => {
-                *condition = typecheck_scalar(condition)?;
-
-                body.typecheck()?;
-
-                Ok(self)
-            }
-
-            Statement::DoWhile(DoWhileStatement {
-                condition,
-                body,
-                label: _,
-            }) => {
-                *condition = typecheck_scalar(condition)?;
-                body.typecheck()?;
-
-                Ok(self)
-            }
-
-            Statement::For(ForStatement {
-                init,
-                condition,
-                post,
-                body,
-                label: _,
-            }) => {
-                if let ForInit::Declaration(decl) = init {
-                    if decl.storage_class.is_some() {
-                        bail!("Storage class specifier in for loop initializer");
-                    }
-                }
-
-                *init = optionally_typecheck_for_init(init)?;
-                *condition = optionally_typecheck_scalar(condition)?;
-                *post = optionally_typecheck_expression(post)?;
-
-                body.typecheck()?;
-
-                Ok(self)
-            }
-
-            Statement::Return(ReturnStatement {
-                expr: Some(expression),
-                target_type,
-                belongs_to,
-            }) => {
-                if target_type == &Some(Type::Void) {
-                    bail!("Return statement with expression in void function");
-                } else {
-                    let ret_type = SYMBOL_TABLE
-                        .lock()
-                        .unwrap()
-                        .get(belongs_to)
-                        .cloned()
-                        .unwrap()
-                        ._type;
-                    let target_type = match ret_type {
-                        Type::Func { ret, .. } => ret,
-                        _ => unreachable!(),
-                    };
-                    let typechecked_expr = typecheck_and_convert(expression)?;
-                    let converted_expr = convert_by_assignment(&typechecked_expr, &target_type)?;
-                    *expression = converted_expr;
-                }
-                Ok(self)
-            }
-
-            Statement::Return(ReturnStatement {
-                expr: None,
-                target_type,
-                belongs_to: _,
-            }) => {
-                if target_type == &Some(Type::Void) {
-                    Ok(self)
-                } else {
-                    bail!("Return statement with no expression in non-void function");
-                }
-            }
-
-            Statement::Switch(SwitchStatement {
-                condition,
-                ref mut body,
-                label: _,
-                cases: _,
-            }) => {
-                let typechecked_expr = typecheck_and_convert(condition)?;
-
-                if !is_integer_type(get_type(&typechecked_expr)) {
-                    bail!("controlling expression in switch statement must be of the integer type");
-                }
-
-                let typechecked_expr = if is_char_type(get_type(&typechecked_expr)) {
-                    convert_to(&typechecked_expr, &Type::Int)
-                } else {
-                    typechecked_expr
-                };
-
-                *condition = typechecked_expr.clone();
-
-                body.typecheck()?;
-
-                Ok(self)
-            }
-
-            Statement::Case(CaseStatement {
-                body,
-                label: _,
-                value,
-            }) => {
-                let typechecked_expr = typecheck_and_convert(value)?;
-
-                if get_type(&typechecked_expr) == &Type::Double {
-                    bail!("Case expression cannot be a double");
-                }
-
-                *value = typechecked_expr;
-
-                body.typecheck()?;
-
-                Ok(self)
-            }
-
-            Statement::Default(DefaultStatement { body, label: _ }) => {
-                body.typecheck()?;
-
-                Ok(self)
-            }
-
-            Statement::Break(_) | Statement::Continue(_) | Statement::Null => Ok(self),
-        }
-    }
-}
-
-fn optionally_typecheck_expression(expr: &mut Option<Expression>) -> Result<Option<Expression>> {
-    match expr {
-        Some(expr) => {
-            *expr = typecheck_and_convert(expr)?;
-            Ok(Some(expr.to_owned()))
-        }
-        None => Ok(None),
-    }
-}
-
-fn optionally_typecheck_for_init(init: &mut ForInit) -> Result<ForInit> {
+fn optionally_typecheck_for_init(init: ForInit) -> Result<ForInit> {
     match init {
         ForInit::Declaration(decl) => {
-            decl.typecheck()?;
+            let typechecked = decl.typecheck()?;
+            Ok(ForInit::Declaration(typechecked))
         }
         ForInit::Expression(Some(expr)) => {
-            *expr = typecheck_and_convert(expr)?;
+            let typechecked = typecheck_and_convert(&expr)?;
+            Ok(ForInit::Expression(typechecked.into()))
         }
-        _ => {}
+        _ => Ok(init.to_owned()),
     }
-    Ok(init.to_owned())
 }
 
 fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer> {
@@ -916,15 +1015,6 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             bail!("can't init a scalar object iwth a compound initializer");
         }
     }
-}
-
-fn optionally_typecheck_block_item(
-    block_item: &mut Option<BlockItem>,
-) -> Result<&mut Option<BlockItem>> {
-    if let Some(item) = block_item {
-        item.typecheck()?;
-    }
-    Ok(block_item)
 }
 
 fn zero_initializer(t: &Type) -> Initializer {
@@ -2152,32 +2242,6 @@ fn is_ptr_to_complete(t: &Type) -> bool {
         Type::Pointer(inner) => is_complete(inner),
         _ => false,
     }
-}
-
-fn validate_type_specifier(t: &Type) -> Result<()> {
-    match t {
-        Type::Array { element, size: _ } => {
-            if !is_complete(element) {
-                bail!("Incomplete type");
-            }
-            validate_type_specifier(element)?;
-        }
-
-        Type::Pointer(referenced) => {
-            validate_type_specifier(referenced)?;
-        }
-
-        Type::Func { params, ret } => {
-            for param in params {
-                validate_type_specifier(param)?;
-            }
-            validate_type_specifier(ret)?;
-        }
-
-        _ => {}
-    }
-
-    Ok(())
 }
 
 fn typecheck_scalar(e: &Expression) -> Result<Expression> {

@@ -64,9 +64,8 @@ fn run(opts: &Opt) -> Result<()> {
     let mut variable_map = BTreeMap::new();
     let mut struct_map = BTreeMap::new();
     let mut labels = HashSet::new();
-    
-    // tmp
-    let mut labeled_ast = raw_ast
+
+    let cooked_ast = raw_ast
         .resolve(&mut variable_map, &mut struct_map)?
         .loop_label(LabelContext {
             innermost: LabelKind::None,
@@ -74,9 +73,8 @@ fn run(opts: &Opt) -> Result<()> {
             switch_label: "",
         })?
         .collect_labels(&mut labels, "")?
-        .label_check(&mut labels, "")?;
-
-    let cooked_ast = labeled_ast.typecheck()?
+        .label_check(&mut labels, "")?
+        .typecheck()?
         .collect_switch_cases(&mut vec![], &Type::Dummy)?;
 
     if opts.validate {
