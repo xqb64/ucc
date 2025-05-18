@@ -614,7 +614,7 @@ impl Resolve for LabeledStatement {
 }
 
 impl Resolve for SwitchStatement {
-fn resolve(
+    fn resolve(
         self,
         variable_map: &mut BTreeMap<String, Variable>,
         struct_map: &mut BTreeMap<String, StructTableEntry>,
@@ -1061,4 +1061,3 @@ pub struct StructTableEntry {
     name: String,
     from_current_scope: bool,
 }
-
