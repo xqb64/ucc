@@ -1,26 +1,31 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::{collections::VecDeque, fs::File, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
+    fs::File,
+    path::PathBuf,
+};
 
 use anyhow::{bail, Result};
 use structopt::StructOpt;
 
 use ucc::ir::gen::{IRInstruction, IRProgram, IRValue, Optimization};
-use ucc::parser::ast::Type;
-use ucc::parser::recursive_descent::Parser;
-use ucc::semantics::collecting_cases::SwitchCaseCollect;
-use ucc::semantics::label_checker::{LabelCheck, LabelCollect};
-use ucc::semantics::loop_label::{LabelContext, LabelKind};
+use ucc::parser::{ast::Type, recursive_descent::Parser};
 use ucc::{
-    codegen::fixup::Fixup,
-    codegen::gen::{build_asm_symbol_table, AsmType, Codegen},
-    codegen::regalloc::RegAlloc,
-    codegen::replace_pseudo::ReplacePseudo,
+    codegen::{
+        fixup::Fixup,
+        gen::{build_asm_symbol_table, AsmType, Codegen},
+        regalloc::RegAlloc,
+        replace_pseudo::ReplacePseudo,
+    },
     emitter::emit::Emit,
     ir::gen::{convert_symbols_to_tacky, IRNode, Irfy, Optimize},
     lexer::lex::{Lexer, Token},
-    semantics::loop_label::LoopLabel,
-    semantics::resolver::Resolve,
-    semantics::typechecker::Typecheck,
+    semantics::{
+        collecting_cases::SwitchCaseCollect,
+        label_checker::{LabelCheck, LabelCollect},
+        loop_label::{LabelContext, LabelKind, LoopLabel},
+        resolver::Resolve,
+        typechecker::Typecheck,
+    },
 };
 
 fn main() {
