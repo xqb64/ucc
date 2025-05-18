@@ -21,12 +21,20 @@ use ucc::{
     lexer::lex::{Lexer, Token},
     semantics::{
         collecting_cases::SwitchCaseCollect,
-        label_checker::{LabelCheck, LabelCollect},
+        label_checker::LabelCheck,
         loop_label::{LabelContext, LabelKind, LoopLabel},
         resolver::Resolve,
         typechecker::Typecheck,
     },
 };
+
+macro_rules! collect_enabled {
+    ($opts:ident, $($field:ident => $variant:expr),+ $(,)?) => {
+        vec![
+            $($opts.$field.then_some($variant)),+
+        ].into_iter().flatten().collect::<Vec<_>>()
+    };
+}
 
 fn main() {
     let opts = Opt::from_args();
@@ -97,23 +105,13 @@ fn run(opts: &Opt) -> Result<()> {
         unreachable!()
     };
 
-    let mut optimizations = vec![];
-
-    if opts.fold_constants {
-        optimizations.push(Optimization::ConstantFolding);
-    }
-
-    if opts.eliminate_unreachable_code {
-        optimizations.push(Optimization::UnreachableCodeElimination);
-    }
-
-    if opts.propagate_copies {
-        optimizations.push(Optimization::CopyPropagation);
-    }
-
-    if opts.eliminate_dead_stores {
-        optimizations.push(Optimization::DeadStoreElimination);
-    }
+    let optimizations = collect_enabled!(
+        opts,
+        fold_constants => Optimization::ConstantFolding,
+        eliminate_unreachable_code => Optimization::UnreachableCodeElimination,
+        propagate_copies => Optimization::CopyPropagation,
+        eliminate_dead_stores => Optimization::DeadStoreElimination,
+    );
 
     let optimized_prog = ir_prog.optimize(optimizations);
 
