@@ -29,14 +29,14 @@ impl LabelCollect for Program {
 impl LabelCollect for BlockItem {
     fn collect_labels(self, labels: &mut HashSet<String>, funcname: &str) -> Result<Self> {
         match self {
-            BlockItem::Statement(stmt) => {
-                let collected = stmt.collect_labels(labels, funcname)?;
-                Ok(BlockItem::Statement(collected))
-            }
-
             BlockItem::Declaration(decl) => {
                 let collected = decl.collect_labels(labels, funcname)?;
                 Ok(BlockItem::Declaration(collected))
+            }
+
+            BlockItem::Statement(stmt) => {
+                let collected = stmt.collect_labels(labels, funcname)?;
+                Ok(BlockItem::Statement(collected))
             }
         }
     }
@@ -77,9 +77,14 @@ impl LabelCollect for FunctionDeclaration {
 impl LabelCollect for Statement {
     fn collect_labels(self, labels: &mut HashSet<String>, funcname: &str) -> Result<Self> {
         match self {
-            Statement::Compound(stmt_compound) => {
-                let collected = stmt_compound.collect_labels(labels, funcname)?;
-                Ok(Statement::Compound(collected))
+            Statement::Return(stmt_return) => {
+                let collected = stmt_return.collect_labels(labels, funcname)?;
+                Ok(Statement::Return(collected))
+            }
+
+            Statement::Expression(stmt_expr) => {
+                let collected = stmt_expr.collect_labels(labels, funcname)?;
+                Ok(Statement::Expression(collected))
             }
 
             Statement::If(stmt_if) => {
@@ -87,14 +92,9 @@ impl LabelCollect for Statement {
                 Ok(Statement::If(collected))
             }
 
-            Statement::Break(stmt_break) => {
-                let collected = stmt_break.collect_labels(labels, funcname)?;
-                Ok(Statement::Break(collected))
-            }
-
-            Statement::Continue(stmt_continue) => {
-                let collected = stmt_continue.collect_labels(labels, funcname)?;
-                Ok(Statement::Continue(collected))
+            Statement::Compound(stmt_compound) => {
+                let collected = stmt_compound.collect_labels(labels, funcname)?;
+                Ok(Statement::Compound(collected))
             }
 
             Statement::While(stmt_while) => {
@@ -112,14 +112,14 @@ impl LabelCollect for Statement {
                 Ok(Statement::For(collected))
             }
 
-            Statement::Expression(stmt_expr) => {
-                let collected = stmt_expr.collect_labels(labels, funcname)?;
-                Ok(Statement::Expression(collected))
+            Statement::Break(stmt_break) => {
+                let collected = stmt_break.collect_labels(labels, funcname)?;
+                Ok(Statement::Break(collected))
             }
 
-            Statement::Return(stmt_return) => {
-                let collected = stmt_return.collect_labels(labels, funcname)?;
-                Ok(Statement::Return(collected))
+            Statement::Continue(stmt_continue) => {
+                let collected = stmt_continue.collect_labels(labels, funcname)?;
+                Ok(Statement::Continue(collected))
             }
 
             Statement::Goto(stmt_goto) => {
@@ -159,6 +159,7 @@ impl LabelCollect for BlockStatement {
             .into_iter()
             .map(|stmt| stmt.collect_labels(labels, funcname))
             .collect::<Result<Vec<_>>>()?;
+
         Ok(BlockStatement {
             stmts: collected_stmts,
         })
@@ -443,49 +444,16 @@ impl LabelCheck for Statement {
         }
     }
 }
-impl LabelCheck for BlockStatement {
-    fn label_check(self, labels: &mut HashSet<String>, funcname: &str) -> Result<Self> {
-        let checked_stmts = self
-            .stmts
-            .into_iter()
-            .map(|stmt| stmt.label_check(labels, funcname))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(BlockStatement {
-            stmts: checked_stmts,
-        })
+
+impl LabelCheck for ReturnStatement {
+    fn label_check(self, _labels: &mut HashSet<String>, _funcname: &str) -> Result<Self> {
+        Ok(self)
     }
 }
 
-impl LabelCheck for SwitchStatement {
-    fn label_check(self, labels: &mut HashSet<String>, funcname: &str) -> Result<Self> {
-        let checked_body = self.body.label_check(labels, funcname)?;
-        Ok(SwitchStatement {
-            condition: self.condition.clone(),
-            body: checked_body.into(),
-            label: self.label.clone(),
-            cases: self.cases.clone(),
-        })
-    }
-}
-
-impl LabelCheck for CaseStatement {
-    fn label_check(self, labels: &mut HashSet<String>, funcname: &str) -> Result<Self> {
-        let checked_body = self.body.label_check(labels, funcname)?;
-        Ok(CaseStatement {
-            value: self.value.clone(),
-            body: checked_body.into(),
-            label: self.label.clone(),
-        })
-    }
-}
-
-impl LabelCheck for DefaultStatement {
-    fn label_check(self, labels: &mut HashSet<String>, funcname: &str) -> Result<Self> {
-        let checked_body = self.body.label_check(labels, funcname)?;
-        Ok(DefaultStatement {
-            body: checked_body.into(),
-            label: self.label.clone(),
-        })
+impl LabelCheck for ExpressionStatement {
+    fn label_check(self, _labels: &mut HashSet<String>, _funcname: &str) -> Result<Self> {
+        Ok(self)
     }
 }
 
@@ -506,15 +474,16 @@ impl LabelCheck for IfStatement {
     }
 }
 
-impl LabelCheck for BreakStatement {
-    fn label_check(self, _labels: &mut HashSet<String>, _funcname: &str) -> Result<Self> {
-        Ok(self)
-    }
-}
-
-impl LabelCheck for ContinueStatement {
-    fn label_check(self, _labels: &mut HashSet<String>, _funcname: &str) -> Result<Self> {
-        Ok(self)
+impl LabelCheck for BlockStatement {
+    fn label_check(self, labels: &mut HashSet<String>, funcname: &str) -> Result<Self> {
+        let checked_stmts = self
+            .stmts
+            .into_iter()
+            .map(|stmt| stmt.label_check(labels, funcname))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(BlockStatement {
+            stmts: checked_stmts,
+        })
     }
 }
 
@@ -553,13 +522,13 @@ impl LabelCheck for ForStatement {
     }
 }
 
-impl LabelCheck for ReturnStatement {
+impl LabelCheck for BreakStatement {
     fn label_check(self, _labels: &mut HashSet<String>, _funcname: &str) -> Result<Self> {
         Ok(self)
     }
 }
 
-impl LabelCheck for ExpressionStatement {
+impl LabelCheck for ContinueStatement {
     fn label_check(self, _labels: &mut HashSet<String>, _funcname: &str) -> Result<Self> {
         Ok(self)
     }
@@ -584,6 +553,39 @@ impl LabelCheck for LabeledStatement {
         Ok(LabeledStatement {
             label: self.label.clone(),
             body: checked_body.into(),
+        })
+    }
+}
+
+impl LabelCheck for SwitchStatement {
+    fn label_check(self, labels: &mut HashSet<String>, funcname: &str) -> Result<Self> {
+        let checked_body = self.body.label_check(labels, funcname)?;
+        Ok(SwitchStatement {
+            condition: self.condition.clone(),
+            body: checked_body.into(),
+            label: self.label.clone(),
+            cases: self.cases.clone(),
+        })
+    }
+}
+
+impl LabelCheck for CaseStatement {
+    fn label_check(self, labels: &mut HashSet<String>, funcname: &str) -> Result<Self> {
+        let checked_body = self.body.label_check(labels, funcname)?;
+        Ok(CaseStatement {
+            value: self.value.clone(),
+            body: checked_body.into(),
+            label: self.label.clone(),
+        })
+    }
+}
+
+impl LabelCheck for DefaultStatement {
+    fn label_check(self, labels: &mut HashSet<String>, funcname: &str) -> Result<Self> {
+        let checked_body = self.body.label_check(labels, funcname)?;
+        Ok(DefaultStatement {
+            body: checked_body.into(),
+            label: self.label.clone(),
         })
     }
 }
