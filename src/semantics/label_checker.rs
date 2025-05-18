@@ -335,12 +335,16 @@ impl LabelCheck for BlockItem {
 }
 
 impl LabelCheck for Declaration {
-    fn label_check(self, labels: &mut HashSet<String>, _funcname: &str) -> Result<Self> {
+    fn label_check(self, _labels: &mut HashSet<String>, _funcname: &str) -> Result<Self> {
         match self {
             Declaration::Variable(_) => Ok(self),
             Declaration::Function(func_decl) => {
                 let name = func_decl.name.clone();
-                let checked = func_decl.label_check(labels, &name)?;
+
+                let mut new_labels = HashSet::new();
+
+                let collected = func_decl.collect_labels(&mut new_labels, &name)?;
+                let checked = collected.label_check(&mut new_labels, &name)?;
 
                 Ok(Declaration::Function(checked))
             }
