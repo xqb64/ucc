@@ -1,4 +1,3 @@
-use crate::semantics::typechecker::convert_to;
 use crate::{
     ir::gen::expr2const,
     parser::ast::{
@@ -8,6 +7,7 @@ use crate::{
         LabeledStatement, Program, ReturnStatement, Statement, SwitchStatement, Type,
         WhileStatement,
     },
+    semantics::typechecker::{convert_to, typecheck_and_convert},
 };
 use anyhow::{bail, Result};
 
@@ -36,14 +36,14 @@ impl SwitchCaseCollect for Program {
 impl SwitchCaseCollect for BlockItem {
     fn collect_switch_cases(self, cases: &mut Vec<Statement>, control: &Type) -> Result<Self> {
         match self {
-            BlockItem::Statement(stmt) => {
-                let collected = stmt.collect_switch_cases(cases, control)?;
-                Ok(BlockItem::Statement(collected))
-            }
-
             BlockItem::Declaration(decl) => {
                 let collected = decl.collect_switch_cases(cases, control)?;
                 Ok(BlockItem::Declaration(collected))
+            }
+
+            BlockItem::Statement(stmt) => {
+                let collected = stmt.collect_switch_cases(cases, control)?;
+                Ok(BlockItem::Statement(collected))
             }
         }
     }
@@ -82,9 +82,14 @@ impl SwitchCaseCollect for FunctionDeclaration {
 impl SwitchCaseCollect for Statement {
     fn collect_switch_cases(self, cases: &mut Vec<Statement>, control: &Type) -> Result<Self> {
         match self {
-            Statement::Compound(stmt_compound) => {
-                let collected = stmt_compound.collect_switch_cases(cases, control)?;
-                Ok(Statement::Compound(collected))
+            Statement::Return(stmt_return) => {
+                let collected = stmt_return.collect_switch_cases(cases, control)?;
+                Ok(Statement::Return(collected))
+            }
+
+            Statement::Expression(stmt_expr) => {
+                let collected = stmt_expr.collect_switch_cases(cases, control)?;
+                Ok(Statement::Expression(collected))
             }
 
             Statement::If(stmt_if) => {
@@ -92,14 +97,9 @@ impl SwitchCaseCollect for Statement {
                 Ok(Statement::If(collected))
             }
 
-            Statement::Break(stmt_break) => {
-                let collected = stmt_break.collect_switch_cases(cases, control)?;
-                Ok(Statement::Break(collected))
-            }
-
-            Statement::Continue(stmt_continue) => {
-                let collected = stmt_continue.collect_switch_cases(cases, control)?;
-                Ok(Statement::Continue(collected))
+            Statement::Compound(stmt_compound) => {
+                let collected = stmt_compound.collect_switch_cases(cases, control)?;
+                Ok(Statement::Compound(collected))
             }
 
             Statement::While(stmt_while) => {
@@ -117,14 +117,14 @@ impl SwitchCaseCollect for Statement {
                 Ok(Statement::For(collected))
             }
 
-            Statement::Expression(stmt_expr) => {
-                let collected = stmt_expr.collect_switch_cases(cases, control)?;
-                Ok(Statement::Expression(collected))
+            Statement::Break(stmt_break) => {
+                let collected = stmt_break.collect_switch_cases(cases, control)?;
+                Ok(Statement::Break(collected))
             }
 
-            Statement::Return(stmt_return) => {
-                let collected = stmt_return.collect_switch_cases(cases, control)?;
-                Ok(Statement::Return(collected))
+            Statement::Continue(stmt_continue) => {
+                let collected = stmt_continue.collect_switch_cases(cases, control)?;
+                Ok(Statement::Continue(collected))
             }
 
             Statement::Goto(stmt_goto) => {
@@ -157,16 +157,15 @@ impl SwitchCaseCollect for Statement {
     }
 }
 
-impl SwitchCaseCollect for BlockStatement {
-    fn collect_switch_cases(self, cases: &mut Vec<Statement>, control: &Type) -> Result<Self> {
-        let collected_stmts = self
-            .stmts
-            .into_iter()
-            .map(|stmt| stmt.collect_switch_cases(cases, control))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(BlockStatement {
-            stmts: collected_stmts,
-        })
+impl SwitchCaseCollect for ReturnStatement {
+    fn collect_switch_cases(self, _cases: &mut Vec<Statement>, _control: &Type) -> Result<Self> {
+        Ok(self)
+    }
+}
+
+impl SwitchCaseCollect for ExpressionStatement {
+    fn collect_switch_cases(self, _cases: &mut Vec<Statement>, _control: &Type) -> Result<Self> {
+        Ok(self)
     }
 }
 
@@ -186,15 +185,16 @@ impl SwitchCaseCollect for IfStatement {
     }
 }
 
-impl SwitchCaseCollect for BreakStatement {
-    fn collect_switch_cases(self, _cases: &mut Vec<Statement>, _control: &Type) -> Result<Self> {
-        Ok(self)
-    }
-}
-
-impl SwitchCaseCollect for ContinueStatement {
-    fn collect_switch_cases(self, _cases: &mut Vec<Statement>, _control: &Type) -> Result<Self> {
-        Ok(self)
+impl SwitchCaseCollect for BlockStatement {
+    fn collect_switch_cases(self, cases: &mut Vec<Statement>, control: &Type) -> Result<Self> {
+        let collected_stmts = self
+            .stmts
+            .into_iter()
+            .map(|stmt| stmt.collect_switch_cases(cases, control))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(BlockStatement {
+            stmts: collected_stmts,
+        })
     }
 }
 
@@ -233,13 +233,13 @@ impl SwitchCaseCollect for ForStatement {
     }
 }
 
-impl SwitchCaseCollect for ReturnStatement {
+impl SwitchCaseCollect for BreakStatement {
     fn collect_switch_cases(self, _cases: &mut Vec<Statement>, _control: &Type) -> Result<Self> {
         Ok(self)
     }
 }
 
-impl SwitchCaseCollect for ExpressionStatement {
+impl SwitchCaseCollect for ContinueStatement {
     fn collect_switch_cases(self, _cases: &mut Vec<Statement>, _control: &Type) -> Result<Self> {
         Ok(self)
     }
@@ -278,8 +278,6 @@ impl SwitchCaseCollect for SwitchStatement {
         })
     }
 }
-
-use crate::semantics::typechecker::typecheck_and_convert;
 
 impl SwitchCaseCollect for CaseStatement {
     fn collect_switch_cases(self, cases: &mut Vec<Statement>, control: &Type) -> Result<Self> {
