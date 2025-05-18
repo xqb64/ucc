@@ -309,49 +309,6 @@ impl Resolve for StructDeclaration {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Variable {
-    name: String,
-    from_current_scope: bool,
-    has_linkage: bool,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct StructTableEntry {
-    name: String,
-    from_current_scope: bool,
-}
-
-impl Resolve for Initializer {
-    fn resolve(
-        self,
-        variable_map: &mut BTreeMap<String, Variable>,
-        struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        match self {
-            Initializer::Single(name, single_init) => {
-                let resolved_expr = single_init.resolve(variable_map, struct_map)?;
-                Ok(Initializer::Single(name.to_owned(), resolved_expr))
-            }
-            Initializer::Compound(name, ty, compound_init) => {
-                let resolved_inits = compound_init
-                    .into_iter()
-                    .map(|init| init.resolve(variable_map, struct_map))
-                    .collect::<Result<Vec<_>>>()?;
-
-                Ok(Initializer::Compound(
-                    name.to_owned(),
-                    ty.to_owned(),
-                    resolved_inits,
-                ))
-            }
-        }
-    }
-}
-
 impl Resolve for Statement {
     fn resolve(
         self,
@@ -359,25 +316,16 @@ impl Resolve for Statement {
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
         match self {
+            Statement::Return(stmt_return) => {
+                let resolved = stmt_return.resolve(variable_map, struct_map)?;
+                Ok(Statement::Return(resolved))
+            }
+
             Statement::Expression(stmt_expr) => {
                 let resolved = stmt_expr.resolve(variable_map, struct_map)?;
                 Ok(Statement::Expression(resolved))
             }
 
-            Statement::Goto(stmt_goto) => {
-                let resolved = stmt_goto.resolve(variable_map, struct_map)?;
-                Ok(Statement::Goto(resolved))
-            }
-
-            Statement::Labeled(stmt_labeled) => {
-                let resolved = stmt_labeled.resolve(variable_map, struct_map)?;
-                Ok(Statement::Labeled(resolved))
-            }
-
-            Statement::Return(stmt_return) => {
-                let resolved = stmt_return.resolve(variable_map, struct_map)?;
-                Ok(Statement::Return(resolved))
-            }
             Statement::If(stmt_if) => {
                 let resolved = stmt_if.resolve(variable_map, struct_map)?;
                 Ok(Statement::If(resolved))
@@ -413,7 +361,15 @@ impl Resolve for Statement {
                 Ok(Statement::Continue(resolved))
             }
 
-            Statement::Null => Ok(Statement::Null),
+            Statement::Goto(stmt_goto) => {
+                let resolved = stmt_goto.resolve(variable_map, struct_map)?;
+                Ok(Statement::Goto(resolved))
+            }
+
+            Statement::Labeled(stmt_labeled) => {
+                let resolved = stmt_labeled.resolve(variable_map, struct_map)?;
+                Ok(Statement::Labeled(resolved))
+            }
 
             Statement::Switch(stmt_switch) => {
                 let resolved = stmt_switch.resolve(variable_map, struct_map)?;
@@ -429,97 +385,9 @@ impl Resolve for Statement {
                 let resolved = stmt_default.resolve(variable_map, struct_map)?;
                 Ok(Statement::Default(resolved))
             }
+
+            Statement::Null => Ok(Statement::Null),
         }
-    }
-}
-
-impl Resolve for SwitchStatement {
-    fn resolve(
-        self,
-        variable_map: &mut BTreeMap<String, Variable>,
-        struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        let resolved_condition = self.condition.resolve(variable_map, struct_map)?;
-        let resolved_body = self.body.resolve(variable_map, struct_map)?;
-
-        Ok(SwitchStatement {
-            condition: resolved_condition,
-            body: resolved_body.into(),
-            label: self.label.clone(),
-            cases: self.cases.clone(),
-        })
-    }
-}
-
-impl Resolve for CaseStatement {
-    fn resolve(
-        self,
-        variable_map: &mut BTreeMap<String, Variable>,
-        struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        let resolved_body = self.body.resolve(variable_map, struct_map)?;
-
-        Ok(CaseStatement {
-            value: self.value.clone(),
-            body: resolved_body.into(),
-            label: self.label.clone(),
-        })
-    }
-}
-
-impl Resolve for DefaultStatement {
-    fn resolve(
-        self,
-        variable_map: &mut BTreeMap<String, Variable>,
-        struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        let resolved_body = self.body.resolve(variable_map, struct_map)?;
-
-        Ok(DefaultStatement {
-            body: resolved_body.into(),
-            label: self.label.clone(),
-        })
-    }
-}
-
-impl Resolve for LabeledStatement {
-    fn resolve(
-        self,
-        variable_map: &mut BTreeMap<String, Variable>,
-        struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        let resolved_body = self.body.resolve(variable_map, struct_map)?;
-
-        Ok(LabeledStatement {
-            label: self.label.clone(),
-            body: resolved_body.into(),
-        })
-    }
-}
-
-impl Resolve for ExpressionStatement {
-    fn resolve(
-        self,
-        variable_map: &mut BTreeMap<String, Variable>,
-        struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<Self> {
-        let resolved_expr = self.expr.resolve(variable_map, struct_map)?;
-
-        Ok(ExpressionStatement {
-            expr: resolved_expr,
-        })
     }
 }
 
@@ -543,6 +411,20 @@ impl Resolve for ReturnStatement {
             expr: resolved_expr,
             target_type: resolved_target_type,
             belongs_to: self.belongs_to.clone(),
+        })
+    }
+}
+
+impl Resolve for ExpressionStatement {
+    fn resolve(
+        self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self> {
+        let resolved_expr = self.expr.resolve(variable_map, struct_map)?;
+
+        Ok(ExpressionStatement {
+            expr: resolved_expr,
         })
     }
 }
@@ -683,16 +565,6 @@ impl Resolve for WhileStatement {
     }
 }
 
-impl Resolve for GotoStatement {
-    fn resolve(
-        self,
-        _variable_map: &mut BTreeMap<String, Variable>,
-        _struct_map: &mut BTreeMap<String, StructTableEntry>,
-    ) -> Result<Self> {
-        Ok(self.to_owned())
-    }
-}
-
 impl Resolve for BreakStatement {
     fn resolve(
         self,
@@ -710,6 +582,92 @@ impl Resolve for ContinueStatement {
         _struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
         Ok(self.to_owned())
+    }
+}
+
+impl Resolve for GotoStatement {
+    fn resolve(
+        self,
+        _variable_map: &mut BTreeMap<String, Variable>,
+        _struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self> {
+        Ok(self.to_owned())
+    }
+}
+
+impl Resolve for LabeledStatement {
+    fn resolve(
+        self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let resolved_body = self.body.resolve(variable_map, struct_map)?;
+
+        Ok(LabeledStatement {
+            label: self.label.clone(),
+            body: resolved_body.into(),
+        })
+    }
+}
+
+impl Resolve for SwitchStatement {
+fn resolve(
+        self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let resolved_condition = self.condition.resolve(variable_map, struct_map)?;
+        let resolved_body = self.body.resolve(variable_map, struct_map)?;
+
+        Ok(SwitchStatement {
+            condition: resolved_condition,
+            body: resolved_body.into(),
+            label: self.label.clone(),
+            cases: self.cases.clone(),
+        })
+    }
+}
+
+impl Resolve for CaseStatement {
+    fn resolve(
+        self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let resolved_body = self.body.resolve(variable_map, struct_map)?;
+
+        Ok(CaseStatement {
+            value: self.value.clone(),
+            body: resolved_body.into(),
+            label: self.label.clone(),
+        })
+    }
+}
+
+impl Resolve for DefaultStatement {
+    fn resolve(
+        self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let resolved_body = self.body.resolve(variable_map, struct_map)?;
+
+        Ok(DefaultStatement {
+            body: resolved_body.into(),
+            label: self.label.clone(),
+        })
     }
 }
 
@@ -932,39 +890,34 @@ impl Resolve for Expression {
     }
 }
 
-fn copy_variable_map(variable_map: &BTreeMap<String, Variable>) -> BTreeMap<String, Variable> {
-    let spam = variable_map
-        .iter()
-        .map(|(k, v)| {
-            (
-                k.clone(),
-                Variable {
-                    from_current_scope: false,
-                    name: v.name.clone(),
-                    has_linkage: v.has_linkage,
-                },
-            )
-        })
-        .collect();
-    spam
-}
+impl Resolve for Initializer {
+    fn resolve(
+        self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        match self {
+            Initializer::Single(name, single_init) => {
+                let resolved_expr = single_init.resolve(variable_map, struct_map)?;
+                Ok(Initializer::Single(name.to_owned(), resolved_expr))
+            }
+            Initializer::Compound(name, ty, compound_init) => {
+                let resolved_inits = compound_init
+                    .into_iter()
+                    .map(|init| init.resolve(variable_map, struct_map))
+                    .collect::<Result<Vec<_>>>()?;
 
-fn copy_struct_map(
-    struct_map: &BTreeMap<String, StructTableEntry>,
-) -> BTreeMap<String, StructTableEntry> {
-    let spam = struct_map
-        .iter()
-        .map(|(k, v)| {
-            (
-                k.clone(),
-                StructTableEntry {
-                    name: v.name.clone(),
-                    from_current_scope: false,
-                },
-            )
-        })
-        .collect();
-    spam
+                Ok(Initializer::Compound(
+                    name.to_owned(),
+                    ty.to_owned(),
+                    resolved_inits,
+                ))
+            }
+        }
+    }
 }
 
 impl Resolve for ForInit {
@@ -991,25 +944,6 @@ impl Resolve for ForInit {
             }
         }
     }
-}
-
-fn resolve_param(param: &str, variable_map: &mut BTreeMap<String, Variable>) -> Result<String> {
-    if variable_map.contains_key(param) && variable_map.get(param).unwrap().from_current_scope {
-        bail!("redeclaration of parameter: {}", param);
-    }
-
-    let unique_name = format!("var.{}.{}", param, make_temporary());
-
-    variable_map.insert(
-        param.to_string(),
-        Variable {
-            from_current_scope: true,
-            name: unique_name.clone(),
-            has_linkage: false,
-        },
-    );
-
-    Ok(unique_name)
 }
 
 impl Resolve for Type {
@@ -1060,3 +994,71 @@ impl Resolve for Type {
         }
     }
 }
+
+fn resolve_param(param: &str, variable_map: &mut BTreeMap<String, Variable>) -> Result<String> {
+    if variable_map.contains_key(param) && variable_map.get(param).unwrap().from_current_scope {
+        bail!("redeclaration of parameter: {}", param);
+    }
+
+    let unique_name = format!("var.{}.{}", param, make_temporary());
+
+    variable_map.insert(
+        param.to_string(),
+        Variable {
+            from_current_scope: true,
+            name: unique_name.clone(),
+            has_linkage: false,
+        },
+    );
+
+    Ok(unique_name)
+}
+
+fn copy_variable_map(variable_map: &BTreeMap<String, Variable>) -> BTreeMap<String, Variable> {
+    let spam = variable_map
+        .iter()
+        .map(|(k, v)| {
+            (
+                k.clone(),
+                Variable {
+                    from_current_scope: false,
+                    name: v.name.clone(),
+                    has_linkage: v.has_linkage,
+                },
+            )
+        })
+        .collect();
+    spam
+}
+
+fn copy_struct_map(
+    struct_map: &BTreeMap<String, StructTableEntry>,
+) -> BTreeMap<String, StructTableEntry> {
+    let spam = struct_map
+        .iter()
+        .map(|(k, v)| {
+            (
+                k.clone(),
+                StructTableEntry {
+                    name: v.name.clone(),
+                    from_current_scope: false,
+                },
+            )
+        })
+        .collect();
+    spam
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Variable {
+    name: String,
+    from_current_scope: bool,
+    has_linkage: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructTableEntry {
+    name: String,
+    from_current_scope: bool,
+}
+
