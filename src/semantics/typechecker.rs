@@ -1199,7 +1199,7 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
 
             while i < struct_def.members.len() {
                 let member = &struct_def.members[i];
-                typechecked_inits.push(zero_initializer(&member.ty));
+                typechecked_inits.push(Initializer::zero(&member.ty));
                 i += 1;
             }
 
@@ -1227,7 +1227,7 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             }
 
             while typechecked_inits.len() < *size {
-                typechecked_inits.push(zero_initializer(element));
+                typechecked_inits.push(Initializer::zero(element));
             }
 
             Ok(Initializer::Compound(
@@ -2190,85 +2190,4 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
 fn to_static_init(init: &Initializer, t: &Type) -> Result<InitialValue> {
     let init_list = static_init_helper(init, t)?;
     Ok(InitialValue::Initial(init_list))
-}
-
-fn zero_initializer(t: &Type) -> Initializer {
-    match t {
-        Type::Int => Initializer::Single(
-            String::new(),
-            Expression::Constant(ConstantExpression {
-                value: Const::Int(0),
-                ty: Type::Int,
-            }),
-        ),
-        Type::UInt => Initializer::Single(
-            String::new(),
-            Expression::Constant(ConstantExpression {
-                value: Const::UInt(0),
-                ty: Type::UInt,
-            }),
-        ),
-        Type::Long => Initializer::Single(
-            String::new(),
-            Expression::Constant(ConstantExpression {
-                value: Const::Long(0),
-                ty: Type::Long,
-            }),
-        ),
-        Type::ULong => Initializer::Single(
-            String::new(),
-            Expression::Constant(ConstantExpression {
-                value: Const::ULong(0),
-                ty: Type::ULong,
-            }),
-        ),
-        Type::Double => Initializer::Single(
-            String::new(),
-            Expression::Constant(ConstantExpression {
-                value: Const::Double(0.0),
-                ty: Type::Double,
-            }),
-        ),
-        Type::Char | Type::SChar => Initializer::Single(
-            String::new(),
-            Expression::Constant(ConstantExpression {
-                value: Const::Char(0),
-                ty: Type::Char,
-            }),
-        ),
-        Type::UChar => Initializer::Single(
-            String::new(),
-            Expression::Constant(ConstantExpression {
-                value: Const::UChar(0),
-                ty: Type::UChar,
-            }),
-        ),
-        Type::Pointer(_) => Initializer::Single(
-            String::new(),
-            Expression::Constant(ConstantExpression {
-                value: Const::ULong(0),
-                ty: Type::Int,
-            }),
-        ),
-        Type::Array { element, size } => {
-            let mut inits = vec![];
-
-            for _ in 0..*size {
-                inits.push(zero_initializer(element));
-            }
-
-            Initializer::Compound(String::new(), *element.clone(), inits)
-        }
-        Type::Struct { tag } => {
-            let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
-            let mut inits = vec![];
-
-            for member in struct_def.members.iter() {
-                inits.push(zero_initializer(&member.ty));
-            }
-
-            Initializer::Compound(String::new(), Type::Struct { tag: tag.clone() }, inits)
-        }
-        _ => unreachable!(),
-    }
 }

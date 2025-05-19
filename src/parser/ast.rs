@@ -1,4 +1,7 @@
-use crate::lexer::lex::{Const, Token};
+use crate::{
+    lexer::lex::{Const, Token},
+    semantics::typechecker::TYPE_TABLE,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BlockItem {
@@ -307,6 +310,89 @@ pub struct LiteralExpression {
 pub enum Initializer {
     Single(String, Expression),
     Compound(String, Type, Vec<Initializer>),
+}
+
+impl Initializer {
+    pub fn zero(ty: &Type) -> Self {
+        match ty {
+            Type::Int => Initializer::Single(
+                String::new(),
+                Expression::Constant(ConstantExpression {
+                    value: Const::Int(0),
+                    ty: Type::Int,
+                }),
+            ),
+            Type::UInt => Initializer::Single(
+                String::new(),
+                Expression::Constant(ConstantExpression {
+                    value: Const::UInt(0),
+                    ty: Type::UInt,
+                }),
+            ),
+            Type::Long => Initializer::Single(
+                String::new(),
+                Expression::Constant(ConstantExpression {
+                    value: Const::Long(0),
+                    ty: Type::Long,
+                }),
+            ),
+            Type::ULong => Initializer::Single(
+                String::new(),
+                Expression::Constant(ConstantExpression {
+                    value: Const::ULong(0),
+                    ty: Type::ULong,
+                }),
+            ),
+            Type::Double => Initializer::Single(
+                String::new(),
+                Expression::Constant(ConstantExpression {
+                    value: Const::Double(0.0),
+                    ty: Type::Double,
+                }),
+            ),
+            Type::Char | Type::SChar => Initializer::Single(
+                String::new(),
+                Expression::Constant(ConstantExpression {
+                    value: Const::Char(0),
+                    ty: Type::Char,
+                }),
+            ),
+            Type::UChar => Initializer::Single(
+                String::new(),
+                Expression::Constant(ConstantExpression {
+                    value: Const::UChar(0),
+                    ty: Type::UChar,
+                }),
+            ),
+            Type::Pointer(_) => Initializer::Single(
+                String::new(),
+                Expression::Constant(ConstantExpression {
+                    value: Const::ULong(0),
+                    ty: Type::Int,
+                }),
+            ),
+            Type::Array { element, size } => {
+                let mut inits = vec![];
+
+                for _ in 0..*size {
+                    inits.push(Self::zero(element));
+                }
+
+                Initializer::Compound(String::new(), *element.clone(), inits)
+            }
+            Type::Struct { tag } => {
+                let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+                let mut inits = vec![];
+
+                for member in struct_def.members.iter() {
+                    inits.push(Self::zero(&member.ty));
+                }
+
+                Initializer::Compound(String::new(), Type::Struct { tag: tag.clone() }, inits)
+            }
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
