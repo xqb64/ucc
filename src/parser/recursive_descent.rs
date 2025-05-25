@@ -908,11 +908,6 @@ impl Parser {
         let mut result = self.or()?;
         if self.is_next(&[Token::QuestionMark]) {
             let then_expr = self.parse_expression()?;
-
-            if let Expression::Literal(_) = then_expr {
-                bail!("expected expression, got literal");
-            }
-
             self.consume(&Token::Colon)?;
             let else_expr = self.conditional()?;
             result = Expression::Conditional(ConditionalExpression {
