@@ -1,5 +1,6 @@
 pub mod util {
     pub mod cfg;
+    pub mod error;
 }
 pub mod emitter {
     pub mod emit;

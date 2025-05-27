@@ -4,7 +4,7 @@ use crate::parser::ast::{
     GotoStatement, IfStatement, LabeledStatement, Program, ReturnStatement, Statement,
     SwitchStatement, WhileStatement,
 };
-use anyhow::{bail, Result};
+use crate::util::error::{ErrorKind, Result, UccError};
 use std::collections::HashSet;
 
 pub trait LabelCollect {
@@ -70,6 +70,7 @@ impl LabelCollect for FunctionDeclaration {
             body: collected.into(),
             is_global: self.is_global,
             storage_class: self.storage_class,
+            span: self.span,
         })
     }
 }
@@ -162,6 +163,7 @@ impl LabelCollect for BlockStatement {
 
         Ok(BlockStatement {
             stmts: collected_stmts,
+            span: self.span,
         })
     }
 }
@@ -175,6 +177,7 @@ impl LabelCollect for SwitchStatement {
             body: collected_body.into(),
             label: self.label.clone(),
             cases: self.cases.clone(),
+            span: self.span,
         })
     }
 }
@@ -187,6 +190,7 @@ impl LabelCollect for CaseStatement {
             value: self.value.clone(),
             body: collected_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -198,6 +202,7 @@ impl LabelCollect for DefaultStatement {
         Ok(DefaultStatement {
             body: collected_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -215,6 +220,7 @@ impl LabelCollect for IfStatement {
             condition: self.condition.clone(),
             then_branch: collected_then.into(),
             else_branch: collected_else.into(),
+            span: self.span,
         })
     }
 }
@@ -238,6 +244,7 @@ impl LabelCollect for WhileStatement {
             condition: self.condition.clone(),
             body: collected_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -249,6 +256,7 @@ impl LabelCollect for DoWhileStatement {
             condition: self.condition.clone(),
             body: collected_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -262,6 +270,7 @@ impl LabelCollect for ForStatement {
             post: self.post.clone(),
             body: collected_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -287,7 +296,11 @@ impl LabelCollect for GotoStatement {
 impl LabelCollect for LabeledStatement {
     fn collect_labels(self, labels: &mut HashSet<String>, funcname: &str) -> Result<Self> {
         if !labels.insert(format!("{}.{}", self.label.clone(), funcname)) {
-            bail!("duplicate label: {}", self.label.clone());
+            return Err(UccError {
+                kind: ErrorKind::LabelCheck,
+                msg: format!("duplicate label: {}", self.label.clone()),
+                span: self.span,
+            });
         }
 
         let collected_body = self.body.collect_labels(labels, funcname)?;
@@ -295,6 +308,7 @@ impl LabelCollect for LabeledStatement {
         Ok(LabeledStatement {
             label: self.label.clone(),
             body: collected_body.into(),
+            span: self.span,
         })
     }
 }
@@ -367,6 +381,7 @@ impl LabelCheck for FunctionDeclaration {
             body: checked_body.into(),
             is_global: self.is_global,
             storage_class: self.storage_class,
+            span: self.span,
         })
     }
 }
@@ -474,6 +489,7 @@ impl LabelCheck for IfStatement {
             condition: self.condition.clone(),
             then_branch: checked_then.into(),
             else_branch: checked_else.into(),
+            span: self.span,
         })
     }
 }
@@ -487,6 +503,7 @@ impl LabelCheck for BlockStatement {
             .collect::<Result<Vec<_>>>()?;
         Ok(BlockStatement {
             stmts: checked_stmts,
+            span: self.span,
         })
     }
 }
@@ -498,6 +515,7 @@ impl LabelCheck for WhileStatement {
             condition: self.condition.clone(),
             body: checked_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -509,6 +527,7 @@ impl LabelCheck for DoWhileStatement {
             condition: self.condition.clone(),
             body: checked_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -522,6 +541,7 @@ impl LabelCheck for ForStatement {
             post: self.post.clone(),
             body: checked_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -541,10 +561,14 @@ impl LabelCheck for ContinueStatement {
 impl LabelCheck for GotoStatement {
     fn label_check(self, labels: &mut HashSet<String>, funcname: &str) -> Result<Self> {
         if !labels.contains(&format!("{}.{}", self.label.clone(), funcname)) {
-            bail!(
-                "non existing label: {}",
-                format!("{}.{}", self.label.clone(), funcname)
-            );
+            return Err(UccError {
+                kind: ErrorKind::LabelCheck,
+                msg: format!(
+                    "non existing label: {}",
+                    format!("{}.{}", self.label.clone(), funcname)
+                ),
+                span: self.span,
+            });
         }
         Ok(self)
     }
@@ -557,6 +581,7 @@ impl LabelCheck for LabeledStatement {
         Ok(LabeledStatement {
             label: self.label.clone(),
             body: checked_body.into(),
+            span: self.span,
         })
     }
 }
@@ -569,6 +594,7 @@ impl LabelCheck for SwitchStatement {
             body: checked_body.into(),
             label: self.label.clone(),
             cases: self.cases.clone(),
+            span: self.span,
         })
     }
 }
@@ -580,6 +606,7 @@ impl LabelCheck for CaseStatement {
             value: self.value.clone(),
             body: checked_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -590,6 +617,7 @@ impl LabelCheck for DefaultStatement {
         Ok(DefaultStatement {
             body: checked_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }

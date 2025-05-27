@@ -1,17 +1,16 @@
+use super::typechecker::{get_type, is_integer_type};
 use crate::{
     ir::gen::expr2const,
     parser::ast::{
-        BlockItem, BlockStatement, BreakStatement, CaseStatement, ConstantExpression,
-        ContinueStatement, Declaration, DefaultStatement, DoWhileStatement, Expression,
-        ExpressionStatement, ForStatement, FunctionDeclaration, GotoStatement, IfStatement,
-        LabeledStatement, Program, ReturnStatement, Statement, SwitchStatement, Type,
+        expr_eq_ignoring_span, BlockItem, BlockStatement, BreakStatement, CaseStatement,
+        ConstantExpression, ContinueStatement, Declaration, DefaultStatement, DoWhileStatement,
+        Expression, ExpressionStatement, ForStatement, FunctionDeclaration, GotoStatement,
+        IfStatement, LabeledStatement, Program, ReturnStatement, Statement, SwitchStatement, Type,
         WhileStatement,
     },
     semantics::typechecker::{convert_to, typecheck_and_convert},
+    util::error::{ErrorKind, Result, UccError},
 };
-use anyhow::{bail, Result};
-
-use super::typechecker::{get_type, is_integer_type};
 
 pub trait SwitchCaseCollect {
     fn collect_switch_cases(self, cases: &mut Vec<Statement>, control: &Type) -> Result<Self>
@@ -75,6 +74,7 @@ impl SwitchCaseCollect for FunctionDeclaration {
             body: collected_body.into(),
             is_global: self.is_global,
             storage_class: self.storage_class,
+            span: self.span,
         })
     }
 }
@@ -181,6 +181,7 @@ impl SwitchCaseCollect for IfStatement {
             condition: self.condition.clone(),
             then_branch: collected_then.into(),
             else_branch: collected_else.into(),
+            span: self.span,
         })
     }
 }
@@ -194,6 +195,7 @@ impl SwitchCaseCollect for BlockStatement {
             .collect::<Result<Vec<_>>>()?;
         Ok(BlockStatement {
             stmts: collected_stmts,
+            span: self.span,
         })
     }
 }
@@ -205,6 +207,7 @@ impl SwitchCaseCollect for WhileStatement {
             condition: self.condition.clone(),
             body: collected_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -216,6 +219,7 @@ impl SwitchCaseCollect for DoWhileStatement {
             condition: self.condition.clone(),
             body: collected_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -229,6 +233,7 @@ impl SwitchCaseCollect for ForStatement {
             post: self.post.clone(),
             body: collected_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -258,6 +263,7 @@ impl SwitchCaseCollect for LabeledStatement {
         Ok(LabeledStatement {
             label: self.label.clone(),
             body: collected_body.into(),
+            span: self.span,
         })
     }
 }
@@ -275,6 +281,7 @@ impl SwitchCaseCollect for SwitchStatement {
             body: collected_body.into(),
             label: self.label.clone(),
             cases: new_cases,
+            span: self.span,
         })
     }
 }
@@ -282,11 +289,19 @@ impl SwitchCaseCollect for SwitchStatement {
 impl SwitchCaseCollect for CaseStatement {
     fn collect_switch_cases(self, cases: &mut Vec<Statement>, control: &Type) -> Result<Self> {
         if !is_integer_type(get_type(&self.value)) {
-            bail!("switch condition not a constant expression");
+            return Err(UccError {
+                kind: ErrorKind::CaseCollect,
+                msg: format!("switch condition not a constant expression"),
+                span: self.span,
+            });
         }
 
         if !self.label.contains("Switch") {
-            bail!("case outside the switch statement");
+            return Err(UccError {
+                kind: ErrorKind::CaseCollect,
+                msg: format!("case outside the switch statement"),
+                span: self.span,
+            });
         }
 
         let mut new_val = None;
@@ -298,6 +313,7 @@ impl SwitchCaseCollect for CaseStatement {
                 new_val = Some(Expression::Constant(ConstantExpression {
                     value: expr2const(&convert_to(&self.value, control)),
                     ty: control.clone(),
+                    span: self.span,
                 }));
             }
         }
@@ -307,14 +323,19 @@ impl SwitchCaseCollect for CaseStatement {
         } else {
             &self.value
         };
+        println!("this_value: {:?}", this_value);
         if cases.iter().any(|stmt| {
             if let Statement::Case(case_stmt) = stmt {
-                case_stmt.value == *this_value
+                expr_eq_ignoring_span(&case_stmt.value, this_value)
             } else {
                 false
             }
         }) {
-            bail!("duplicate case value");
+            return Err(UccError {
+                kind: ErrorKind::CaseCollect,
+                msg: format!("duplicate case value"),
+                span: self.span,
+            });
         }
 
         cases.push(Statement::Case(CaseStatement {
@@ -325,6 +346,7 @@ impl SwitchCaseCollect for CaseStatement {
             },
             body: self.body.clone(),
             label: self.label.clone(),
+            span: self.span,
         }));
 
         let collected_body = self.body.collect_switch_cases(cases, control)?;
@@ -337,6 +359,7 @@ impl SwitchCaseCollect for CaseStatement {
             },
             body: collected_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -347,11 +370,19 @@ impl SwitchCaseCollect for DefaultStatement {
             .iter()
             .any(|stmt| matches!(stmt, Statement::Default(_)))
         {
-            bail!("multiple defaults in a switch statement");
+            return Err(UccError {
+                kind: ErrorKind::CaseCollect,
+                msg: format!("multiple defaults in a switch statement"),
+                span: self.span,
+            });
         }
 
         if !self.label.contains("Switch") {
-            bail!("default outside the switch statement");
+            return Err(UccError {
+                kind: ErrorKind::CaseCollect,
+                msg: format!("default outside the switch statement"),
+                span: self.span,
+            });
         }
 
         cases.push(Statement::Default(self.clone()));
@@ -361,6 +392,7 @@ impl SwitchCaseCollect for DefaultStatement {
         Ok(DefaultStatement {
             body: collected_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }

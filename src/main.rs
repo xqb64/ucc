@@ -4,10 +4,8 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::{bail, Result};
 use structopt::StructOpt;
 
-use ucc::ir::gen::{IRInstruction, IRProgram, IRValue, Optimization};
 use ucc::parser::{ast::Type, recursive_descent::Parser};
 use ucc::{
     codegen::{
@@ -18,7 +16,7 @@ use ucc::{
     },
     emitter::emit::Emit,
     ir::gen::{convert_symbols_to_tacky, IRNode, Irfy, Optimize},
-    lexer::lex::{Lexer, Token},
+    lexer::lex::{Lexer, Span, TokenKind},
     semantics::{
         collecting_cases::SwitchCaseCollect,
         label_checker::LabelCheck,
@@ -26,6 +24,10 @@ use ucc::{
         resolver::Resolve,
         typechecker::Typecheck,
     },
+};
+use ucc::{
+    ir::gen::{IRInstruction, IRProgram, IRValue, Optimization},
+    util::error::{ErrorKind, Result, UccError},
 };
 
 macro_rules! collect_enabled {
@@ -38,8 +40,7 @@ macro_rules! collect_enabled {
 
 fn main() {
     let opts = Opt::from_args();
-    if let Err(e) = run(&opts) {
-        eprintln!("ucc: {}", e);
+    if let Err(_) = run(&opts) {
         std::process::exit(1);
     }
 }
@@ -48,18 +49,21 @@ fn run(opts: &Opt) -> Result<()> {
     let preprocessed = preprocess(&opts.path)?;
     let src = std::fs::read_to_string(preprocessed)?;
 
-    let Some(tokens) = Lexer::new(src)
-        .map(|token| {
-            if token != Token::Error {
-                Some(token)
+    let tokens: VecDeque<_> =
+        Lexer::new(src.clone()).try_fold(VecDeque::new(), |mut acc, token| {
+            if token.kind == TokenKind::Error {
+                print_errctx(&src, &token.span);
+
+                Err(UccError {
+                    kind: ErrorKind::Lex,
+                    msg: format!("Failed to tokenize"),
+                    span: token.span,
+                })
             } else {
-                None
+                acc.push_back(token);
+                Ok(acc)
             }
-        })
-        .collect::<Option<VecDeque<_>>>()
-    else {
-        bail!("failed to tokenize");
-    };
+        })?;
 
     if opts.lex {
         println!("{:?}", tokens);
@@ -67,7 +71,13 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     let mut parser = Parser::new(tokens);
-    let raw_ast = parser.parse()?;
+    let raw_ast = match parser.parse() {
+        Ok(ast) => ast,
+        Err(e) => {
+            print_errctx(&src, &e.span);
+            return Err(e);
+        }
+    };
 
     if opts.parse {
         println!("{:#?}", raw_ast);
@@ -77,23 +87,56 @@ fn run(opts: &Opt) -> Result<()> {
     let mut variable_map = BTreeMap::new();
     let mut struct_map = BTreeMap::new();
 
-    let cooked_ast = raw_ast
-        .resolve(&mut variable_map, &mut struct_map)?
-        .loop_label(LabelContext {
-            innermost: LabelKind::None,
-            loop_label: "",
-            switch_label: "",
-        })?
-        .label_check(&mut HashSet::new(), "")?
-        .typecheck()?
-        .collect_switch_cases(&mut vec![], &Type::Dummy)?;
+    let resolved_ast = match raw_ast.resolve(&mut variable_map, &mut struct_map) {
+        Ok(ast) => ast,
+        Err(e) => {
+            print_errctx(&src, &e.span);
+            return Err(e);
+        }
+    };
+
+    let labeled_ast = match resolved_ast.loop_label(LabelContext {
+        innermost: LabelKind::None,
+        loop_label: "",
+        switch_label: "",
+    }) {
+        Ok(ast) => ast,
+        Err(e) => {
+            print_errctx(&src, &e.span);
+            return Err(e);
+        }
+    };
+
+    let labelchecked_ast = match labeled_ast.label_check(&mut HashSet::new(), "") {
+        Ok(ast) => ast,
+        Err(e) => {
+            print_errctx(&src, &e.span);
+            return Err(e);
+        }
+    };
+
+    let typechecked_ast = match labelchecked_ast.typecheck() {
+        Ok(ast) => ast,
+        Err(e) => {
+            print_errctx(&src, &e.span);
+            return Err(e);
+        }
+    };
+
+    let casecollected_ast = match typechecked_ast.collect_switch_cases(&mut vec![], &Type::Dummy) {
+        Ok(ast) => ast,
+        Err(e) => {
+            print_errctx(&src, &e.span);
+            return Err(e);
+        }
+    };
 
     if opts.validate {
-        println!("{:#?}", cooked_ast);
+        println!("{:#?}", casecollected_ast);
         std::process::exit(0);
     }
 
-    let mut tac = cooked_ast.irfy("").unwrap();
+    let mut tac = casecollected_ast.irfy("").unwrap();
     let (static_variables, static_constants) = convert_symbols_to_tacky();
 
     let ir_prog = if let IRNode::Program(prog) = &mut tac {
@@ -210,6 +253,62 @@ fn preprocess(path: &PathBuf) -> Result<PathBuf> {
         .status()?;
 
     Ok(new_path)
+}
+
+use unicode_width::UnicodeWidthStr;
+
+fn print_errctx(source: &str, span: &Span) {
+    let start_byte = nth_char_byte_offset(source, span.start);
+    let end_byte = nth_char_byte_offset(source, span.end);
+
+    let mut line_start_bytes = vec![0];
+    for (i, ch) in source.char_indices() {
+        if ch == '\n' {
+            line_start_bytes.push(i + 1);
+        }
+    }
+    line_start_bytes.push(source.len());
+
+    let offending_line_idx = match line_start_bytes.binary_search(&start_byte) {
+        Ok(i) => i,
+        Err(i) => i - 1,
+    };
+
+    let start_line = offending_line_idx.saturating_sub(3);
+    let end_line = (offending_line_idx + 3).min(line_start_bytes.len() - 2);
+
+    for i in start_line..=end_line {
+        let line_start = line_start_bytes[i];
+        let mut line_end = line_start_bytes[i + 1];
+        if line_end > 0 && source.as_bytes()[line_end - 1] == b'\n' {
+            line_end -= 1;
+        }
+        if line_end < line_start {
+            line_end = line_start; // ensure empty slice, not panic
+        }
+        let line = &source[line_start..line_end];
+        let line_num = i + 1;
+
+        println!("{:>4} | {}", line_num, line);
+
+        if i == offending_line_idx {
+            let prefix = &source[line_start..start_byte];
+            let highlight = &source[start_byte..end_byte];
+
+            let prefix_width = UnicodeWidthStr::width(prefix);
+            let highlight_width = UnicodeWidthStr::width(highlight).max(1);
+
+            println!(
+                "     | {}{}",
+                " ".repeat(prefix_width),
+                "^".repeat(highlight_width)
+            );
+        }
+    }
+}
+
+fn nth_char_byte_offset(s: &str, n: usize) -> usize {
+    s.char_indices().nth(n).map(|(i, _)| i).unwrap_or(s.len())
 }
 
 #[derive(Debug, StructOpt)]

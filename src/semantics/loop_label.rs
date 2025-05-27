@@ -1,5 +1,3 @@
-use anyhow::{bail, Result};
-
 use crate::{
     ir::gen::make_temporary,
     parser::ast::{
@@ -8,6 +6,7 @@ use crate::{
         GotoStatement, IfStatement, LabeledStatement, Program, ReturnStatement, Statement,
         SwitchStatement, WhileStatement,
     },
+    util::error::{ErrorKind, Result, UccError},
 };
 
 pub trait LoopLabel {
@@ -72,6 +71,7 @@ impl LoopLabel for FunctionDeclaration {
             body: labeled_body.into(),
             is_global: self.is_global,
             storage_class: self.storage_class,
+            span: self.span,
         })
     }
 }
@@ -160,6 +160,7 @@ impl LoopLabel for ReturnStatement {
             expr: self.expr.clone(),
             target_type: self.target_type.clone(),
             belongs_to: self.belongs_to.clone(),
+            span: self.span,
         })
     }
 }
@@ -168,6 +169,7 @@ impl LoopLabel for ExpressionStatement {
     fn loop_label(self, _ctx: LabelContext) -> Result<Self> {
         Ok(ExpressionStatement {
             expr: self.expr.clone(),
+            span: self.span,
         })
     }
 }
@@ -185,6 +187,7 @@ impl LoopLabel for IfStatement {
             condition: self.condition.clone(),
             then_branch: labeled_then.into(),
             else_branch: labeled_else.into(),
+            span: self.span,
         })
     }
 }
@@ -198,6 +201,7 @@ impl LoopLabel for BlockStatement {
             .collect::<Result<Vec<_>>>()?;
         Ok(BlockStatement {
             stmts: labeled_stmts.into(),
+            span: self.span,
         })
     }
 }
@@ -223,6 +227,7 @@ impl LoopLabel for WhileStatement {
             condition: self.condition.clone(),
             body: labeled_body.into(),
             label: new_loop_label,
+            span: self.span,
         })
     }
 }
@@ -248,6 +253,7 @@ impl LoopLabel for DoWhileStatement {
             condition: self.condition.clone(),
             body: labeled_body.into(),
             label: new_loop_label,
+            span: self.span,
         })
     }
 }
@@ -274,6 +280,7 @@ impl LoopLabel for ForStatement {
             post: self.post.clone(),
             body: labeled_body.into(),
             label: new_loop_label,
+            span: self.span,
         })
     }
 }
@@ -283,8 +290,15 @@ impl LoopLabel for BreakStatement {
         match ctx.innermost {
             LabelKind::Loop(label) | LabelKind::Switch(label) => Ok(BreakStatement {
                 label: label.to_string(),
+                span: self.span,
             }),
-            LabelKind::None => bail!("break statement not within loop or switch"),
+            LabelKind::None => {
+                return Err(UccError {
+                    kind: ErrorKind::LoopLabel,
+                    msg: format!("break stmt not within loop or switch"),
+                    span: self.span,
+                })
+            }
         }
     }
 }
@@ -292,11 +306,16 @@ impl LoopLabel for BreakStatement {
 impl LoopLabel for ContinueStatement {
     fn loop_label(self, ctx: LabelContext) -> Result<Self> {
         if ctx.loop_label.is_empty() {
-            bail!("continue statement not within loop");
+            return Err(UccError {
+                kind: ErrorKind::LoopLabel,
+                msg: format!("continue stmt not within loop"),
+                span: self.span,
+            });
         }
 
         Ok(ContinueStatement {
             label: ctx.loop_label.to_string(),
+            span: self.span,
         })
     }
 }
@@ -305,6 +324,7 @@ impl LoopLabel for GotoStatement {
     fn loop_label(self, _ctx: LabelContext) -> Result<Self> {
         Ok(GotoStatement {
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -316,6 +336,7 @@ impl LoopLabel for LabeledStatement {
         Ok(LabeledStatement {
             label: self.label.clone(),
             body: labeled_body.into(),
+            span: self.span,
         })
     }
 }
@@ -342,6 +363,7 @@ impl LoopLabel for SwitchStatement {
             body: labeled_body.into(),
             label: new_switch_label,
             cases: self.cases.clone(),
+            span: self.span,
         })
     }
 }
@@ -354,6 +376,7 @@ impl LoopLabel for CaseStatement {
             value: self.value.clone(),
             body: labeled_body.into(),
             label,
+            span: self.span,
         })
     }
 }
@@ -365,6 +388,7 @@ impl LoopLabel for DefaultStatement {
         Ok(DefaultStatement {
             body: labeled_body.into(),
             label,
+            span: self.span,
         })
     }
 }

@@ -6,8 +6,8 @@ use crate::{
     },
     emitter::util::escape,
     semantics::typechecker::StaticInit,
+    util::error::Result,
 };
-use anyhow::Result;
 use std::{fs::File, io::Write};
 
 pub trait Emit {

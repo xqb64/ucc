@@ -1,8 +1,8 @@
-use anyhow::{bail, Ok, Result};
 use std::collections::BTreeMap;
 
 use crate::{
     ir::gen::make_temporary,
+    lexer::lex::Span,
     parser::ast::{
         AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BlockItem,
         BlockStatement, BreakStatement, CallExpression, CaseStatement, CastExpression,
@@ -14,6 +14,7 @@ use crate::{
         StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement, Type,
         UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement,
     },
+    util::error::{ErrorKind, Result, UccError},
 };
 
 pub trait Resolve {
@@ -115,6 +116,7 @@ impl Resolve for VariableDeclaration {
                     storage_class: self.storage_class,
                     is_global: self.is_global,
                     name: self.name.clone(),
+                    span: self.span,
                 })
             }
             false => {
@@ -126,7 +128,11 @@ impl Resolve for VariableDeclaration {
                                 .storage_class
                                 .is_some_and(|sc| sc == StorageClass::Extern))
                     {
-                        bail!("conflicting local declarations: {}", self.name);
+                        return Err(UccError {
+                            kind: ErrorKind::Resolve,
+                            msg: format!("conflicting local declarations: {}", self.name),
+                            span: self.span,
+                        });
                     }
                 }
 
@@ -156,6 +162,7 @@ impl Resolve for VariableDeclaration {
                         init: resolved_init,
                         storage_class: self.storage_class,
                         is_global: self.is_global,
+                        span: self.span,
                     })
                 } else {
                     let unique_name = format!("var.{}.{}", self.name, make_temporary());
@@ -182,6 +189,7 @@ impl Resolve for VariableDeclaration {
                         init: resolved_init,
                         storage_class: self.storage_class,
                         is_global: self.is_global,
+                        span: self.span,
                     })
                 }
             }
@@ -196,7 +204,11 @@ impl Resolve for FunctionDeclaration {
         struct_map: &mut BTreeMap<String, StructTableEntry>,
     ) -> Result<Self> {
         if self.body.is_some() && !self.is_global {
-            bail!("function definition in non-global scope");
+            return Err(UccError {
+                kind: ErrorKind::Resolve,
+                msg: format!("function definition in non-global scope"),
+                span: self.span,
+            });
         }
 
         if self
@@ -204,7 +216,11 @@ impl Resolve for FunctionDeclaration {
             .is_some_and(|sc| sc == StorageClass::Static)
             && !self.is_global
         {
-            bail!("storage class specifier in non-global scope");
+            return Err(UccError {
+                kind: ErrorKind::Resolve,
+                msg: format!("storage class specifier in non-global scope"),
+                span: self.span,
+            });
         }
 
         for param in &self.params {
@@ -214,7 +230,7 @@ impl Resolve for FunctionDeclaration {
                     for stmt in &block.stmts {
                         if let BlockItem::Declaration(Declaration::Variable(var_decl)) = stmt {
                             if var_decl.name == *param {
-                                bail!("parameter name cannot be the same as a variable name in the function body");
+                                return Err(UccError { kind: ErrorKind::Resolve, msg: format!("parameter name cannot be the same as a variable name in the function body"), span: self.span });
                             }
                         }
                     }
@@ -225,7 +241,11 @@ impl Resolve for FunctionDeclaration {
         if variable_map.contains_key(&self.name) {
             let prev_entry = variable_map.get(&self.name).unwrap();
             if prev_entry.from_current_scope && !prev_entry.has_linkage {
-                bail!("redeclaration of function: {}", self.name);
+                return Err(UccError {
+                    kind: ErrorKind::Resolve,
+                    msg: format!("redeclaration of function: {}", self.name),
+                    span: self.span,
+                });
             }
         }
 
@@ -261,6 +281,7 @@ impl Resolve for FunctionDeclaration {
             body: resolved_body.into(),
             is_global: self.is_global,
             storage_class: self.storage_class,
+            span: self.span,
         })
     }
 }
@@ -297,6 +318,7 @@ impl Resolve for StructDeclaration {
             let processed_member = MemberDeclaration {
                 name: member.name.clone(),
                 ty: processed_type,
+                span: member.span,
             };
 
             processed_members.push(processed_member);
@@ -305,6 +327,7 @@ impl Resolve for StructDeclaration {
         Ok(StructDeclaration {
             tag: unique_tag,
             members: processed_members,
+            span: self.span,
         })
     }
 }
@@ -411,6 +434,7 @@ impl Resolve for ReturnStatement {
             expr: resolved_expr,
             target_type: resolved_target_type,
             belongs_to: self.belongs_to.clone(),
+            span: self.span,
         })
     }
 }
@@ -425,6 +449,7 @@ impl Resolve for ExpressionStatement {
 
         Ok(ExpressionStatement {
             expr: resolved_expr,
+            span: self.span,
         })
     }
 }
@@ -451,6 +476,7 @@ impl Resolve for IfStatement {
             condition: resolved_condition,
             then_branch: resolved_then_branch,
             else_branch: resolved_else_branch.into(),
+            span: self.span,
         })
     }
 }
@@ -472,6 +498,7 @@ impl Resolve for BlockStatement {
 
         Ok(BlockStatement {
             stmts: resolved_stmts,
+            span: self.span,
         })
     }
 }
@@ -511,6 +538,7 @@ impl Resolve for ForStatement {
             post: resolved_post,
             body: resolved_body,
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -536,6 +564,7 @@ impl Resolve for DoWhileStatement {
             condition: resolved_condition,
             body: resolved_body,
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -561,6 +590,7 @@ impl Resolve for WhileStatement {
             condition: resolved_condition,
             body: resolved_body,
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -609,6 +639,7 @@ impl Resolve for LabeledStatement {
         Ok(LabeledStatement {
             label: self.label.clone(),
             body: resolved_body.into(),
+            span: self.span,
         })
     }
 }
@@ -630,6 +661,7 @@ impl Resolve for SwitchStatement {
             body: resolved_body.into(),
             label: self.label.clone(),
             cases: self.cases.clone(),
+            span: self.span,
         })
     }
 }
@@ -649,6 +681,7 @@ impl Resolve for CaseStatement {
             value: self.value.clone(),
             body: resolved_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -667,6 +700,7 @@ impl Resolve for DefaultStatement {
         Ok(DefaultStatement {
             body: resolved_body.into(),
             label: self.label.clone(),
+            span: self.span,
         })
     }
 }
@@ -687,6 +721,7 @@ impl Resolve for Expression {
                 rhs,
                 result_t,
                 ty,
+                span,
             }) => {
                 let resolved_lhs = lhs.resolve(variable_map, struct_map)?;
                 let resolved_rhs = rhs.resolve(variable_map, struct_map)?;
@@ -697,10 +732,17 @@ impl Resolve for Expression {
                     rhs: resolved_rhs.into(),
                     result_t,
                     ty,
+                    span,
                 }))
             }
 
-            Expression::Assign(AssignExpression { op, lhs, rhs, ty }) => {
+            Expression::Assign(AssignExpression {
+                op,
+                lhs,
+                rhs,
+                ty,
+                span,
+            }) => {
                 let resolved_lhs = lhs.resolve(variable_map, struct_map)?;
                 let resolved_rhs = rhs.resolve(variable_map, struct_map)?;
 
@@ -709,33 +751,49 @@ impl Resolve for Expression {
                     lhs: resolved_lhs.into(),
                     rhs: resolved_rhs.into(),
                     ty,
+                    span,
                 }))
             }
 
             Expression::Variable(var) => {
-                let variable = variable_map
-                    .get(&var.value)
-                    .ok_or_else(|| anyhow::anyhow!("undeclared variable: {}", var.value))?;
+                let variable = variable_map.get(&var.value).ok_or_else(|| UccError {
+                    kind: ErrorKind::Resolve,
+                    msg: format!("undeclared variable: {}", var.value),
+                    span: var.span,
+                })?;
 
                 Ok(Expression::Variable(VariableExpression {
                     value: variable.name.clone(),
                     ty: Type::Dummy,
+                    span: var.span,
                 }))
             }
 
             Expression::Constant(konst) => Ok(Expression::Constant(konst)),
 
-            Expression::Unary(UnaryExpression { kind, expr, ty }) => {
+            Expression::Unary(UnaryExpression {
+                kind,
+                expr,
+                ty,
+                span,
+            }) => {
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
 
                 Ok(Expression::Unary(UnaryExpression {
                     kind,
                     expr: resolved_expr.into(),
                     ty,
+                    span,
                 }))
             }
 
-            Expression::Binary(BinaryExpression { kind, lhs, rhs, ty }) => {
+            Expression::Binary(BinaryExpression {
+                kind,
+                lhs,
+                rhs,
+                ty,
+                span,
+            }) => {
                 let resolved_lhs = lhs.resolve(variable_map, struct_map)?;
                 let resolved_rhs = rhs.resolve(variable_map, struct_map)?;
 
@@ -744,6 +802,7 @@ impl Resolve for Expression {
                     lhs: resolved_lhs.into(),
                     rhs: resolved_rhs.into(),
                     ty,
+                    span,
                 }))
             }
 
@@ -752,6 +811,7 @@ impl Resolve for Expression {
                 then_expr,
                 else_expr,
                 ty,
+                span,
             }) => {
                 let resolved_condition = condition.resolve(variable_map, struct_map)?;
                 let resolved_then_expr = then_expr.resolve(variable_map, struct_map)?;
@@ -762,10 +822,16 @@ impl Resolve for Expression {
                     then_expr: resolved_then_expr.into(),
                     else_expr: resolved_else_expr.into(),
                     ty,
+                    span,
                 }))
             }
 
-            Expression::Call(CallExpression { name, args, ty }) => {
+            Expression::Call(CallExpression {
+                name,
+                args,
+                ty,
+                span,
+            }) => {
                 if variable_map.contains_key(&name) {
                     let new_func_name = variable_map.get(&name).unwrap().name.clone();
                     let resolved_args = args
@@ -777,9 +843,14 @@ impl Resolve for Expression {
                         name: new_func_name,
                         args: resolved_args,
                         ty,
+                        span,
                     }))
                 } else {
-                    bail!("undeclared function");
+                    return Err(UccError {
+                        kind: ErrorKind::Resolve,
+                        msg: format!("undeclared function"),
+                        span,
+                    });
                 }
             }
 
@@ -787,6 +858,7 @@ impl Resolve for Expression {
                 target_type,
                 expr,
                 ty,
+                span,
             }) => {
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
                 let resolved_type = target_type.resolve(variable_map, struct_map)?;
@@ -795,28 +867,36 @@ impl Resolve for Expression {
                     target_type: resolved_type,
                     expr: resolved_expr.into(),
                     ty,
+                    span,
                 }))
             }
 
-            Expression::AddrOf(AddrOfExpression { expr, ty }) => {
+            Expression::AddrOf(AddrOfExpression { expr, ty, span }) => {
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
 
                 Ok(Expression::AddrOf(AddrOfExpression {
                     expr: resolved_expr.into(),
                     ty,
+                    span,
                 }))
             }
 
-            Expression::Deref(DerefExpression { expr, ty }) => {
+            Expression::Deref(DerefExpression { expr, ty, span }) => {
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
 
                 Ok(Expression::Deref(DerefExpression {
                     expr: resolved_expr.into(),
                     ty,
+                    span,
                 }))
             }
 
-            Expression::Subscript(SubscriptExpression { expr, index, ty }) => {
+            Expression::Subscript(SubscriptExpression {
+                expr,
+                index,
+                ty,
+                span,
+            }) => {
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
                 let resolved_index = index.resolve(variable_map, struct_map)?;
 
@@ -824,19 +904,21 @@ impl Resolve for Expression {
                     expr: resolved_expr.into(),
                     index: resolved_index.into(),
                     ty,
+                    span,
                 }))
             }
 
-            Expression::String(StringExpression { value, ty }) => {
-                Ok(Expression::String(StringExpression { value, ty }))
+            Expression::String(StringExpression { value, ty, span }) => {
+                Ok(Expression::String(StringExpression { value, ty, span }))
             }
 
-            Expression::Sizeof(SizeofExpression { expr, ty }) => {
+            Expression::Sizeof(SizeofExpression { expr, ty, span }) => {
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
                 let resolved_type = ty.resolve(variable_map, struct_map)?;
                 Ok(Expression::Sizeof(SizeofExpression {
                     expr: resolved_expr.into(),
                     ty: resolved_type,
+                    span,
                 }))
             }
 
@@ -844,12 +926,14 @@ impl Resolve for Expression {
                 structure,
                 member,
                 ty,
+                span,
             }) => {
                 let resolved_structure = structure.resolve(variable_map, struct_map)?;
                 Ok(Expression::Dot(DotExpression {
                     structure: resolved_structure.into(),
                     member,
                     ty,
+                    span,
                 }))
             }
 
@@ -857,24 +941,32 @@ impl Resolve for Expression {
                 pointer,
                 member,
                 ty,
+                span,
             }) => {
                 let resolved_pointer = pointer.resolve(variable_map, struct_map)?;
                 Ok(Expression::Arrow(ArrowExpression {
                     pointer: resolved_pointer.into(),
                     member,
                     ty,
+                    span,
                 }))
             }
 
-            Expression::SizeofT(SizeofTExpression { t, ty }) => {
+            Expression::SizeofT(SizeofTExpression { t, ty, span }) => {
                 let resolved_type = t.resolve(variable_map, struct_map)?;
                 Ok(Expression::SizeofT(SizeofTExpression {
                     t: resolved_type,
                     ty,
+                    span,
                 }))
             }
 
-            Expression::Postfix(PostfixExpression { kind, expr, ty }) => {
+            Expression::Postfix(PostfixExpression {
+                kind,
+                expr,
+                ty,
+                span,
+            }) => {
                 let resolved_type = ty.resolve(variable_map, struct_map)?;
                 let resolved_expr = expr.resolve(variable_map, struct_map)?;
 
@@ -882,6 +974,7 @@ impl Resolve for Expression {
                     expr: resolved_expr.into(),
                     kind,
                     ty: resolved_type,
+                    span,
                 }))
             }
 
@@ -961,7 +1054,11 @@ impl Resolve for Type {
                     let unique_tag = struct_map.get(&tag).cloned().unwrap().name.clone();
                     Ok(Type::Struct { tag: unique_tag })
                 } else {
-                    bail!("Specified an undeclared structure tag.")
+                    return Err(UccError {
+                        kind: ErrorKind::Resolve,
+                        msg: format!("Specified an undeclared structure tag."),
+                        span: Span { start: 0, end: 0 },
+                    });
                 }
             }
 
@@ -997,7 +1094,11 @@ impl Resolve for Type {
 
 fn resolve_param(param: &str, variable_map: &mut BTreeMap<String, Variable>) -> Result<String> {
     if variable_map.contains_key(param) && variable_map.get(param).unwrap().from_current_scope {
-        bail!("redeclaration of parameter: {}", param);
+        return Err(UccError {
+            kind: ErrorKind::Resolve,
+            msg: format!("redeclaration of parameter: {}", param),
+            span: Span { start: 0, end: 0 },
+        });
     }
 
     let unique_name = format!("var.{}.{}", param, make_temporary());

@@ -59,6 +59,16 @@ impl Lexer {
             regexes,
         }
     }
+
+    fn make_token(&self, kind: TokenKind, len: usize) -> Token {
+        Token::new(
+            kind,
+            Span {
+                start: self.pos - len,
+                end: self.pos,
+            },
+        )
+    }
 }
 
 impl Iterator for Lexer {
@@ -78,46 +88,58 @@ impl Iterator for Lexer {
             }
         }
 
-        let src = &self.src[self.pos..];
+        let src = self.src.chars().skip(self.pos).collect::<String>();
+        let src = src.as_str();
 
         let token = if let Some(m) = self.regexes["keyword"].find(src) {
-            self.pos += m.as_str().len();
+            let len = m.as_str().chars().count();
+            self.pos += len;
             match m.as_str() {
-                "int" => Token::Int,
-                "long" => Token::Long,
-                "char" => Token::Char,
-                "signed" => Token::Signed,
-                "unsigned" => Token::Unsigned,
-                "double" => Token::Double,
-                "void" => Token::Void,
-                "return" => Token::Return,
-                "if" => Token::If,
-                "else" => Token::Else,
-                "do" => Token::Do,
-                "while" => Token::While,
-                "for" => Token::For,
-                "break" => Token::Break,
-                "continue" => Token::Continue,
-                "static" => Token::Static,
-                "extern" => Token::Extern,
-                "sizeof" => Token::Sizeof,
-                "struct" => Token::Struct,
-                "goto" => Token::Goto,
-                "switch" => Token::Switch,
-                "case" => Token::Case,
-                "default" => Token::Default,
+                "int" => self.make_token(TokenKind::Int, len),
+                "long" => self.make_token(TokenKind::Long, len),
+                "char" => self.make_token(TokenKind::Char, len),
+                "signed" => self.make_token(TokenKind::Signed, len),
+                "unsigned" => self.make_token(TokenKind::Unsigned, len),
+                "double" => self.make_token(TokenKind::Double, len),
+                "void" => self.make_token(TokenKind::Void, len),
+                "return" => self.make_token(TokenKind::Return, len),
+                "if" => self.make_token(TokenKind::If, len),
+                "else" => self.make_token(TokenKind::Else, len),
+                "do" => self.make_token(TokenKind::Do, len),
+                "while" => self.make_token(TokenKind::While, len),
+                "for" => self.make_token(TokenKind::For, len),
+                "break" => self.make_token(TokenKind::Break, len),
+                "continue" => self.make_token(TokenKind::Continue, len),
+                "static" => self.make_token(TokenKind::Static, len),
+                "extern" => self.make_token(TokenKind::Extern, len),
+                "sizeof" => self.make_token(TokenKind::Sizeof, len),
+                "struct" => self.make_token(TokenKind::Struct, len),
+                "goto" => self.make_token(TokenKind::Goto, len),
+                "switch" => self.make_token(TokenKind::Switch, len),
+                "case" => self.make_token(TokenKind::Case, len),
+                "default" => self.make_token(TokenKind::Default, len),
                 _ => unreachable!(),
             }
         } else if let Some(m) = self.regexes["double_constant"].find(src) {
-            self.pos += m.as_str().len() - 1;
-            Token::Constant(Const::Double(
-                m.as_str()[..m.as_str().len() - 1].parse::<f64>().unwrap(),
-            ))
+            let len = m.as_str().chars().count() - 1;
+            self.pos += len;
+            self.make_token(
+                TokenKind::Constant(Const::Double(
+                    m.as_str()
+                        .chars()
+                        .take(len)
+                        .collect::<String>()
+                        .parse::<f64>()
+                        .unwrap(),
+                )),
+                len,
+            )
         } else if let Some(m) = self.regexes["constant"].find(src) {
-            self.pos += m.as_str().len();
+            let len = m.as_str().chars().count();
+            self.pos += len;
 
             if self.src.chars().nth(self.pos).is_some_and(|ch| ch == '.') {
-                return Some(Token::Error);
+                return Some(self.make_token(TokenKind::Error, len));
             }
 
             let suffix = self.regexes["constant"]
@@ -134,81 +156,92 @@ impl Iterator for Lexer {
                 .collect::<String>();
 
             match parse_integer(&normalized_suffix, just_number) {
-                Ok(konst) => Token::Constant(konst),
-                Err(_) => Token::Error,
+                Ok(konst) => self.make_token(TokenKind::Constant(konst), len),
+                Err(_) => self.make_token(TokenKind::Error, len),
             }
         } else if let Some(m) = self.regexes["punctuation_triple"].find(src) {
-            self.pos += m.as_str().len();
+            let len = m.as_str().chars().count();
+            self.pos += len;
+
             match m.as_str() {
-                ">>=" => Token::GreaterGreaterEqual,
-                "<<=" => Token::LessLessEqual,
+                ">>=" => self.make_token(TokenKind::GreaterGreaterEqual, len),
+                "<<=" => self.make_token(TokenKind::LessLessEqual, len),
                 _ => unreachable!(),
             }
         } else if let Some(m) = self.regexes["punctuation_double"].find(src) {
-            self.pos += m.as_str().len();
+            let len = m.as_str().chars().count();
+            self.pos += len;
+
             match m.as_str() {
-                "++" => Token::DoublePlus,
-                "--" => Token::DoubleHyphen,
-                "==" => Token::DoubleEqual,
-                "!=" => Token::BangEqual,
-                ">=" => Token::GreaterEqual,
-                "<=" => Token::LessEqual,
-                "&&" => Token::DoubleAmpersand,
-                "||" => Token::DoublePipe,
-                "->" => Token::Arrow,
-                ">>" => Token::GreaterGreater,
-                "<<" => Token::LessLess,
-                "+=" => Token::PlusEqual,
-                "-=" => Token::MinusEqual,
-                "*=" => Token::StarEqual,
-                "/=" => Token::SlashEqual,
-                "^=" => Token::CaretEqual,
-                "%=" => Token::ModEqual,
-                "&=" => Token::AmpersandEqual,
-                "|=" => Token::PipeEqual,
+                "++" => self.make_token(TokenKind::DoublePlus, len),
+                "--" => self.make_token(TokenKind::DoubleHyphen, len),
+                "==" => self.make_token(TokenKind::DoubleEqual, len),
+                "!=" => self.make_token(TokenKind::BangEqual, len),
+                ">=" => self.make_token(TokenKind::GreaterEqual, len),
+                "<=" => self.make_token(TokenKind::LessEqual, len),
+                "&&" => self.make_token(TokenKind::DoubleAmpersand, len),
+                "||" => self.make_token(TokenKind::DoublePipe, len),
+                "->" => self.make_token(TokenKind::Arrow, len),
+                ">>" => self.make_token(TokenKind::GreaterGreater, len),
+                "<<" => self.make_token(TokenKind::LessLess, len),
+                "+=" => self.make_token(TokenKind::PlusEqual, len),
+                "-=" => self.make_token(TokenKind::MinusEqual, len),
+                "*=" => self.make_token(TokenKind::StarEqual, len),
+                "/=" => self.make_token(TokenKind::SlashEqual, len),
+                "^=" => self.make_token(TokenKind::CaretEqual, len),
+                "%=" => self.make_token(TokenKind::ModEqual, len),
+                "&=" => self.make_token(TokenKind::AmpersandEqual, len),
+                "|=" => self.make_token(TokenKind::PipeEqual, len),
                 _ => unreachable!(),
             }
         } else if let Some(m) = self.regexes["punctuation"].find(src) {
-            self.pos += m.as_str().len();
+            let len = m.as_str().chars().count();
+            self.pos += len;
 
             match m.as_str() {
-                "+" => Token::Plus,
-                "-" => Token::Hyphen,
-                "*" => Token::Star,
-                "/" => Token::Slash,
-                "%" => Token::Percent,
-                "~" => Token::Tilde,
-                "!" => Token::Bang,
-                "?" => Token::QuestionMark,
-                ":" => Token::Colon,
-                "<" => Token::Less,
-                ">" => Token::Greater,
-                "(" => Token::LParen,
-                ")" => Token::RParen,
-                "{" => Token::LBrace,
-                "}" => Token::RBrace,
-                "[" => Token::LBracket,
-                "]" => Token::RBracket,
-                "=" => Token::Equal,
-                "," => Token::Comma,
-                "&" => Token::Ampersand,
-                ";" => Token::Semicolon,
-                "^" => Token::Caret,
-                "|" => Token::Pipe,
+                "+" => self.make_token(TokenKind::Plus, len),
+                "-" => self.make_token(TokenKind::Hyphen, len),
+                "*" => self.make_token(TokenKind::Star, len),
+                "/" => self.make_token(TokenKind::Slash, len),
+                "%" => self.make_token(TokenKind::Percent, len),
+                "~" => self.make_token(TokenKind::Tilde, len),
+                "!" => self.make_token(TokenKind::Bang, len),
+                "?" => self.make_token(TokenKind::QuestionMark, len),
+                ":" => self.make_token(TokenKind::Colon, len),
+                "<" => self.make_token(TokenKind::Less, len),
+                ">" => self.make_token(TokenKind::Greater, len),
+                "(" => self.make_token(TokenKind::LParen, len),
+                ")" => self.make_token(TokenKind::RParen, len),
+                "{" => self.make_token(TokenKind::LBrace, len),
+                "}" => self.make_token(TokenKind::RBrace, len),
+                "[" => self.make_token(TokenKind::LBracket, len),
+                "]" => self.make_token(TokenKind::RBracket, len),
+                "=" => self.make_token(TokenKind::Equal, len),
+                "," => self.make_token(TokenKind::Comma, len),
+                "&" => self.make_token(TokenKind::Ampersand, len),
+                ";" => self.make_token(TokenKind::Semicolon, len),
+                "^" => self.make_token(TokenKind::Caret, len),
+                "|" => self.make_token(TokenKind::Pipe, len),
                 "." => {
-                    if self.regexes["constant"].is_match(&self.src[self.pos..]) {
-                        return Some(Token::Error);
+                    if self.regexes["constant"]
+                        .is_match(self.src.chars().skip(self.pos).collect::<String>().as_str())
+                    {
+                        return Some(self.make_token(TokenKind::Error, len));
                     }
 
-                    Token::Dot
+                    self.make_token(TokenKind::Dot, len)
                 }
                 _ => unreachable!(),
             }
         } else if let Some(m) = self.regexes["identifier"].find(src) {
-            self.pos += m.as_str().len();
-            Token::Identifier(m.as_str().to_string())
+            let len = m.as_str().chars().count();
+            self.pos += len;
+
+            self.make_token(TokenKind::Identifier(m.as_str().to_string()), len)
         } else if let Some(m) = self.regexes["string"].find(src) {
-            self.pos += m.as_str().len();
+            let len = m.as_str().chars().count();
+            self.pos += len;
+
             let s = m.as_str().trim_start_matches("\"").trim_end_matches("\"");
 
             let mut result = String::new();
@@ -227,11 +260,13 @@ impl Iterator for Lexer {
                 .chars()
                 .for_each(|ch| result.push(ch));
 
-            Token::StringLiteral(result.to_string())
+            self.make_token(TokenKind::StringLiteral(result.to_string()), len)
         } else if let Some(m) = self.regexes["char_const"].find(src) {
-            self.pos += m.as_str().len();
-            let ch = &m.as_str()[1..m.as_str().len() - 1];
-            let ch = match ch {
+            let len = m.as_str().chars().count();
+            self.pos += len;
+
+            let ch = &m.as_str().chars().skip(1).take(len - 2).collect::<String>();
+            let ch = match ch.as_str() {
                 r"\a" => '\x07',
                 r"\b" => '\x08',
                 r"\f" => '\x0c',
@@ -245,12 +280,12 @@ impl Iterator for Lexer {
                 r"\?" => '\x3f',
                 _ => ch.parse().unwrap(),
             };
-            Token::CharLiteral(ch)
+            self.make_token(TokenKind::CharLiteral(ch), len)
         } else {
             if src.is_empty() {
                 return None;
             }
-            Token::Error
+            self.make_token(TokenKind::Error, 0)
         };
 
         Some(token)
@@ -258,7 +293,30 @@ impl Iterator for Lexer {
 }
 
 #[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Hash)]
-pub enum Token {
+pub struct Token {
+    pub kind: TokenKind,
+    pub span: Span,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy, PartialOrd, Eq, Ord, Hash)]
+pub struct Span {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl std::ops::Add for Span {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Span {
+            start: self.start.min(rhs.start),
+            end: self.end.max(rhs.end),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Hash)]
+pub enum TokenKind {
     Int,
     Long,
     Char,
@@ -335,16 +393,20 @@ pub enum Token {
 }
 
 impl Token {
+    pub fn new(kind: TokenKind, span: Span) -> Self {
+        Self { kind, span }
+    }
+
     pub fn as_const(&self) -> Const {
-        match self {
-            Token::Constant(n) => *n,
+        match self.kind {
+            TokenKind::Constant(n) => n.to_owned(),
             _ => unreachable!(),
         }
     }
 
     pub fn as_string(&self) -> String {
-        match self {
-            Token::Identifier(s) => s.to_owned(),
+        match self.kind {
+            TokenKind::Identifier(ref s) => s.to_owned(),
             _ => unreachable!(),
         }
     }

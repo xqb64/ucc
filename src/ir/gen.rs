@@ -1,5 +1,5 @@
 use crate::{
-    lexer::lex::Const,
+    lexer::lex::{Const, Span},
     parser::ast::*,
     semantics::typechecker::{
         get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
@@ -358,11 +358,9 @@ impl Irfy for IfStatement {
 
 pub fn expr2const(e: &Expression) -> Const {
     match e {
-        Expression::Constant(ConstantExpression { value, ty: _ }) => *value,
+        Expression::Constant(ConstantExpression { value, .. }) => *value,
         Expression::Cast(CastExpression {
-            target_type,
-            expr,
-            ty: _,
+            target_type, expr, ..
         }) => {
             let c = expr2const(expr);
             cast_const_to(&c, target_type)
@@ -491,6 +489,7 @@ impl Irfy for SwitchStatement {
                 value,
                 body: _,
                 label: case_label,
+                ..
             }) = case
             {
                 let result = make_tacky_variable(get_type(&self.condition));
@@ -511,7 +510,7 @@ impl Irfy for SwitchStatement {
             }
         }
 
-        if let Some(Statement::Default(DefaultStatement { body: _, label })) = self
+        if let Some(Statement::Default(DefaultStatement { label, .. })) = self
             .cases
             .iter()
             .find(|stmt| matches!(stmt, Statement::Default(_)))
@@ -834,34 +833,42 @@ fn make_constexpr(konst: isize, ty: Type) -> Expression {
         Type::Char | Type::SChar => Expression::Constant(ConstantExpression {
             value: Const::Char(konst as i8),
             ty: ty.clone(),
+            span: Span { start: 0, end: 0 },
         }),
         Type::UChar => Expression::Constant(ConstantExpression {
             value: Const::UChar(konst as u8),
             ty: ty.clone(),
+            span: Span { start: 0, end: 0 },
         }),
         Type::Int => Expression::Constant(ConstantExpression {
             value: Const::Int(konst as i32),
             ty: ty.clone(),
+            span: Span { start: 0, end: 0 },
         }),
         Type::UInt => Expression::Constant(ConstantExpression {
             value: Const::UInt(konst as u32),
             ty: ty.clone(),
+            span: Span { start: 0, end: 0 },
         }),
         Type::Long => Expression::Constant(ConstantExpression {
             value: Const::Long(konst as i64),
             ty: ty.clone(),
+            span: Span { start: 0, end: 0 },
         }),
         Type::ULong => Expression::Constant(ConstantExpression {
             value: Const::ULong(konst as u64),
             ty: ty.clone(),
+            span: Span { start: 0, end: 0 },
         }),
         Type::Double => Expression::Constant(ConstantExpression {
             value: Const::Double(konst as f64),
             ty: ty.clone(),
+            span: Span { start: 0, end: 0 },
         }),
         Type::Pointer(_) => Expression::Constant(ConstantExpression {
             value: Const::ULong(konst as u64),
             ty: ty.clone(),
+            span: Span { start: 0, end: 0 },
         }),
         _ => unreachable!(),
     }
@@ -1074,7 +1081,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             lhs,
             rhs,
             result_t,
-            ty: _,
+            ..
         }) => emit_compound_expression((*kind).into(), lhs, rhs, result_t, instructions),
 
         Expression::Constant(const_expr) => {
@@ -1085,6 +1092,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             kind: UnaryExpressionKind::Inc,
             expr,
             ty,
+            ..
         }) => {
             let const_t = if is_pointer_type(ty) {
                 Type::Long
@@ -1104,6 +1112,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             kind: UnaryExpressionKind::Dec,
             expr,
             ty,
+            ..
         }) => {
             let const_t = if is_pointer_type(ty) {
                 Type::Long
@@ -1119,7 +1128,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             )
         }
 
-        Expression::Unary(UnaryExpression { kind, expr, ty }) => {
+        Expression::Unary(UnaryExpression { kind, expr, ty, .. }) => {
             let src = emit_tacky_and_convert(expr, instructions);
             let dst = make_tacky_variable(ty);
             let op = match kind {
@@ -1138,7 +1147,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             ExpResult::PlainOperand(dst)
         }
 
-        Expression::Postfix(PostfixExpression { expr, kind, ty }) => {
+        Expression::Postfix(PostfixExpression { expr, kind, ty, .. }) => {
             let dst = make_tacky_variable(ty);
             let lval = emit_tacky(expr, instructions);
 
@@ -1223,7 +1232,9 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             ExpResult::PlainOperand(dst)
         }
 
-        Expression::Binary(BinaryExpression { kind, lhs, rhs, ty }) => match kind {
+        Expression::Binary(BinaryExpression {
+            kind, lhs, rhs, ty, ..
+        }) => match kind {
             BinaryExpressionKind::And => {
                 let tmp = make_temporary();
 
@@ -1422,6 +1433,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             lhs,
             rhs,
             ty: _,
+            ..
         }) => emit_assignment(lhs, rhs, instructions),
 
         Expression::Conditional(ConditionalExpression {
@@ -1429,6 +1441,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             then_expr,
             else_expr,
             ty,
+            ..
         }) => {
             let tmp = make_temporary();
 
@@ -1477,7 +1490,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             }
         }
 
-        Expression::Call(CallExpression { name, args, ty }) => {
+        Expression::Call(CallExpression { name, args, ty, .. }) => {
             let result = if ty == &Type::Void {
                 None
             } else {
@@ -1503,6 +1516,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             target_type,
             expr,
             ty: _,
+            ..
         }) => {
             let result = emit_tacky_and_convert(expr, instructions);
             let inner_type = get_type(expr);
@@ -1568,12 +1582,12 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             ExpResult::PlainOperand(dst)
         }
 
-        Expression::Deref(DerefExpression { expr, ty: _ }) => {
+        Expression::Deref(DerefExpression { expr, ty: _, .. }) => {
             let ptr = emit_tacky_and_convert(expr, instructions);
             ExpResult::DereferencedPointer(ptr)
         }
 
-        Expression::AddrOf(AddrOfExpression { expr, ty }) => {
+        Expression::AddrOf(AddrOfExpression { expr, ty, .. }) => {
             let result = emit_tacky(expr, instructions);
 
             match result {
@@ -1603,7 +1617,9 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             }
         }
 
-        Expression::Subscript(SubscriptExpression { expr, index, ty }) => {
+        Expression::Subscript(SubscriptExpression {
+            expr, index, ty, ..
+        }) => {
             let result = emit_ptr_addition(expr, index, ty, instructions);
             match result {
                 ExpResult::PlainOperand(val) => ExpResult::DereferencedPointer(val),
@@ -1613,7 +1629,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
 
         Expression::Literal(_) => todo!(),
 
-        Expression::String(StringExpression { value, ty: _ }) => {
+        Expression::String(StringExpression { value, ty: _, .. }) => {
             let var_name = format!("str.{}", make_temporary());
             let t = Type::Array {
                 element: Box::new(Type::Char),
@@ -1631,11 +1647,11 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             ExpResult::PlainOperand(IRValue::Var(var_name))
         }
 
-        Expression::Sizeof(SizeofExpression { expr, ty: _ }) => ExpResult::PlainOperand(
+        Expression::Sizeof(SizeofExpression { expr, ty: _, .. }) => ExpResult::PlainOperand(
             IRValue::Constant(Const::ULong(get_size_of_type(get_type(expr)) as u64)),
         ),
 
-        Expression::SizeofT(SizeofTExpression { t, ty: _ }) => {
+        Expression::SizeofT(SizeofTExpression { t, ty: _, .. }) => {
             ExpResult::PlainOperand(IRValue::Constant(Const::ULong(get_size_of_type(t) as u64)))
         }
 
@@ -1643,6 +1659,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             structure,
             member,
             ty: _,
+            ..
         }) => {
             let struct_tag = match get_type(structure) {
                 Type::Struct { tag } => tag,
@@ -1687,6 +1704,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             pointer,
             member,
             ty,
+            ..
         }) => {
             let struct_tag = match get_type(pointer) {
                 Type::Pointer(referenced) => match &**referenced {

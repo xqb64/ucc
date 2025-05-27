@@ -1,5 +1,5 @@
 use crate::{
-    lexer::lex::{Const, Token},
+    lexer::lex::{Const, Span, Token, TokenKind},
     parser::ast::{
         AbstractDeclarator, AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
         BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,
@@ -11,8 +11,8 @@ use crate::{
         StructDeclaration, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind,
         VariableDeclaration, VariableExpression, WhileStatement,
     },
+    util::error::{ErrorKind, Result, UccError},
 };
-use anyhow::{bail, Result};
 use std::collections::{BTreeSet, VecDeque};
 
 use super::ast::{
@@ -47,21 +47,23 @@ impl Parser {
         self.previous.clone()
     }
 
-    fn consume(&mut self, token: &Token) -> Result<Option<Token>> {
+    fn consume(&mut self, token: &TokenKind) -> Result<Option<Token>> {
         if self.check(token) {
             return Ok(self.advance());
         }
-        bail!(
-            "expected {:?}, got: prev: {:?}. curr: {:?}",
-            token,
-            self.previous,
-            self.current
-        );
+        Err(UccError {
+            msg: format!(
+                "expected {:?}, got: prev: {:?}. curr: {:?}",
+                token, self.previous, self.current
+            ),
+            kind: ErrorKind::Parse,
+            span: self.current_span()?,
+        })
     }
 
-    fn check(&self, token: &Token) -> bool {
+    fn check(&self, kind: &TokenKind) -> bool {
         if let Some(current) = &self.current {
-            std::mem::discriminant(current) == std::mem::discriminant(token)
+            std::mem::discriminant(&current.kind) == std::mem::discriminant(kind)
         } else {
             false
         }
@@ -76,9 +78,9 @@ impl Parser {
         Ok(Program { block_items: stmts })
     }
 
-    fn is_next(&mut self, tokens: &[Token]) -> bool {
-        for token in tokens {
-            if self.check(token) {
+    fn is_next(&mut self, kinds: &[TokenKind]) -> bool {
+        for kind in kinds {
+            if self.check(kind) {
                 self.advance();
                 return true;
             }
@@ -86,9 +88,9 @@ impl Parser {
         false
     }
 
-    fn check_many(&self, tokens: &[Token]) -> bool {
-        for token in tokens {
-            if self.check(token) {
+    fn check_many(&self, kinds: &[TokenKind]) -> bool {
+        for kind in kinds {
+            if self.check(kind) {
                 return true;
             }
         }
@@ -96,50 +98,57 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<BlockItem> {
-        if let Some(Token::Identifier(_)) = self.current {
-            if let Some(Token::Colon) = self.tokens.front() {
-                return self.parse_labeled_statement();
+        if let Some(current) = &self.current {
+            match current.kind {
+                TokenKind::Identifier(_) => match self.tokens.front() {
+                    Some(front) => match front.kind {
+                        TokenKind::Colon => return self.parse_labeled_statement(),
+                        _ => {}
+                    },
+                    _ => {}
+                },
+                _ => {}
             }
         }
 
         if self.check_many(&[
-            Token::Char,
-            Token::Int,
-            Token::Long,
-            Token::Double,
-            Token::Signed,
-            Token::Unsigned,
-            Token::Void,
-            Token::Static,
-            Token::Extern,
-            Token::Struct,
+            TokenKind::Char,
+            TokenKind::Int,
+            TokenKind::Long,
+            TokenKind::Double,
+            TokenKind::Signed,
+            TokenKind::Unsigned,
+            TokenKind::Void,
+            TokenKind::Static,
+            TokenKind::Extern,
+            TokenKind::Struct,
         ]) {
             self.parse_declaration()
-        } else if self.is_next(&[Token::Return]) {
+        } else if self.is_next(&[TokenKind::Return]) {
             self.parse_return_statement()
-        } else if self.is_next(&[Token::If]) {
+        } else if self.is_next(&[TokenKind::If]) {
             self.parse_if_statement()
-        } else if self.is_next(&[Token::Do]) {
+        } else if self.is_next(&[TokenKind::Do]) {
             self.parse_do_while_statement()
-        } else if self.is_next(&[Token::While]) {
+        } else if self.is_next(&[TokenKind::While]) {
             self.parse_while_statement()
-        } else if self.is_next(&[Token::For]) {
+        } else if self.is_next(&[TokenKind::For]) {
             self.parse_for_statement()
-        } else if self.is_next(&[Token::Break]) {
+        } else if self.is_next(&[TokenKind::Break]) {
             self.parse_break_statement()
-        } else if self.is_next(&[Token::Continue]) {
+        } else if self.is_next(&[TokenKind::Continue]) {
             self.parse_continue_statement()
-        } else if self.is_next(&[Token::Goto]) {
+        } else if self.is_next(&[TokenKind::Goto]) {
             self.parse_goto_statement()
-        } else if self.is_next(&[Token::Switch]) {
+        } else if self.is_next(&[TokenKind::Switch]) {
             self.parse_switch_statement()
-        } else if self.is_next(&[Token::Case]) {
+        } else if self.is_next(&[TokenKind::Case]) {
             self.parse_case_statement()
-        } else if self.is_next(&[Token::Default]) {
+        } else if self.is_next(&[TokenKind::Default]) {
             self.parse_default_statement()
-        } else if self.is_next(&[Token::LBrace]) {
+        } else if self.is_next(&[TokenKind::LBrace]) {
             self.parse_block_statement()
-        } else if self.is_next(&[Token::Semicolon]) {
+        } else if self.is_next(&[TokenKind::Semicolon]) {
             Ok(BlockItem::Statement(Statement::Null))
         } else {
             self.parse_expression_statement()
@@ -147,8 +156,15 @@ impl Parser {
     }
 
     fn parse_declaration(&mut self) -> Result<BlockItem> {
-        match self.peek(3).as_slice() {
-            [Token::Struct, Token::Identifier(_), Token::LBrace | Token::Semicolon] => {
+        match self
+            .peek(3)
+            .iter()
+            .cloned()
+            .map(|t| t.kind)
+            .collect::<Vec<_>>()
+            .as_slice()
+        {
+            [TokenKind::Struct, TokenKind::Identifier(_), TokenKind::LBrace | TokenKind::Semicolon] => {
                 self.parse_struct_decl()
             }
             _ => self.parse_var_or_fn_decl(),
@@ -156,16 +172,17 @@ impl Parser {
     }
 
     fn parse_struct_decl(&mut self) -> Result<BlockItem> {
-        self.consume(&Token::Struct)?;
+        let begin = self.current_span()?;
+        self.consume(&TokenKind::Struct)?;
         let tag = self
-            .consume(&Token::Identifier("".to_owned()))?
+            .consume(&TokenKind::Identifier("".to_owned()))?
             .unwrap()
             .as_string();
-        let members = if self.is_next(&[Token::LBrace]) {
+        let members = if self.is_next(&[TokenKind::LBrace]) {
             let mut members = vec![];
             loop {
                 let next_member = self.parse_member_decl()?;
-                if self.is_next(&[Token::RBrace]) {
+                if self.is_next(&[TokenKind::RBrace]) {
                     members.push(next_member);
                     break members;
                 } else {
@@ -175,75 +192,111 @@ impl Parser {
         } else {
             vec![]
         };
-        self.consume(&Token::Semicolon)?;
+        self.consume(&TokenKind::Semicolon)?;
+        let end = self.current_span()?;
         Ok(BlockItem::Declaration(Declaration::Struct(
-            StructDeclaration { tag, members },
+            StructDeclaration {
+                tag,
+                members,
+                span: begin + end,
+            },
         )))
     }
 
     fn parse_member_decl(&mut self) -> Result<MemberDeclaration> {
+        let begin = self.current_span()?;
         let specifier_list = self.consume_while_type_specifier();
-        let base_type = self.parse_type(specifier_list)?;
+        let base_type = self.parse_type(
+            specifier_list
+                .iter()
+                .cloned()
+                .map(|t| t.kind)
+                .collect::<Vec<_>>(),
+        )?;
         let declarator = self.parse_declarator()?;
         match declarator {
-            Declarator::Func(_, _) => bail!("function declarations not allowed in struct"),
+            Declarator::Func(_, _) => {
+                return Err(UccError {
+                    msg: format!("function declarations not allowed in struct"),
+                    kind: ErrorKind::Parse,
+                    span: self.current_span()?,
+                })
+            }
             _ => {
-                self.consume(&Token::Semicolon)?;
+                self.consume(&TokenKind::Semicolon)?;
+                let end = self.current_span()?;
                 let (name, decl_type, _) = self.process_declarator(&declarator, &base_type)?;
                 Ok(MemberDeclaration {
                     name,
                     ty: decl_type,
+                    span: begin + end,
                 })
             }
         }
     }
 
-    fn is_type_specifier(&self, token: &Token) -> bool {
+    fn is_type_specifier(&self, token: &TokenKind) -> bool {
         matches!(
             token,
-            Token::Int
-                | Token::Long
-                | Token::Char
-                | Token::Unsigned
-                | Token::Signed
-                | Token::Double
-                | Token::Void
-                | Token::Struct
+            TokenKind::Int
+                | TokenKind::Long
+                | TokenKind::Char
+                | TokenKind::Unsigned
+                | TokenKind::Signed
+                | TokenKind::Double
+                | TokenKind::Void
+                | TokenKind::Struct
         )
     }
 
-    fn is_storage_class_specifier(&self, token: &Token) -> bool {
-        matches!(token, Token::Static | Token::Extern)
+    fn is_storage_class_specifier(&self, token: &TokenKind) -> bool {
+        matches!(token, TokenKind::Static | TokenKind::Extern)
     }
 
-    fn is_specifier(&self, token: &Token) -> bool {
+    fn is_specifier(&self, token: &TokenKind) -> bool {
         self.is_type_specifier(token) || self.is_storage_class_specifier(token)
     }
 
     fn parse_var_or_fn_decl(&mut self) -> Result<BlockItem> {
+        let begin = self.current_span()?;
         let specifier_list = self.consume_while_specifier()?;
-        let (base_type, storage_class) = self.parse_type_and_storage_specifiers(&specifier_list)?;
+        let (base_type, storage_class) = self.parse_type_and_storage_specifiers(
+            &specifier_list
+                .iter()
+                .cloned()
+                .map(|t| t.kind)
+                .collect::<Vec<_>>(),
+        )?;
+
+        println!("base_type: {:?}", base_type);
 
         let declarator = self.parse_declarator()?;
 
+        println!("declarator: {:?}", declarator);
         let (name, decl_type, params) = self.process_declarator(&declarator, &base_type)?;
 
         match decl_type {
             Type::Func { params: _, ret: _ } => {
-                self.parse_function_declaration(&name, &params, decl_type, storage_class)
+                self.parse_function_declaration(&name, &params, decl_type, storage_class, begin)
             }
             _ => {
-                let init = if self.is_next(&[Token::Equal]) {
+                let init = if self.is_next(&[TokenKind::Equal]) {
                     let expr = self.parse_expression()?;
-                    self.consume(&Token::Semicolon)?;
+                    self.consume(&TokenKind::Semicolon)?;
                     Some(expr)
-                } else if self.is_next(&[Token::Semicolon]) {
+                } else if self.is_next(&[TokenKind::Semicolon]) {
                     None
                 } else {
-                    bail!("some error")
+                    return Err(UccError {
+                        msg: format!("internal error, parse var or fn decl"),
+                        kind: ErrorKind::Parse,
+                        span: self.current_span()?,
+                    });
                 };
 
                 let unwrapped = self.unwrap_expression_to_initializer(&name, init);
+
+                let end = self.current_span()?;
 
                 Ok(BlockItem::Declaration(Declaration::Variable(
                     VariableDeclaration {
@@ -252,6 +305,7 @@ impl Parser {
                         init: unwrapped,
                         storage_class,
                         is_global: self.depth == 0,
+                        span: begin + end,
                     },
                 )))
             }
@@ -293,43 +347,65 @@ impl Parser {
     }
 
     fn parse_declarator(&mut self) -> Result<Declarator> {
-        match self.current.as_ref().unwrap() {
-            Token::Star => {
-                self.consume(&Token::Star)?;
-                let inner = self.parse_declarator()?;
-                Ok(Declarator::Pointer(Box::new(inner)))
+        match self.current.as_ref() {
+            Some(token) => match token.kind {
+                TokenKind::Star => {
+                    self.consume(&TokenKind::Star)?;
+                    let inner = self.parse_declarator()?;
+                    Ok(Declarator::Pointer(Box::new(inner)))
+                }
+                _ => self.parse_direct_declarator(),
+            },
+            None => {
+                return Err(UccError {
+                    kind: ErrorKind::Parse,
+                    msg: format!("internal error parse_declarator"),
+                    span: self.current_span()?,
+                })
             }
-            _ => self.parse_direct_declarator(),
         }
     }
 
     fn parse_direct_declarator(&mut self) -> Result<Declarator> {
         let simple_declarator = self.parse_simple_declarator()?;
-        match self.current.as_ref().unwrap() {
-            Token::LParen => {
-                self.consume(&Token::LParen)?;
-                let params = self.parse_param_list()?;
-                Ok(Declarator::Func(params, Box::new(simple_declarator)))
+        match self.current.as_ref() {
+            Some(token) => match token.kind {
+                TokenKind::LParen => {
+                    self.consume(&TokenKind::LParen)?;
+                    let params = self.parse_param_list()?;
+                    Ok(Declarator::Func(params, Box::new(simple_declarator)))
+                }
+                TokenKind::LBracket => {
+                    let decl = self.parse_array_decl_suffix(&simple_declarator)?;
+                    Ok(decl)
+                }
+                _ => Ok(simple_declarator),
+            },
+            None => {
+                return Err(UccError {
+                    kind: ErrorKind::Parse,
+                    msg: format!("internal error, parse_direct_declarator"),
+                    span: self.current_span()?,
+                })
             }
-            Token::LBracket => {
-                let decl = self.parse_array_decl_suffix(&simple_declarator)?;
-                Ok(decl)
-            }
-            _ => Ok(simple_declarator),
         }
     }
 
     fn parse_simple_declarator(&mut self) -> Result<Declarator> {
         let token = self.advance().unwrap();
-        match token {
-            Token::LParen => {
+        match token.kind {
+            TokenKind::LParen => {
                 let decl = self.parse_declarator()?;
-                self.consume(&Token::RParen)?;
+                self.consume(&TokenKind::RParen)?;
                 Ok(decl)
             }
-            Token::Identifier(id) => Ok(Declarator::Ident(id)),
+            TokenKind::Identifier(id) => Ok(Declarator::Ident(id)),
             _ => {
-                bail!("a simple declarator");
+                return Err(UccError {
+                    msg: format!("internal error, parse_simple_declarator"),
+                    kind: ErrorKind::Parse,
+                    span: self.current_span()?,
+                });
             }
         }
     }
@@ -338,70 +414,101 @@ impl Parser {
         let dim = self.parse_dim()?;
         let mut new_decl = Declarator::Array(Box::new(base_decl.clone()), dim);
 
-        if let Some(Token::LBracket) = self.current.as_ref() {
-            new_decl = self.parse_array_decl_suffix(&new_decl)?;
+        if let Some(token) = self.current.as_ref() {
+            if token.kind == TokenKind::LBracket {
+                new_decl = self.parse_array_decl_suffix(&new_decl)?;
+            }
         }
 
         Ok(new_decl)
     }
 
     fn consume_constant_or_char_literal(&mut self) -> Result<Option<Token>> {
-        match self.current {
-            Some(Token::Constant(_)) | Some(Token::CharLiteral(_)) => Ok(self.advance()),
-            _ => bail!("expected constant, got: {:?}", self.current),
+        match self.current.as_ref() {
+            Some(token) => match token.kind {
+                TokenKind::Constant(_) | TokenKind::CharLiteral(_) => Ok(self.advance()),
+                _ => {
+                    return Err(UccError {
+                        msg: format!("expected constant, got: {:?}", self.current),
+                        kind: ErrorKind::Parse,
+                        span: self.current_span()?,
+                    })
+                }
+            },
+            None => {
+                return Err(UccError {
+                    kind: ErrorKind::Parse,
+                    msg: format!("internal error, consume_constant"),
+                    span: self.current_span()?,
+                })
+            }
         }
     }
 
     fn parse_dim(&mut self) -> Result<usize> {
-        self.consume(&Token::LBracket)?;
+        self.consume(&TokenKind::LBracket)?;
         let dim = self.consume_constant_or_char_literal()?.unwrap();
-        self.consume(&Token::RBracket)?;
-        Ok(match dim {
-            Token::Constant(Const::Int(n)) => n as usize,
-            Token::Constant(Const::Long(n)) => n as usize,
-            Token::Constant(Const::UInt(n)) => n as usize,
-            Token::Constant(Const::ULong(n)) => n as usize,
-            Token::Constant(Const::Char(n)) => n as usize,
-            Token::Constant(Const::UChar(n)) => n as usize,
-            Token::CharLiteral(ch) => ch as usize,
-            _ => bail!("expected const or char literal, got: {:?}", dim),
+        self.consume(&TokenKind::RBracket)?;
+        Ok(match dim.kind {
+            TokenKind::Constant(Const::Int(n)) => n as usize,
+            TokenKind::Constant(Const::Long(n)) => n as usize,
+            TokenKind::Constant(Const::UInt(n)) => n as usize,
+            TokenKind::Constant(Const::ULong(n)) => n as usize,
+            TokenKind::Constant(Const::Char(n)) => n as usize,
+            TokenKind::Constant(Const::UChar(n)) => n as usize,
+            TokenKind::CharLiteral(ch) => ch as usize,
+            _ => {
+                return Err(UccError {
+                    kind: ErrorKind::Parse,
+                    msg: format!("expected const or char literal, got: {:?}", dim),
+                    span: self.current_span()?,
+                })
+            }
         })
     }
     fn parse_param_list(&mut self) -> Result<Vec<ParamInfo>> {
-        let in_front_of_us = self.lookahead_until(&Token::RParen);
+        let in_front_of_us = self
+            .lookahead_until(&TokenKind::RParen)
+            .iter()
+            .cloned()
+            .map(|t| t.kind)
+            .collect::<Vec<_>>();
 
-        if in_front_of_us == vec![Token::Void] {
-            self.consume(&Token::Void)?;
-            self.consume(&Token::RParen)?;
+        if in_front_of_us == vec![TokenKind::Void] {
+            self.consume(&TokenKind::Void)?;
+            self.consume(&TokenKind::RParen)?;
 
             Ok(vec![])
         } else {
             let mut params = vec![];
             loop {
                 params.push(self.parse_param()?);
-                if !self.is_next(&[Token::Comma]) {
+                if !self.is_next(&[TokenKind::Comma]) {
                     break;
                 }
             }
-            self.consume(&Token::RParen)?;
+            self.consume(&TokenKind::RParen)?;
             Ok(params)
         }
     }
 
     fn consume_while_type_specifier(&mut self) -> Vec<Token> {
         let mut specifier_list = vec![];
-        while self.is_type_specifier(self.current.as_ref().unwrap()) {
-            match self.current {
-                Some(Token::Struct) => {
-                    specifier_list.push(self.current.clone().unwrap());
-                    self.advance();
-                    specifier_list.push(self.current.clone().unwrap());
-                    self.advance();
-                }
-                _ => {
-                    specifier_list.push(self.current.clone().unwrap());
-                    self.advance();
-                }
+        while self.is_type_specifier(&self.current.as_ref().unwrap().kind) {
+            match self.current.as_ref() {
+                Some(token) => match token.kind {
+                    TokenKind::Struct => {
+                        specifier_list.push(self.current.clone().unwrap());
+                        self.advance();
+                        specifier_list.push(self.current.clone().unwrap());
+                        self.advance();
+                    }
+                    _ => {
+                        specifier_list.push(self.current.clone().unwrap());
+                        self.advance();
+                    }
+                },
+                None => return vec![],
             }
         }
         specifier_list
@@ -409,29 +516,51 @@ impl Parser {
 
     fn parse_param(&mut self) -> Result<ParamInfo> {
         let specifier_list = self.consume_while_type_specifier();
-        let param_t = self.parse_type(specifier_list)?;
+        let param_t = self.parse_type(
+            specifier_list
+                .iter()
+                .cloned()
+                .map(|t| t.kind)
+                .collect::<Vec<_>>(),
+        )?;
         let param_decl = self.parse_declarator()?;
         Ok((param_t, param_decl.into()))
     }
 
     fn consume_while_specifier(&mut self) -> Result<Vec<Token>> {
         let mut specifier_list = vec![];
-        while self.is_specifier(self.current.as_ref().unwrap()) {
-            match self.current {
-                Some(Token::Struct) => {
-                    specifier_list.push(self.current.clone().unwrap());
-                    self.advance();
-
-                    if let Some(Token::Identifier(_)) = self.current {
+        while self.is_specifier(&self.current.as_ref().unwrap().kind) {
+            println!("self.current: {:?}", self.current);
+            match self.current.as_ref() {
+                Some(token) => match token.kind {
+                    TokenKind::Struct => {
                         specifier_list.push(self.current.clone().unwrap());
                         self.advance();
-                    } else {
-                        bail!("Expected an identifier after 'struct'");
+
+                        if let Some(token) = self.current.as_ref() {
+                            if let TokenKind::Identifier(_) = token.kind {
+                                specifier_list.push(self.current.clone().unwrap());
+                                self.advance();
+                            }
+                        } else {
+                            return Err(UccError {
+                                kind: ErrorKind::Parse,
+                                msg: format!("expected an identifier after struct"),
+                                span: self.current_span()?,
+                            });
+                        }
                     }
-                }
-                _ => {
-                    specifier_list.push(self.current.clone().unwrap());
-                    self.advance();
+                    _ => {
+                        specifier_list.push(self.current.clone().unwrap());
+                        self.advance();
+                    }
+                },
+                None => {
+                    return Err(UccError {
+                        kind: ErrorKind::Parse,
+                        msg: format!("internal error, consume_while_spec 2"),
+                        span: self.current_span()?,
+                    })
                 }
             }
         }
@@ -465,7 +594,11 @@ impl Parser {
                         if std::mem::discriminant(&param_type)
                             == std::mem::discriminant(&some_fn_type)
                         {
-                            bail!("Function pointers in parameters are not supported.")
+                            return Err(UccError {
+                                kind: ErrorKind::Parse,
+                                msg: format!("Function pointers in parameters are not supported."),
+                                span: self.current_span()?,
+                            });
                         }
                         param_names.push(param_name);
                         param_types.push(param_type);
@@ -477,7 +610,13 @@ impl Parser {
                     };
                     Ok((name.clone(), derived_type, param_names))
                 }
-                _ => bail!("Can't apply additional type derivations to a function type."),
+                _ => {
+                    return Err(UccError {
+                        kind: ErrorKind::Parse,
+                        msg: format!("Can't apply additional type derivations to a function type."),
+                        span: self.current_span()?,
+                    })
+                }
             },
             Declarator::Array(inner, size) => {
                 let derived_type = Type::Array {
@@ -495,30 +634,37 @@ impl Parser {
         params: &[String],
         ty: Type,
         storage_class: Option<StorageClass>,
+        begin: Span,
     ) -> Result<BlockItem> {
         self.current_target_type = Some(match ty.clone() {
             Type::Func { params: _, ret } => *ret,
             _ => unreachable!(),
         });
 
-        let body = if self.check(&Token::Semicolon) {
-            self.consume(&Token::Semicolon)?;
+        let body = if self.check(&TokenKind::Semicolon) {
+            self.consume(&TokenKind::Semicolon)?;
             None
-        } else if self.check(&Token::LBrace) {
-            self.consume(&Token::LBrace)?;
+        } else if self.check(&TokenKind::LBrace) {
+            self.consume(&TokenKind::LBrace)?;
             self.current_fn = Some(name.to_string());
             let block = Some(self.parse_block_statement()?);
             self.current_fn = None;
 
             block
         } else {
-            bail!(
-                "Expected block statement or semicolon, got: {:?}",
-                self.current
-            );
+            return Err(UccError {
+                kind: ErrorKind::Parse,
+                msg: format!(
+                    "Expected block statement or semicolon, got: {:?}",
+                    self.current
+                ),
+                span: self.current_span()?,
+            });
         };
 
         self.current_target_type = None;
+
+        let end = self.current_span()?;
 
         Ok(BlockItem::Declaration(Declaration::Function(
             FunctionDeclaration {
@@ -528,42 +674,49 @@ impl Parser {
                 is_global: self.depth == 0,
                 storage_class,
                 ty: ty.clone(),
+                span: begin + end,
             },
         )))
     }
 
-    fn parse_type(&self, specifier_list: Vec<Token>) -> Result<Type> {
+    fn parse_type(&self, specifier_list: Vec<TokenKind>) -> Result<Type> {
         let mut sorted_specifiers = specifier_list.clone();
         sorted_specifiers.sort();
 
         match &sorted_specifiers[..] {
-            [Token::Struct, Token::Identifier(tag)] => Ok(Type::Struct { tag: tag.clone() }),
-            [Token::Void] => Ok(Type::Void),
-            [Token::Double] => Ok(Type::Double),
-            [Token::Char] => Ok(Type::Char),
-            [Token::Char, Token::Signed] => Ok(Type::SChar),
-            [Token::Char, Token::Unsigned] => Ok(Type::UChar),
+            [TokenKind::Struct, TokenKind::Identifier(tag)] => {
+                Ok(Type::Struct { tag: tag.clone() })
+            }
+            [TokenKind::Void] => Ok(Type::Void),
+            [TokenKind::Double] => Ok(Type::Double),
+            [TokenKind::Char] => Ok(Type::Char),
+            [TokenKind::Char, TokenKind::Signed] => Ok(Type::SChar),
+            [TokenKind::Char, TokenKind::Unsigned] => Ok(Type::UChar),
             _ => {
                 let unique_specifiers: BTreeSet<_> = sorted_specifiers.iter().collect();
                 if sorted_specifiers.is_empty()
                     || unique_specifiers.len() != sorted_specifiers.len()
-                    || sorted_specifiers.contains(&Token::Double)
-                    || sorted_specifiers.contains(&Token::Char)
-                    || sorted_specifiers.contains(&Token::Void)
+                    || sorted_specifiers.contains(&TokenKind::Double)
+                    || sorted_specifiers.contains(&TokenKind::Char)
+                    || sorted_specifiers.contains(&TokenKind::Void)
                     || sorted_specifiers
                         .iter()
-                        .any(|s| matches!(s, Token::Identifier(_)))
-                    || (sorted_specifiers.contains(&Token::Signed)
-                        && sorted_specifiers.contains(&Token::Unsigned))
+                        .any(|s| matches!(s, TokenKind::Identifier(_)))
+                    || (sorted_specifiers.contains(&TokenKind::Signed)
+                        && sorted_specifiers.contains(&TokenKind::Unsigned))
                 {
-                    bail!("Invalid type specifier");
-                } else if sorted_specifiers.contains(&Token::Unsigned)
-                    && sorted_specifiers.contains(&Token::Long)
+                    return Err(UccError {
+                        kind: ErrorKind::Parse,
+                        msg: format!("Invalid type specifier."),
+                        span: self.current_span()?,
+                    });
+                } else if sorted_specifiers.contains(&TokenKind::Unsigned)
+                    && sorted_specifiers.contains(&TokenKind::Long)
                 {
                     Ok(Type::ULong)
-                } else if sorted_specifiers.contains(&Token::Unsigned) {
+                } else if sorted_specifiers.contains(&TokenKind::Unsigned) {
                     Ok(Type::UInt)
-                } else if sorted_specifiers.contains(&Token::Long) {
+                } else if sorted_specifiers.contains(&TokenKind::Long) {
                     Ok(Type::Long)
                 } else {
                     Ok(Type::Int)
@@ -572,13 +725,13 @@ impl Parser {
         }
     }
 
-    fn is_ident(&self, token: &Token) -> bool {
-        matches!(token, Token::Identifier(_))
+    fn is_ident(&self, token: &TokenKind) -> bool {
+        matches!(token, TokenKind::Identifier(_))
     }
 
     fn parse_type_and_storage_specifiers(
         &mut self,
-        specifier_list: &[Token],
+        specifier_list: &[TokenKind],
     ) -> Result<(Type, Option<StorageClass>)> {
         let mut types = vec![];
         let mut storage_classes = vec![];
@@ -594,16 +747,20 @@ impl Parser {
         let ty = self.parse_type(types)?;
 
         if storage_classes.len() > 1 {
-            bail!(
-                "expected at most one storage class specifier, got: {:?}",
-                storage_classes
-            );
+            return Err(UccError {
+                kind: ErrorKind::Parse,
+                msg: format!(
+                    "expected at most one storage class specifier, got: {:?}",
+                    storage_classes
+                ),
+                span: self.current_span()?,
+            });
         }
 
         let storage_class = if storage_classes.len() == 1 {
             match storage_classes[0] {
-                Token::Static => Some(StorageClass::Static),
-                Token::Extern => Some(StorageClass::Extern),
+                TokenKind::Static => Some(StorageClass::Static),
+                TokenKind::Extern => Some(StorageClass::Extern),
                 _ => {
                     unreachable!()
                 }
@@ -616,162 +773,220 @@ impl Parser {
     }
 
     fn parse_expression_statement(&mut self) -> Result<BlockItem> {
+        let begin = self.current_span()?;
         let expr = self.parse_expression()?;
-        self.consume(&Token::Semicolon)?;
+        self.consume(&TokenKind::Semicolon)?;
+        let end = self.current_span()?;
         Ok(BlockItem::Statement(Statement::Expression(
-            ExpressionStatement { expr },
+            ExpressionStatement {
+                expr,
+                span: begin + end,
+            },
         )))
     }
 
     fn parse_block_statement(&mut self) -> Result<BlockItem> {
         self.depth += 1;
+        let begin = self.current_span()?;
         let mut stmts = vec![];
-        while !self.check(&Token::RBrace) {
+        while !self.check(&TokenKind::RBrace) {
             stmts.push(self.parse_statement()?);
         }
-        self.consume(&Token::RBrace)?;
+        self.consume(&TokenKind::RBrace)?;
+        let end = self.current_span()?;
         self.depth -= 1;
         Ok(BlockItem::Statement(Statement::Compound(BlockStatement {
             stmts,
+            span: begin + end,
         })))
     }
 
     fn parse_switch_statement(&mut self) -> Result<BlockItem> {
-        self.consume(&Token::LParen)?;
+        let begin = self.current_span()?;
+        self.consume(&TokenKind::LParen)?;
         let condition = self.parse_expression()?;
-        self.consume(&Token::RParen)?;
+        self.consume(&TokenKind::RParen)?;
         let body = match self.parse_statement() {
             Ok(BlockItem::Statement(stmt)) => stmt,
             _ => {
-                bail!("...");
+                return Err(UccError {
+                    kind: ErrorKind::Parse,
+                    msg: format!("internal error, parse_switch"),
+                    span: self.current_span()?,
+                });
             }
         };
+        let end = self.current_span()?;
         Ok(BlockItem::Statement(Statement::Switch(SwitchStatement {
             condition,
             body: body.into(),
             label: String::new(),
             cases: vec![],
+            span: begin + end,
         })))
     }
 
     fn parse_case_statement(&mut self) -> Result<BlockItem> {
+        let begin = self.current_span()?;
         let value = self.parse_expression()?;
-        self.consume(&Token::Colon)?;
+        self.consume(&TokenKind::Colon)?;
         let body = match self.parse_statement() {
             Ok(BlockItem::Statement(stmt)) => stmt,
             _ => {
-                bail!("...");
+                return Err(UccError {
+                    kind: ErrorKind::Parse,
+                    msg: format!("internal error, parse case"),
+                    span: self.current_span()?,
+                });
             }
         };
+        let end = self.current_span()?;
         Ok(BlockItem::Statement(Statement::Case(CaseStatement {
             value,
             body: body.into(),
             label: String::new(),
+            span: begin + end,
         })))
     }
 
     fn parse_default_statement(&mut self) -> Result<BlockItem> {
-        self.consume(&Token::Colon)?;
+        let begin = self.current_span()?;
+        self.consume(&TokenKind::Colon)?;
         let body = match self.parse_statement() {
             Ok(BlockItem::Statement(stmt)) => stmt,
             _ => {
-                bail!("...");
+                return Err(UccError {
+                    kind: ErrorKind::Parse,
+                    msg: format!("internal error, parse_default"),
+                    span: self.current_span()?,
+                });
             }
         };
+        let end = self.current_span()?;
         Ok(BlockItem::Statement(Statement::Default(DefaultStatement {
             body: body.into(),
             label: String::new(),
+            span: begin + end,
         })))
     }
 
     fn parse_if_statement(&mut self) -> Result<BlockItem> {
-        self.consume(&Token::LParen)?;
+        let begin = self.current_span()?;
+        self.consume(&TokenKind::LParen)?;
         let condition = self.parse_expression()?;
-        self.consume(&Token::RParen)?;
+        self.consume(&TokenKind::RParen)?;
         let then_branch = self.parse_statement()?;
 
         if let BlockItem::Declaration(_) = then_branch {
-            bail!("variable declaration not allowed in if body");
+            return Err(UccError {
+                kind: ErrorKind::Parse,
+                msg: format!("Variable declarations not allowed in if body."),
+                span: self.current_span()?,
+            });
         }
 
-        let else_branch = if self.is_next(&[Token::Else]) {
+        let else_branch = if self.is_next(&[TokenKind::Else]) {
             Some(self.parse_statement()?)
         } else {
             None
         };
 
+        let end = self.current_span()?;
+
         Ok(BlockItem::Statement(Statement::If(IfStatement {
             condition,
             then_branch: then_branch.into(),
             else_branch: else_branch.into(),
+            span: begin + end,
         })))
     }
 
     fn parse_do_while_statement(&mut self) -> Result<BlockItem> {
+        let begin = self.current_span()?;
         let body = self.parse_statement()?;
-        self.consume(&Token::While)?;
-        self.consume(&Token::LParen)?;
+        self.consume(&TokenKind::While)?;
+        self.consume(&TokenKind::LParen)?;
         let condition = self.parse_expression()?;
-        self.consume(&Token::RParen)?;
-        self.consume(&Token::Semicolon)?;
+        self.consume(&TokenKind::RParen)?;
+        self.consume(&TokenKind::Semicolon)?;
+        let end = self.current_span()?;
+
         Ok(BlockItem::Statement(Statement::DoWhile(DoWhileStatement {
             condition,
             body: body.into(),
             label: "".to_owned(),
+            span: begin + end,
         })))
     }
 
     fn parse_while_statement(&mut self) -> Result<BlockItem> {
-        self.consume(&Token::LParen)?;
+        let begin = self.current_span()?;
+        self.consume(&TokenKind::LParen)?;
         let condition = self.parse_expression()?;
-        self.consume(&Token::RParen)?;
+        self.consume(&TokenKind::RParen)?;
         let body = self.parse_statement()?;
 
         if let BlockItem::Declaration(_) = body {
-            bail!("variable declaration not allowed in while body");
+            return Err(UccError {
+                kind: ErrorKind::Parse,
+                msg: format!("Variable declarations not allowed in while body."),
+                span: self.current_span()?,
+            });
         }
+
+        let end = self.current_span()?;
 
         Ok(BlockItem::Statement(Statement::While(WhileStatement {
             condition,
             body: body.into(),
             label: "".to_owned(),
+            span: begin + end,
         })))
     }
 
     fn parse_for_statement(&mut self) -> Result<BlockItem> {
-        self.consume(&Token::LParen)?;
+        let begin = self.current_span()?;
+        self.consume(&TokenKind::LParen)?;
 
-        let init = if self.is_next(&[Token::Semicolon]) {
+        let init = if self.is_next(&[TokenKind::Semicolon]) {
             ForInit::Expression(None)
-        } else if self.is_specifier(self.current.as_ref().unwrap()) {
+        } else if self.is_specifier(&self.current.as_ref().unwrap().kind) {
             let decl = self.parse_var_or_fn_decl()?;
             ForInit::Declaration(match decl {
                 BlockItem::Declaration(Declaration::Variable(var)) => var,
-                _ => bail!("Function declarations are not allowed in for loop headers."),
+                _ => {
+                    return Err(UccError {
+                        kind: ErrorKind::Parse,
+                        msg: format!("Function declarations are not allowed in for loop headers."),
+                        span: self.current_span()?,
+                    })
+                }
             })
         } else {
             let expr = self.parse_expression()?;
-            self.consume(&Token::Semicolon)?;
+            self.consume(&TokenKind::Semicolon)?;
             ForInit::Expression(Some(expr))
         };
 
-        let condition = if self.is_next(&[Token::Semicolon]) {
+        let condition = if self.is_next(&[TokenKind::Semicolon]) {
             None
         } else {
             let expr = self.parse_expression()?;
-            self.consume(&Token::Semicolon)?;
+            self.consume(&TokenKind::Semicolon)?;
             Some(expr)
         };
 
-        let post = if self.is_next(&[Token::RParen]) {
+        let post = if self.is_next(&[TokenKind::RParen]) {
             None
         } else {
             let expr = self.parse_expression()?;
-            self.consume(&Token::RParen)?;
+            self.consume(&TokenKind::RParen)?;
             Some(expr)
         };
 
         let body = self.parse_statement()?;
+
+        let end = self.current_span()?;
 
         Ok(BlockItem::Statement(Statement::For(ForStatement {
             init,
@@ -779,68 +994,98 @@ impl Parser {
             post,
             body: body.into(),
             label: "".to_owned(),
+            span: begin + end,
         })))
     }
 
     fn parse_break_statement(&mut self) -> Result<BlockItem> {
-        self.consume(&Token::Semicolon)?;
+        let begin = self.current_span()?;
+        self.consume(&TokenKind::Semicolon)?;
+        let end = self.current_span()?;
         Ok(BlockItem::Statement(Statement::Break(BreakStatement {
             label: "".to_owned(),
+            span: begin + end,
         })))
     }
 
     fn parse_continue_statement(&mut self) -> Result<BlockItem> {
-        self.consume(&Token::Semicolon)?;
+        let begin = self.current_span()?;
+        self.consume(&TokenKind::Semicolon)?;
+        let end = self.current_span()?;
         Ok(BlockItem::Statement(Statement::Continue(
             ContinueStatement {
                 label: "".to_owned(),
+                span: begin + end,
             },
         )))
     }
 
     fn parse_goto_statement(&mut self) -> Result<BlockItem> {
-        let label_token = self.consume(&Token::Identifier("".to_string()))?;
+        let begin = self.current_span()?;
+        let label_token = self.consume(&TokenKind::Identifier("".to_string()))?;
         let label = if let Some(label_name) = label_token {
             label_name.as_string()
         } else {
-            bail!("...")
+            return Err(UccError {
+                kind: ErrorKind::Parse,
+                msg: format!("internal error, parse_goto"),
+                span: self.current_span()?,
+            });
         };
-        self.consume(&Token::Semicolon)?;
+        self.consume(&TokenKind::Semicolon)?;
+        let end = self.current_span()?;
         Ok(BlockItem::Statement(Statement::Goto(GotoStatement {
             label,
+            span: begin + end,
         })))
     }
 
     fn parse_labeled_statement(&mut self) -> Result<BlockItem> {
-        let label_token = self.consume(&Token::Identifier("".to_string()))?;
+        let begin = self.current_span()?;
+        let label_token = self.consume(&TokenKind::Identifier("".to_string()))?;
         let label = if let Some(label_name) = label_token {
             label_name.as_string()
         } else {
-            bail!("expected label identifier");
+            return Err(UccError {
+                kind: ErrorKind::Parse,
+                msg: format!("Expected label identifier."),
+                span: self.current_span()?,
+            });
         };
-        self.consume(&Token::Colon)?;
+        self.consume(&TokenKind::Colon)?;
 
         let inner = self.parse_statement()?;
+
+        let end = self.current_span()?;
 
         match inner {
             BlockItem::Statement(stmt) => {
                 Ok(BlockItem::Statement(Statement::Labeled(LabeledStatement {
                     label,
                     body: Box::new(stmt),
+                    span: begin + end,
                 })))
             }
-            _ => bail!("label must precede a statement, not a declaration"),
+            _ => {
+                return Err(UccError {
+                    kind: ErrorKind::Parse,
+                    msg: format!("Label must precede a statement, not a declaration"),
+                    span: self.current_span()?,
+                })
+            }
         }
     }
 
     fn parse_return_statement(&mut self) -> Result<BlockItem> {
-        let expr = if self.is_next(&[Token::Semicolon]) {
+        let begin = self.current_span()?;
+        let expr = if self.is_next(&[TokenKind::Semicolon]) {
             None
         } else {
             let expr = Some(self.parse_expression()?);
-            self.consume(&Token::Semicolon)?;
+            self.consume(&TokenKind::Semicolon)?;
             expr
         };
+        let end = self.current_span()?;
         Ok(BlockItem::Statement(Statement::Return(ReturnStatement {
             expr,
             target_type: self.current_target_type.clone(),
@@ -848,6 +1093,7 @@ impl Parser {
                 .current_fn
                 .clone()
                 .unwrap_or_else(|| "no current function".to_owned()),
+            span: begin + end,
         })))
     }
 
@@ -855,244 +1101,318 @@ impl Parser {
         self.assignment()
     }
 
+    fn current_span(&self) -> Result<Span> {
+        match self.current.as_ref() {
+            Some(token) => Ok(token.span),
+            None => {
+                return Ok(Span { start: 0, end: 0 });
+            }
+        }
+    }
+
     fn assignment(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
+
         let mut result = self.conditional()?;
         while self.is_next(&[
-            Token::Equal,
-            Token::PlusEqual,
-            Token::MinusEqual,
-            Token::StarEqual,
-            Token::SlashEqual,
-            Token::ModEqual,
-            Token::AmpersandEqual,
-            Token::PipeEqual,
-            Token::CaretEqual,
-            Token::GreaterGreaterEqual,
-            Token::LessLessEqual,
+            TokenKind::Equal,
+            TokenKind::PlusEqual,
+            TokenKind::MinusEqual,
+            TokenKind::StarEqual,
+            TokenKind::SlashEqual,
+            TokenKind::ModEqual,
+            TokenKind::AmpersandEqual,
+            TokenKind::PipeEqual,
+            TokenKind::CaretEqual,
+            TokenKind::GreaterGreaterEqual,
+            TokenKind::LessLessEqual,
         ]) {
-            if let Some(Token::Equal) = self.previous.clone() {
-                result = Expression::Assign(AssignExpression {
-                    lhs: result.into(),
-                    rhs: self.assignment()?.into(),
-                    op: Token::Equal,
-                    ty: Type::Dummy,
-                });
-            } else {
-                let op = match self.previous.clone() {
-                    Some(Token::PlusEqual) => CompoundExpressionKind::Add,
-                    Some(Token::MinusEqual) => CompoundExpressionKind::Sub,
-                    Some(Token::StarEqual) => CompoundExpressionKind::Mul,
-                    Some(Token::SlashEqual) => CompoundExpressionKind::Div,
-                    Some(Token::CaretEqual) => CompoundExpressionKind::BitwiseXor,
-                    Some(Token::AmpersandEqual) => CompoundExpressionKind::BitwiseAnd,
-                    Some(Token::PipeEqual) => CompoundExpressionKind::BitwiseOr,
-                    Some(Token::GreaterGreaterEqual) => CompoundExpressionKind::BitwiseShr,
-                    Some(Token::LessLessEqual) => CompoundExpressionKind::BitwiseShl,
-                    Some(Token::ModEqual) => CompoundExpressionKind::Mod,
-                    _ => unreachable!(),
-                };
+            if let Some(token) = self.previous.as_ref() {
+                if let TokenKind::Equal = token.kind {
+                    let right = self.assignment()?;
+                    let end = self.current_span()?;
 
-                result = Expression::Compound(CompoundExpression {
-                    kind: op,
-                    lhs: result.into(),
-                    rhs: self.assignment()?.into(),
-                    result_t: Type::Dummy,
-                    ty: Type::Dummy,
-                });
+                    result = Expression::Assign(AssignExpression {
+                        lhs: result.into(),
+                        rhs: right.into(),
+                        op: TokenKind::Equal,
+                        ty: Type::Dummy,
+                        span: begin + end,
+                    });
+                } else {
+                    let op = match self.previous.as_ref() {
+                        Some(token) => match token.kind {
+                            TokenKind::PlusEqual => CompoundExpressionKind::Add,
+                            TokenKind::MinusEqual => CompoundExpressionKind::Sub,
+                            TokenKind::StarEqual => CompoundExpressionKind::Mul,
+                            TokenKind::SlashEqual => CompoundExpressionKind::Div,
+                            TokenKind::CaretEqual => CompoundExpressionKind::BitwiseXor,
+                            TokenKind::AmpersandEqual => CompoundExpressionKind::BitwiseAnd,
+                            TokenKind::PipeEqual => CompoundExpressionKind::BitwiseOr,
+                            TokenKind::GreaterGreaterEqual => CompoundExpressionKind::BitwiseShr,
+                            TokenKind::LessLessEqual => CompoundExpressionKind::BitwiseShl,
+                            TokenKind::ModEqual => CompoundExpressionKind::Mod,
+                            _ => unreachable!(),
+                        },
+                        None => {
+                            return Err(UccError {
+                                kind: ErrorKind::Parse,
+                                msg: format!("internal error, assignment"),
+                                span: self.current_span()?,
+                            })
+                        }
+                    };
+
+                    let right = self.assignment()?;
+                    let end = self.current_span()?;
+
+                    result = Expression::Compound(CompoundExpression {
+                        kind: op,
+                        lhs: result.into(),
+                        rhs: right.into(),
+                        result_t: Type::Dummy,
+                        ty: Type::Dummy,
+                        span: begin + end,
+                    });
+                }
             }
         }
         Ok(result)
     }
 
     fn conditional(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
         let mut result = self.or()?;
-        if self.is_next(&[Token::QuestionMark]) {
+
+        if self.is_next(&[TokenKind::QuestionMark]) {
             let then_expr = self.parse_expression()?;
-            self.consume(&Token::Colon)?;
+            self.consume(&TokenKind::Colon)?;
             let else_expr = self.conditional()?;
+            let end = self.current_span()?;
             result = Expression::Conditional(ConditionalExpression {
                 condition: result.into(),
                 then_expr: then_expr.into(),
                 else_expr: else_expr.into(),
                 ty: Type::Dummy,
+                span: begin + end,
             });
         }
         Ok(result)
     }
 
     fn or(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
         let mut result = self.and()?;
-        while self.is_next(&[Token::DoublePipe]) {
+        while self.is_next(&[TokenKind::DoublePipe]) {
+            let right = self.and()?;
+            let end = self.current_span()?;
             result = Expression::Binary(BinaryExpression {
                 kind: BinaryExpressionKind::Or,
                 lhs: result.into(),
-                rhs: self.and()?.into(),
+                rhs: right.into(),
                 ty: Type::Dummy,
+                span: begin + end,
             });
         }
         Ok(result)
     }
 
     fn and(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
         let mut result = self.bitwise_or()?;
-        while self.is_next(&[Token::DoubleAmpersand]) {
+        while self.is_next(&[TokenKind::DoubleAmpersand]) {
+            let right = self.bitwise_or()?;
+            let end = self.current_span()?;
             result = Expression::Binary(BinaryExpression {
                 kind: BinaryExpressionKind::And,
                 lhs: result.into(),
-                rhs: self.bitwise_or()?.into(),
+                rhs: right.into(),
                 ty: Type::Dummy,
+                span: begin + end,
             });
         }
         Ok(result)
     }
 
     fn bitwise_or(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
         let mut result = self.bitwise_xor()?;
-        while self.is_next(&[Token::Pipe]) {
+        while self.is_next(&[TokenKind::Pipe]) {
+            let right = self.bitwise_xor()?;
+            let end = self.current_span()?;
             result = Expression::Binary(BinaryExpression {
                 kind: BinaryExpressionKind::BitwiseOr,
                 lhs: result.into(),
-                rhs: self.bitwise_xor()?.into(),
+                rhs: right.into(),
                 ty: Type::Dummy,
+                span: begin + end,
             });
         }
         Ok(result)
     }
 
     fn bitwise_xor(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
         let mut result = self.bitwise_and()?;
-        while self.is_next(&[Token::Caret]) {
+        while self.is_next(&[TokenKind::Caret]) {
+            let right = self.bitwise_and()?;
+            let end = self.current_span()?;
             result = Expression::Binary(BinaryExpression {
                 kind: BinaryExpressionKind::BitwiseXor,
                 lhs: result.into(),
-                rhs: self.bitwise_and()?.into(),
+                rhs: right.into(),
                 ty: Type::Dummy,
+                span: begin + end,
             });
         }
         Ok(result)
     }
 
     fn bitwise_and(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
         let mut result = self.equality()?;
-        while self.is_next(&[Token::Ampersand]) {
+        while self.is_next(&[TokenKind::Ampersand]) {
+            let right = self.equality()?;
+            let end = self.current_span()?;
             result = Expression::Binary(BinaryExpression {
                 kind: BinaryExpressionKind::BitwiseAnd,
                 lhs: result.into(),
-                rhs: self.equality()?.into(),
+                rhs: right.into(),
                 ty: Type::Dummy,
+                span: begin + end,
             });
         }
         Ok(result)
     }
 
     fn equality(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
         let mut result = self.relational()?;
-        while self.is_next(&[Token::DoubleEqual, Token::BangEqual]) {
-            let negation = match self.previous.as_ref().unwrap() {
-                Token::BangEqual => true,
-                Token::DoubleEqual => false,
+        while self.is_next(&[TokenKind::DoubleEqual, TokenKind::BangEqual]) {
+            let negation = match self.previous.as_ref().unwrap().kind {
+                TokenKind::BangEqual => true,
+                TokenKind::DoubleEqual => false,
                 _ => unreachable!(),
             };
+            let right = self.relational()?;
+            let end = self.current_span()?;
             result = Expression::Binary(BinaryExpression {
                 kind: match negation {
                     true => BinaryExpressionKind::NotEqual,
                     false => BinaryExpressionKind::Equal,
                 },
                 lhs: result.into(),
-                rhs: self.relational()?.into(),
+                rhs: right.into(),
                 ty: Type::Dummy,
+                span: begin + end,
             });
         }
         Ok(result)
     }
 
     fn relational(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
         let mut result = self.bitwise_shift()?;
         while self.is_next(&[
-            Token::Less,
-            Token::Greater,
-            Token::LessEqual,
-            Token::GreaterEqual,
+            TokenKind::Less,
+            TokenKind::Greater,
+            TokenKind::LessEqual,
+            TokenKind::GreaterEqual,
         ]) {
             let kind = match self.previous.as_ref() {
-                Some(token) => match token {
-                    Token::Less => BinaryExpressionKind::Less,
-                    Token::Greater => BinaryExpressionKind::Greater,
-                    Token::LessEqual => BinaryExpressionKind::LessEqual,
-                    Token::GreaterEqual => BinaryExpressionKind::GreaterEqual,
+                Some(token) => match token.kind {
+                    TokenKind::Less => BinaryExpressionKind::Less,
+                    TokenKind::Greater => BinaryExpressionKind::Greater,
+                    TokenKind::LessEqual => BinaryExpressionKind::LessEqual,
+                    TokenKind::GreaterEqual => BinaryExpressionKind::GreaterEqual,
                     _ => unreachable!(),
                 },
                 None => unreachable!(),
             };
+            let right = self.bitwise_shift()?;
+            let end = self.current_span()?;
             result = Expression::Binary(BinaryExpression {
                 kind,
                 lhs: result.into(),
-                rhs: self.bitwise_shift()?.into(),
+                rhs: right.into(),
                 ty: Type::Dummy,
+                span: begin + end,
             });
         }
         Ok(result)
     }
 
     fn bitwise_shift(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
         let mut result = self.term()?;
-        while self.is_next(&[Token::GreaterGreater, Token::LessLess]) {
+        while self.is_next(&[TokenKind::GreaterGreater, TokenKind::LessLess]) {
             let kind = match self.previous.as_ref() {
-                Some(token) => match token {
-                    Token::GreaterGreater => BinaryExpressionKind::BitwiseShr,
-                    Token::LessLess => BinaryExpressionKind::BitwiseShl,
+                Some(token) => match token.kind {
+                    TokenKind::GreaterGreater => BinaryExpressionKind::BitwiseShr,
+                    TokenKind::LessLess => BinaryExpressionKind::BitwiseShl,
                     _ => unreachable!(),
                 },
                 None => unreachable!(),
             };
+            let right = self.term()?;
+            let end = self.current_span()?;
             result = Expression::Binary(BinaryExpression {
                 kind,
                 lhs: result.into(),
-                rhs: self.term()?.into(),
+                rhs: right.into(),
                 ty: Type::Dummy,
+                span: begin + end,
             });
         }
         Ok(result)
     }
 
     fn term(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
         let mut result = self.factor()?;
-        while self.is_next(&[Token::Plus, Token::Hyphen]) {
+        while self.is_next(&[TokenKind::Plus, TokenKind::Hyphen]) {
             let kind = match self.previous.as_ref() {
-                Some(token) => match token {
-                    Token::Plus => BinaryExpressionKind::Add,
-                    Token::Hyphen => BinaryExpressionKind::Sub,
+                Some(token) => match token.kind {
+                    TokenKind::Plus => BinaryExpressionKind::Add,
+                    TokenKind::Hyphen => BinaryExpressionKind::Sub,
                     _ => unreachable!(),
                 },
                 None => unreachable!(),
             };
+            let right = self.factor()?;
+            let end = self.current_span()?;
             result = Expression::Binary(BinaryExpression {
                 kind,
                 lhs: result.into(),
-                rhs: self.factor()?.into(),
+                rhs: right.into(),
                 ty: Type::Dummy,
+                span: begin + end,
             });
         }
         Ok(result)
     }
 
     fn factor(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
         let mut result = self.unary()?;
-        while self.is_next(&[Token::Star, Token::Slash, Token::Percent]) {
+        while self.is_next(&[TokenKind::Star, TokenKind::Slash, TokenKind::Percent]) {
             let kind = match self.previous.as_ref() {
-                Some(token) => match token {
-                    Token::Star => BinaryExpressionKind::Mul,
-                    Token::Slash => BinaryExpressionKind::Div,
-                    Token::Percent => BinaryExpressionKind::Rem,
+                Some(token) => match token.kind {
+                    TokenKind::Star => BinaryExpressionKind::Mul,
+                    TokenKind::Slash => BinaryExpressionKind::Div,
+                    TokenKind::Percent => BinaryExpressionKind::Rem,
                     _ => unreachable!(),
                 },
                 None => unreachable!(),
             };
+            let right = self.unary()?;
+            let end = self.current_span()?;
             result = Expression::Binary(BinaryExpression {
                 kind,
                 lhs: result.into(),
-                rhs: self.unary()?.into(),
+                rhs: right.into(),
                 ty: Type::Dummy,
+                span: begin + end,
             });
         }
         Ok(result)
@@ -1109,80 +1429,101 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
+
         if self.is_next(&[
-            Token::Hyphen,
-            Token::Tilde,
-            Token::Bang,
-            Token::DoublePlus,
-            Token::DoubleHyphen,
+            TokenKind::Hyphen,
+            TokenKind::Tilde,
+            TokenKind::Bang,
+            TokenKind::DoublePlus,
+            TokenKind::DoubleHyphen,
         ]) {
             let op = self.previous.clone().unwrap();
-
             let expr = self.unary()?;
+            let end = self.current_span()?;
             return Ok(Expression::Unary(UnaryExpression {
                 expr: expr.into(),
-                kind: match op {
-                    Token::Hyphen => UnaryExpressionKind::Negate,
-                    Token::Tilde => UnaryExpressionKind::Complement,
-                    Token::Bang => UnaryExpressionKind::Not,
-                    Token::DoublePlus => UnaryExpressionKind::Inc,
-                    Token::DoubleHyphen => UnaryExpressionKind::Dec,
+                kind: match op.kind {
+                    TokenKind::Hyphen => UnaryExpressionKind::Negate,
+                    TokenKind::Tilde => UnaryExpressionKind::Complement,
+                    TokenKind::Bang => UnaryExpressionKind::Not,
+                    TokenKind::DoublePlus => UnaryExpressionKind::Inc,
+                    TokenKind::DoubleHyphen => UnaryExpressionKind::Dec,
                     _ => unreachable!(),
                 },
                 ty: Type::Dummy,
+                span: begin + end,
             }));
-        } else if self.is_next(&[Token::Star]) {
+        } else if self.is_next(&[TokenKind::Star]) {
             let expr = self.unary()?;
+            let end = self.current_span()?;
             return Ok(Expression::Deref(DerefExpression {
                 expr: expr.into(),
                 ty: Type::Dummy,
+                span: begin + end,
             }));
-        } else if self.is_next(&[Token::Ampersand]) {
+        } else if self.is_next(&[TokenKind::Ampersand]) {
             let expr = self.unary()?;
+            let end = self.current_span()?;
             return Ok(Expression::AddrOf(AddrOfExpression {
                 expr: expr.into(),
                 ty: Type::Dummy,
+                span: begin + end,
             }));
         } else {
             let next_three_tokens = self.peek(3);
-            match next_three_tokens.as_slice() {
-                [Token::Sizeof, Token::LParen, _] => {
-                    if self.is_type_specifier(next_three_tokens.last().unwrap()) {
-                        self.consume(&Token::Sizeof)?;
-                        self.consume(&Token::LParen)?;
+            match next_three_tokens
+                .iter()
+                .cloned()
+                .map(|t| t.kind)
+                .collect::<Vec<_>>()
+                .as_slice()
+            {
+                [TokenKind::Sizeof, TokenKind::LParen, _] => {
+                    if self.is_type_specifier(&next_three_tokens.last().unwrap().kind) {
+                        self.consume(&TokenKind::Sizeof)?;
+                        self.consume(&TokenKind::LParen)?;
                         let base_type = self.parse_type_name()?;
-                        self.consume(&Token::RParen)?;
+                        self.consume(&TokenKind::RParen)?;
+                        let end = self.current_span()?;
                         return Ok(Expression::SizeofT(SizeofTExpression {
                             t: base_type,
                             ty: Type::Dummy,
+                            span: begin + end,
                         }));
                     } else {
-                        self.consume(&Token::Sizeof)?;
+                        self.consume(&TokenKind::Sizeof)?;
                         let expr = self.unary()?;
+                        let end = self.current_span()?;
                         return Ok(Expression::Sizeof(SizeofExpression {
                             expr: expr.into(),
                             ty: Type::Dummy,
+                            span: begin + end,
                         }));
                     }
                 }
-                [Token::Sizeof, _, _] => {
-                    self.consume(&Token::Sizeof)?;
+                [TokenKind::Sizeof, _, _] => {
+                    self.consume(&TokenKind::Sizeof)?;
                     let expr = self.unary()?;
+                    let end = self.current_span()?;
                     return Ok(Expression::Sizeof(SizeofExpression {
                         expr: expr.into(),
                         ty: Type::Dummy,
+                        span: begin + end,
                     }));
                 }
-                [Token::LParen, _, _] => {
-                    if self.is_type_specifier(&next_three_tokens[1]) {
-                        self.consume(&Token::LParen)?;
+                [TokenKind::LParen, _, _] => {
+                    if self.is_type_specifier(&next_three_tokens[1].kind) {
+                        self.consume(&TokenKind::LParen)?;
                         let base_type = self.parse_type_name()?;
-                        self.consume(&Token::RParen)?;
+                        self.consume(&TokenKind::RParen)?;
                         let expr = self.unary()?;
+                        let end = self.current_span()?;
                         return Ok(Expression::Cast(CastExpression {
                             target_type: base_type,
                             expr: expr.into(),
                             ty: Type::Dummy,
+                            span: begin + end,
                         }));
                     }
                 }
@@ -1195,9 +1536,15 @@ impl Parser {
 
     fn parse_type_name(&mut self) -> Result<Type> {
         let specifier_list = self.consume_while_type_specifier();
-        let base_type = self.parse_type(specifier_list)?;
-        match self.current.as_ref().unwrap() {
-            Token::RParen => Ok(base_type),
+        let base_type = self.parse_type(
+            specifier_list
+                .iter()
+                .cloned()
+                .map(|t| t.kind)
+                .collect::<Vec<_>>(),
+        )?;
+        match self.current.as_ref().unwrap().kind {
+            TokenKind::RParen => Ok(base_type),
             _ => {
                 let decl = self.parse_abstract_declarator()?;
                 Ok(self.process_abstract_declarator(&decl, &base_type))
@@ -1205,76 +1552,103 @@ impl Parser {
         }
     }
 
-    fn lookahead_until(&mut self, token: &Token) -> Vec<Token> {
+    fn lookahead_until(&mut self, token: &TokenKind) -> Vec<Token> {
         let v = [self.current.clone().unwrap()];
         v.iter()
             .chain(&self.tokens)
-            .take_while(|&t| t != token)
+            .take_while(|t| t.kind != *token)
             .cloned()
             .collect()
     }
 
     fn call(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
         let mut expr = self.primary()?;
         loop {
-            if self.is_next(&[Token::LParen]) {
+            if self.is_next(&[TokenKind::LParen]) {
                 let mut args = vec![];
-                if !self.check(&Token::RParen) {
+                if !self.check(&TokenKind::RParen) {
                     loop {
                         args.push(self.parse_expression()?);
-                        if !self.is_next(&[Token::Comma]) {
+                        if !self.is_next(&[TokenKind::Comma]) {
                             break;
                         }
                     }
                 }
-                self.consume(&Token::RParen)?;
+                self.consume(&TokenKind::RParen)?;
+                let end = self.current_span()?;
                 expr = Expression::Call(CallExpression {
                     name: match expr {
                         Expression::Variable(var) => var.value,
-                        _ => bail!("expected a variable"),
+                        _ => {
+                            return Err(UccError {
+                                msg: format!("expected a variable"),
+                                kind: ErrorKind::Parse,
+                                span: self.current_span()?,
+                            })
+                        }
                     },
                     args,
                     ty: Type::Dummy,
+                    span: begin + end,
                 });
-            } else if self.is_next(&[Token::LBracket]) {
+            } else if self.is_next(&[TokenKind::LBracket]) {
                 let index = self.parse_expression()?;
-                self.consume(&Token::RBracket)?;
+                self.consume(&TokenKind::RBracket)?;
+                let end = self.current_span()?;
                 expr = Expression::Subscript(SubscriptExpression {
                     expr: expr.into(),
                     index: index.into(),
                     ty: Type::Dummy,
+                    span: begin + end,
                 });
-            } else if self.is_next(&[Token::Dot]) {
+            } else if self.is_next(&[TokenKind::Dot]) {
                 let member = self
-                    .consume(&Token::Identifier("".to_owned()))?
+                    .consume(&TokenKind::Identifier("".to_owned()))?
                     .unwrap()
                     .as_string();
+                let end = self.current_span()?;
                 expr = Expression::Dot(DotExpression {
                     structure: expr.into(),
                     member,
                     ty: Type::Dummy,
+                    span: begin + end,
                 });
-            } else if self.is_next(&[Token::Arrow]) {
+            } else if self.is_next(&[TokenKind::Arrow]) {
                 let member = self
-                    .consume(&Token::Identifier("".to_owned()))?
+                    .consume(&TokenKind::Identifier("".to_owned()))?
                     .unwrap()
                     .as_string();
+                let end = self.current_span()?;
                 expr = Expression::Arrow(ArrowExpression {
                     pointer: expr.into(),
                     member,
                     ty: Type::Dummy,
+                    span: begin + end,
                 });
-            } else if self.is_next(&[Token::DoublePlus, Token::DoubleHyphen]) {
-                let kind = match self.previous.clone() {
-                    Some(Token::DoublePlus) => PostfixExpressionKind::Inc,
-                    Some(Token::DoubleHyphen) => PostfixExpressionKind::Dec,
-                    _ => unreachable!(),
+            } else if self.is_next(&[TokenKind::DoublePlus, TokenKind::DoubleHyphen]) {
+                let kind = match self.previous.as_ref() {
+                    Some(token) => match token.kind {
+                        TokenKind::DoublePlus => PostfixExpressionKind::Inc,
+                        TokenKind::DoubleHyphen => PostfixExpressionKind::Dec,
+                        _ => unreachable!(),
+                    },
+                    None => {
+                        return Err(UccError {
+                            kind: ErrorKind::Parse,
+                            msg: format!("internal error, call"),
+                            span: self.current_span()?,
+                        })
+                    }
                 };
+
+                let end = self.current_span()?;
 
                 expr = Expression::Postfix(PostfixExpression {
                     kind,
                     expr: expr.into(),
                     ty: Type::Dummy,
+                    span: begin + end,
                 });
             } else {
                 break;
@@ -1284,104 +1658,124 @@ impl Parser {
     }
 
     fn primary(&mut self) -> Result<Expression> {
+        let begin = self.current_span()?;
         if self.is_next(&[
-            Token::Constant(Const::Int(0)),
-            Token::Constant(Const::Long(0)),
+            TokenKind::Constant(Const::Int(0)),
+            TokenKind::Constant(Const::Long(0)),
         ]) {
-            match self.previous.as_ref().unwrap() {
-                Token::Constant(n) => self.parse_number(n),
+            match self.previous.as_ref().unwrap().kind {
+                TokenKind::Constant(n) => self.parse_number(&n, begin),
                 _ => unreachable!(),
             }
-        } else if self.is_next(&[Token::LParen]) {
+        } else if self.is_next(&[TokenKind::LParen]) {
             self.parse_grouping()
-        } else if self.is_next(&[Token::Identifier("".to_owned())]) {
-            match self.previous.as_ref().unwrap() {
-                Token::Identifier(var) => self.parse_variable(var),
+        } else if self.is_next(&[TokenKind::Identifier("".to_owned())]) {
+            match self.previous.as_ref().unwrap().kind {
+                TokenKind::Identifier(ref var) => self.parse_variable(var, begin),
                 _ => unreachable!(),
             }
-        } else if self.is_next(&[Token::LBrace]) {
+        } else if self.is_next(&[TokenKind::LBrace]) {
             let mut inits = vec![];
             loop {
-                if self.is_next(&[Token::RBrace]) {
+                if self.is_next(&[TokenKind::RBrace]) {
                     break;
                 }
                 inits.push(Initializer::Single(String::new(), self.parse_expression()?));
 
-                if self.is_next(&[Token::Comma]) {
+                if self.is_next(&[TokenKind::Comma]) {
                     continue;
                 }
             }
             if inits.is_empty() {
-                bail!("empty compound literal");
+                return Err(UccError {
+                    msg: format!("empty compound literal"),
+                    kind: ErrorKind::Parse,
+                    span: self.current_span()?,
+                });
             }
+            let end = self.current_span()?;
             Ok(Expression::Literal(LiteralExpression {
                 name: String::new(),
                 value: Initializer::Compound(String::new(), Type::Dummy, inits).into(),
                 ty: Type::Dummy,
+                span: begin + end,
             }))
-        } else if self.is_next(&[Token::CharLiteral('a')]) {
-            match self.previous.as_ref().unwrap() {
-                Token::CharLiteral(c) => self.parse_char(c),
+        } else if self.is_next(&[TokenKind::CharLiteral('a')]) {
+            match self.previous.as_ref().unwrap().kind {
+                TokenKind::CharLiteral(c) => self.parse_char(&c, begin),
                 _ => unreachable!(),
             }
-        } else if self.is_next(&[Token::StringLiteral("".to_owned())]) {
-            match self.previous.as_ref().cloned().unwrap() {
-                Token::StringLiteral(s) => self.parse_string(&s),
+        } else if self.is_next(&[TokenKind::StringLiteral("".to_owned())]) {
+            match self.previous.as_ref().cloned().unwrap().kind {
+                TokenKind::StringLiteral(ref s) => self.parse_string(s, begin),
                 _ => unreachable!(),
             }
         } else {
-            println!("got token: {:?}, {:?}", self.current, self.previous);
-            bail!("expected primary");
+            return Err(UccError {
+                msg: format!("expected primary"),
+                kind: ErrorKind::Parse,
+                span: self.current_span()?,
+            });
         }
     }
 
-    fn parse_number(&self, n: &Const) -> Result<Expression> {
+    fn parse_number(&self, n: &Const, begin: Span) -> Result<Expression> {
+        let end = self.current_span()?;
         Ok(Expression::Constant(ConstantExpression {
             value: *n,
             ty: Type::Dummy,
+            span: begin + end,
         }))
     }
 
-    fn parse_variable(&self, var: &str) -> Result<Expression> {
+    fn parse_variable(&self, var: &str, begin: Span) -> Result<Expression> {
+        let end = self.current_span()?;
         Ok(Expression::Variable(VariableExpression {
             value: var.to_owned(),
             ty: Type::Dummy,
+            span: begin + end,
         }))
     }
 
-    fn parse_char(&self, c: &char) -> Result<Expression> {
+    fn parse_char(&self, c: &char, begin: Span) -> Result<Expression> {
+        let end = self.current_span()?;
         Ok(Expression::Constant(ConstantExpression {
             value: Const::Int(*c as i32),
             ty: Type::Dummy,
+            span: begin + end,
         }))
     }
 
-    fn parse_string(&mut self, s: &str) -> Result<Expression> {
+    fn parse_string(&mut self, s: &str, begin: Span) -> Result<Expression> {
         let mut s = s.to_owned().clone();
-        while self.is_next(&[Token::StringLiteral("".to_owned())]) {
-            match self.previous.as_ref().unwrap() {
-                Token::StringLiteral(s2) => s.push_str(s2),
+        while self.is_next(&[TokenKind::StringLiteral("".to_owned())]) {
+            match self.previous.as_ref().unwrap().kind {
+                TokenKind::StringLiteral(ref s2) => s.push_str(s2),
                 _ => unreachable!(),
             }
         }
+
+        let end = self.current_span()?;
+
         Ok(Expression::String(StringExpression {
             value: s.to_owned(),
             ty: Type::Dummy,
+            span: begin + end,
         }))
     }
 
     fn parse_grouping(&mut self) -> Result<Expression> {
         let expr = self.parse_expression();
-        self.consume(&Token::RParen)?;
+        self.consume(&TokenKind::RParen)?;
         expr
     }
 
     fn parse_abstract_declarator(&mut self) -> Result<AbstractDeclarator> {
-        match self.current.as_ref().unwrap() {
-            Token::Star => {
-                self.consume(&Token::Star)?;
-                let inner = match self.current.as_ref().unwrap() {
-                    Token::Star | Token::LParen | Token::LBracket => {
+        match self.current.as_ref().unwrap().kind {
+            TokenKind::Star => {
+                self.consume(&TokenKind::Star)?;
+                let inner = match self.current.as_ref().unwrap().kind {
+                    TokenKind::Star | TokenKind::LParen | TokenKind::LBracket => {
                         self.parse_abstract_declarator()?
                     }
                     _ => AbstractDeclarator::Base,
@@ -1393,13 +1787,13 @@ impl Parser {
     }
 
     fn parse_direct_abstract_declarator(&mut self) -> Result<AbstractDeclarator> {
-        match self.current.as_ref().unwrap() {
-            Token::LParen => {
-                self.consume(&Token::LParen)?;
+        match self.current.as_ref().unwrap().kind {
+            TokenKind::LParen => {
+                self.consume(&TokenKind::LParen)?;
                 let inner = self.parse_abstract_declarator()?;
-                self.consume(&Token::RParen)?;
+                self.consume(&TokenKind::RParen)?;
 
-                if let Token::LBracket = self.current.as_ref().unwrap() {
+                if let TokenKind::LBracket = self.current.as_ref().unwrap().kind {
                     self.parse_abstract_array_decl_suffix(&inner)
                 } else {
                     Ok(inner)
@@ -1433,10 +1827,18 @@ impl Parser {
         let dim = self.parse_dim()?;
         let new_decl = AbstractDeclarator::Array(Box::new(base_decl.clone()), dim);
 
-        if let Some(Token::LBracket) = self.current {
-            self.parse_abstract_array_decl_suffix(&new_decl)
-        } else {
-            Ok(new_decl)
+        match self.current.as_ref() {
+            Some(token) => match token.kind {
+                TokenKind::LBracket => self.parse_abstract_array_decl_suffix(&new_decl),
+                _ => Ok(new_decl),
+            },
+            None => {
+                return Err(UccError {
+                    kind: ErrorKind::Parse,
+                    msg: format!("itnernnl error"),
+                    span: self.current_span()?,
+                })
+            }
         }
     }
 }
