@@ -73,9 +73,9 @@ fn run(opts: &Opt) -> Result<()> {
     let mut parser = Parser::new(tokens);
     let raw_ast = match parser.parse() {
         Ok(ast) => ast,
-        Err(e) => {
-            print_errctx(&src, &e.span);
-            return Err(e);
+        Err(err) => {
+            print_errctx(&src, &err.span);
+            return Err(err);
         }
     };
 
@@ -87,57 +87,44 @@ fn run(opts: &Opt) -> Result<()> {
     let mut variable_map = BTreeMap::new();
     let mut struct_map = BTreeMap::new();
 
-    let resolved_ast = match raw_ast.resolve(&mut variable_map, &mut struct_map) {
-        Ok(ast) => ast,
-        Err(e) => {
-            print_errctx(&src, &e.span);
-            return Err(e);
-        }
-    };
-
-    let labeled_ast = match resolved_ast.loop_label(LabelContext {
-        innermost: LabelKind::None,
-        loop_label: "",
-        switch_label: "",
-    }) {
-        Ok(ast) => ast,
-        Err(e) => {
-            print_errctx(&src, &e.span);
-            return Err(e);
-        }
-    };
-
-    let labelchecked_ast = match labeled_ast.label_check(&mut HashSet::new(), "") {
-        Ok(ast) => ast,
-        Err(e) => {
-            print_errctx(&src, &e.span);
-            return Err(e);
-        }
-    };
-
-    let typechecked_ast = match labelchecked_ast.typecheck() {
-        Ok(ast) => ast,
-        Err(e) => {
-            println!("{:?}: {}\n", e.kind, e.msg);
-            print_errctx(&src, &e.span);
-            return Err(e);
-        }
-    };
-
-    let casecollected_ast = match typechecked_ast.collect_switch_cases(&mut vec![], &Type::Dummy) {
-        Ok(ast) => ast,
-        Err(e) => {
-            print_errctx(&src, &e.span);
-            return Err(e);
-        }
-    };
+    let cooked_ast = raw_ast
+        .resolve(&mut variable_map, &mut struct_map)
+        .map_err(|err| {
+            print_errctx(&src, &err.span);
+            err
+        })?
+        .loop_label(LabelContext {
+            innermost: LabelKind::None,
+            loop_label: "",
+            switch_label: "",
+        })
+        .map_err(|err| {
+            print_errctx(&src, &err.span);
+            err
+        })?
+        .label_check(&mut HashSet::new(), "")
+        .map_err(|err| {
+            print_errctx(&src, &err.span);
+            err
+        })?
+        .typecheck()
+        .map_err(|err| {
+            println!("{:?}: {}\n", err.kind, err.msg);
+            print_errctx(&src, &err.span);
+            err
+        })?
+        .collect_switch_cases(&mut vec![], &Type::Dummy)
+        .map_err(|err| {
+            print_errctx(&src, &err.span);
+            err
+        })?;
 
     if opts.validate {
-        println!("{:#?}", casecollected_ast);
+        println!("{:#?}", cooked_ast);
         std::process::exit(0);
     }
 
-    let mut tac = casecollected_ast.irfy("").unwrap();
+    let mut tac = cooked_ast.irfy("").unwrap();
     let (static_variables, static_constants) = convert_symbols_to_tacky();
 
     let ir_prog = if let IRNode::Program(prog) = &mut tac {
