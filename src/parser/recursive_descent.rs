@@ -268,11 +268,7 @@ impl Parser {
                 .collect::<Vec<_>>(),
         )?;
 
-        println!("base_type: {:?}", base_type);
-
         let declarator = self.parse_declarator()?;
-
-        println!("declarator: {:?}", declarator);
         let (name, decl_type, params) = self.process_declarator(&declarator, &base_type)?;
 
         match decl_type {
@@ -530,7 +526,6 @@ impl Parser {
     fn consume_while_specifier(&mut self) -> Result<Vec<Token>> {
         let mut specifier_list = vec![];
         while self.is_specifier(&self.current.as_ref().unwrap().kind) {
-            println!("self.current: {:?}", self.current);
             match self.current.as_ref() {
                 Some(token) => match token.kind {
                     TokenKind::Struct => {
@@ -1594,8 +1589,8 @@ impl Parser {
                 });
             } else if self.is_next(&[TokenKind::LBracket]) {
                 let index = self.parse_expression()?;
-                self.consume(&TokenKind::RBracket)?;
                 let end = self.current_span()?;
+                self.consume(&TokenKind::RBracket)?;
                 expr = Expression::Subscript(SubscriptExpression {
                     expr: expr.into(),
                     index: index.into(),
@@ -1755,7 +1750,16 @@ impl Parser {
             }
         }
 
-        let end = self.current_span()?;
+        let end = match self.previous.as_ref() {
+            Some(token) => token.span,
+            None => {
+                return Err(UccError {
+                    kind: ErrorKind::Parse,
+                    msg: format!("internal error, parse_string"),
+                    span: Span { start: 0, end: 0 },
+                })
+            }
+        };
 
         Ok(Expression::String(StringExpression {
             value: s.to_owned(),

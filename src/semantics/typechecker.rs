@@ -2006,7 +2006,7 @@ fn typecheck_subscript(expr: &Expression, index: &Expression, span: Span) -> Res
         return Err(UccError {
             kind: ErrorKind::Typecheck,
             msg: format!("Invalid operands for subscript."),
-            span,
+            span: spanof(&index),
         });
     };
 

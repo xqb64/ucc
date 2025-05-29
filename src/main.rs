@@ -118,6 +118,7 @@ fn run(opts: &Opt) -> Result<()> {
     let typechecked_ast = match labelchecked_ast.typecheck() {
         Ok(ast) => ast,
         Err(e) => {
+            println!("{:?}: {}\n", e.kind, e.msg);
             print_errctx(&src, &e.span);
             return Err(e);
         }
