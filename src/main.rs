@@ -5,8 +5,8 @@ use std::{
 };
 
 use structopt::StructOpt;
+use unicode_width::UnicodeWidthStr;
 
-use ucc::parser::{ast::Type, recursive_descent::Parser};
 use ucc::{
     codegen::{
         fixup::Fixup,
@@ -15,8 +15,12 @@ use ucc::{
         replace_pseudo::ReplacePseudo,
     },
     emitter::emit::Emit,
-    ir::gen::{convert_symbols_to_tacky, IRNode, Irfy, Optimize},
+    ir::gen::{
+        convert_symbols_to_tacky, IRInstruction, IRNode, IRProgram, IRValue, Irfy, Optimization,
+        Optimize,
+    },
     lexer::lex::{Lexer, Span, TokenKind},
+    parser::{ast::Type, recursive_descent::Parser},
     semantics::{
         collecting_cases::SwitchCaseCollect,
         label_checker::LabelCheck,
@@ -24,9 +28,6 @@ use ucc::{
         resolver::Resolve,
         typechecker::Typecheck,
     },
-};
-use ucc::{
-    ir::gen::{IRInstruction, IRProgram, IRValue, Optimization},
     util::error::{ErrorKind, Result, UccError},
 };
 
@@ -242,8 +243,6 @@ fn preprocess(path: &PathBuf) -> Result<PathBuf> {
 
     Ok(new_path)
 }
-
-use unicode_width::UnicodeWidthStr;
 
 fn print_errctx(source: &str, span: &Span) {
     let start_byte = nth_char_byte_offset(source, span.start);
