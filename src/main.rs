@@ -46,8 +46,40 @@ fn main() {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Status {
+    Continue,
+    Stop,
+}
+
 fn run(opts: &Opt) -> Result<()> {
-    let preprocessed = preprocess(&opts.path)?;
+    let mut handles = vec![];
+
+    for path in opts.paths.iter() {
+        let path = path.clone();
+        let opts = opts.clone();
+
+        handles.push(std::thread::spawn(move || compile_file(opts, path)));
+    }
+
+    for handle in handles {
+        match handle.join() {
+            Ok(Ok(status)) => match status {
+                Status::Stop => return Ok(()),
+                Status::Continue => {}
+            },
+            Ok(Err(e)) => return Err(e),
+            Err(_) => panic!("thread panicked"),
+        }
+    }
+
+    assemble_and_link(opts)?;
+
+    Ok(())
+}
+
+fn compile_file(opts: Opt, file: PathBuf) -> Result<Status> {
+    let preprocessed = preprocess(&file)?;
     let src = std::fs::read_to_string(preprocessed)?;
 
     let tokens: VecDeque<_> =
@@ -68,7 +100,7 @@ fn run(opts: &Opt) -> Result<()> {
 
     if opts.lex {
         println!("{:?}", tokens);
-        std::process::exit(0);
+        return Ok(Status::Stop);
     }
 
     let mut parser = Parser::new(tokens);
@@ -82,7 +114,7 @@ fn run(opts: &Opt) -> Result<()> {
 
     if opts.parse {
         println!("{:#?}", raw_ast);
-        std::process::exit(0);
+        return Ok(Status::Stop);
     }
 
     let mut variable_map = BTreeMap::new();
@@ -122,7 +154,7 @@ fn run(opts: &Opt) -> Result<()> {
 
     if opts.validate {
         println!("{:#?}", cooked_ast);
-        std::process::exit(0);
+        return Ok(Status::Stop);
     }
 
     let mut tac = cooked_ast.irfy("").unwrap();
@@ -149,7 +181,7 @@ fn run(opts: &Opt) -> Result<()> {
 
     if opts.tacky {
         println!("tac: {:#?}", optimized_prog);
-        std::process::exit(0);
+        return Ok(Status::Stop);
     }
     build_asm_symbol_table();
 
@@ -194,40 +226,59 @@ fn run(opts: &Opt) -> Result<()> {
 
     if opts.codegen {
         println!("{:#?}", asm_prog);
-        std::process::exit(0);
+        return Ok(Status::Stop);
     }
 
-    let mut f = File::create(opts.path.with_extension("s"))?;
+    let mut f = File::create(file.with_extension("s"))?;
     asm_prog.emit(&mut f, AsmType::Longword)?;
 
     if opts.s {
-        std::process::exit(0);
+        return Ok(Status::Stop);
+    }
+
+    Ok(Status::Continue)
+}
+
+fn assemble_and_link(opts: &Opt) -> Result<Status> {
+    for path in &opts.paths {
+        let s_path = path.with_extension("s");
+        let o_path = path.with_extension("o");
+
+        std::process::Command::new("gcc")
+            .arg("-c")
+            .arg(&s_path)
+            .arg("-o")
+            .arg(&o_path)
+            .status()?;
     }
 
     if opts.c {
-        std::process::Command::new("gcc")
-            .arg("-c")
-            .arg(opts.path.with_extension("s"))
-            .arg("-o")
-            .arg(opts.path.with_extension("o"))
-            .status()?;
-        std::process::exit(0);
+        return Ok(Status::Stop);
     }
+
+    let output_path = opts
+        .output
+        .clone()
+        .unwrap_or_else(|| opts.paths[0].with_extension(""));
 
     let mut final_executable_cmd = std::process::Command::new("gcc");
 
     final_executable_cmd
         .arg("-o")
-        .arg(opts.path.with_extension(""))
-        .arg(opts.path.with_extension("s"));
+        .arg(&output_path)
+        .args(opts.paths.iter().map(|p| p.with_extension("o")));
 
-    if let Some(ref lib) = opts.l {
+    for lib in &opts.l {
         final_executable_cmd.arg("-l").arg(lib);
     }
 
-    final_executable_cmd.status()?;
+    let status = final_executable_cmd.status()?;
 
-    Ok(())
+    if !status.success() {
+        panic!();
+    }
+
+    Ok(Status::Continue)
 }
 
 fn preprocess(path: &PathBuf) -> Result<PathBuf> {
@@ -298,9 +349,12 @@ fn nth_char_byte_offset(s: &str, n: usize) -> usize {
     s.char_indices().nth(n).map(|(i, _)| i).unwrap_or(s.len())
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Clone, StructOpt)]
 struct Opt {
-    path: PathBuf,
+    #[structopt(short = "o", long = "output", parse(from_os_str))]
+    output: Option<PathBuf>,
+
+    paths: Vec<PathBuf>,
 
     #[structopt(name = "lex", long)]
     lex: bool,
@@ -320,8 +374,8 @@ struct Opt {
     #[structopt(name = "c", short)]
     c: bool,
 
-    #[structopt(name = "l", short)]
-    l: Option<String>,
+    #[structopt(name = "l", short, multiple = true, number_of_values = 1)]
+    l: Vec<String>,
 
     #[structopt(name = "s", short)]
     s: bool,
