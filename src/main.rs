@@ -272,10 +272,12 @@ fn assemble_and_link(opts: &Opt) -> Result<Status> {
         final_executable_cmd.arg("-l").arg(lib);
     }
 
-    let status = final_executable_cmd.status()?;
+    final_executable_cmd.status()?;
 
-    if !status.success() {
-        panic!();
+    for path in opts.paths.iter() {
+        std::fs::remove_file(path.with_extension("i"))?;
+        std::fs::remove_file(path.with_extension("s"))?;
+        std::fs::remove_file(path.with_extension("o"))?;
     }
 
     Ok(Status::Continue)
