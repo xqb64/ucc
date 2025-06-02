@@ -47,7 +47,7 @@ fn main() {
 }
 
 fn run(opts: &Opt) -> Result<()> {
-    let handles = opts
+    let compile_handles = opts
         .paths
         .iter()
         .cloned()
@@ -57,14 +57,38 @@ fn run(opts: &Opt) -> Result<()> {
         })
         .collect::<Vec<_>>();
 
-    for handle in handles {
+    for handle in compile_handles {
         match handle.join()?? {
             Status::Stop => return Ok(()),
             Status::Continue => continue,
         }
     }
 
-    assemble_and_link(opts)?;
+    let asm_handles = opts
+        .paths
+        .iter()
+        .cloned()
+        .map(|path| std::thread::spawn(move || asm_file(path)))
+        .collect::<Vec<_>>();
+
+    for handle in asm_handles {
+        match handle.join()?? {
+            Status::Stop => return Ok(()),
+            Status::Continue => continue,
+        }
+    }
+
+    if opts.c {
+        return Ok(());
+    }
+
+    link(opts)?;
+
+    for path in opts.paths.iter() {
+        std::fs::remove_file(path.with_extension("i"))?;
+        std::fs::remove_file(path.with_extension("s"))?;
+        std::fs::remove_file(path.with_extension("o"))?;
+    }
 
     Ok(())
 }
@@ -230,23 +254,21 @@ fn compile_file(opts: Opt, file: PathBuf) -> Result<Status> {
     Ok(Status::Continue)
 }
 
-fn assemble_and_link(opts: &Opt) -> Result<Status> {
-    for path in &opts.paths {
-        let s_path = path.with_extension("s");
-        let o_path = path.with_extension("o");
+fn asm_file(path: PathBuf) -> Result<Status> {
+    let s_path = path.with_extension("s");
+    let o_path = path.with_extension("o");
 
-        std::process::Command::new("gcc")
-            .arg("-c")
-            .arg(&s_path)
-            .arg("-o")
-            .arg(&o_path)
-            .status()?;
-    }
+    std::process::Command::new("gcc")
+        .arg("-c")
+        .arg(&s_path)
+        .arg("-o")
+        .arg(&o_path)
+        .status()?;
 
-    if opts.c {
-        return Ok(Status::Stop);
-    }
+    Ok(Status::Continue)
+}
 
+fn link(opts: &Opt) -> Result<Status> {
     let output_path = opts
         .output
         .clone()
@@ -264,12 +286,6 @@ fn assemble_and_link(opts: &Opt) -> Result<Status> {
     }
 
     final_executable_cmd.status()?;
-
-    for path in opts.paths.iter() {
-        std::fs::remove_file(path.with_extension("i"))?;
-        std::fs::remove_file(path.with_extension("s"))?;
-        std::fs::remove_file(path.with_extension("o"))?;
-    }
 
     Ok(Status::Continue)
 }
