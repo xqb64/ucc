@@ -1,5 +1,5 @@
-use std::any::Any;
 use crate::lexer::lex::Span;
+use std::any::Any;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ErrorKind {
@@ -64,7 +64,7 @@ impl From<Box<dyn Any + Send>> for UccError {
         UccError {
             kind: ErrorKind::Internal,
             msg,
-            span: Span { start: 0, end: 0},
+            span: Span { start: 0, end: 0 },
         }
     }
 }

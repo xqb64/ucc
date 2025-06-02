@@ -47,10 +47,15 @@ fn main() {
 }
 
 fn run(opts: &Opt) -> Result<()> {
-    let handles = opts.paths.iter().cloned().map(|path| {
-        let opts = opts.clone();
-        std::thread::spawn(move || compile_file(opts, path))
-    }).collect::<Vec<_>>();
+    let handles = opts
+        .paths
+        .iter()
+        .cloned()
+        .map(|path| {
+            let opts = opts.clone();
+            std::thread::spawn(move || compile_file(opts, path))
+        })
+        .collect::<Vec<_>>();
 
     for handle in handles {
         match handle.join()?? {
