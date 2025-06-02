@@ -84,11 +84,14 @@ fn run(opts: &Opt) -> Result<()> {
 
     link(opts)?;
 
-    for path in opts.paths.iter() {
-        std::fs::remove_file(path.with_extension("i"))?;
-        std::fs::remove_file(path.with_extension("s"))?;
-        std::fs::remove_file(path.with_extension("o"))?;
-    }
+    opts.paths
+        .iter()
+        .flat_map(|path| {
+            ["i", "s", "o"]
+                .into_iter()
+                .map(move |ext| path.with_extension(ext))
+        })
+        .try_for_each(|file| std::fs::remove_file(file))?;
 
     Ok(())
 }
