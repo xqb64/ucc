@@ -1,3 +1,4 @@
+use std::any::Any;
 use crate::lexer::lex::Span;
 
 #[derive(Debug, Clone, Copy)]
@@ -11,6 +12,7 @@ pub enum ErrorKind {
     CaseCollect,
     IrGen,
     Io,
+    Internal,
 }
 
 #[derive(Debug, Clone)]
@@ -32,6 +34,7 @@ impl std::fmt::Display for UccError {
             ErrorKind::Typecheck => write!(f, "Typecheck error"),
             ErrorKind::IrGen => write!(f, "IrGen error"),
             ErrorKind::Io => write!(f, "Io error"),
+            ErrorKind::Internal => write!(f, "Internal error"),
         }
     }
 }
@@ -44,6 +47,24 @@ impl From<std::io::Error> for UccError {
             kind: ErrorKind::Io,
             msg: e.to_string(),
             span: Span { start: 0, end: 0 },
+        }
+    }
+}
+
+impl From<Box<dyn Any + Send>> for UccError {
+    fn from(panic: Box<dyn Any + Send>) -> Self {
+        let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = panic.downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "Unknown panic payload".to_string()
+        };
+
+        UccError {
+            kind: ErrorKind::Internal,
+            msg,
+            span: Span { start: 0, end: 0},
         }
     }
 }

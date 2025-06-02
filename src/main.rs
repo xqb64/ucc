@@ -46,30 +46,16 @@ fn main() {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Status {
-    Continue,
-    Stop,
-}
-
 fn run(opts: &Opt) -> Result<()> {
-    let mut handles = vec![];
-
-    for path in opts.paths.iter() {
-        let path = path.clone();
+    let handles = opts.paths.iter().cloned().map(|path| {
         let opts = opts.clone();
-
-        handles.push(std::thread::spawn(move || compile_file(opts, path)));
-    }
+        std::thread::spawn(move || compile_file(opts, path))
+    }).collect::<Vec<_>>();
 
     for handle in handles {
-        match handle.join() {
-            Ok(Ok(status)) => match status {
-                Status::Stop => return Ok(()),
-                Status::Continue => {}
-            },
-            Ok(Err(e)) => return Err(e),
-            Err(_) => panic!("thread panicked"),
+        match handle.join()?? {
+            Status::Stop => return Ok(()),
+            Status::Continue => continue,
         }
     }
 
@@ -393,4 +379,10 @@ struct Opt {
 
     #[structopt(name = "eliminate-dead-stores", long)]
     eliminate_dead_stores: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Status {
+    Continue,
+    Stop,
 }
