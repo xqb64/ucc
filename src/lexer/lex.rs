@@ -671,16 +671,3 @@ impl ToString for Const {
     }
 }
 
-// impl Const {
-//     pub fn to_u32(&self) -> Option<u32> {
-//         match self {
-//             Const::Int(x) if *x >= 0 => Some(*x as u32),
-//             Const::UInt(x) => Some(*x as u32),
-//             Const::Long(x) if *x >= 0 => Some(*x as u32),
-//             Const::ULong(x) => Some(*x as u32),
-//             Const::Char(x) if *x >= 0 => Some(*x as u32),
-//             Const::UChar(x) => Some(*x as u32),
-//             _ => None, // Includes Double and invalid conversions
-//         }
-//     }
-// }
