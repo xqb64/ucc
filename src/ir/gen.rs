@@ -1,3 +1,5 @@
+use std::sync::atomic::AtomicUsize;
+
 use crate::{
     lexer::lex::{Const, Span},
     parser::ast::*,
@@ -1992,13 +1994,10 @@ pub fn make_tacky_variable(t: &Type) -> IRValue {
     IRValue::Var(var_name)
 }
 
+static TEMPORARY: AtomicUsize = AtomicUsize::new(0);
+
 pub fn make_temporary() -> usize {
-    static mut TEMPORARY: usize = 0;
-    unsafe {
-        let temporary = TEMPORARY;
-        TEMPORARY += 1;
-        temporary
-    }
+    TEMPORARY.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 fn get_ptr_scale(t: &Type) -> usize {
