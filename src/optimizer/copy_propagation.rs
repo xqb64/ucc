@@ -425,8 +425,10 @@ impl std::fmt::Debug for Cp {
         fn extract(v: &IRValue) -> String {
             match v {
                 IRValue::Constant(c) => match c {
+                    Const::Short(s) => s.to_string(),
                     Const::Int(i) => i.to_string(),
                     Const::Long(l) => l.to_string(),
+                    Const::UShort(us) => us.to_string(),
                     Const::UInt(u) => u.to_string(),
                     Const::ULong(ul) => ul.to_string(),
                     Const::Double(d) => d.to_string(),

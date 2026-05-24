@@ -373,20 +373,24 @@ pub fn expr2const(e: &Expression) -> Const {
 
 fn cast_const_to(c: &Const, target: &Type) -> Const {
     match target {
+        Type::Short => Const::Short(c.to_i16()),
         Type::Int => Const::Int(c.to_i32()),
         Type::Long => Const::Long(c.to_i64()),
+        Type::UShort => Const::UShort(c.to_u16()),
         Type::UInt => Const::UInt(c.to_u32()),
         Type::ULong => Const::ULong(c.to_u64()),
         Type::Double => Const::Double(c.to_f64()),
-        Type::Char => Const::Char(c.to_i8()),
+        Type::Char | Type::SChar => Const::Char(c.to_i8()),
         Type::UChar => Const::UChar(c.to_u8()),
         _ => unreachable!(),
     }
 }
 
 pub trait ConstCast {
+    fn to_i16(&self) -> i16;
     fn to_i32(&self) -> i32;
     fn to_i64(&self) -> i64;
+    fn to_u16(&self) -> u16;
     fn to_u32(&self) -> u32;
     fn to_u64(&self) -> u64;
     fn to_f64(&self) -> f64;
@@ -395,10 +399,26 @@ pub trait ConstCast {
 }
 
 impl ConstCast for Const {
+    fn to_i16(&self) -> i16 {
+        match *self {
+            Const::Short(v) => v,
+            Const::Int(v) => v as i16,
+            Const::Long(v) => v as i16,
+            Const::UShort(v) => v as i16,
+            Const::UInt(v) => v as i16,
+            Const::ULong(v) => v as i16,
+            Const::Double(v) => v as i16,
+            Const::Char(v) => v as i16,
+            Const::UChar(v) => v as i16,
+        }
+    }
+
     fn to_i32(&self) -> i32 {
         match *self {
+            Const::Short(v) => v as i32,
             Const::Int(v) => v,
             Const::Long(v) => v as i32,
+            Const::UShort(v) => v as i32,
             Const::UInt(v) => v as i32,
             Const::ULong(v) => v as i32,
             Const::Double(v) => v as i32,
@@ -409,8 +429,10 @@ impl ConstCast for Const {
 
     fn to_i64(&self) -> i64 {
         match *self {
+            Const::Short(v) => v as i64,
             Const::Int(v) => v as i64,
             Const::Long(v) => v,
+            Const::UShort(v) => v as i64,
             Const::UInt(v) => v as i64,
             Const::ULong(v) => v as i64,
             Const::Double(v) => v as i64,
@@ -419,10 +441,26 @@ impl ConstCast for Const {
         }
     }
 
+    fn to_u16(&self) -> u16 {
+        match *self {
+            Const::Short(v) => v as u16,
+            Const::Int(v) => v as u16,
+            Const::Long(v) => v as u16,
+            Const::UShort(v) => v,
+            Const::UInt(v) => v as u16,
+            Const::ULong(v) => v as u16,
+            Const::Double(v) => v as u16,
+            Const::Char(v) => v as u16,
+            Const::UChar(v) => v as u16,
+        }
+    }
+
     fn to_u32(&self) -> u32 {
         match *self {
+            Const::Short(v) => v as u32,
             Const::Int(v) => v as u32,
             Const::Long(v) => v as u32,
+            Const::UShort(v) => v as u32,
             Const::UInt(v) => v,
             Const::ULong(v) => v as u32,
             Const::Double(v) => v as u32,
@@ -433,8 +471,10 @@ impl ConstCast for Const {
 
     fn to_u64(&self) -> u64 {
         match *self {
+            Const::Short(v) => v as u64,
             Const::Int(v) => v as u64,
             Const::Long(v) => v as u64,
+            Const::UShort(v) => v as u64,
             Const::UInt(v) => v as u64,
             Const::ULong(v) => v,
             Const::Double(v) => v as u64,
@@ -445,8 +485,10 @@ impl ConstCast for Const {
 
     fn to_f64(&self) -> f64 {
         match *self {
+            Const::Short(v) => v as f64,
             Const::Int(v) => v as f64,
             Const::Long(v) => v as f64,
+            Const::UShort(v) => v as f64,
             Const::UInt(v) => v as f64,
             Const::ULong(v) => v as f64,
             Const::Double(v) => v,
@@ -457,8 +499,10 @@ impl ConstCast for Const {
 
     fn to_i8(&self) -> i8 {
         match *self {
+            Const::Short(v) => v as i8,
             Const::Int(v) => v as i8,
             Const::Long(v) => v as i8,
+            Const::UShort(v) => v as i8,
             Const::UInt(v) => v as i8,
             Const::ULong(v) => v as i8,
             Const::Double(v) => v as i8,
@@ -469,8 +513,10 @@ impl ConstCast for Const {
 
     fn to_u8(&self) -> u8 {
         match *self {
+            Const::Short(v) => v as u8,
             Const::Int(v) => v as u8,
             Const::Long(v) => v as u8,
+            Const::UShort(v) => v as u8,
             Const::UInt(v) => v as u8,
             Const::ULong(v) => v as u8,
             Const::Double(v) => v as u8,
@@ -842,6 +888,16 @@ fn make_constexpr(konst: isize, ty: Type) -> Expression {
             ty: ty.clone(),
             span: Span { start: 0, end: 0 },
         }),
+        Type::Short => Expression::Constant(ConstantExpression {
+            value: Const::Short(konst as i16),
+            ty: ty.clone(),
+            span: Span { start: 0, end: 0 },
+        }),
+        Type::UShort => Expression::Constant(ConstantExpression {
+            value: Const::UShort(konst as u16),
+            ty: ty.clone(),
+            span: Span { start: 0, end: 0 },
+        }),
         Type::Int => Expression::Constant(ConstantExpression {
             value: Const::Int(konst as i32),
             ty: ty.clone(),
@@ -880,6 +936,8 @@ fn make_const(konst: isize, ty: Type) -> Const {
     match ty {
         Type::Char | Type::SChar => Const::Char(konst as i8),
         Type::UChar => Const::UChar(konst as u8),
+        Type::Short => Const::Short(konst as i16),
+        Type::UShort => Const::UShort(konst as u16),
         Type::Int => Const::Int(konst as i32),
         Type::UInt => Const::UInt(konst as u32),
         Type::Long => Const::Long(konst as i64),
@@ -1949,6 +2007,8 @@ pub fn convert_symbols_to_tacky() -> (Vec<IRStaticVariable>, Vec<IRStaticConstan
                         Type::Char => StaticInit::Char(0),
                         Type::SChar => StaticInit::Char(0),
                         Type::UChar => StaticInit::UChar(0),
+                        Type::Short => StaticInit::Short(0),
+                        Type::UShort => StaticInit::UShort(0),
                         Type::Int => StaticInit::Int(0),
                         Type::Long => StaticInit::Long(0),
                         Type::ULong => StaticInit::ULong(0),

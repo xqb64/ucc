@@ -74,6 +74,10 @@ impl Emit for AsmStaticVariable {
 
         for init in &self.init {
             match init {
+                StaticInit::Short(n) => match n {
+                    0 => writeln!(f, "\t.zero 2")?,
+                    _ => writeln!(f, "\t.short {}", *n as u16)?,
+                },
                 StaticInit::Int(n) => match n {
                     0 => writeln!(f, "\t.zero 4")?,
                     _ => writeln!(f, "\t.long {}", n)?,
@@ -81,6 +85,10 @@ impl Emit for AsmStaticVariable {
                 StaticInit::Long(n) => match n {
                     0 => writeln!(f, "\t.zero 8")?,
                     _ => writeln!(f, "\t.quad {}", n)?,
+                },
+                StaticInit::UShort(n) => match n {
+                    0 => writeln!(f, "\t.zero 2")?,
+                    _ => writeln!(f, "\t.short {}", n)?,
                 },
                 StaticInit::UInt(n) => match n {
                     0 => writeln!(f, "\t.zero 4")?,
@@ -120,8 +128,10 @@ impl Emit for AsmStaticConstant {
         writeln!(f, "{}:", self.name)?;
 
         match &self.init {
+            StaticInit::Short(n) => writeln!(f, "\t.short {}", *n as u16)?,
             StaticInit::Int(n) => writeln!(f, "\t.long {}", n)?,
             StaticInit::Long(n) => writeln!(f, "\t.quad {}", n)?,
+            StaticInit::UShort(n) => writeln!(f, "\t.short {}", n)?,
             StaticInit::UInt(n) => writeln!(f, "\t.long {}", n)?,
             StaticInit::ULong(n) => writeln!(f, "\t.quad {}", n)?,
             StaticInit::Double(n) => writeln!(f, "\t.quad {}", n.to_bits())?,
@@ -181,6 +191,7 @@ impl Emit for AsmInstruction {
             AsmInstruction::Mov { src, dst, asm_type } => {
                 let suffix = match asm_type {
                     AsmType::Byte => "b",
+                    AsmType::Word => "w",
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     AsmType::Double => "sd",
@@ -201,8 +212,11 @@ impl Emit for AsmInstruction {
                 dst,
             } => {
                 let suffix = match (&src_type, &dst_type) {
+                    (AsmType::Byte, AsmType::Word) => "bw",
                     (AsmType::Byte, AsmType::Longword) => "bl",
                     (AsmType::Byte, AsmType::Quadword) => "bq",
+                    (AsmType::Word, AsmType::Longword) => "wl",
+                    (AsmType::Word, AsmType::Quadword) => "wq",
                     (AsmType::Longword, AsmType::Quadword) => "lq",
                     _ => unreachable!(),
                 };
@@ -227,6 +241,8 @@ impl Emit for AsmInstruction {
                 asm_type,
             } => {
                 let suffix = match asm_type {
+                    AsmType::Byte => "b",
+                    AsmType::Word => "w",
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     _ => todo!(),
@@ -242,6 +258,7 @@ impl Emit for AsmInstruction {
             }
 
             AsmInstruction::Cdq { asm_type } => match asm_type {
+                AsmType::Word => writeln!(f, "cwd")?,
                 AsmType::Longword => writeln!(f, "cdq")?,
                 AsmType::Quadword => writeln!(f, "cqo")?,
                 _ => writeln!(f, "cdq")?,
@@ -257,6 +274,7 @@ impl Emit for AsmInstruction {
                     AsmBinaryOp::Add => "add",
                     AsmBinaryOp::Sub => "sub",
                     AsmBinaryOp::Mul => match asm_type {
+                        AsmType::Word => "imul",
                         AsmType::Longword => "imul",
                         AsmType::Quadword => "imul",
                         AsmType::Double => "mul",
@@ -273,6 +291,7 @@ impl Emit for AsmInstruction {
                 };
 
                 let suffix = match asm_type {
+                    AsmType::Word => "w",
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     AsmType::Double => match op {
@@ -296,6 +315,7 @@ impl Emit for AsmInstruction {
             AsmInstruction::Idiv { operand, asm_type } => {
                 let suffix = match asm_type {
                     AsmType::Byte => "b",
+                    AsmType::Word => "w",
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     _ => unreachable!(),
@@ -308,6 +328,7 @@ impl Emit for AsmInstruction {
             AsmInstruction::Div { operand, asm_type } => {
                 let suffix = match asm_type {
                     AsmType::Byte => "b",
+                    AsmType::Word => "w",
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
                     _ => unreachable!(),
@@ -320,6 +341,7 @@ impl Emit for AsmInstruction {
             AsmInstruction::Cmp { lhs, rhs, asm_type } => {
                 let instr = match asm_type {
                     AsmType::Byte => "cmpb",
+                    AsmType::Word => "cmpw",
                     AsmType::Longword => "cmpl",
                     AsmType::Quadword => "cmpq",
                     AsmType::Double => "comisd",
@@ -405,8 +427,11 @@ impl Emit for AsmInstruction {
                 dst,
             } => {
                 let suffix = match (&src_type, &dst_type) {
+                    (AsmType::Byte, AsmType::Word) => "zbw",
                     (AsmType::Byte, AsmType::Longword) => "zbl",
                     (AsmType::Byte, AsmType::Quadword) => "zbq",
+                    (AsmType::Word, AsmType::Longword) => "zwl",
+                    (AsmType::Word, AsmType::Quadword) => "zwq",
                     _ => unreachable!(),
                 };
 
@@ -526,6 +551,23 @@ impl Emit for AsmRegister {
             (R13, Byte) => write!(f, "%r13b")?,
             (R14, Byte) => write!(f, "%r14b")?,
             (R15, Byte) => write!(f, "%r15b")?,
+
+            (Ax, Word) => write!(f, "%ax")?,
+            (Bx, Word) => write!(f, "%bx")?,
+            (Dx, Word) => write!(f, "%dx")?,
+            (Cx, Word) => write!(f, "%cx")?,
+            (Di, Word) => write!(f, "%di")?,
+            (Si, Word) => write!(f, "%si")?,
+            (Sp, Word) => write!(f, "%sp")?,
+            (Bp, Word) => write!(f, "%bp")?,
+            (R8, Word) => write!(f, "%r8w")?,
+            (R9, Word) => write!(f, "%r9w")?,
+            (R10, Word) => write!(f, "%r10w")?,
+            (R11, Word) => write!(f, "%r11w")?,
+            (R12, Word) => write!(f, "%r12w")?,
+            (R13, Word) => write!(f, "%r13w")?,
+            (R14, Word) => write!(f, "%r14w")?,
+            (R15, Word) => write!(f, "%r15w")?,
 
             (Ax, Longword) => write!(f, "%eax")?,
             (Bx, Longword) => write!(f, "%ebx")?,

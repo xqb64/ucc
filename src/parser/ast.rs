@@ -42,8 +42,10 @@ pub struct VariableDeclaration {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
+    Short,
     Int,
     Long,
+    UShort,
     UInt,
     ULong,
     Double,
@@ -379,11 +381,27 @@ pub enum Initializer {
 impl Initializer {
     pub fn zero(ty: &Type) -> Self {
         match ty {
+            Type::Short => Initializer::Single(
+                String::new(),
+                Expression::Constant(ConstantExpression {
+                    value: Const::Short(0),
+                    ty: Type::Short,
+                    span: Span { start: 0, end: 0 },
+                }),
+            ),
             Type::Int => Initializer::Single(
                 String::new(),
                 Expression::Constant(ConstantExpression {
                     value: Const::Int(0),
                     ty: Type::Int,
+                    span: Span { start: 0, end: 0 },
+                }),
+            ),
+            Type::UShort => Initializer::Single(
+                String::new(),
+                Expression::Constant(ConstantExpression {
+                    value: Const::UShort(0),
+                    ty: Type::UShort,
                     span: Span { start: 0, end: 0 },
                 }),
             ),

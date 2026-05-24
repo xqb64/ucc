@@ -178,6 +178,22 @@ impl Fixup for AsmFunction {
                     }]);
                 }
 
+                /* 'mov'-ing a larger constant with a word operand size produces an assembler warning */
+                AsmInstruction::Mov {
+                    asm_type: AsmType::Word,
+                    src: AsmOperand::Imm(imm),
+                    dst,
+                } if is_larger_than_word(*imm) => {
+                    let bitmask: i64 = 0xffff;
+                    let reduced = *imm & bitmask;
+
+                    instructions.extend(vec![AsmInstruction::Mov {
+                        asm_type: AsmType::Word,
+                        src: AsmOperand::Imm(reduced),
+                        dst: dst.clone(),
+                    }]);
+                }
+
                 /* 'mov'-ing a longword-size constant with a byte operand size produces an assembler warning */
                 AsmInstruction::Mov {
                     asm_type: AsmType::Byte,
@@ -264,21 +280,21 @@ impl Fixup for AsmFunction {
                 }
 
                 AsmInstruction::MovZeroExtend {
-                    src_type: AsmType::Byte,
+                    src_type,
                     src: AsmOperand::Imm(imm),
                     dst_type,
                     dst,
-                } => {
+                } if matches!(*src_type, AsmType::Byte | AsmType::Word) => {
                     /* 'movzeroextend' src can't be an immediate */
                     if is_memory(dst) {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
-                                asm_type: AsmType::Byte,
+                                asm_type: *src_type,
                                 src: AsmOperand::Imm(*imm),
                                 dst: AsmOperand::Register(AsmRegister::R10),
                             },
                             AsmInstruction::MovZeroExtend {
-                                src_type: AsmType::Byte,
+                                src_type: *src_type,
                                 src: AsmOperand::Register(AsmRegister::R10),
                                 dst_type: *dst_type,
                                 dst: AsmOperand::Register(AsmRegister::R11),
@@ -292,12 +308,12 @@ impl Fixup for AsmFunction {
                     } else {
                         instructions.extend(vec![
                             AsmInstruction::Mov {
-                                asm_type: AsmType::Byte,
+                                asm_type: *src_type,
                                 src: AsmOperand::Imm(*imm),
                                 dst: AsmOperand::Register(AsmRegister::R10),
                             },
                             AsmInstruction::MovZeroExtend {
-                                src_type: AsmType::Byte,
+                                src_type: *src_type,
                                 src: AsmOperand::Register(AsmRegister::R10),
                                 dst_type: *dst_type,
                                 dst: dst.clone(),
@@ -308,14 +324,14 @@ impl Fixup for AsmFunction {
 
                 /* 'movzeroextend' dst must be a register */
                 AsmInstruction::MovZeroExtend {
-                    src_type: AsmType::Byte,
+                    src_type,
                     src,
                     dst_type,
                     dst,
-                } if is_memory(dst) => {
+                } if matches!(*src_type, AsmType::Byte | AsmType::Word) && is_memory(dst) => {
                     instructions.extend(vec![
                         AsmInstruction::MovZeroExtend {
-                            src_type: AsmType::Byte,
+                            src_type: *src_type,
                             src: src.clone(),
                             dst_type: *dst_type,
                             dst: AsmOperand::Register(AsmRegister::R11),
@@ -706,18 +722,18 @@ impl Fixup for AsmFunction {
                 }
 
                 AsmInstruction::Cmp {
-                    asm_type: _,
+                    asm_type,
                     lhs,
                     rhs: AsmOperand::Imm(imm),
                 } => {
                     instructions.extend(vec![
                         AsmInstruction::Mov {
-                            asm_type: AsmType::Quadword,
+                            asm_type: *asm_type,
                             src: AsmOperand::Imm(*imm),
                             dst: AsmOperand::Register(AsmRegister::R11),
                         },
                         AsmInstruction::Cmp {
-                            asm_type: AsmType::Quadword,
+                            asm_type: *asm_type,
                             lhs: lhs.clone(),
                             rhs: AsmOperand::Register(AsmRegister::R11),
                         },
@@ -904,6 +920,10 @@ fn is_larger_than_uint(imm: i64) -> bool {
     let int32_min: i64 = i32::MIN as i64;
 
     imm > max_i || imm < int32_min
+}
+
+fn is_larger_than_word(imm: i64) -> bool {
+    !(-32768..65536).contains(&imm)
 }
 
 fn is_larger_than_byte(imm: i64) -> bool {

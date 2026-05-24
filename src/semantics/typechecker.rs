@@ -827,7 +827,7 @@ impl Typecheck for Statement {
                     });
                 }
 
-                let typechecked_expr = if is_char_type(get_type(&typechecked_expr)) {
+                let typechecked_expr = if is_small_integer_type(get_type(&typechecked_expr)) {
                     convert_to(&typechecked_expr, &Type::Int)
                 } else {
                     typechecked_expr
@@ -1106,6 +1106,11 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
         },
 
         Expression::Constant(ConstantExpression { value, ty: _, span }) => match value {
+            Const::Short(s) => Ok(Expression::Constant(ConstantExpression {
+                value: Const::Short(*s),
+                ty: Type::Short,
+                span: *span,
+            })),
             Const::Int(i) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::Int(*i),
                 ty: Type::Int,
@@ -1114,6 +1119,11 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             Const::Long(l) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::Long(*l),
                 ty: Type::Long,
+                span: *span,
+            })),
+            Const::UShort(us) => Ok(Expression::Constant(ConstantExpression {
+                value: Const::UShort(*us),
+                ty: Type::UShort,
                 span: *span,
             })),
             Const::UInt(u) => Ok(Expression::Constant(ConstantExpression {
@@ -1807,7 +1817,7 @@ fn typecheck_complement(expr: &Expression, span: Span) -> Result<Expression> {
         });
     }
 
-    if is_char_type(t) {
+    if is_small_integer_type(t) {
         let typed_expr = convert_to(&typed_expr, &Type::Int);
         return Ok(Expression::Unary(UnaryExpression {
             kind: UnaryExpressionKind::Complement,
@@ -1831,7 +1841,7 @@ fn typecheck_negate(expr: &Expression, span: Span) -> Result<Expression> {
     let inner_t = get_type(&typed_expr);
 
     let typed_expr = if is_arithmetic(inner_t) {
-        if is_char_type(inner_t) {
+        if is_small_integer_type(inner_t) {
             convert_to(&typed_expr, &Type::Int)
         } else {
             typed_expr.clone()
@@ -1906,13 +1916,13 @@ fn typecheck_bitshift(
         });
     }
 
-    let typed_lhs = if is_char_type(lhs_type) {
+    let typed_lhs = if is_small_integer_type(lhs_type) {
         convert_to(&typed_lhs, &Type::Int)
     } else {
         typed_lhs.clone()
     };
 
-    let typed_rhs = if is_char_type(rhs_type) {
+    let typed_rhs = if is_small_integer_type(rhs_type) {
         convert_to(&typed_rhs, &Type::Int)
     } else {
         typed_rhs.clone()
@@ -2077,12 +2087,12 @@ fn typecheck_compound(
             if kind == &BinaryExpressionKind::BitwiseShl
                 || kind == &BinaryExpressionKind::BitwiseShr
             {
-                let lhs_type = if is_char_type(lhs_type) {
+                let lhs_type = if is_small_integer_type(lhs_type) {
                     Type::Int
                 } else {
                     lhs_type.clone()
                 };
-                let converted_rhs = if is_char_type(get_type(&typed_rhs)) {
+                let converted_rhs = if is_small_integer_type(get_type(&typed_rhs)) {
                     convert_to(&typed_rhs, &Type::Int)
                 } else {
                     typed_rhs.clone()
@@ -2194,11 +2204,11 @@ fn get_common_ptr_type<'a>(e1: &'a Expression, e2: &'a Expression) -> Result<Typ
 }
 
 pub fn get_common_type<'a>(mut type1: &'a Type, mut type2: &'a Type) -> &'a Type {
-    if is_char_type(type1) {
+    if is_small_integer_type(type1) {
         type1 = &Type::Int;
     }
 
-    if is_char_type(type2) {
+    if is_small_integer_type(type2) {
         type2 = &Type::Int;
     }
 
@@ -2228,6 +2238,7 @@ pub fn get_common_type<'a>(mut type1: &'a Type, mut type2: &'a Type) -> &'a Type
 pub fn get_size_of_type(t: &Type) -> usize {
     match t {
         Type::Char | Type::UChar | Type::SChar => 1,
+        Type::Short | Type::UShort => 2,
         Type::Int => 4,
         Type::UInt => 4,
         Type::Long => 8,
@@ -2247,6 +2258,8 @@ pub fn get_size_of_type(t: &Type) -> usize {
 
 pub fn get_signedness(t: &Type) -> bool {
     match t {
+        Type::Short => true,
+        Type::UShort => false,
         Type::Int => true,
         Type::UInt => false,
         Type::Long => true,
@@ -2308,7 +2321,9 @@ fn optionally_typecheck_scalar(e: &Option<Expression>) -> Result<Option<Expressi
 fn is_arithmetic(t: &Type) -> bool {
     matches!(
         t,
-        Type::Int
+        Type::Short
+            | Type::UShort
+            | Type::Int
             | Type::UInt
             | Type::Long
             | Type::ULong
@@ -2322,7 +2337,15 @@ fn is_arithmetic(t: &Type) -> bool {
 pub fn is_integer_type(t: &Type) -> bool {
     matches!(
         t,
-        Type::Int | Type::UInt | Type::Long | Type::ULong | Type::Char | Type::UChar | Type::SChar
+        Type::Short
+            | Type::UShort
+            | Type::Int
+            | Type::UInt
+            | Type::Long
+            | Type::ULong
+            | Type::Char
+            | Type::UChar
+            | Type::SChar
     )
 }
 
@@ -2334,8 +2357,10 @@ fn is_null_ptr_constant(e: &Expression) -> bool {
     match e {
         Expression::Constant(ConstantExpression { value, .. }) => matches!(
             value,
-            Const::Int(0)
+            Const::Short(0)
+                | Const::Int(0)
                 | Const::Long(0)
+                | Const::UShort(0)
                 | Const::UInt(0)
                 | Const::ULong(0)
                 | Const::Char(0)
@@ -2347,6 +2372,10 @@ fn is_null_ptr_constant(e: &Expression) -> bool {
 
 pub fn is_char_type(t: &Type) -> bool {
     matches!(t, Type::Char | Type::UChar | Type::SChar)
+}
+
+pub fn is_small_integer_type(t: &Type) -> bool {
+    matches!(t, Type::Char | Type::UChar | Type::SChar | Type::Short | Type::UShort)
 }
 
 pub fn is_scalar(t: &Type) -> bool {
@@ -2385,8 +2414,10 @@ fn is_lvalue(e: &Expression) -> bool {
 
 #[derive(Debug, Clone)]
 pub enum StaticInit {
+    Short(i16),
     Int(i32),
     Long(i64),
+    UShort(u16),
     UInt(u32),
     ULong(u64),
     Double(f64),
@@ -2400,8 +2431,10 @@ pub enum StaticInit {
 impl PartialEq for StaticInit {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
+            (StaticInit::Short(s1), StaticInit::Short(s2)) => s1 == s2,
             (StaticInit::Int(i1), StaticInit::Int(i2)) => i1 == i2,
             (StaticInit::Long(l1), StaticInit::Long(l2)) => l1 == l2,
+            (StaticInit::UShort(us1), StaticInit::UShort(us2)) => us1 == us2,
             (StaticInit::UInt(u1), StaticInit::UInt(u2)) => u1 == u2,
             (StaticInit::ULong(ul1), StaticInit::ULong(ul2)) => ul1 == ul2,
             (StaticInit::Double(d1), StaticInit::Double(d2)) => {
@@ -2461,6 +2494,7 @@ pub struct MemberEntry {
 fn alignment(t: &Type) -> usize {
     match t {
         Type::Char | Type::UChar | Type::SChar => 1,
+        Type::Short | Type::UShort => 2,
         Type::Int | Type::UInt => 4,
         Type::Double | Type::Long | Type::ULong | Type::Pointer(_) => 8,
         Type::Struct { tag } => TYPE_TABLE.lock().unwrap()[tag].alignment,
@@ -2476,6 +2510,8 @@ pub fn round_up(value: usize, alignment: usize) -> usize {
 macro_rules! convert_to_static {
     ($konst:expr, $ty:ty, $variant:path) => {
         match $konst {
+            Const::Short(val) => $variant(*val as $ty),
+            Const::UShort(val) => $variant(*val as $ty),
             Const::Int(val) => $variant(*val as $ty),
             Const::Long(val) => $variant(*val as $ty),
             Const::UInt(val) => $variant(*val as $ty),
@@ -2488,7 +2524,9 @@ macro_rules! convert_to_static {
 
 fn const2staticinit(konst: &Const, t: &Type) -> StaticInit {
     match t {
+        Type::Short => convert_to_static!(konst, i16, StaticInit::Short),
         Type::Int => convert_to_static!(konst, i32, StaticInit::Int),
+        Type::UShort => convert_to_static!(konst, u16, StaticInit::UShort),
         Type::UInt => convert_to_static!(konst, u32, StaticInit::UInt),
         Type::Long => convert_to_static!(konst, i64, StaticInit::Long),
         Type::ULong => convert_to_static!(konst, u64, StaticInit::ULong),
@@ -2599,7 +2637,9 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
         (_, Initializer::Single(_, Expression::Constant(ConstantExpression { value, .. }))) => {
             if matches!(
                 value,
-                Const::Int(0)
+                Const::Short(0)
+                    | Const::UShort(0)
+                    | Const::Int(0)
                     | Const::Long(0)
                     | Const::UInt(0)
                     | Const::ULong(0)
@@ -2610,7 +2650,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 Ok(vec![const2staticinit(value, t)])
             }
         }
-        (Type::Pointer { .. }, _) => {
+        (Type::Pointer(_), _) => {
             return Err(UccError {
                 msg: format!("InvalidPointerInitializer"),
                 kind: ErrorKind::Typecheck,

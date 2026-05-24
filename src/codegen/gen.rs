@@ -284,6 +284,7 @@ pub enum AsmBinaryOp {
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum AsmType {
     Byte,
+    Word,
     Longword,
     Quadword,
     Double,
@@ -530,8 +531,10 @@ impl Codegen for IRValue {
     fn codegen(&self) -> AsmNode {
         match self {
             IRValue::Constant(n) => match n {
+                Const::Short(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
                 Const::Int(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
                 Const::Long(n) => AsmNode::Operand(AsmOperand::Imm(*n)),
+                Const::UShort(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
                 Const::UInt(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
                 Const::ULong(n) => AsmNode::Operand(AsmOperand::Imm(*n as i64)),
                 Const::Double(n) => {
@@ -1431,9 +1434,9 @@ impl Codegen for IRInstruction {
             IRInstruction::UIntToDouble { src, dst } => {
                 let src_type = ir2asmtype(src);
                 match src_type {
-                    AsmType::Byte => AsmNode::Instructions(vec![
+                    AsmType::Byte | AsmType::Word => AsmNode::Instructions(vec![
                         AsmInstruction::MovZeroExtend {
-                            src_type: AsmType::Byte,
+                            src_type,
                             src: src.codegen().into(),
                             dst_type: AsmType::Longword,
                             dst: AsmOperand::Register(AsmRegister::Ax),
@@ -1530,14 +1533,14 @@ impl Codegen for IRInstruction {
             IRInstruction::DoubleToInt { src, dst } => {
                 let dst_type = ir2asmtype(dst);
                 match dst_type {
-                    AsmType::Byte => AsmNode::Instructions(vec![
+                    AsmType::Byte | AsmType::Word => AsmNode::Instructions(vec![
                         AsmInstruction::Cvttsd2si {
                             asm_type: AsmType::Longword,
                             src: src.codegen().into(),
                             dst: AsmOperand::Register(AsmRegister::Ax),
                         },
                         AsmInstruction::Mov {
-                            asm_type: AsmType::Byte,
+                            asm_type: dst_type,
                             src: AsmOperand::Register(AsmRegister::Ax),
                             dst: dst.codegen().into(),
                         },
@@ -1556,14 +1559,14 @@ impl Codegen for IRInstruction {
             IRInstruction::DoubletoUInt { src, dst } => {
                 let dst_type = ir2asmtype(dst);
                 match dst_type {
-                    AsmType::Byte => AsmNode::Instructions(vec![
+                    AsmType::Byte | AsmType::Word => AsmNode::Instructions(vec![
                         AsmInstruction::Cvttsd2si {
                             asm_type: AsmType::Longword,
                             src: src.codegen().into(),
                             dst: AsmOperand::Register(AsmRegister::Ax),
                         },
                         AsmInstruction::Mov {
-                            asm_type: AsmType::Byte,
+                            asm_type: dst_type,
                             src: AsmOperand::Register(AsmRegister::Ax),
                             dst: dst.codegen().into(),
                         },
@@ -1650,9 +1653,9 @@ impl Codegen for IRInstruction {
             IRInstruction::IntToDouble { src, dst } => {
                 let src_type = ir2asmtype(src);
                 match src_type {
-                    AsmType::Byte => AsmNode::Instructions(vec![
+                    AsmType::Byte | AsmType::Word => AsmNode::Instructions(vec![
                         AsmInstruction::Movsx {
-                            src_type: AsmType::Byte,
+                            src_type,
                             src: src.codegen().into(),
                             dst_type: AsmType::Longword,
                             dst: AsmOperand::Register(AsmRegister::Ax),
@@ -2466,15 +2469,16 @@ fn copy_bytes(src: &AsmOperand, dst: &AsmOperand, byte_count: usize) -> Vec<AsmI
     }
 
     /* Determine the appropriate operand type and size based on the number of bytes left to copy. */
-    let (operand_type, operand_size) = if byte_count < 4 {
-        /* If fewer than 4 bytes, use `Byte` (1 byte). */
-        (AsmType::Byte, 1)
-    } else if byte_count < 8 {
-        /* If fewer than 8 bytes but at least 4, use `Longword` (4 bytes). */
-        (AsmType::Longword, 4)
-    } else {
+    let (operand_type, operand_size) = if byte_count >= 8 {
         /* If 8 bytes or more, use `Quadword` (8 bytes). */
         (AsmType::Quadword, 8)
+    } else if byte_count >= 4 {
+        /* If fewer than 8 bytes but at least 4, use `Longword` (4 bytes). */
+        (AsmType::Longword, 4)
+    } else if byte_count >= 2 {
+        (AsmType::Word, 2)
+    } else {
+        (AsmType::Byte, 1)
     };
 
     /* Calculate the next source and destination operands. */
@@ -2513,6 +2517,7 @@ fn add_offset(byte_count: usize, operand: &AsmOperand) -> AsmOperand {
 fn type2asmtype(t: &Type) -> AsmType {
     match t {
         Type::Char | Type::UChar | Type::SChar => AsmType::Byte,
+        Type::Short | Type::UShort => AsmType::Word,
         Type::Int | Type::UInt => AsmType::Longword,
         Type::Long | Type::ULong => AsmType::Quadword,
         Type::Double => AsmType::Double,
@@ -2540,6 +2545,8 @@ pub fn ir2type(value: &IRValue) -> Type {
         IRValue::Constant(konst) => match konst {
             Const::Char(_) => Type::Char,
             Const::UChar(_) => Type::UChar,
+            Const::Short(_) => Type::Short,
+            Const::UShort(_) => Type::UShort,
             Const::Int(_) => Type::Int,
             Const::Long(_) => Type::Long,
             Const::UInt(_) => Type::UInt,
@@ -2556,6 +2563,7 @@ pub fn ir2type(value: &IRValue) -> Type {
 fn get_alignment_of_type(t: &Type) -> usize {
     match t {
         Type::Char | Type::UChar | Type::SChar => 1,
+        Type::Short | Type::UShort => 2,
         Type::Int => 4,
         Type::Long => 8,
         Type::UInt => 4,
@@ -2588,6 +2596,10 @@ fn get_eightbyte_type(offset: isize, struct_size: usize) -> AsmType {
         return AsmType::Longword;
     }
 
+    if bytes_from_end == 2 {
+        return AsmType::Word;
+    }
+
     if bytes_from_end == 1 {
         return AsmType::Byte;
     }
@@ -2602,6 +2614,7 @@ fn ir2asmtype(value: &IRValue) -> AsmType {
     match value {
         IRValue::Constant(konst) => match konst {
             Const::Char(_) | Const::UChar(_) => AsmType::Byte,
+            Const::Short(_) | Const::UShort(_) => AsmType::Word,
             Const::Int(_) => AsmType::Longword,
             Const::Long(_) => AsmType::Quadword,
             Const::UInt(_) => AsmType::Longword,
@@ -2653,6 +2666,7 @@ impl VarToStackPos {
                 /* Determine the size to allocate based on the operand's byte length. */
                 let alloc = match OperandByteLen::from(asm_type) {
                     OperandByteLen::B1 => 1,
+                    OperandByteLen::B2 => 2,
                     OperandByteLen::B4 => 4,
                     OperandByteLen::B8 => 8,
                     OperandByteLen::Other(size) => size as i64,
@@ -2662,6 +2676,7 @@ impl VarToStackPos {
                 /* Determine the alignment for the operand's type. */
                 let alignment = match Alignment::default_of(asm_type) {
                     Alignment::B1 => 1,
+                    Alignment::B2 => 2,
                     Alignment::B4 => 4,
                     Alignment::B8 => 8,
                     Alignment::B16 => 16,
@@ -2690,6 +2705,7 @@ impl VarToStackPos {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OperandByteLen {
     B1 = 1,
+    B2 = 2,
     B4 = 4,
     B8 = 8,
     Other(usize),
@@ -2700,6 +2716,7 @@ impl<T: Into<AsmType>> From<T> for OperandByteLen {
         let asm_type = t.into();
         match asm_type {
             AsmType::Byte => Self::B1,
+            AsmType::Word => Self::B2,
             AsmType::Longword => Self::B4,
             AsmType::Quadword => Self::B8,
             AsmType::Double => Self::B8,
@@ -2712,6 +2729,7 @@ impl<T: Into<AsmType>> From<T> for OperandByteLen {
 #[derive(PartialEq, Eq, Hash, Debug)]
 pub enum Alignment {
     B1 = 1,
+    B2 = 2,
     B4 = 4,
     B8 = 8,
     B16 = 16,
@@ -2723,6 +2741,7 @@ impl Alignment {
         let asm_type = t.into();
         match asm_type {
             AsmType::Byte => Self::B1,
+            AsmType::Word => Self::B2,
             AsmType::Longword => Self::B4,
             AsmType::Quadword => Self::B8,
             AsmType::Double => Self::B8,
@@ -2735,4 +2754,37 @@ lazy_static::lazy_static! {
     pub static ref ASM_SYMBOL_TABLE: Mutex<BTreeMap<String, AsmSymtabEntry>> = Mutex::new(BTreeMap::new());
     pub static ref VAR_TO_STACK_POS: Mutex<VarToStackPos> = Mutex::new(VarToStackPos::default());
     pub static ref STATIC_CONSTANTS: Mutex<Vec<AsmStaticConstant>> = Mutex::new(Vec::new());
+}
+
+#[cfg(test)]
+mod short_tests {
+    use super::*;
+    use crate::ir::gen::IRValue;
+    use crate::lexer::lex::Const;
+    use crate::parser::ast::Type;
+
+    #[test]
+    fn maps_short_types_to_word_asm_type() {
+        assert_eq!(type2asmtype(&Type::Short), AsmType::Word);
+        assert_eq!(type2asmtype(&Type::UShort), AsmType::Word);
+        assert_eq!(get_alignment_of_type(&Type::Short), 2);
+        assert_eq!(get_alignment_of_type(&Type::UShort), 2);
+    }
+
+    #[test]
+    fn maps_short_constants_to_word_asm_type() {
+        let short = IRValue::Constant(Const::Short(-1));
+        let ushort = IRValue::Constant(Const::UShort(u16::MAX));
+
+        assert_eq!(ir2type(&short), Type::Short);
+        assert_eq!(ir2type(&ushort), Type::UShort);
+        assert_eq!(ir2asmtype(&short), AsmType::Word);
+        assert_eq!(ir2asmtype(&ushort), AsmType::Word);
+    }
+
+    #[test]
+    fn word_operands_are_two_bytes() {
+        assert!(matches!(OperandByteLen::from(AsmType::Word), OperandByteLen::B2));
+        assert_eq!(Alignment::default_of(AsmType::Word), Alignment::B2);
+    }
 }

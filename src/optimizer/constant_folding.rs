@@ -6,8 +6,10 @@ use crate::{
 
 fn evaluate_leftshift(val: &Const, shift: u32) -> Const {
     match val {
+        Const::Short(v) => Const::Short(*v << shift),
         Const::Int(v) => Const::Int(*v << shift),
         Const::Long(v) => Const::Long(*v << shift),
+        Const::UShort(v) => Const::UShort(*v << shift),
         Const::UInt(v) => Const::UInt(*v << shift),
         Const::ULong(v) => Const::ULong(*v << shift),
         Const::Char(v) => Const::Char(*v << shift),
@@ -18,8 +20,10 @@ fn evaluate_leftshift(val: &Const, shift: u32) -> Const {
 
 fn evaluate_rightshift(val: &Const, shift: u32) -> Const {
     match val {
+        Const::Short(v) => Const::Short(*v >> shift),
         Const::Int(v) => Const::Int(*v >> shift),
         Const::Long(v) => Const::Long(*v >> shift),
+        Const::UShort(v) => Const::UShort(*v >> shift),
         Const::UInt(v) => Const::UInt(*v >> shift),
         Const::ULong(v) => Const::ULong(*v >> shift),
         Const::Char(v) => Const::Char(*v >> shift),
@@ -73,9 +77,14 @@ pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
                     let result = match op {
                         UnaryOp::Negate => -src_val,
                         UnaryOp::Complement => match src_val {
-                            Const::Int(_) | Const::Long(_) | Const::UInt(_) | Const::ULong(_) => {
-                                !src_val
-                            }
+                            Const::Short(_)
+                            | Const::Int(_)
+                            | Const::Long(_)
+                            | Const::UShort(_)
+                            | Const::UInt(_)
+                            | Const::ULong(_)
+                            | Const::Char(_)
+                            | Const::UChar(_) => !src_val,
                             _ => panic!("Complement requires an integer type"),
                         },
                         UnaryOp::Not => {
@@ -86,15 +95,19 @@ pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
                             }
                         }
                         UnaryOp::Inc => match src_val {
+                            Const::Short(i) => Const::Short(i.wrapping_add(1)),
                             Const::Int(i) => Const::Int(i + 1),
                             Const::Long(i) => Const::Long(i + 1),
+                            Const::UShort(i) => Const::UShort(i.wrapping_add(1)),
                             Const::UInt(i) => Const::UInt(i.wrapping_add(1)),
                             Const::ULong(i) => Const::ULong(i.wrapping_add(1)),
                             _ => panic!("Increment requires numeric type"),
                         },
                         UnaryOp::Dec => match src_val {
+                            Const::Short(i) => Const::Short(i.wrapping_sub(1)),
                             Const::Int(i) => Const::Int(i - 1),
                             Const::Long(i) => Const::Long(i - 1),
+                            Const::UShort(i) => Const::UShort(i.wrapping_sub(1)),
                             Const::UInt(i) => Const::UInt(i.wrapping_sub(1)),
                             Const::ULong(i) => Const::ULong(i.wrapping_sub(1)),
                             _ => panic!("Decrement requires numeric type"),
@@ -221,8 +234,10 @@ fn evaluate_cast(konst: &Const, dst: &IRValue) -> Vec<IRInstruction> {
 macro_rules! convert_const {
     ($konst:expr, $variant:path, $ty:ty) => {
         match $konst {
+            Const::Short(val) => $variant(*val as $ty),
             Const::Int(val) => $variant(*val as $ty),
             Const::Long(val) => $variant(*val as $ty),
+            Const::UShort(val) => $variant(*val as $ty),
             Const::UInt(val) => $variant(*val as $ty),
             Const::ULong(val) => $variant(*val as $ty),
             Const::Double(val) => $variant(*val as $ty),
@@ -234,8 +249,10 @@ macro_rules! convert_const {
 
 fn const_convert(konst: &Const, dst_type: &Type) -> Const {
     match dst_type {
+        Type::Short => convert_const!(konst, Const::Short, i16),
         Type::Int => convert_const!(konst, Const::Int, i32),
         Type::Long => convert_const!(konst, Const::Long, i64),
+        Type::UShort => convert_const!(konst, Const::UShort, u16),
         Type::UInt => convert_const!(konst, Const::UInt, u32),
         Type::ULong => convert_const!(konst, Const::ULong, u64),
         Type::Double => convert_const!(konst, Const::Double, f64),
@@ -249,8 +266,10 @@ fn const_convert(konst: &Const, dst_type: &Type) -> Const {
 
 fn is_zero(konst: &Const) -> bool {
     match konst {
+        Const::Short(val) => *val == 0,
         Const::Int(val) => *val == 0,
         Const::Long(val) => *val == 0,
+        Const::UShort(val) => *val == 0,
         Const::UInt(val) => *val == 0,
         Const::ULong(val) => *val == 0,
         Const::Double(val) => *val == 0.0,

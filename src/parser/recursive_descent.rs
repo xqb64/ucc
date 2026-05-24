@@ -113,6 +113,7 @@ impl Parser {
 
         if self.check_many(&[
             TokenKind::Char,
+            TokenKind::Short,
             TokenKind::Int,
             TokenKind::Long,
             TokenKind::Double,
@@ -238,9 +239,10 @@ impl Parser {
     fn is_type_specifier(&self, token: &TokenKind) -> bool {
         matches!(
             token,
-            TokenKind::Int
+            TokenKind::Char
+                | TokenKind::Short
+                | TokenKind::Int
                 | TokenKind::Long
-                | TokenKind::Char
                 | TokenKind::Unsigned
                 | TokenKind::Signed
                 | TokenKind::Double
@@ -446,6 +448,8 @@ impl Parser {
         let dim = self.consume_constant_or_char_literal()?.unwrap();
         self.consume(&TokenKind::RBracket)?;
         Ok(match dim.kind {
+            TokenKind::Constant(Const::Short(n)) => n as usize,
+            TokenKind::Constant(Const::UShort(n)) => n as usize,
             TokenKind::Constant(Const::Int(n)) => n as usize,
             TokenKind::Constant(Const::Long(n)) => n as usize,
             TokenKind::Constant(Const::UInt(n)) => n as usize,
@@ -678,6 +682,14 @@ impl Parser {
         let mut sorted_specifiers = specifier_list.clone();
         sorted_specifiers.sort();
 
+        let invalid_type = || {
+            Err(UccError {
+                kind: ErrorKind::Parse,
+                msg: format!("Invalid type specifier."),
+                span: self.current_span()?,
+            })
+        };
+
         match &sorted_specifiers[..] {
             [TokenKind::Struct, TokenKind::Identifier(tag)] => {
                 Ok(Type::Struct { tag: tag.clone() })
@@ -699,20 +711,44 @@ impl Parser {
                         .any(|s| matches!(s, TokenKind::Identifier(_)))
                     || (sorted_specifiers.contains(&TokenKind::Signed)
                         && sorted_specifiers.contains(&TokenKind::Unsigned))
+                    || (sorted_specifiers.contains(&TokenKind::Short)
+                        && sorted_specifiers.contains(&TokenKind::Long))
                 {
-                    return Err(UccError {
-                        kind: ErrorKind::Parse,
-                        msg: format!("Invalid type specifier."),
-                        span: self.current_span()?,
-                    });
-                } else if sorted_specifiers.contains(&TokenKind::Unsigned)
-                    && sorted_specifiers.contains(&TokenKind::Long)
+                    return invalid_type();
+                }
+
+                let has_unsigned = sorted_specifiers.contains(&TokenKind::Unsigned);
+                let has_long = sorted_specifiers.contains(&TokenKind::Long);
+                let has_short = sorted_specifiers.contains(&TokenKind::Short);
+
+                // Aside from `signed`/`unsigned`, `int` may appear with either
+                // `short` or `long`; no other type-specifier combinations are valid here.
+                if sorted_specifiers
+                    .iter()
+                    .any(|specifier| {
+                        !matches!(
+                            specifier,
+                            TokenKind::Signed
+                                | TokenKind::Unsigned
+                                | TokenKind::Int
+                                | TokenKind::Short
+                                | TokenKind::Long
+                        )
+                    })
                 {
+                    return invalid_type();
+                }
+
+                if has_unsigned && has_long {
                     Ok(Type::ULong)
-                } else if sorted_specifiers.contains(&TokenKind::Unsigned) {
+                } else if has_unsigned && has_short {
+                    Ok(Type::UShort)
+                } else if has_unsigned {
                     Ok(Type::UInt)
-                } else if sorted_specifiers.contains(&TokenKind::Long) {
+                } else if has_long {
                     Ok(Type::Long)
+                } else if has_short {
+                    Ok(Type::Short)
                 } else {
                     Ok(Type::Int)
                 }
@@ -1844,5 +1880,84 @@ impl Parser {
                 })
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod short_tests {
+    use super::*;
+    use crate::lexer::lex::Lexer;
+    use crate::parser::ast::{BlockItem, Declaration, Program, Type};
+    use crate::semantics::typechecker::{get_common_type, get_signedness, get_size_of_type};
+    use std::collections::VecDeque;
+
+    fn parse(src: &str) -> Program {
+        let tokens: VecDeque<_> = Lexer::new(src.to_string()).collect();
+        let mut parser = Parser::new(tokens);
+        parser.parse().unwrap()
+    }
+
+    fn parse_errs(src: &str) {
+        let tokens: VecDeque<_> = Lexer::new(src.to_string()).collect();
+        let mut parser = Parser::new(tokens);
+        assert!(parser.parse().is_err());
+    }
+
+    fn top_level_var_types(src: &str) -> Vec<Type> {
+        parse(src)
+            .block_items
+            .into_iter()
+            .map(|item| match item {
+                BlockItem::Declaration(Declaration::Variable(var)) => var.ty,
+                other => panic!("expected variable declaration, got {other:?}"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn parses_signed_short_spellings() {
+        let tys = top_level_var_types(
+            r#"
+            short s;
+            signed short ss;
+            short int si;
+            signed short int ssi;
+            "#,
+        );
+
+        assert_eq!(tys, vec![Type::Short, Type::Short, Type::Short, Type::Short]);
+    }
+
+    #[test]
+    fn parses_unsigned_short_spellings() {
+        let tys = top_level_var_types(
+            r#"
+            unsigned short us;
+            unsigned short int usi;
+            short unsigned su;
+            short unsigned int sui;
+            "#,
+        );
+
+        assert_eq!(tys, vec![Type::UShort, Type::UShort, Type::UShort, Type::UShort]);
+    }
+
+    #[test]
+    fn rejects_invalid_short_combinations() {
+        parse_errs("short long x;");
+        parse_errs("signed unsigned short x;");
+        parse_errs("double short x;");
+    }
+
+    #[test]
+    fn short_size_signedness_and_promotions() {
+        assert_eq!(get_size_of_type(&Type::Short), 2);
+        assert_eq!(get_size_of_type(&Type::UShort), 2);
+        assert!(get_signedness(&Type::Short));
+        assert!(!get_signedness(&Type::UShort));
+
+        assert_eq!(get_common_type(&Type::Short, &Type::Short), &Type::Int);
+        assert_eq!(get_common_type(&Type::Short, &Type::UShort), &Type::Int);
+        assert_eq!(get_common_type(&Type::UShort, &Type::UShort), &Type::Int);
     }
 }

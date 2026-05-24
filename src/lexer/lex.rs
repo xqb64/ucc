@@ -11,9 +11,9 @@ pub struct Lexer {
 impl Lexer {
     pub fn new(src: String) -> Lexer {
         let keywords = vec![
-            "int", "long", "char", "signed", "unsigned", "double", "void", "return", "if", "else",
-            "do", "while", "for", "break", "continue", "static", "extern", "sizeof", "struct",
-            "goto", "switch", "case", "default",
+            "char", "short", "int", "long", "signed", "unsigned", "double", "void", "return",
+            "if", "else", "do", "while", "for", "break", "continue", "static", "extern",
+            "sizeof", "struct", "goto", "switch", "case", "default",
         ];
 
         let mut regexes = HashMap::new();
@@ -95,9 +95,10 @@ impl Iterator for Lexer {
             let len = m.as_str().chars().count();
             self.pos += len;
             match m.as_str() {
+                "char" => self.make_token(TokenKind::Char, len),
+                "short" => self.make_token(TokenKind::Short, len),
                 "int" => self.make_token(TokenKind::Int, len),
                 "long" => self.make_token(TokenKind::Long, len),
-                "char" => self.make_token(TokenKind::Char, len),
                 "signed" => self.make_token(TokenKind::Signed, len),
                 "unsigned" => self.make_token(TokenKind::Unsigned, len),
                 "double" => self.make_token(TokenKind::Double, len),
@@ -317,9 +318,10 @@ impl std::ops::Add for Span {
 
 #[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Hash)]
 pub enum TokenKind {
+    Char,
+    Short,
     Int,
     Long,
-    Char,
     Signed,
     Unsigned,
     Double,
@@ -414,6 +416,8 @@ impl Token {
 
 #[derive(Debug, Clone, Copy, PartialOrd)]
 pub enum Const {
+    Short(i16),
+    UShort(u16),
     Int(i32),
     Long(i64),
     UInt(u32),
@@ -430,6 +434,8 @@ impl BitAnd for Const {
 
     fn bitand(self, rhs: Const) -> Self::Output {
         match (self, rhs) {
+            (Const::Short(lhs), Const::Short(rhs)) => Const::Short(lhs & rhs),
+            (Const::UShort(lhs), Const::UShort(rhs)) => Const::UShort(lhs & rhs),
             (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs & rhs),
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs & rhs),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs & rhs),
@@ -446,6 +452,8 @@ impl BitOr for Const {
 
     fn bitor(self, rhs: Const) -> Self::Output {
         match (self, rhs) {
+            (Const::Short(lhs), Const::Short(rhs)) => Const::Short(lhs | rhs),
+            (Const::UShort(lhs), Const::UShort(rhs)) => Const::UShort(lhs | rhs),
             (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs | rhs),
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs | rhs),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs | rhs),
@@ -462,6 +470,8 @@ impl BitXor for Const {
 
     fn bitxor(self, rhs: Const) -> Self::Output {
         match (self, rhs) {
+            (Const::Short(lhs), Const::Short(rhs)) => Const::Short(lhs ^ rhs),
+            (Const::UShort(lhs), Const::UShort(rhs)) => Const::UShort(lhs ^ rhs),
             (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs ^ rhs),
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs ^ rhs),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs ^ rhs),
@@ -478,6 +488,8 @@ impl std::ops::Add for Const {
 
     fn add(self, rhs: Const) -> Self::Output {
         match (self, rhs) {
+            (Const::Short(lhs), Const::Short(rhs)) => Const::Short(lhs.wrapping_add(rhs)),
+            (Const::UShort(lhs), Const::UShort(rhs)) => Const::UShort(lhs.wrapping_add(rhs)),
             (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs + rhs),
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs + rhs),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs + rhs),
@@ -495,6 +507,8 @@ impl std::ops::Sub for Const {
 
     fn sub(self, rhs: Const) -> Self::Output {
         match (self, rhs) {
+            (Const::Short(lhs), Const::Short(rhs)) => Const::Short(lhs.wrapping_sub(rhs)),
+            (Const::UShort(lhs), Const::UShort(rhs)) => Const::UShort(lhs.wrapping_sub(rhs)),
             (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs - rhs),
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs - rhs),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs - rhs),
@@ -512,6 +526,8 @@ impl std::ops::Mul for Const {
 
     fn mul(self, rhs: Const) -> Self::Output {
         match (self, rhs) {
+            (Const::Short(lhs), Const::Short(rhs)) => Const::Short(lhs.wrapping_mul(rhs)),
+            (Const::UShort(lhs), Const::UShort(rhs)) => Const::UShort(lhs.wrapping_mul(rhs)),
             (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs * rhs),
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs * rhs),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs * rhs),
@@ -529,6 +545,12 @@ impl std::ops::Div for Const {
 
     fn div(self, rhs: Const) -> Self::Output {
         match (self, rhs) {
+            (Const::Short(lhs), Const::Short(rhs)) => {
+                Const::Short(lhs.checked_div(rhs).unwrap_or(0))
+            }
+            (Const::UShort(lhs), Const::UShort(rhs)) => {
+                Const::UShort(lhs.checked_div(rhs).unwrap_or(0))
+            }
             (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs.checked_div(rhs).unwrap_or(0)),
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs.checked_div(rhs).unwrap_or(0)),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs.checked_div(rhs).unwrap_or(0)),
@@ -552,6 +574,12 @@ impl std::ops::Rem for Const {
 
     fn rem(self, rhs: Const) -> Self::Output {
         match (self, rhs) {
+            (Const::Short(lhs), Const::Short(rhs)) => {
+                Const::Short(lhs.checked_rem(rhs).unwrap_or(0))
+            }
+            (Const::UShort(lhs), Const::UShort(rhs)) => {
+                Const::UShort(lhs.checked_rem(rhs).unwrap_or(0))
+            }
             (Const::Int(lhs), Const::Int(rhs)) => Const::Int(lhs.checked_rem(rhs).unwrap_or(0)),
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs.checked_rem(rhs).unwrap_or(0)),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs.checked_rem(rhs).unwrap_or(0)),
@@ -572,6 +600,8 @@ impl std::ops::Neg for Const {
 
     fn neg(self) -> Self::Output {
         match self {
+            Const::Short(val) => Const::Short(val.wrapping_neg()),
+            Const::UShort(val) => Const::Int(-(val as i32)),
             Const::Int(val) => Const::Int(-val),
             Const::Long(val) => Const::Long(-val),
             Const::UInt(val) => Const::Int(-(val as i32)),
@@ -587,6 +617,8 @@ impl std::ops::Not for Const {
 
     fn not(self) -> Self::Output {
         match self {
+            Const::Short(val) => Const::Short(!val),
+            Const::UShort(val) => Const::UShort(!val),
             Const::Int(val) => Const::Int(!val),
             Const::Long(val) => Const::Long(!val),
             Const::UInt(val) => Const::UInt(!val),
@@ -608,7 +640,8 @@ impl Ord for Const {
             (ULong(ul1), ULong(ul2)) => ul1.cmp(ul2),
             (Char(c1), Char(c2)) => c1.cmp(c2),
             (UChar(uc1), UChar(uc2)) => uc1.cmp(uc2),
-
+            (Short(c1), Short(c2)) => c1.cmp(c2),
+            (UShort(uc1), UShort(uc2)) => uc1.cmp(uc2),
             (a, b) => std::mem::discriminant(a)
                 .type_id()
                 .cmp(&std::mem::discriminant(b).type_id()),
@@ -627,6 +660,8 @@ impl PartialEq for Const {
             (ULong(ul1), ULong(ul2)) => ul1 == ul2,
             (Char(c1), Char(c2)) => c1 == c2,
             (UChar(uc1), UChar(uc2)) => uc1 == uc2,
+            (Short(s1), Short(s2)) => s1 == s2,
+            (UShort(us1), UShort(us2)) => us1 == us2,
             _ => false,
         }
     }
@@ -653,6 +688,8 @@ impl Hash for Const {
             Const::Double(d) => d.to_bits().hash(state),
             Const::Char(c) => c.hash(state),
             Const::UChar(c) => c.hash(state),
+            Const::Short(s) => s.hash(state),
+            Const::UShort(us) => us.hash(state),
         }
     }
 }
@@ -660,6 +697,8 @@ impl Hash for Const {
 impl ToString for Const {
     fn to_string(&self) -> String {
         match self {
+            Const::Short(s) => s.to_string(),
+            Const::UShort(us) => us.to_string(),
             Const::Int(i) => i.to_string(),
             Const::Long(l) => l.to_string(),
             Const::UInt(u) => u.to_string(),
