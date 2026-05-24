@@ -318,7 +318,7 @@ impl Irfy for BlockStatement {
 
                     Declaration::Function(_func_decl) => {}
 
-                    Declaration::Struct(_) | Declaration::Union(_) => {}
+                    Declaration::Struct(_) | Declaration::Union(_) | Declaration::Enum(_) => {}
                 },
 
                 BlockItem::Statement(stmt) => {
@@ -398,7 +398,7 @@ pub fn expr2const(e: &Expression) -> Const {
 fn cast_const_to(c: &Const, target: &Type) -> Const {
     match target {
         Type::Short => Const::Short(c.to_i16()),
-        Type::Int => Const::Int(c.to_i32()),
+        Type::Int | Type::Enum { .. } => Const::Int(c.to_i32()),
         Type::Long => Const::Long(c.to_i64()),
         Type::UShort => Const::UShort(c.to_u16()),
         Type::UInt => Const::UInt(c.to_u32()),
@@ -832,7 +832,7 @@ impl Irfy for BlockItem {
             BlockItem::Declaration(decl) => match decl {
                 Declaration::Function(func) => func.irfy(funcname),
                 Declaration::Variable(var) => var.irfy(funcname),
-                Declaration::Struct(_) | Declaration::Union(_) => None,
+                Declaration::Struct(_) | Declaration::Union(_) | Declaration::Enum(_) => None,
             },
             BlockItem::Statement(stmt) => stmt.irfy(funcname),
         }
@@ -948,7 +948,7 @@ fn make_constexpr(konst: isize, ty: Type) -> Expression {
             ty: ty.clone(),
             span: Span { start: 0, end: 0 },
         }),
-        Type::Int => Expression::Constant(ConstantExpression {
+        Type::Int | Type::Enum { .. } => Expression::Constant(ConstantExpression {
             value: Const::Int(konst as i32),
             ty: ty.clone(),
             span: Span { start: 0, end: 0 },
@@ -993,7 +993,7 @@ fn make_const(konst: isize, ty: Type) -> Const {
         Type::UChar => Const::UChar(konst as u8),
         Type::Short => Const::Short(konst as i16),
         Type::UShort => Const::UShort(konst as u16),
-        Type::Int => Const::Int(konst as i32),
+        Type::Int | Type::Enum { .. } => Const::Int(konst as i32),
         Type::UInt => Const::UInt(konst as u32),
         Type::Long => Const::Long(konst as i64),
         Type::ULong => Const::ULong(konst as u64),
@@ -2053,7 +2053,7 @@ pub fn convert_symbols_to_tacky() -> (Vec<IRStaticVariable>, Vec<IRStaticConstan
                         Type::UChar => StaticInit::UChar(0),
                         Type::Short => StaticInit::Short(0),
                         Type::UShort => StaticInit::UShort(0),
-                        Type::Int => StaticInit::Int(0),
+                        Type::Int | Type::Enum { .. } => StaticInit::Int(0),
                         Type::Long => StaticInit::Long(0),
                         Type::ULong => StaticInit::ULong(0),
                         Type::UInt => StaticInit::UInt(0),

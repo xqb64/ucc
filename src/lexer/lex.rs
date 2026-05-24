@@ -13,7 +13,7 @@ impl Lexer {
         let keywords = vec![
             "char", "short", "int", "long", "signed", "unsigned", "float", "double", "void", "return",
             "if", "else", "do", "while", "for", "break", "continue", "static", "extern",
-            "sizeof", "struct", "union", "goto", "switch", "case", "default",
+            "sizeof", "struct", "union", "enum", "goto", "switch", "case", "default",
         ];
 
         let mut regexes = HashMap::new();
@@ -117,6 +117,7 @@ impl Iterator for Lexer {
                 "sizeof" => self.make_token(TokenKind::Sizeof, len),
                 "struct" => self.make_token(TokenKind::Struct, len),
                 "union" => self.make_token(TokenKind::Union, len),
+                "enum" => self.make_token(TokenKind::Enum, len),
                 "goto" => self.make_token(TokenKind::Goto, len),
                 "switch" => self.make_token(TokenKind::Switch, len),
                 "case" => self.make_token(TokenKind::Case, len),
@@ -351,6 +352,7 @@ pub enum TokenKind {
     Sizeof,
     Struct,
     Union,
+    Enum,
     Goto,
     Switch,
     Case,

@@ -4,8 +4,8 @@ use crate::{
         AbstractDeclarator, AggregateKind, AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
         BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,
         CastExpression, ConditionalExpression, ConstantExpression, ContinueStatement, Declaration,
-        Declarator, DerefExpression, DoWhileStatement, DotExpression, Expression,
-        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer,
+        Declarator, DerefExpression, DoWhileStatement, DotExpression, EnumDeclaration,
+        EnumMemberDeclaration, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer,
         LiteralExpression, MemberDeclaration, ParamInfo, Program, ReturnStatement,
         SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
         StructDeclaration, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind,
@@ -125,6 +125,7 @@ impl Parser {
             TokenKind::Extern,
             TokenKind::Struct,
             TokenKind::Union,
+            TokenKind::Enum,
         ]) {
             self.parse_declaration()
         } else if self.is_next(&[TokenKind::Return]) {
@@ -170,6 +171,8 @@ impl Parser {
             [TokenKind::Struct | TokenKind::Union, TokenKind::Identifier(_), TokenKind::LBrace | TokenKind::Semicolon] => {
                 self.parse_struct_or_union_decl()
             }
+            [TokenKind::Enum, TokenKind::Identifier(_), TokenKind::LBrace | TokenKind::Semicolon]
+            | [TokenKind::Enum, TokenKind::LBrace, _] => self.parse_enum_decl(),
             _ => self.parse_var_or_fn_decl(),
         }
     }
@@ -223,6 +226,71 @@ impl Parser {
         }))
     }
 
+    fn parse_enum_decl(&mut self) -> Result<BlockItem> {
+        let begin = self.current_span()?;
+        self.consume(&TokenKind::Enum)?;
+
+        let tag = if matches!(self.current.as_ref().map(|t| &t.kind), Some(TokenKind::Identifier(_))) {
+            Some(
+                self.consume(&TokenKind::Identifier(String::new()))?
+                    .unwrap()
+                    .as_string(),
+            )
+        } else {
+            None
+        };
+
+        let members = if self.is_next(&[TokenKind::LBrace]) {
+            let mut members = vec![];
+            if self.is_next(&[TokenKind::RBrace]) {
+                members
+            } else {
+                loop {
+                    members.push(self.parse_enum_member_decl()?);
+                    if self.is_next(&[TokenKind::Comma]) {
+                        if self.is_next(&[TokenKind::RBrace]) {
+                            break members;
+                        }
+                    } else {
+                        self.consume(&TokenKind::RBrace)?;
+                        break members;
+                    }
+                }
+            }
+        } else {
+            vec![]
+        };
+
+        self.consume(&TokenKind::Semicolon)?;
+        let end = self.current_span()?;
+
+        Ok(BlockItem::Declaration(Declaration::Enum(EnumDeclaration {
+            tag,
+            members,
+            span: begin + end,
+        })))
+    }
+
+    fn parse_enum_member_decl(&mut self) -> Result<EnumMemberDeclaration> {
+        let begin = self.current_span()?;
+        let name = self
+            .consume(&TokenKind::Identifier(String::new()))?
+            .unwrap()
+            .as_string();
+        let value = if self.is_next(&[TokenKind::Equal]) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+        let end = self.current_span()?;
+
+        Ok(EnumMemberDeclaration {
+            name,
+            value,
+            span: begin + end,
+        })
+    }
+
     fn parse_member_decl(&mut self) -> Result<MemberDeclaration> {
         let begin = self.current_span()?;
         let specifier_list = self.consume_while_type_specifier();
@@ -269,6 +337,7 @@ impl Parser {
                 | TokenKind::Void
                 | TokenKind::Struct
                 | TokenKind::Union
+                | TokenKind::Enum
         )
     }
 
@@ -518,11 +587,15 @@ impl Parser {
         while self.is_type_specifier(&self.current.as_ref().unwrap().kind) {
             match self.current.as_ref() {
                 Some(token) => match token.kind {
-                    TokenKind::Struct | TokenKind::Union => {
+                    TokenKind::Struct | TokenKind::Union | TokenKind::Enum => {
                         specifier_list.push(self.current.clone().unwrap());
                         self.advance();
-                        specifier_list.push(self.current.clone().unwrap());
-                        self.advance();
+                        if let Some(token) = self.current.as_ref() {
+                            if let TokenKind::Identifier(_) = token.kind {
+                                specifier_list.push(self.current.clone().unwrap());
+                                self.advance();
+                            }
+                        }
                     }
                     _ => {
                         specifier_list.push(self.current.clone().unwrap());
@@ -553,7 +626,7 @@ impl Parser {
         while self.is_specifier(&self.current.as_ref().unwrap().kind) {
             match self.current.as_ref() {
                 Some(token) => match token.kind {
-                    TokenKind::Struct | TokenKind::Union => {
+                    TokenKind::Struct | TokenKind::Union | TokenKind::Enum => {
                         specifier_list.push(self.current.clone().unwrap());
                         self.advance();
 
@@ -565,7 +638,7 @@ impl Parser {
                         } else {
                             return Err(UccError {
                                 kind: ErrorKind::Parse,
-                                msg: format!("expected an identifier after struct"),
+                                msg: format!("expected an identifier after tag specifier"),
                                 span: self.current_span()?,
                             });
                         }
@@ -717,6 +790,9 @@ impl Parser {
             }
             [TokenKind::Union, TokenKind::Identifier(tag)] => {
                 Ok(Type::Union { tag: tag.clone() })
+            }
+            [TokenKind::Enum, TokenKind::Identifier(tag)] => {
+                Ok(Type::Enum { tag: tag.clone() })
             }
             [TokenKind::Void] => Ok(Type::Void),
             [TokenKind::Float] => Ok(Type::Float),
@@ -2009,6 +2085,31 @@ mod short_tests {
             &program.block_items[2],
             BlockItem::Declaration(Declaration::Variable(var))
                 if var.ty == Type::Pointer(Box::new(Type::Union { tag: "U".to_string() }))
+        ));
+    }
+
+
+    #[test]
+    fn lexes_and_parses_enum_declaration_and_type_references() {
+        let tokens: Vec<_> = Lexer::new("enum Color { RED, GREEN = 5, BLUE, }; enum Color c;".to_string()).collect();
+        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::Enum)));
+
+        let program = parse("enum Color { RED, GREEN = 5, BLUE, }; enum Color c; enum Color *p;");
+        assert!(matches!(
+            &program.block_items[0],
+            BlockItem::Declaration(Declaration::Enum(decl))
+                if decl.tag == Some("Color".to_string()) && decl.members.len() == 3
+        ));
+
+        assert!(matches!(
+            &program.block_items[1],
+            BlockItem::Declaration(Declaration::Variable(var))
+                if var.ty == (Type::Enum { tag: "Color".to_string() })
+        ));
+        assert!(matches!(
+            &program.block_items[2],
+            BlockItem::Declaration(Declaration::Variable(var))
+                if var.ty == Type::Pointer(Box::new(Type::Enum { tag: "Color".to_string() }))
         ));
     }
 

@@ -7,7 +7,7 @@ use crate::{
         AddrOfExpression, AggregateKind, ArrowExpression, AssignExpression, BinaryExpression, BlockItem,
         BlockStatement, BreakStatement, CallExpression, CaseStatement, CastExpression,
         CompoundExpression, ConditionalExpression, ContinueStatement, Declaration,
-        DefaultStatement, DerefExpression, DoWhileStatement, DotExpression, Expression,
+        DefaultStatement, EnumDeclaration, EnumMemberDeclaration, DerefExpression, DoWhileStatement, DotExpression, Expression,
         ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, GotoStatement,
         IfStatement, Initializer, LabeledStatement, MemberDeclaration, PostfixExpression, Program,
         ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
@@ -85,6 +85,10 @@ impl Resolve for Declaration {
             Declaration::Union(union_decl) => {
                 let resolved = union_decl.resolve(variable_map, struct_map)?;
                 Ok(Declaration::Union(resolved))
+            }
+            Declaration::Enum(enum_decl) => {
+                let resolved = enum_decl.resolve(variable_map, struct_map)?;
+                Ok(Declaration::Enum(resolved))
             }
         }
     }
@@ -312,13 +316,13 @@ impl Resolve for StructDeclaration {
                 self.tag.clone(),
                 StructTableEntry {
                     name: unique_tag.clone(),
-                    kind: self.kind,
+                    kind: self.kind.into(),
                     from_current_scope: true,
                 },
             );
         } else {
             let prev_entry = prev_entry.unwrap();
-            if prev_entry.kind != self.kind {
+            if prev_entry.kind != TagKind::from(self.kind) {
                 return Err(UccError {
                     kind: ErrorKind::Resolve,
                     msg: format!("Conflicting tag declaration"),
@@ -345,6 +349,83 @@ impl Resolve for StructDeclaration {
             tag: unique_tag,
             kind: self.kind,
             members: processed_members,
+            span: self.span,
+        })
+    }
+}
+
+impl Resolve for EnumDeclaration {
+    fn resolve(
+        self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let resolved_tag = if let Some(tag) = &self.tag {
+            let prev_entry = struct_map.get(tag);
+            if prev_entry.is_none() || !prev_entry.as_ref().unwrap().from_current_scope {
+                let unique_tag = format!("enum.{}.{}", tag, make_temporary());
+                struct_map.insert(
+                    tag.clone(),
+                    StructTableEntry {
+                        name: unique_tag.clone(),
+                        kind: TagKind::Enum,
+                        from_current_scope: true,
+                    },
+                );
+                Some(unique_tag)
+            } else {
+                let prev_entry = prev_entry.unwrap();
+                if prev_entry.kind != TagKind::Enum {
+                    return Err(UccError {
+                        kind: ErrorKind::Resolve,
+                        msg: format!("Conflicting tag declaration"),
+                        span: self.span,
+                    });
+                }
+                Some(prev_entry.name.clone())
+            }
+        } else {
+            None
+        };
+
+        let mut resolved_members = vec![];
+        for member in self.members {
+            if let Some(prev_entry) = variable_map.get(&member.name) {
+                if prev_entry.from_current_scope {
+                    return Err(UccError {
+                        kind: ErrorKind::Resolve,
+                        msg: format!("redeclaration of enumerator: {}", member.name),
+                        span: member.span,
+                    });
+                }
+            }
+
+            let resolved_value = member
+                .value
+                .map(|value| value.resolve(variable_map, struct_map))
+                .transpose()?;
+            let unique_name = format!("enum.{}.{}", member.name, make_temporary());
+            variable_map.insert(
+                member.name.clone(),
+                Variable {
+                    from_current_scope: true,
+                    name: unique_name.clone(),
+                    has_linkage: false,
+                },
+            );
+            resolved_members.push(EnumMemberDeclaration {
+                name: unique_name,
+                value: resolved_value,
+                span: member.span,
+            });
+        }
+
+        Ok(EnumDeclaration {
+            tag: resolved_tag,
+            members: resolved_members,
             span: self.span,
         })
     }
@@ -1069,7 +1150,7 @@ impl Resolve for Type {
         match self {
             Type::Struct { tag } => {
                 if let Some(entry) = struct_map.get(&tag) {
-                    if entry.kind == AggregateKind::Struct {
+                    if entry.kind == TagKind::Struct {
                         Ok(Type::Struct {
                             tag: entry.name.clone(),
                         })
@@ -1091,7 +1172,7 @@ impl Resolve for Type {
 
             Type::Union { tag } => {
                 if let Some(entry) = struct_map.get(&tag) {
-                    if entry.kind == AggregateKind::Union {
+                    if entry.kind == TagKind::Union {
                         Ok(Type::Union {
                             tag: entry.name.clone(),
                         })
@@ -1106,6 +1187,27 @@ impl Resolve for Type {
                     return Err(UccError {
                         kind: ErrorKind::Resolve,
                         msg: format!("Specified an undeclared union tag."),
+                        span: Span { start: 0, end: 0 },
+                    });
+                }
+            }
+
+            Type::Enum { tag } => {
+                if let Some(entry) = struct_map.get(&tag) {
+                    if entry.kind == TagKind::Enum {
+                        // This compiler represents enum objects as signed int.
+                        Ok(Type::Int)
+                    } else {
+                        return Err(UccError {
+                            kind: ErrorKind::Resolve,
+                            msg: format!("Specified a non-enum tag as an enum."),
+                            span: Span { start: 0, end: 0 },
+                        });
+                    }
+                } else {
+                    return Err(UccError {
+                        kind: ErrorKind::Resolve,
+                        msg: format!("Specified an undeclared enum tag."),
                         span: Span { start: 0, end: 0 },
                     });
                 }
@@ -1207,9 +1309,61 @@ pub struct Variable {
     has_linkage: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TagKind {
+    Struct,
+    Union,
+    Enum,
+}
+
+impl From<AggregateKind> for TagKind {
+    fn from(kind: AggregateKind) -> Self {
+        match kind {
+            AggregateKind::Struct => TagKind::Struct,
+            AggregateKind::Union => TagKind::Union,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructTableEntry {
     name: String,
-    kind: AggregateKind,
+    kind: TagKind,
     from_current_scope: bool,
+}
+
+#[cfg(test)]
+mod enum_tests {
+    use super::*;
+    use crate::lexer::lex::Lexer;
+    use crate::parser::ast::{BlockItem, Declaration, Type};
+    use crate::parser::recursive_descent::Parser;
+    use std::collections::{BTreeMap, VecDeque};
+
+    fn parse(src: &str) -> crate::parser::ast::Program {
+        let tokens: VecDeque<_> = Lexer::new(src.to_string()).collect();
+        let mut parser = Parser::new(tokens);
+        parser.parse().unwrap()
+    }
+
+    #[test]
+    fn resolves_enum_tags_to_int_representation() {
+        let program = parse("enum Color { RED, GREEN }; enum Color c;");
+        let resolved = program
+            .resolve(&mut BTreeMap::new(), &mut BTreeMap::new())
+            .unwrap();
+
+        assert!(matches!(
+            &resolved.block_items[1],
+            BlockItem::Declaration(Declaration::Variable(var)) if var.ty == Type::Int
+        ));
+    }
+
+    #[test]
+    fn rejects_conflicting_struct_union_enum_tags() {
+        let program = parse("struct Tag; enum Tag { A };");
+        assert!(program
+            .resolve(&mut BTreeMap::new(), &mut BTreeMap::new())
+            .is_err());
+    }
 }

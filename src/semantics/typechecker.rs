@@ -5,7 +5,7 @@ use crate::{
         spanof, AddrOfExpression, AggregateKind, ArrowExpression, AssignExpression, BinaryExpression,
         BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CaseStatement,
         CastExpression, CompoundExpression, ConditionalExpression, ConstantExpression, Declaration,
-        DefaultStatement, DerefExpression, DoWhileStatement, DotExpression, Expression,
+        DefaultStatement, DerefExpression, EnumDeclaration, DoWhileStatement, DotExpression, Expression,
         ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, GotoStatement,
         IfStatement, Initializer, LabeledStatement, PostfixExpression, PostfixExpressionKind,
         Program, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
@@ -84,6 +84,11 @@ impl Typecheck for Declaration {
             Declaration::Union(union_decl) => {
                 let typechecked = union_decl.typecheck()?;
                 Ok(Declaration::Union(typechecked))
+            }
+
+            Declaration::Enum(enum_decl) => {
+                let typechecked = enum_decl.typecheck()?;
+                Ok(Declaration::Enum(typechecked))
             }
         }
     }
@@ -588,6 +593,159 @@ impl Typecheck for StructDeclaration {
     }
 }
 
+impl Typecheck for EnumDeclaration {
+    fn typecheck(self) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let mut next_value: i64 = 0;
+        let mut processed_members = vec![];
+
+        for member in self.members {
+            let value = if let Some(expr) = &member.value {
+                let typed_expr = typecheck_and_convert(expr)?;
+                if !is_integer_type(get_type(&typed_expr)) {
+                    return Err(UccError {
+                        msg: format!("Enumerator value is not an integer constant expression"),
+                        kind: ErrorKind::Typecheck,
+                        span: member.span,
+                    });
+                }
+                eval_integer_constant_expression(&typed_expr)?
+            } else {
+                next_value
+            };
+
+            let value_i32 = i32::try_from(value).map_err(|_| UccError {
+                msg: format!("Enumerator value is outside the range of int"),
+                kind: ErrorKind::Typecheck,
+                span: member.span,
+            })?;
+
+            SYMBOL_TABLE.lock().unwrap().insert(
+                member.name.clone(),
+                Symbol {
+                    ty: Type::Int,
+                    attrs: IdentifierAttrs::EnumConstantAttr(value_i32),
+                },
+            );
+
+            processed_members.push(crate::parser::ast::EnumMemberDeclaration {
+                name: member.name,
+                value: Some(Expression::Constant(ConstantExpression {
+                    value: Const::Int(value_i32),
+                    ty: Type::Int,
+                    span: member.span,
+                })),
+                span: member.span,
+            });
+
+            next_value = value + 1;
+        }
+
+        Ok(EnumDeclaration {
+            tag: self.tag,
+            members: processed_members,
+            span: self.span,
+        })
+    }
+}
+
+fn eval_integer_constant_expression(expr: &Expression) -> Result<i64> {
+    fn const_to_i64(value: &Const) -> Result<i64> {
+        match value {
+            Const::Short(v) => Ok(*v as i64),
+            Const::UShort(v) => Ok(*v as i64),
+            Const::Int(v) => Ok(*v as i64),
+            Const::Long(v) => Ok(*v),
+            Const::UInt(v) => Ok(*v as i64),
+            Const::ULong(v) => i64::try_from(*v).map_err(|_| UccError {
+                msg: format!("Integer constant expression is outside the supported range"),
+                kind: ErrorKind::Typecheck,
+                span: Span { start: 0, end: 0 },
+            }),
+            Const::Char(v) => Ok(*v as i64),
+            Const::UChar(v) => Ok(*v as i64),
+            Const::Float(_) | Const::Double(_) => Err(UccError {
+                msg: format!("Enumerator value is not an integer constant expression"),
+                kind: ErrorKind::Typecheck,
+                span: Span { start: 0, end: 0 },
+            }),
+        }
+    }
+
+    match expr {
+        Expression::Constant(ConstantExpression { value, .. }) => const_to_i64(value),
+        Expression::Cast(CastExpression { expr, target_type, span, .. }) => {
+            if !is_integer_type(target_type) {
+                return Err(UccError {
+                    msg: format!("Enumerator value is not an integer constant expression"),
+                    kind: ErrorKind::Typecheck,
+                    span: *span,
+                });
+            }
+            Ok(eval_integer_constant_expression(expr)? as i32 as i64)
+        }
+        Expression::Unary(UnaryExpression { kind, expr, span, .. }) => {
+            let value = eval_integer_constant_expression(expr)?;
+            match kind {
+                UnaryExpressionKind::Negate => Ok(value.wrapping_neg()),
+                UnaryExpressionKind::Complement => Ok(!value),
+                UnaryExpressionKind::Not => Ok((value == 0) as i64),
+                UnaryExpressionKind::Inc | UnaryExpressionKind::Dec => Err(UccError {
+                    msg: format!("Enumerator value is not an integer constant expression"),
+                    kind: ErrorKind::Typecheck,
+                    span: *span,
+                }),
+            }
+        }
+        Expression::Binary(BinaryExpression { kind, lhs, rhs, span, .. }) => {
+            let lhs = eval_integer_constant_expression(lhs)?;
+            let rhs = eval_integer_constant_expression(rhs)?;
+            match kind {
+                BinaryExpressionKind::Add => Ok(lhs.wrapping_add(rhs)),
+                BinaryExpressionKind::Sub => Ok(lhs.wrapping_sub(rhs)),
+                BinaryExpressionKind::Mul => Ok(lhs.wrapping_mul(rhs)),
+                BinaryExpressionKind::Div => Ok(lhs.checked_div(rhs).ok_or_else(|| UccError {
+                    msg: format!("Invalid enumerator division"),
+                    kind: ErrorKind::Typecheck,
+                    span: *span,
+                })?),
+                BinaryExpressionKind::Rem => Ok(lhs.checked_rem(rhs).ok_or_else(|| UccError {
+                    msg: format!("Invalid enumerator remainder"),
+                    kind: ErrorKind::Typecheck,
+                    span: *span,
+                })?),
+                BinaryExpressionKind::BitwiseOr => Ok(lhs | rhs),
+                BinaryExpressionKind::BitwiseXor => Ok(lhs ^ rhs),
+                BinaryExpressionKind::BitwiseAnd => Ok(lhs & rhs),
+                BinaryExpressionKind::BitwiseShl => Ok(lhs.wrapping_shl(rhs as u32)),
+                BinaryExpressionKind::BitwiseShr => Ok(lhs.wrapping_shr(rhs as u32)),
+                BinaryExpressionKind::Equal => Ok((lhs == rhs) as i64),
+                BinaryExpressionKind::NotEqual => Ok((lhs != rhs) as i64),
+                BinaryExpressionKind::Less => Ok((lhs < rhs) as i64),
+                BinaryExpressionKind::Greater => Ok((lhs > rhs) as i64),
+                BinaryExpressionKind::LessEqual => Ok((lhs <= rhs) as i64),
+                BinaryExpressionKind::GreaterEqual => Ok((lhs >= rhs) as i64),
+                BinaryExpressionKind::And => Ok(((lhs != 0) && (rhs != 0)) as i64),
+                BinaryExpressionKind::Or => Ok(((lhs != 0) || (rhs != 0)) as i64),
+            }
+        }
+        Expression::Conditional(ConditionalExpression { condition, then_expr, else_expr, .. }) => {
+            if eval_integer_constant_expression(condition)? != 0 {
+                eval_integer_constant_expression(then_expr)
+            } else {
+                eval_integer_constant_expression(else_expr)
+            }
+        }
+        _ => Err(UccError {
+            msg: format!("Enumerator value is not an integer constant expression"),
+            kind: ErrorKind::Typecheck,
+            span: spanof(expr),
+        }),
+    }
+}
+
 fn validate_struct_definition(definition: &StructDeclaration) -> Result<StructDeclaration> {
     use std::collections::BTreeSet;
 
@@ -971,7 +1129,17 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
         }
 
         Expression::Variable(VariableExpression { value, ty: _, span }) => {
-            let v_type = SYMBOL_TABLE.lock().unwrap().get(value).cloned().unwrap().ty;
+            let symbol = SYMBOL_TABLE.lock().unwrap().get(value).cloned().unwrap();
+
+            if let IdentifierAttrs::EnumConstantAttr(v) = symbol.attrs {
+                return Ok(Expression::Constant(ConstantExpression {
+                    value: Const::Int(v),
+                    ty: Type::Int,
+                    span: *span,
+                }));
+            }
+
+            let v_type = symbol.ty;
 
             let some_fn_type = Type::Func {
                 params: vec![Type::Int],
@@ -2285,6 +2453,7 @@ pub fn get_size_of_type(t: &Type) -> usize {
         Type::Char | Type::UChar | Type::SChar => 1,
         Type::Short | Type::UShort => 2,
         Type::Int => 4,
+        Type::Enum { .. } => 4,
         Type::UInt => 4,
         Type::Long => 8,
         Type::ULong => 8,
@@ -2306,7 +2475,7 @@ pub fn get_signedness(t: &Type) -> bool {
     match t {
         Type::Short => true,
         Type::UShort => false,
-        Type::Int => true,
+        Type::Int | Type::Enum { .. } => true,
         Type::UInt => false,
         Type::Long => true,
         Type::ULong => false,
@@ -2374,6 +2543,7 @@ fn is_arithmetic(t: &Type) -> bool {
         Type::Short
             | Type::UShort
             | Type::Int
+            | Type::Enum { .. }
             | Type::UInt
             | Type::Long
             | Type::ULong
@@ -2391,6 +2561,7 @@ pub fn is_integer_type(t: &Type) -> bool {
         Type::Short
             | Type::UShort
             | Type::Int
+            | Type::Enum { .. }
             | Type::UInt
             | Type::Long
             | Type::ULong
@@ -2440,6 +2611,7 @@ pub fn is_complete(t: &Type) -> bool {
     match t {
         Type::Void => false,
         Type::Struct { tag } | Type::Union { tag } => TYPE_TABLE.lock().unwrap().contains_key(tag),
+        Type::Enum { .. } => true,
         _ => true,
     }
 }
@@ -2516,6 +2688,7 @@ pub enum IdentifierAttrs {
         global: bool,
     },
     ConstantAttr(StaticInit),
+    EnumConstantAttr(i32),
     LocalAttr,
 }
 
@@ -2551,7 +2724,7 @@ fn alignment(t: &Type) -> usize {
     match t {
         Type::Char | Type::UChar | Type::SChar => 1,
         Type::Short | Type::UShort => 2,
-        Type::Int | Type::UInt | Type::Float => 4,
+        Type::Int | Type::UInt | Type::Float | Type::Enum { .. } => 4,
         Type::Double | Type::Long | Type::ULong | Type::Pointer(_) => 8,
         Type::Struct { tag } | Type::Union { tag } => TYPE_TABLE.lock().unwrap()[tag].alignment,
         Type::Array { element, size: _ } => alignment(element),
@@ -2582,7 +2755,7 @@ macro_rules! convert_to_static {
 fn const2staticinit(konst: &Const, t: &Type) -> StaticInit {
     match t {
         Type::Short => convert_to_static!(konst, i16, StaticInit::Short),
-        Type::Int => convert_to_static!(konst, i32, StaticInit::Int),
+        Type::Int | Type::Enum { .. } => convert_to_static!(konst, i32, StaticInit::Int),
         Type::UShort => convert_to_static!(konst, u16, StaticInit::UShort),
         Type::UInt => convert_to_static!(konst, u32, StaticInit::UInt),
         Type::Long => convert_to_static!(konst, i64, StaticInit::Long),
@@ -2734,6 +2907,38 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 Ok(vec![const2staticinit(value, t)])
             }
         }
+        (_, Initializer::Single(_, Expression::Variable(VariableExpression { value, .. }))) => {
+            let symbol = SYMBOL_TABLE.lock().unwrap().get(value).cloned();
+            if let Some(Symbol {
+                attrs: IdentifierAttrs::EnumConstantAttr(v),
+                ..
+            }) = symbol
+            {
+                if v == 0 {
+                    Ok(vec![StaticInit::Zero(get_size_of_type(t))])
+                } else if matches!(t, Type::Pointer(_)) {
+                    return Err(UccError {
+                        msg: format!("InvalidPointerInitializer"),
+                        kind: ErrorKind::Typecheck,
+                        span: Span { start: 0, end: 0 },
+                    });
+                } else if is_scalar(t) {
+                    Ok(vec![const2staticinit(&Const::Int(v), t)])
+                } else {
+                    return Err(UccError {
+                        msg: format!("StaticInitError::NonConstantInitializer"),
+                        kind: ErrorKind::Typecheck,
+                        span: Span { start: 0, end: 0 },
+                    });
+                }
+            } else {
+                return Err(UccError {
+                    msg: format!("StaticInitError::NonConstantInitializer"),
+                    kind: ErrorKind::Typecheck,
+                    span: Span { start: 0, end: 0 },
+                });
+            }
+        }
         (Type::Pointer(_), _) => {
             return Err(UccError {
                 msg: format!("InvalidPointerInitializer"),
@@ -2859,5 +3064,159 @@ mod union_tests {
             Initializer::Compound(_, Type::Union { tag: ref typed_tag }, ref inits)
                 if typed_tag == &tag && inits.len() == 1
         ));
+    }
+}
+
+#[cfg(test)]
+mod enum_tests {
+    use super::*;
+    use crate::ir::gen::make_temporary;
+    use crate::parser::ast::{BinaryExpression, BinaryExpressionKind, EnumMemberDeclaration, VariableExpression};
+
+    fn span() -> Span {
+        Span { start: 0, end: 0 }
+    }
+
+    fn enum_const_values(names: &[String]) -> Vec<i32> {
+        names
+            .iter()
+            .map(|name| {
+                let table = SYMBOL_TABLE.lock().unwrap();
+                match &table.get(name).unwrap().attrs {
+                    IdentifierAttrs::EnumConstantAttr(value) => *value,
+                    other => panic!("expected enum constant attr, got {other:?}"),
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn assigns_implicit_and_explicit_enumerator_values() {
+        let suffix = make_temporary();
+        let a = format!("enum.test.A.{suffix}");
+        let b = format!("enum.test.B.{suffix}");
+        let c = format!("enum.test.C.{suffix}");
+        let decl = EnumDeclaration {
+            tag: Some(format!("enum.test.tag.{suffix}")),
+            members: vec![
+                EnumMemberDeclaration {
+                    name: a.clone(),
+                    value: None,
+                    span: span(),
+                },
+                EnumMemberDeclaration {
+                    name: b.clone(),
+                    value: Some(Expression::Constant(ConstantExpression {
+                        value: Const::Int(5),
+                        ty: Type::Int,
+                        span: span(),
+                    })),
+                    span: span(),
+                },
+                EnumMemberDeclaration {
+                    name: c.clone(),
+                    value: None,
+                    span: span(),
+                },
+            ],
+            span: span(),
+        };
+
+        decl.typecheck().unwrap();
+
+        assert_eq!(enum_const_values(&[a, b, c]), vec![0, 5, 6]);
+    }
+
+    #[test]
+    fn allows_enum_constants_in_static_initializers() {
+        let suffix = make_temporary();
+        let name = format!("enum.test.static.A.{suffix}");
+        SYMBOL_TABLE.lock().unwrap().insert(
+            name.clone(),
+            Symbol {
+                ty: Type::Int,
+                attrs: IdentifierAttrs::EnumConstantAttr(9),
+            },
+        );
+
+        let init = Initializer::Single(
+            String::new(),
+            Expression::Variable(VariableExpression {
+                value: name,
+                ty: Type::Dummy,
+                span: span(),
+            }),
+        );
+
+        assert_eq!(static_init_helper(&init, &Type::Int).unwrap(), vec![StaticInit::Int(9)]);
+    }
+
+    #[test]
+    fn rejects_nonzero_enum_constants_as_static_pointer_initializers() {
+        let suffix = make_temporary();
+        let name = format!("enum.test.ptr.A.{suffix}");
+        SYMBOL_TABLE.lock().unwrap().insert(
+            name.clone(),
+            Symbol {
+                ty: Type::Int,
+                attrs: IdentifierAttrs::EnumConstantAttr(1),
+            },
+        );
+
+        let init = Initializer::Single(
+            String::new(),
+            Expression::Variable(VariableExpression {
+                value: name,
+                ty: Type::Dummy,
+                span: span(),
+            }),
+        );
+
+        assert!(static_init_helper(&init, &Type::Pointer(Box::new(Type::Int))).is_err());
+    }
+
+    #[test]
+    fn accepts_previous_enumerators_in_constant_expressions() {
+        let suffix = make_temporary();
+        let a = format!("enum.test.expr.A.{suffix}");
+        let b = format!("enum.test.expr.B.{suffix}");
+        let decl = EnumDeclaration {
+            tag: Some(format!("enum.test.expr.tag.{suffix}")),
+            members: vec![
+                EnumMemberDeclaration {
+                    name: a.clone(),
+                    value: Some(Expression::Constant(ConstantExpression {
+                        value: Const::Int(3),
+                        ty: Type::Int,
+                        span: span(),
+                    })),
+                    span: span(),
+                },
+                EnumMemberDeclaration {
+                    name: b.clone(),
+                    value: Some(Expression::Binary(BinaryExpression {
+                        kind: BinaryExpressionKind::Mul,
+                        lhs: Box::new(Expression::Variable(VariableExpression {
+                            value: a.clone(),
+                            ty: Type::Dummy,
+                            span: span(),
+                        })),
+                        rhs: Box::new(Expression::Constant(ConstantExpression {
+                            value: Const::Int(4),
+                            ty: Type::Int,
+                            span: span(),
+                        })),
+                        ty: Type::Dummy,
+                        span: span(),
+                    })),
+                    span: span(),
+                },
+            ],
+            span: span(),
+        };
+
+        decl.typecheck().unwrap();
+
+        assert_eq!(enum_const_values(&[a, b]), vec![3, 12]);
     }
 }

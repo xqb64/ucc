@@ -15,6 +15,7 @@ pub enum Declaration {
     Function(FunctionDeclaration),
     Struct(StructDeclaration),
     Union(StructDeclaration),
+    Enum(EnumDeclaration),
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -35,6 +36,20 @@ pub struct StructDeclaration {
 pub struct MemberDeclaration {
     pub name: String,
     pub ty: Type,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumDeclaration {
+    pub tag: Option<String>,
+    pub members: Vec<EnumMemberDeclaration>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumMemberDeclaration {
+    pub name: String,
+    pub value: Option<Expression>,
     pub span: Span,
 }
 
@@ -67,6 +82,7 @@ pub enum Type {
     Void,
     Struct { tag: String },
     Union { tag: String },
+    Enum { tag: String },
     Dummy,
 }
 
@@ -399,7 +415,7 @@ impl Initializer {
                     span: Span { start: 0, end: 0 },
                 }),
             ),
-            Type::Int => Initializer::Single(
+            Type::Int | Type::Enum { .. } => Initializer::Single(
                 String::new(),
                 Expression::Constant(ConstantExpression {
                     value: Const::Int(0),

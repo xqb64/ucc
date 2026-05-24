@@ -297,7 +297,7 @@ macro_rules! convert_const {
 fn const_convert(konst: &Const, dst_type: &Type) -> Const {
     match dst_type {
         Type::Short => convert_const!(konst, Const::Short, i16),
-        Type::Int => convert_const!(konst, Const::Int, i32),
+        Type::Int | Type::Enum { .. } => convert_const!(konst, Const::Int, i32),
         Type::Long => convert_const!(konst, Const::Long, i64),
         Type::UShort => convert_const!(konst, Const::UShort, u16),
         Type::UInt => convert_const!(konst, Const::UInt, u32),

@@ -2500,6 +2500,8 @@ pub fn build_asm_symbol_table() {
                 }
             }
 
+            IdentifierAttrs::EnumConstantAttr(_) => continue,
+
             IdentifierAttrs::ConstantAttr(_) => {
                 let asm_type = type2asmtype(&symbol.ty);
                 AsmSymtabEntry::Object {
@@ -2849,7 +2851,7 @@ fn type2asmtype(t: &Type) -> AsmType {
     match t {
         Type::Char | Type::UChar | Type::SChar => AsmType::Byte,
         Type::Short | Type::UShort => AsmType::Word,
-        Type::Int | Type::UInt => AsmType::Longword,
+        Type::Int | Type::UInt | Type::Enum { .. } => AsmType::Longword,
         Type::Long | Type::ULong => AsmType::Quadword,
         Type::Float => AsmType::Float,
         Type::Double => AsmType::Double,
@@ -2897,7 +2899,7 @@ fn get_alignment_of_type(t: &Type) -> usize {
     match t {
         Type::Char | Type::UChar | Type::SChar => 1,
         Type::Short | Type::UShort => 2,
-        Type::Int => 4,
+        Type::Int | Type::Enum { .. } => 4,
         Type::Long => 8,
         Type::UInt => 4,
         Type::ULong => 8,
@@ -3133,6 +3135,16 @@ mod short_tests {
     fn word_operands_are_two_bytes() {
         assert!(matches!(OperandByteLen::from(AsmType::Word), OperandByteLen::B2));
         assert_eq!(Alignment::default_of(AsmType::Word), Alignment::B2);
+    }
+
+    #[test]
+    fn maps_enum_type_to_int_asm_type() {
+        let ty = Type::Enum {
+            tag: "enum.codegen.test".to_string(),
+        };
+
+        assert_eq!(type2asmtype(&ty), AsmType::Longword);
+        assert_eq!(get_alignment_of_type(&ty), 4);
     }
 
     #[test]
