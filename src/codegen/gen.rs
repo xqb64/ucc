@@ -1339,6 +1339,7 @@ impl Codegen for IRInstruction {
 
                 let (int_args, double_args, stack_args) =
                     classify_parameters(args, return_in_memory);
+                let variadic_sse_arg_count = double_args.len();
 
                 let stack_padding = if stack_args.len() % 2 != 0 { 8 } else { 0 };
 
@@ -1427,6 +1428,14 @@ impl Codegen for IRInstruction {
                             }
                         },
                     }
+                }
+
+                if is_variadic_function(target) {
+                    instructions.push(AsmInstruction::Mov {
+                        asm_type: AsmType::Byte,
+                        src: AsmOperand::Imm(variadic_sse_arg_count as i64),
+                        dst: AsmOperand::Register(AsmRegister::Ax),
+                    });
                 }
 
                 instructions.push(AsmInstruction::Call(target.to_owned()));
@@ -2417,9 +2426,16 @@ fn classify_param_types(params: &[Type], return_on_stack: bool) -> Vec<AsmRegist
         .collect()
 }
 
+fn is_variadic_function(name: &str) -> bool {
+    match SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap().ty {
+        Type::Func { variadic, .. } => variadic,
+        _ => false,
+    }
+}
+
 fn returns_on_stack(name: &str) -> bool {
     match SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap().ty {
-        Type::Func { params: _, ret } => match &*ret {
+        Type::Func { ret, .. } => match &*ret {
             Type::Struct { tag } | Type::Union { tag } => {
                 let struct_entry = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
 
@@ -2443,7 +2459,7 @@ pub fn build_asm_symbol_table() {
     for (identifier, symbol) in frontend_symtab.iter() {
         let entry = match symbol.attrs {
             IdentifierAttrs::FuncAttr { defined, .. } => match &symbol.ty {
-                Type::Func { params, ret } => {
+                Type::Func { params, ret, .. } => {
                     if is_complete(ret) || ret == &Type::Void.into() {
                         let (return_regs, returns_on_stack) = classify_return_type(ret);
                         let param_regs = classify_param_types(params, returns_on_stack);
@@ -3234,6 +3250,59 @@ mod short_tests {
                 alignment: 8,
             }
         );
+    }
+
+    #[test]
+    fn variadic_calls_load_sse_argument_count_into_al() {
+        let target = format!("varargs.codegen.{}", make_temporary());
+        SYMBOL_TABLE.lock().unwrap().insert(
+            target.clone(),
+            crate::semantics::typechecker::Symbol {
+                ty: Type::Func {
+                    params: vec![Type::Int],
+                    ret: Box::new(Type::Void),
+                    variadic: true,
+                },
+                attrs: IdentifierAttrs::FuncAttr {
+                    defined: false,
+                    global: true,
+                },
+            },
+        );
+
+        let node = IRInstruction::Call {
+            target: target.clone(),
+            args: vec![
+                IRValue::Constant(Const::Int(1)),
+                IRValue::Constant(Const::Double(2.0)),
+            ],
+            dst: None,
+        }
+        .codegen();
+
+        let AsmNode::Instructions(instructions) = node else {
+            panic!("expected instruction node");
+        };
+
+        let load_al = instructions
+            .iter()
+            .position(|instr| {
+                matches!(
+                    instr,
+                    AsmInstruction::Mov {
+                        asm_type: AsmType::Byte,
+                        src: AsmOperand::Imm(1),
+                        dst: AsmOperand::Register(AsmRegister::Ax),
+                    }
+                )
+            })
+            .expect("variadic call should load SSE register count into %al");
+        let call = instructions
+            .iter()
+            .position(|instr| matches!(instr, AsmInstruction::Call(name) if name == &target))
+            .expect("expected function call");
+
+        assert!(load_al < call);
     }
 
 }

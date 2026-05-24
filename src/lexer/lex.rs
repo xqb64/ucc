@@ -11,7 +11,7 @@ pub struct Lexer {
 impl Lexer {
     pub fn new(src: String) -> Lexer {
         let keywords = vec![
-            "char", "short", "int", "long", "signed", "unsigned", "float", "double", "void", "return",
+            "char", "short", "int", "long", "signed", "unsigned", "float", "double", "void", "typedef", "return",
             "if", "else", "do", "while", "for", "break", "continue", "static", "extern",
             "sizeof", "struct", "union", "enum", "goto", "switch", "case", "default",
         ];
@@ -22,7 +22,7 @@ impl Lexer {
             "punctuation",
             Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\].^|]").unwrap(),
         );
-        regexes.insert("punctuation_triple", Regex::new(r"^(<<=|>>=)").unwrap());
+        regexes.insert("punctuation_triple", Regex::new(r"^(\.\.\.|<<=|>>=)").unwrap());
         regexes.insert(
             "punctuation_double",
             Regex::new(r"^(--|==|!=|>=|<=|&&|\|\||->|>>|<<|\+\+|\+=|-=|\*=|/=|\|=|\^=|&=|%=)")
@@ -104,6 +104,7 @@ impl Iterator for Lexer {
                 "float" => self.make_token(TokenKind::Float, len),
                 "double" => self.make_token(TokenKind::Double, len),
                 "void" => self.make_token(TokenKind::Void, len),
+                "typedef" => self.make_token(TokenKind::Typedef, len),
                 "return" => self.make_token(TokenKind::Return, len),
                 "if" => self.make_token(TokenKind::If, len),
                 "else" => self.make_token(TokenKind::Else, len),
@@ -179,6 +180,7 @@ impl Iterator for Lexer {
             match m.as_str() {
                 ">>=" => self.make_token(TokenKind::GreaterGreaterEqual, len),
                 "<<=" => self.make_token(TokenKind::LessLessEqual, len),
+                "..." => self.make_token(TokenKind::Ellipsis, len),
                 _ => unreachable!(),
             }
         } else if let Some(m) = self.regexes["punctuation_double"].find(src) {
@@ -339,6 +341,7 @@ pub enum TokenKind {
     Float,
     Double,
     Void,
+    Typedef,
     Return,
     If,
     Else,
@@ -400,6 +403,7 @@ pub enum TokenKind {
     GreaterEqual,
     Equal,
     Comma,
+    Ellipsis,
     Ampersand,
     Semicolon,
     Identifier(String),

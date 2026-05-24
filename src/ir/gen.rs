@@ -318,7 +318,7 @@ impl Irfy for BlockStatement {
 
                     Declaration::Function(_func_decl) => {}
 
-                    Declaration::Struct(_) | Declaration::Union(_) | Declaration::Enum(_) => {}
+                    Declaration::Struct(_) | Declaration::Union(_) | Declaration::Enum(_) | Declaration::Typedef(_) => {}
                 },
 
                 BlockItem::Statement(stmt) => {
@@ -832,7 +832,7 @@ impl Irfy for BlockItem {
             BlockItem::Declaration(decl) => match decl {
                 Declaration::Function(func) => func.irfy(funcname),
                 Declaration::Variable(var) => var.irfy(funcname),
-                Declaration::Struct(_) | Declaration::Union(_) | Declaration::Enum(_) => None,
+                Declaration::Struct(_) | Declaration::Union(_) | Declaration::Enum(_) | Declaration::Typedef(_) => None,
             },
             BlockItem::Statement(stmt) => stmt.irfy(funcname),
         }

@@ -16,6 +16,7 @@ pub enum Declaration {
     Struct(StructDeclaration),
     Union(StructDeclaration),
     Enum(EnumDeclaration),
+    Typedef(TypedefDeclaration),
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -63,6 +64,13 @@ pub struct VariableDeclaration {
     pub span: Span,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedefDeclaration {
+    pub name: String,
+    pub ty: Type,
+    pub span: Span,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Short,
@@ -73,7 +81,7 @@ pub enum Type {
     ULong,
     Float,
     Double,
-    Func { params: Vec<Type>, ret: Box<Type> },
+    Func { params: Vec<Type>, ret: Box<Type>, variadic: bool },
     Pointer(Box<Type>),
     Array { element: Box<Type>, size: usize },
     Char,
@@ -125,6 +133,7 @@ pub struct FunctionDeclaration {
 pub enum StorageClass {
     Static,
     Extern,
+    Typedef,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -650,7 +659,7 @@ pub struct CastExpression {
 pub enum Declarator {
     Ident(String),
     Pointer(Box<Declarator>),
-    Func(Vec<ParamInfo>, Box<Declarator>),
+    Func(Vec<ParamInfo>, bool, Box<Declarator>),
     Array(Box<Declarator>, usize),
 }
 

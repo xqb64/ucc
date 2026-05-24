@@ -14,10 +14,10 @@ At the forefront is the compiler driver, which orchestrates the compilation proc
 - [x] compound assignment
 - [x] bitwise ops
 - [x] char (in both unsigned and signed variants)
-- [ ] short
+- [x] short
 - [x] int (in both unsigned and signed variants)
 - [x] long (in both unsigned and signed variants)
-- [ ] float
+- [x] float
 - [x] double
 - [x] void
 - [x] if/else
@@ -33,9 +33,10 @@ At the forefront is the compiler driver, which orchestrates the compilation proc
 - [x] arrays
 - [x] structs
 - [x] sizeof
-- [ ] enums
-- [ ] unions
-- [ ] typedef
+- [x] enums
+- [x] unions
+- [x] typedef
+- [x] varargs
 
 ## License
 

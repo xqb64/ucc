@@ -12,7 +12,7 @@ use crate::{
         IfStatement, Initializer, LabeledStatement, MemberDeclaration, PostfixExpression, Program,
         ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
         StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement, Type,
-        UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement,
+        TypedefDeclaration, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement,
     },
     util::error::{ErrorKind, Result, UccError},
 };
@@ -90,7 +90,46 @@ impl Resolve for Declaration {
                 let resolved = enum_decl.resolve(variable_map, struct_map)?;
                 Ok(Declaration::Enum(resolved))
             }
+            Declaration::Typedef(typedef_decl) => {
+                let resolved = typedef_decl.resolve(variable_map, struct_map)?;
+                Ok(Declaration::Typedef(resolved))
+            }
         }
+    }
+}
+
+impl Resolve for TypedefDeclaration {
+    fn resolve(
+        self,
+        variable_map: &mut BTreeMap<String, Variable>,
+        struct_map: &mut BTreeMap<String, StructTableEntry>,
+    ) -> Result<Self> {
+        if let Some(prev_entry) = variable_map.get(&self.name) {
+            if prev_entry.from_current_scope && !prev_entry.is_typedef {
+                return Err(UccError {
+                    kind: ErrorKind::Resolve,
+                    msg: format!("typedef name conflicts with ordinary identifier: {}", self.name),
+                    span: self.span,
+                });
+            }
+        }
+
+        let resolved_type = self.ty.resolve(variable_map, struct_map)?;
+        variable_map.insert(
+            self.name.clone(),
+            Variable {
+                from_current_scope: true,
+                name: self.name.clone(),
+                has_linkage: false,
+                is_typedef: true,
+            },
+        );
+
+        Ok(TypedefDeclaration {
+            name: self.name,
+            ty: resolved_type,
+            span: self.span,
+        })
     }
 }
 
@@ -102,12 +141,23 @@ impl Resolve for VariableDeclaration {
     ) -> Result<Self> {
         match self.is_global {
             true => {
+                if let Some(prev_entry) = variable_map.get(&self.name) {
+                    if prev_entry.from_current_scope && prev_entry.is_typedef {
+                        return Err(UccError {
+                            kind: ErrorKind::Resolve,
+                            msg: format!("conflicting global declarations: {}", self.name),
+                            span: self.span,
+                        });
+                    }
+                }
+
                 variable_map.insert(
                     self.name.clone(),
                     Variable {
                         from_current_scope: true,
                         name: self.name.clone(),
                         has_linkage: false,
+                        is_typedef: false,
                     },
                 );
 
@@ -154,6 +204,7 @@ impl Resolve for VariableDeclaration {
                             from_current_scope: true,
                             name: self.name.clone(),
                             has_linkage: true,
+                            is_typedef: false,
                         },
                     );
 
@@ -181,6 +232,7 @@ impl Resolve for VariableDeclaration {
                             from_current_scope: true,
                             name: unique_name.clone(),
                             has_linkage: false,
+                            is_typedef: false,
                         },
                     );
 
@@ -263,6 +315,7 @@ impl Resolve for FunctionDeclaration {
                 from_current_scope: true,
                 name: self.name.clone(),
                 has_linkage: true,
+                is_typedef: false,
             },
         );
 
@@ -861,6 +914,14 @@ impl Resolve for Expression {
                     span: var.span,
                 })?;
 
+                if variable.is_typedef {
+                    return Err(UccError {
+                        kind: ErrorKind::Resolve,
+                        msg: format!("typedef name used as variable: {}", var.value),
+                        span: var.span,
+                    });
+                }
+
                 Ok(Expression::Variable(VariableExpression {
                     value: variable.name.clone(),
                     ty: Type::Dummy,
@@ -932,7 +993,15 @@ impl Resolve for Expression {
                 span,
             }) => {
                 if variable_map.contains_key(&name) {
-                    let new_func_name = variable_map.get(&name).unwrap().name.clone();
+                    let entry = variable_map.get(&name).unwrap();
+                    if entry.is_typedef {
+                        return Err(UccError {
+                            kind: ErrorKind::Resolve,
+                            msg: format!("typedef name used as function: {}", name),
+                            span,
+                        });
+                    }
+                    let new_func_name = entry.name.clone();
                     let resolved_args = args
                         .into_iter()
                         .map(|arg| arg.resolve(variable_map, struct_map))
@@ -1226,7 +1295,7 @@ impl Resolve for Type {
                 })
             }
 
-            Type::Func { params, ret } => {
+            Type::Func { params, ret, variadic } => {
                 let mut resolved_params = vec![];
                 for param in params {
                     resolved_params.push(param.resolve(variable_map, struct_map)?);
@@ -1235,6 +1304,7 @@ impl Resolve for Type {
                 Ok(Type::Func {
                     params: resolved_params,
                     ret: Box::new(resolved_ret),
+                    variadic,
                 })
             }
 
@@ -1260,6 +1330,7 @@ fn resolve_param(param: &str, variable_map: &mut BTreeMap<String, Variable>) -> 
             from_current_scope: true,
             name: unique_name.clone(),
             has_linkage: false,
+            is_typedef: false,
         },
     );
 
@@ -1276,6 +1347,7 @@ fn copy_variable_map(variable_map: &BTreeMap<String, Variable>) -> BTreeMap<Stri
                     from_current_scope: false,
                     name: v.name.clone(),
                     has_linkage: v.has_linkage,
+                    is_typedef: v.is_typedef,
                 },
             )
         })
@@ -1307,6 +1379,7 @@ pub struct Variable {
     name: String,
     from_current_scope: bool,
     has_linkage: bool,
+    is_typedef: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1362,6 +1435,19 @@ mod enum_tests {
     #[test]
     fn rejects_conflicting_struct_union_enum_tags() {
         let program = parse("struct Tag; enum Tag { A };");
+        assert!(program
+            .resolve(&mut BTreeMap::new(), &mut BTreeMap::new())
+            .is_err());
+    }
+
+    #[test]
+    fn rejects_typedef_conflicts_in_the_ordinary_identifier_namespace() {
+        let program = parse("int T; typedef int T;");
+        assert!(program
+            .resolve(&mut BTreeMap::new(), &mut BTreeMap::new())
+            .is_err());
+
+        let program = parse("typedef int T; int T;");
         assert!(program
             .resolve(&mut BTreeMap::new(), &mut BTreeMap::new())
             .is_err());

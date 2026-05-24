@@ -8,12 +8,12 @@ use crate::{
         EnumMemberDeclaration, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer,
         LiteralExpression, MemberDeclaration, ParamInfo, Program, ReturnStatement,
         SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
-        StructDeclaration, SubscriptExpression, Type, UnaryExpression, UnaryExpressionKind,
+        StructDeclaration, SubscriptExpression, Type, TypedefDeclaration, UnaryExpression, UnaryExpressionKind,
         VariableDeclaration, VariableExpression, WhileStatement,
     },
     util::error::{ErrorKind, Result, UccError},
 };
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use super::ast::{
     CaseStatement, CompoundExpression, CompoundExpressionKind, DefaultStatement, GotoStatement,
@@ -27,6 +27,8 @@ pub struct Parser {
     pub depth: usize,
     pub current_target_type: Option<Type>,
     pub current_fn: Option<String>,
+    pub typedef_scopes: Vec<BTreeMap<String, Type>>,
+    pub typedef_shadows: Vec<BTreeSet<String>>,
 }
 
 impl Parser {
@@ -38,6 +40,8 @@ impl Parser {
             depth: 0,
             current_target_type: None,
             current_fn: None,
+            typedef_scopes: vec![BTreeMap::new()],
+            typedef_shadows: vec![BTreeSet::new()],
         }
     }
 
@@ -97,6 +101,58 @@ impl Parser {
         false
     }
 
+    fn enter_typedef_scope(&mut self) {
+        self.typedef_scopes.push(BTreeMap::new());
+        self.typedef_shadows.push(BTreeSet::new());
+    }
+
+    fn exit_typedef_scope(&mut self) {
+        self.typedef_scopes.pop();
+        self.typedef_shadows.pop();
+    }
+
+    fn lookup_typedef(&self, name: &str) -> Option<Type> {
+        for (aliases, shadows) in self.typedef_scopes.iter().zip(self.typedef_shadows.iter()).rev() {
+            if shadows.contains(name) {
+                return None;
+            }
+            if let Some(ty) = aliases.get(name) {
+                return Some(ty.clone());
+            }
+        }
+        None
+    }
+
+    fn is_typedef_name(&self, token: &TokenKind) -> bool {
+        match token {
+            TokenKind::Identifier(name) => self.lookup_typedef(name).is_some(),
+            _ => false,
+        }
+    }
+
+    fn declare_typedef_name(&mut self, name: String, ty: Type) {
+        if let Some(shadows) = self.typedef_shadows.last_mut() {
+            shadows.remove(&name);
+        }
+        self.typedef_scopes.last_mut().unwrap().insert(name, ty);
+    }
+
+    fn shadow_typedef_name(&mut self, name: &str) {
+        if self.lookup_typedef(name).is_some() && !self.typedef_scopes.last().unwrap().contains_key(name) {
+            self.typedef_shadows
+                .last_mut()
+                .unwrap()
+                .insert(name.to_string());
+        }
+    }
+
+    fn starts_declaration(&self) -> bool {
+        match self.current.as_ref().map(|token| &token.kind) {
+            Some(kind) => self.is_specifier(kind) || self.is_typedef_name(kind),
+            None => false,
+        }
+    }
+
     fn parse_statement(&mut self) -> Result<BlockItem> {
         if let Some(current) = &self.current {
             match current.kind {
@@ -111,22 +167,7 @@ impl Parser {
             }
         }
 
-        if self.check_many(&[
-            TokenKind::Char,
-            TokenKind::Short,
-            TokenKind::Int,
-            TokenKind::Long,
-            TokenKind::Float,
-            TokenKind::Double,
-            TokenKind::Signed,
-            TokenKind::Unsigned,
-            TokenKind::Void,
-            TokenKind::Static,
-            TokenKind::Extern,
-            TokenKind::Struct,
-            TokenKind::Union,
-            TokenKind::Enum,
-        ]) {
+        if self.starts_declaration() {
             self.parse_declaration()
         } else if self.is_next(&[TokenKind::Return]) {
             self.parse_return_statement()
@@ -303,7 +344,7 @@ impl Parser {
         )?;
         let declarator = self.parse_declarator()?;
         match declarator {
-            Declarator::Func(_, _) => {
+            Declarator::Func(_, _, _) => {
                 return Err(UccError {
                     msg: format!("function declarations not allowed in struct"),
                     kind: ErrorKind::Parse,
@@ -338,11 +379,11 @@ impl Parser {
                 | TokenKind::Struct
                 | TokenKind::Union
                 | TokenKind::Enum
-        )
+        ) || self.is_typedef_name(token)
     }
 
     fn is_storage_class_specifier(&self, token: &TokenKind) -> bool {
-        matches!(token, TokenKind::Static | TokenKind::Extern)
+        matches!(token, TokenKind::Static | TokenKind::Extern | TokenKind::Typedef)
     }
 
     fn is_specifier(&self, token: &TokenKind) -> bool {
@@ -363,11 +404,23 @@ impl Parser {
         let declarator = self.parse_declarator()?;
         let (name, decl_type, params) = self.process_declarator(&declarator, &base_type)?;
 
+        if storage_class == Some(StorageClass::Typedef) {
+            self.consume(&TokenKind::Semicolon)?;
+            let end = self.current_span()?;
+            self.declare_typedef_name(name.clone(), decl_type.clone());
+            return Ok(BlockItem::Declaration(Declaration::Typedef(TypedefDeclaration {
+                name,
+                ty: decl_type,
+                span: begin + end,
+            })));
+        }
+
         match decl_type {
-            Type::Func { params: _, ret: _ } => {
+            Type::Func { .. } => {
                 self.parse_function_declaration(&name, &params, decl_type, storage_class, begin)
             }
             _ => {
+                self.shadow_typedef_name(&name);
                 let init = if self.is_next(&[TokenKind::Equal]) {
                     let expr = self.parse_expression()?;
                     self.consume(&TokenKind::Semicolon)?;
@@ -460,8 +513,8 @@ impl Parser {
             Some(token) => match token.kind {
                 TokenKind::LParen => {
                     self.consume(&TokenKind::LParen)?;
-                    let params = self.parse_param_list()?;
-                    Ok(Declarator::Func(params, Box::new(simple_declarator)))
+                    let (params, variadic) = self.parse_param_list()?;
+                    Ok(Declarator::Func(params, variadic, Box::new(simple_declarator)))
                 }
                 TokenKind::LBracket => {
                     let decl = self.parse_array_decl_suffix(&simple_declarator)?;
@@ -556,7 +609,7 @@ impl Parser {
             }
         })
     }
-    fn parse_param_list(&mut self) -> Result<Vec<ParamInfo>> {
+    fn parse_param_list(&mut self) -> Result<(Vec<ParamInfo>, bool)> {
         let in_front_of_us = self
             .lookahead_until(&TokenKind::RParen)
             .iter()
@@ -568,17 +621,30 @@ impl Parser {
             self.consume(&TokenKind::Void)?;
             self.consume(&TokenKind::RParen)?;
 
-            Ok(vec![])
+            Ok((vec![], false))
         } else {
             let mut params = vec![];
+            let mut variadic = false;
             loop {
+                if self.is_next(&[TokenKind::Ellipsis]) {
+                    if params.is_empty() {
+                        return Err(UccError {
+                            msg: format!("Variadic parameter list needs at least one named parameter"),
+                            kind: ErrorKind::Parse,
+                            span: self.current_span()?,
+                        });
+                    }
+                    variadic = true;
+                    break;
+                }
+
                 params.push(self.parse_param()?);
                 if !self.is_next(&[TokenKind::Comma]) {
                     break;
                 }
             }
             self.consume(&TokenKind::RParen)?;
-            Ok(params)
+            Ok((params, variadic))
         }
     }
 
@@ -669,6 +735,7 @@ impl Parser {
         let some_fn_type = Type::Func {
             params: vec![],
             ret: Box::new(Type::Int),
+            variadic: false,
         };
         match declarator {
             Declarator::Ident(name) => Ok((name.clone(), base_type.clone(), vec![])),
@@ -676,7 +743,7 @@ impl Parser {
                 let derived_type = Type::Pointer(base_type.clone().into());
                 self.process_declarator(decl, &derived_type)
             }
-            Declarator::Func(params, decl) => match *decl.clone() {
+            Declarator::Func(params, variadic, decl) => match *decl.clone() {
                 Declarator::Ident(name) => {
                     let mut param_names = vec![];
                     let mut param_types = vec![];
@@ -700,6 +767,7 @@ impl Parser {
                     let derived_type = Type::Func {
                         params: param_types,
                         ret: base_type.clone().into(),
+                        variadic: *variadic,
                     };
                     Ok((name.clone(), derived_type, param_names))
                 }
@@ -730,7 +798,7 @@ impl Parser {
         begin: Span,
     ) -> Result<BlockItem> {
         self.current_target_type = Some(match ty.clone() {
-            Type::Func { params: _, ret } => *ret,
+            Type::Func { ret, .. } => *ret,
             _ => unreachable!(),
         });
 
@@ -739,9 +807,14 @@ impl Parser {
             None
         } else if self.check(&TokenKind::LBrace) {
             self.consume(&TokenKind::LBrace)?;
+            self.enter_typedef_scope();
+            for param in params {
+                self.shadow_typedef_name(param);
+            }
             self.current_fn = Some(name.to_string());
             let block = Some(self.parse_block_statement()?);
             self.current_fn = None;
+            self.exit_typedef_scope();
 
             block
         } else {
@@ -794,6 +867,11 @@ impl Parser {
             [TokenKind::Enum, TokenKind::Identifier(tag)] => {
                 Ok(Type::Enum { tag: tag.clone() })
             }
+            [TokenKind::Identifier(name)] => self.lookup_typedef(name).ok_or_else(|| UccError {
+                kind: ErrorKind::Parse,
+                msg: format!("Unknown typedef name: {}", name),
+                span: self.current_span().unwrap_or(Span { start: 0, end: 0 }),
+            }),
             [TokenKind::Void] => Ok(Type::Void),
             [TokenKind::Float] => Ok(Type::Float),
             [TokenKind::Double] => Ok(Type::Double),
@@ -894,6 +972,7 @@ impl Parser {
             match storage_classes[0] {
                 TokenKind::Static => Some(StorageClass::Static),
                 TokenKind::Extern => Some(StorageClass::Extern),
+                TokenKind::Typedef => Some(StorageClass::Typedef),
                 _ => {
                     unreachable!()
                 }
@@ -920,6 +999,7 @@ impl Parser {
 
     fn parse_block_statement(&mut self) -> Result<BlockItem> {
         self.depth += 1;
+        self.enter_typedef_scope();
         let begin = self.current_span()?;
         let mut stmts = vec![];
         while !self.check(&TokenKind::RBrace) {
@@ -928,6 +1008,7 @@ impl Parser {
         self.consume(&TokenKind::RBrace)?;
         let end = self.current_span()?;
         self.depth -= 1;
+        self.exit_typedef_scope();
         Ok(BlockItem::Statement(Statement::Compound(BlockStatement {
             stmts,
             span: begin + end,
@@ -1083,7 +1164,7 @@ impl Parser {
 
         let init = if self.is_next(&[TokenKind::Semicolon]) {
             ForInit::Expression(None)
-        } else if self.is_specifier(&self.current.as_ref().unwrap().kind) {
+        } else if self.starts_declaration() {
             let decl = self.parse_var_or_fn_decl()?;
             ForInit::Declaration(match decl {
                 BlockItem::Declaration(Declaration::Variable(var)) => var,
@@ -2148,6 +2229,67 @@ mod short_tests {
         assert_eq!(get_common_type(&Type::Float, &Type::Int), &Type::Float);
         assert_eq!(get_common_type(&Type::Float, &Type::Double), &Type::Double);
         assert_eq!(get_common_type(&Type::Float, &Type::UShort), &Type::Float);
+    }
+
+
+    #[test]
+    fn lexes_typedef_and_variadic_ellipsis() {
+        let tokens: Vec<_> = Lexer::new("typedef int I; int log(I code, ...);".to_string()).collect();
+
+        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::Typedef)));
+        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::Ellipsis)));
+    }
+
+    #[test]
+    fn parses_typedef_aliases_as_type_specifiers() {
+        let program = parse("typedef int I; I value; typedef I J; J *ptr;");
+
+        assert!(matches!(
+            &program.block_items[0],
+            BlockItem::Declaration(Declaration::Typedef(decl))
+                if decl.name == "I" && decl.ty == Type::Int
+        ));
+        assert!(matches!(
+            &program.block_items[1],
+            BlockItem::Declaration(Declaration::Variable(var))
+                if var.ty == Type::Int
+        ));
+        assert!(matches!(
+            &program.block_items[2],
+            BlockItem::Declaration(Declaration::Typedef(decl))
+                if decl.name == "J" && decl.ty == Type::Int
+        ));
+        assert!(matches!(
+            &program.block_items[3],
+            BlockItem::Declaration(Declaration::Variable(var))
+                if var.ty == Type::Pointer(Box::new(Type::Int))
+        ));
+    }
+
+    #[test]
+    fn parses_variadic_function_types() {
+        let program = parse("typedef int I; int log(I code, double value, ...);");
+
+        assert!(matches!(
+            &program.block_items[1],
+            BlockItem::Declaration(Declaration::Function(func))
+                if func.params == vec!["code".to_string(), "value".to_string()]
+                    && func.ty == (Type::Func {
+                        params: vec![Type::Int, Type::Double],
+                        ret: Box::new(Type::Int),
+                        variadic: true,
+                    })
+        ));
+    }
+
+    #[test]
+    fn rejects_ellipsis_without_named_parameter() {
+        parse_errs("int bad(...);");
+    }
+
+    #[test]
+    fn ordinary_identifiers_can_shadow_typedef_names_in_inner_scopes() {
+        parse("typedef int T; int main(void) { long T; T = 1L; return (int) T; }");
     }
 
 }

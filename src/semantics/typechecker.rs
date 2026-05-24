@@ -10,7 +10,7 @@ use crate::{
         IfStatement, Initializer, LabeledStatement, PostfixExpression, PostfixExpressionKind,
         Program, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
         StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement, Type,
-        UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression,
+        TypedefDeclaration, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression,
         WhileStatement,
     },
     util::error::{ErrorKind, Result, UccError},
@@ -90,7 +90,18 @@ impl Typecheck for Declaration {
                 let typechecked = enum_decl.typecheck()?;
                 Ok(Declaration::Enum(typechecked))
             }
+            Declaration::Typedef(typedef_decl) => {
+                let typechecked = typedef_decl.typecheck()?;
+                Ok(Declaration::Typedef(typechecked))
+            }
         }
+    }
+}
+
+impl Typecheck for TypedefDeclaration {
+    fn typecheck(self) -> Result<Self> {
+        validate_type_specifier(&self.ty)?;
+        Ok(self)
     }
 }
 
@@ -315,6 +326,13 @@ impl Typecheck for VariableDeclaration {
                             span: self.span,
                         })
                     }
+                    Some(StorageClass::Typedef) => {
+                        return Err(UccError {
+                            msg: format!("Typedef storage class reached variable typechecker"),
+                            kind: ErrorKind::Typecheck,
+                            span: self.span,
+                        });
+                    }
                     None => {
                         let symbol = Symbol {
                             ty: self.ty.clone(),
@@ -363,7 +381,7 @@ fn validate_type_specifier(t: &Type) -> Result<()> {
             validate_type_specifier(referenced)?;
         }
 
-        Type::Func { params, ret } => {
+        Type::Func { params, ret, .. } => {
             for param in params {
                 validate_type_specifier(param)?;
             }
@@ -403,7 +421,7 @@ impl Typecheck for FunctionDeclaration {
         };
 
         let (param_ts, _, fun_type) = match self.ty.clone() {
-            Type::Func { params, ret } => {
+            Type::Func { params, ret, variadic } => {
                 if let Type::Array { .. } = *ret {
                     return Err(UccError {
                         msg: format!("Function return type is an array"),
@@ -421,6 +439,7 @@ impl Typecheck for FunctionDeclaration {
                     Type::Func {
                         params: param_types.clone(),
                         ret: ret.clone(),
+                        variadic,
                     },
                 )
             }
@@ -1089,8 +1108,10 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             let f_type = f.ty.clone();
 
             match f_type {
-                Type::Func { params, ret } => {
-                    if args.len() != params.len() {
+                Type::Func { params, ret, variadic } => {
+                    if (!variadic && args.len() != params.len())
+                        || (variadic && args.len() < params.len())
+                    {
                         return Err(UccError {
                             msg: format!("Function called with the wrong number of arguments."),
                             kind: ErrorKind::Typecheck,
@@ -1109,6 +1130,10 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
                     for (arg, param_type) in args.iter().zip(params.iter()) {
                         converted_args.push(process_arg(arg, param_type)?);
+                    }
+
+                    for arg in args.iter().skip(params.len()) {
+                        converted_args.push(apply_default_argument_promotions(arg)?);
                     }
 
                     Ok(Expression::Call(CallExpression {
@@ -1144,6 +1169,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             let some_fn_type = Type::Func {
                 params: vec![Type::Int],
                 ret: Type::Int.into(),
+                variadic: false,
             };
 
             if std::mem::discriminant(&v_type) == std::mem::discriminant(&some_fn_type) {
@@ -2377,6 +2403,19 @@ fn convert_by_assignment(e: &Expression, target_type: &Type) -> Result<Expressio
     }
 }
 
+fn apply_default_argument_promotions(arg: &Expression) -> Result<Expression> {
+    let typed_arg = typecheck_and_convert(arg)?;
+    let arg_type = get_type(&typed_arg);
+
+    if is_small_integer_type(arg_type) {
+        Ok(convert_to(&typed_arg, &Type::Int))
+    } else if arg_type == &Type::Float {
+        Ok(convert_to(&typed_arg, &Type::Double))
+    } else {
+        Ok(typed_arg)
+    }
+}
+
 pub fn convert_to(e: &Expression, ty: &Type) -> Expression {
     if get_type(e) == ty {
         return e.clone();
@@ -3218,5 +3257,98 @@ mod enum_tests {
         decl.typecheck().unwrap();
 
         assert_eq!(enum_const_values(&[a, b]), vec![3, 12]);
+    }
+}
+
+#[cfg(test)]
+mod typedef_varargs_tests {
+    use super::*;
+    use crate::ir::gen::make_temporary;
+
+    fn span() -> Span {
+        Span { start: 0, end: 0 }
+    }
+
+    fn konst(value: Const, ty: Type) -> Expression {
+        Expression::Constant(ConstantExpression {
+            value,
+            ty,
+            span: span(),
+        })
+    }
+
+    fn insert_variadic_symbol(name: &str) {
+        SYMBOL_TABLE.lock().unwrap().insert(
+            name.to_string(),
+            Symbol {
+                ty: Type::Func {
+                    params: vec![Type::Int],
+                    ret: Box::new(Type::Int),
+                    variadic: true,
+                },
+                attrs: IdentifierAttrs::FuncAttr {
+                    defined: false,
+                    global: true,
+                },
+            },
+        );
+    }
+
+    #[test]
+    fn variadic_calls_apply_default_argument_promotions() {
+        let name = format!("varargs.typecheck.{}", make_temporary());
+        insert_variadic_symbol(&name);
+
+        let call = Expression::Call(CallExpression {
+            name,
+            args: vec![
+                konst(Const::Int(1), Type::Int),
+                konst(Const::Float(1.5), Type::Float),
+                konst(Const::Short(2), Type::Short),
+            ],
+            ty: Type::Dummy,
+            span: span(),
+        });
+
+        let typed = typecheck_expr(&call).unwrap();
+        let Expression::Call(call) = typed else {
+            panic!("expected call expression");
+        };
+
+        assert_eq!(call.args.len(), 3);
+        assert!(matches!(
+            &call.args[1],
+            Expression::Cast(CastExpression { target_type, .. }) if target_type == &Type::Double
+        ));
+        assert!(matches!(
+            &call.args[2],
+            Expression::Cast(CastExpression { target_type, .. }) if target_type == &Type::Int
+        ));
+    }
+
+    #[test]
+    fn variadic_calls_still_require_fixed_arguments() {
+        let name = format!("varargs.too_few.{}", make_temporary());
+        insert_variadic_symbol(&name);
+
+        let call = Expression::Call(CallExpression {
+            name,
+            args: vec![],
+            ty: Type::Dummy,
+            span: span(),
+        });
+
+        assert!(typecheck_expr(&call).is_err());
+    }
+
+    #[test]
+    fn typechecks_typedef_declarations_without_emitting_symbols() {
+        let decl = TypedefDeclaration {
+            name: "I".to_string(),
+            ty: Type::Int,
+            span: span(),
+        };
+
+        assert_eq!(decl.clone().typecheck().unwrap(), decl);
     }
 }
