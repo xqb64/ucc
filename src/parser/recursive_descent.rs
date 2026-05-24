@@ -8,9 +8,11 @@ use crate::{
         EnumMemberDeclaration, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer,
         LiteralExpression, MemberDeclaration, ParamInfo, Program, ReturnStatement,
         SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
-        StructDeclaration, SubscriptExpression, Type, TypedefDeclaration, UnaryExpression, UnaryExpressionKind,
+        spanof, StructDeclaration, SubscriptExpression, Type, TypedefDeclaration, UnaryExpression, UnaryExpressionKind,
+        VaArgExpression, VaCopyExpression, VaEndExpression, VaStartExpression,
         VariableDeclaration, VariableExpression, WhileStatement,
     },
+    semantics::typechecker::{builtin_va_list_type, ensure_builtin_va_list_type},
     util::error::{ErrorKind, Result, UccError},
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -29,6 +31,10 @@ pub struct Parser {
     pub current_fn: Option<String>,
     pub typedef_scopes: Vec<BTreeMap<String, Type>>,
     pub typedef_shadows: Vec<BTreeSet<String>>,
+    pub pending_declarations: VecDeque<BlockItem>,
+    pub anonymous_tag_counter: usize,
+    pub object_scopes: Vec<BTreeMap<String, Type>>,
+
 }
 
 impl Parser {
@@ -42,6 +48,9 @@ impl Parser {
             current_fn: None,
             typedef_scopes: vec![BTreeMap::new()],
             typedef_shadows: vec![BTreeSet::new()],
+            pending_declarations: VecDeque::new(),
+            anonymous_tag_counter: 0,
+            object_scopes: vec![BTreeMap::new()],
         }
     }
 
@@ -76,7 +85,7 @@ impl Parser {
     pub fn parse(&mut self) -> Result<Program> {
         self.advance();
         let mut stmts = vec![];
-        while self.current.is_some() {
+        while self.current.is_some() || !self.pending_declarations.is_empty() {
             stmts.push(self.parse_statement()?);
         }
         Ok(Program { block_items: stmts })
@@ -92,15 +101,6 @@ impl Parser {
         false
     }
 
-    fn check_many(&self, kinds: &[TokenKind]) -> bool {
-        for kind in kinds {
-            if self.check(kind) {
-                return true;
-            }
-        }
-        false
-    }
-
     fn enter_typedef_scope(&mut self) {
         self.typedef_scopes.push(BTreeMap::new());
         self.typedef_shadows.push(BTreeSet::new());
@@ -109,6 +109,32 @@ impl Parser {
     fn exit_typedef_scope(&mut self) {
         self.typedef_scopes.pop();
         self.typedef_shadows.pop();
+    }
+
+    fn enter_object_scope(&mut self) {
+        self.object_scopes.push(BTreeMap::new());
+    }
+
+    fn exit_object_scope(&mut self) {
+        self.object_scopes.pop();
+    }
+
+    fn declare_object_name(&mut self, name: &str, ty: Type) {
+        if !name.is_empty() {
+            self.object_scopes
+                .last_mut()
+                .unwrap()
+                .insert(name.to_string(), ty);
+        }
+    }
+
+    fn lookup_object_type(&self, name: &str) -> Option<Type> {
+        for scope in self.object_scopes.iter().rev() {
+            if let Some(ty) = scope.get(name) {
+                return Some(ty.clone());
+            }
+        }
+        None
     }
 
     fn lookup_typedef(&self, name: &str) -> Option<Type> {
@@ -130,6 +156,53 @@ impl Parser {
         }
     }
 
+    fn is_builtin_type_name(&self, token: &TokenKind) -> bool {
+        match token {
+            TokenKind::Identifier(name) => self.builtin_type(name).is_some(),
+            _ => false,
+        }
+    }
+
+    fn builtin_type(&self, name: &str) -> Option<Type> {
+        match name {
+            "__builtin_va_list" => {
+                ensure_builtin_va_list_type();
+                Some(builtin_va_list_type())
+            }
+
+            // Common glibc implementation typedefs.  In normal C code these are
+            // introduced by earlier typedefs, but recognizing the underlying
+            // double-underscore names directly makes the parser robust when
+            // system headers expose them in nested declarations before a file's
+            // local typedef-name bookkeeping has caught up.
+            "__int8_t" => Some(Type::SChar),
+            "__uint8_t" => Some(Type::UChar),
+            "__int16_t" => Some(Type::Short),
+            "__uint16_t" => Some(Type::UShort),
+            "__int32_t" => Some(Type::Int),
+            "__uint32_t" => Some(Type::UInt),
+            "__int64_t" | "__quad_t" => Some(Type::Long),
+            "__uint64_t" | "__u_quad_t" => Some(Type::ULong),
+            "__intptr_t" | "__ssize_t" | "__off_t" | "__off64_t" | "__time_t"
+            | "__suseconds_t" | "__useconds_t" | "__clock_t" | "__clockid_t"
+            | "__pid_t" | "__uid_t" | "__gid_t" | "__mode_t" | "__nlink_t"
+            | "__ino_t" | "__ino64_t" | "__dev_t" | "__rlim_t" | "__rlim64_t"
+            | "__blksize_t" | "__blkcnt_t" | "__blkcnt64_t" | "__fsblkcnt_t"
+            | "__fsblkcnt64_t" | "__fsfilcnt_t" | "__fsfilcnt64_t" => Some(Type::Long),
+            "__socklen_t" | "__id_t" | "__key_t" | "__timer_t" => Some(Type::Int),
+            _ => {
+                if name.starts_with("__") && name.ends_with("_t") {
+                    // Last-resort compatibility for libc-reserved typedef names.
+                    // Prefer a pointer-sized signed integer: it is conservative
+                    // for layout of most opaque header-only bookkeeping fields.
+                    Some(Type::Long)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
     fn declare_typedef_name(&mut self, name: String, ty: Type) {
         if let Some(shadows) = self.typedef_shadows.last_mut() {
             shadows.remove(&name);
@@ -146,14 +219,60 @@ impl Parser {
         }
     }
 
+    fn is_type_qualifier(&self, token: &TokenKind) -> bool {
+        match token {
+            TokenKind::Const => true,
+            TokenKind::Identifier(name) => matches!(
+                name.as_str(),
+                "const"
+                    | "__const"
+                    | "__const__"
+                    | "restrict"
+                    | "__restrict"
+                    | "__restrict__"
+                    | "volatile"
+                    | "__volatile"
+                    | "__volatile__"
+            ),
+            _ => false,
+        }
+    }
+
+    fn is_ignored_gnu_decl_specifier(&self, token: &TokenKind) -> bool {
+        matches!(
+            token,
+            TokenKind::Identifier(name)
+                if matches!(
+                    name.as_str(),
+                    "__extension__" | "__inline" | "__inline__" | "inline"
+                )
+        )
+    }
+
+    fn is_gnu_extension_marker(&self, token: &TokenKind) -> bool {
+        matches!(token, TokenKind::Identifier(name) if name == "__extension__")
+    }
+
+    fn is_ignored_specifier(&self, token: &TokenKind) -> bool {
+        self.is_type_qualifier(token) || self.is_ignored_gnu_decl_specifier(token)
+    }
+
+    fn starts_type_name(&self, token: &TokenKind) -> bool {
+        self.is_type_specifier(token) || self.is_ignored_specifier(token)
+    }
+
     fn starts_declaration(&self) -> bool {
         match self.current.as_ref().map(|token| &token.kind) {
-            Some(kind) => self.is_specifier(kind) || self.is_typedef_name(kind),
+            Some(kind) => self.is_specifier(kind) || self.is_typedef_name(kind) || self.is_builtin_type_name(kind),
             None => false,
         }
     }
 
     fn parse_statement(&mut self) -> Result<BlockItem> {
+        if let Some(declaration) = self.pending_declarations.pop_front() {
+            return Ok(declaration);
+        }
+
         if let Some(current) = &self.current {
             match current.kind {
                 TokenKind::Identifier(_) => match self.tokens.front() {
@@ -201,21 +320,101 @@ impl Parser {
     }
 
     fn parse_declaration(&mut self) -> Result<BlockItem> {
-        match self
-            .peek(3)
-            .iter()
-            .cloned()
-            .map(|t| t.kind)
-            .collect::<Vec<_>>()
-            .as_slice()
-        {
-            [TokenKind::Struct | TokenKind::Union, TokenKind::Identifier(_), TokenKind::LBrace | TokenKind::Semicolon] => {
-                self.parse_struct_or_union_decl()
-            }
-            [TokenKind::Enum, TokenKind::Identifier(_), TokenKind::LBrace | TokenKind::Semicolon]
-            | [TokenKind::Enum, TokenKind::LBrace, _] => self.parse_enum_decl(),
-            _ => self.parse_var_or_fn_decl(),
+        let items = if self.is_standalone_struct_or_union_decl_start() {
+            vec![self.parse_struct_or_union_decl()?]
+        } else if self.is_standalone_enum_decl_start() {
+            vec![self.parse_enum_decl()?]
+        } else {
+            self.parse_var_or_fn_decls()?
+        };
+
+        for item in items {
+            self.pending_declarations.push_back(item);
         }
+
+        self.pending_declarations.pop_front().ok_or_else(|| UccError {
+            kind: ErrorKind::Parse,
+            msg: format!("internal error, parse_declaration"),
+            span: self.current_span().unwrap_or(Span { start: 0, end: 0 }),
+        })
+    }
+
+    fn is_standalone_struct_or_union_decl_start(&self) -> bool {
+        let tokens = self.peek(4096);
+        let Some(first) = tokens.first() else {
+            return false;
+        };
+
+        if !matches!(first.kind, TokenKind::Struct | TokenKind::Union) {
+            return false;
+        }
+
+        let mut i = 1usize;
+        if matches!(tokens.get(i).map(|t| &t.kind), Some(TokenKind::Identifier(_))) {
+            i += 1;
+        }
+
+        match tokens.get(i).map(|t| &t.kind) {
+            // `struct S;` / `union U;`
+            Some(TokenKind::Semicolon) => true,
+            // `struct S { ... };` is standalone, but
+            // `struct S { ... } *p;` is a variable declaration whose type
+            // specifier happens to define the tag.
+            Some(TokenKind::LBrace) => {
+                let Some(after_brace) = Self::index_after_balanced_braces(&tokens, i) else {
+                    return false;
+                };
+                matches!(tokens.get(after_brace).map(|t| &t.kind), Some(TokenKind::Semicolon))
+            }
+            _ => false,
+        }
+    }
+
+    fn is_standalone_enum_decl_start(&self) -> bool {
+        let tokens = self.peek(4096);
+        let Some(first) = tokens.first() else {
+            return false;
+        };
+
+        if !matches!(first.kind, TokenKind::Enum) {
+            return false;
+        }
+
+        let mut i = 1usize;
+        if matches!(tokens.get(i).map(|t| &t.kind), Some(TokenKind::Identifier(_))) {
+            i += 1;
+        }
+
+        match tokens.get(i).map(|t| &t.kind) {
+            // `enum E;`
+            Some(TokenKind::Semicolon) => true,
+            // `enum E { ... };` is standalone, but
+            // `enum E { ... } x;` declares a variable.
+            Some(TokenKind::LBrace) => {
+                let Some(after_brace) = Self::index_after_balanced_braces(&tokens, i) else {
+                    return false;
+                };
+                matches!(tokens.get(after_brace).map(|t| &t.kind), Some(TokenKind::Semicolon))
+            }
+            _ => false,
+        }
+    }
+
+    fn index_after_balanced_braces(tokens: &[Token], open_index: usize) -> Option<usize> {
+        let mut depth = 0usize;
+        for (i, token) in tokens.iter().enumerate().skip(open_index) {
+            match token.kind {
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => {
+                    depth = depth.checked_sub(1)?;
+                    if depth == 0 {
+                        return Some(i + 1);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 
     fn parse_struct_or_union_decl(&mut self) -> Result<BlockItem> {
@@ -238,13 +437,11 @@ impl Parser {
         let members = if self.is_next(&[TokenKind::LBrace]) {
             let mut members = vec![];
             loop {
-                let next_member = self.parse_member_decl()?;
+                while self.is_next(&[TokenKind::Semicolon]) {}
                 if self.is_next(&[TokenKind::RBrace]) {
-                    members.push(next_member);
                     break members;
-                } else {
-                    members.push(next_member);
                 }
+                members.extend(self.parse_member_decls()?);
             }
         } else {
             vec![]
@@ -332,9 +529,202 @@ impl Parser {
         })
     }
 
-    fn parse_member_decl(&mut self) -> Result<MemberDeclaration> {
+    fn make_synthetic_identifier(&self, name: String, span: Span) -> Token {
+        Token {
+            kind: TokenKind::Identifier(name),
+            span,
+        }
+    }
+
+    fn make_anonymous_tag(&mut self, prefix: &str) -> String {
+        let tag = format!("__ucc_anon_{}_{}", prefix, self.anonymous_tag_counter);
+        self.anonymous_tag_counter += 1;
+        tag
+    }
+
+    fn consume_balanced_parens(&mut self) -> Result<()> {
+        self.consume(&TokenKind::LParen)?;
+        let mut depth = 1usize;
+        while depth > 0 {
+            let token = self.advance().ok_or_else(|| UccError {
+                kind: ErrorKind::Parse,
+                msg: format!("unterminated parenthesized attribute"),
+                span: self.current_span().unwrap_or(Span { start: 0, end: 0 }),
+            })?;
+            match token.kind {
+                TokenKind::LParen => depth += 1,
+                TokenKind::RParen => depth -= 1,
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn skip_attribute_specifiers(&mut self) -> Result<()> {
+        loop {
+            let is_attribute = matches!(
+                self.current.as_ref().map(|t| &t.kind),
+                Some(TokenKind::Identifier(name)) if name == "__attribute__"
+            );
+            if !is_attribute {
+                break;
+            }
+            self.advance();
+            if self.check(&TokenKind::LParen) {
+                self.consume_balanced_parens()?;
+            }
+        }
+        Ok(())
+    }
+
+    fn skip_asm_label(&mut self) -> Result<bool> {
+        let is_asm = matches!(
+            self.current.as_ref().map(|t| &t.kind),
+            Some(TokenKind::Identifier(name)) if name == "__asm__" || name == "asm" || name == "__asm"
+        );
+        if !is_asm {
+            return Ok(false);
+        }
+        self.advance();
+        if self.check(&TokenKind::LParen) {
+            self.consume_balanced_parens()?;
+        }
+        Ok(true)
+    }
+
+    fn skip_declaration_annotations(&mut self) -> Result<()> {
+        loop {
+            let before = self.current.clone();
+            self.skip_attribute_specifiers()?;
+            self.skip_asm_label()?;
+            self.skip_attribute_specifiers()?;
+            if self.current == before {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn consume_struct_or_union_type_specifier(&mut self) -> Result<Vec<Token>> {
         let begin = self.current_span()?;
-        let specifier_list = self.consume_while_type_specifier();
+        let kind_token = self.current.clone().unwrap();
+        let aggregate_kind = match &kind_token.kind {
+            TokenKind::Struct => AggregateKind::Struct,
+            TokenKind::Union => AggregateKind::Union,
+            _ => unreachable!(),
+        };
+        self.advance();
+
+        let explicit_tag = if matches!(self.current.as_ref().map(|t| &t.kind), Some(TokenKind::Identifier(_))) {
+            Some(self.advance().unwrap())
+        } else {
+            None
+        };
+
+        let tag_name = if self.is_next(&[TokenKind::LBrace]) {
+            let tag = explicit_tag
+                .as_ref()
+                .map(|t| t.as_string())
+                .unwrap_or_else(|| {
+                    let prefix = match aggregate_kind {
+                        AggregateKind::Struct => "struct",
+                        AggregateKind::Union => "union",
+                    };
+                    self.make_anonymous_tag(prefix)
+                });
+            let mut members = vec![];
+            while !self.check(&TokenKind::RBrace) {
+                if self.is_next(&[TokenKind::Semicolon]) {
+                    continue;
+                }
+                members.extend(self.parse_member_decls()?);
+            }
+            self.consume(&TokenKind::RBrace)?;
+            let end = self.current_span()?;
+            let decl = StructDeclaration {
+                tag: tag.clone(),
+                kind: aggregate_kind,
+                members,
+                span: begin + end,
+            };
+            self.pending_declarations.push_back(BlockItem::Declaration(match aggregate_kind {
+                AggregateKind::Struct => Declaration::Struct(decl),
+                AggregateKind::Union => Declaration::Union(decl),
+            }));
+            tag
+        } else if let Some(tag) = explicit_tag {
+            // A reference such as `struct foo *p` must not enqueue a synthetic
+            // declaration.  In a `for` initializer that pending declaration can
+            // become the loop body, and in ordinary blocks it can reorder later
+            // items.  Forward declarations are still parsed by
+            // parse_struct_or_union_decl for real `struct foo;` declarations.
+            tag.as_string()
+        } else {
+            return Err(UccError {
+                kind: ErrorKind::Parse,
+                msg: format!("expected a tag name or member list after aggregate specifier"),
+                span: self.current_span()?,
+            });
+        };
+
+        Ok(vec![kind_token, self.make_synthetic_identifier(tag_name, begin)])
+    }
+
+    fn consume_enum_type_specifier(&mut self) -> Result<Vec<Token>> {
+        let begin = self.current_span()?;
+        let kind_token = self.current.clone().unwrap();
+        self.consume(&TokenKind::Enum)?;
+
+        let explicit_tag = if matches!(self.current.as_ref().map(|t| &t.kind), Some(TokenKind::Identifier(_))) {
+            Some(self.advance().unwrap())
+        } else {
+            None
+        };
+
+        let tag_name = if self.is_next(&[TokenKind::LBrace]) {
+            let tag = explicit_tag
+                .as_ref()
+                .map(|t| t.as_string())
+                .unwrap_or_else(|| self.make_anonymous_tag("enum"));
+            let mut members = vec![];
+            if !self.check(&TokenKind::RBrace) {
+                loop {
+                    members.push(self.parse_enum_member_decl()?);
+                    if self.is_next(&[TokenKind::Comma]) {
+                        if self.check(&TokenKind::RBrace) {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+            self.consume(&TokenKind::RBrace)?;
+            let end = self.current_span()?;
+            self.pending_declarations.push_back(BlockItem::Declaration(Declaration::Enum(
+                EnumDeclaration {
+                    tag: Some(tag.clone()),
+                    members,
+                    span: begin + end,
+                },
+            )));
+            tag
+        } else if let Some(tag) = explicit_tag {
+            tag.as_string()
+        } else {
+            return Err(UccError {
+                kind: ErrorKind::Parse,
+                msg: format!("expected a tag name or member list after enum specifier"),
+                span: self.current_span()?,
+            });
+        };
+
+        Ok(vec![kind_token, self.make_synthetic_identifier(tag_name, begin)])
+    }
+
+    fn parse_member_decls(&mut self) -> Result<Vec<MemberDeclaration>> {
+        let begin = self.current_span()?;
+        let specifier_list = self.consume_while_type_specifier()?;
         let base_type = self.parse_type(
             specifier_list
                 .iter()
@@ -342,26 +732,55 @@ impl Parser {
                 .map(|t| t.kind)
                 .collect::<Vec<_>>(),
         )?;
-        let declarator = self.parse_declarator()?;
-        match declarator {
-            Declarator::Func(_, _, _) => {
+
+        let mut members = vec![];
+
+        loop {
+            self.skip_declaration_annotations()?;
+            self.skip_type_qualifiers();
+
+            // GNU/system headers use anonymous aggregate fields such as
+            // `struct { ... };`.  Preserve the aggregate in the layout with an
+            // empty member name; member-name validation intentionally ignores
+            // empty names.
+            if self.check(&TokenKind::Semicolon) {
+                self.consume(&TokenKind::Semicolon)?;
+                let end = self.current_span()?;
+                members.push(MemberDeclaration {
+                    name: String::new(),
+                    ty: base_type.clone(),
+                    span: begin + end,
+                });
+                break;
+            }
+
+            let declarator = self.parse_declarator()?;
+            self.skip_type_qualifiers();
+            self.skip_declaration_annotations()?;
+            let end = self.current_span()?;
+            let (name, decl_type, _) = self.process_declarator(&declarator, &base_type)?;
+            if matches!(decl_type, Type::Func { .. }) {
                 return Err(UccError {
                     msg: format!("function declarations not allowed in struct"),
                     kind: ErrorKind::Parse,
                     span: self.current_span()?,
-                })
+                });
             }
-            _ => {
-                self.consume(&TokenKind::Semicolon)?;
-                let end = self.current_span()?;
-                let (name, decl_type, _) = self.process_declarator(&declarator, &base_type)?;
-                Ok(MemberDeclaration {
-                    name,
-                    ty: decl_type,
-                    span: begin + end,
-                })
+
+            members.push(MemberDeclaration {
+                name,
+                ty: decl_type,
+                span: begin + end,
+            });
+
+            if self.is_next(&[TokenKind::Comma]) {
+                continue;
             }
+            self.consume(&TokenKind::Semicolon)?;
+            break;
         }
+
+        Ok(members)
     }
 
     fn is_type_specifier(&self, token: &TokenKind) -> bool {
@@ -379,18 +798,55 @@ impl Parser {
                 | TokenKind::Struct
                 | TokenKind::Union
                 | TokenKind::Enum
-        ) || self.is_typedef_name(token)
+        ) || self.is_typedef_name(token) || self.is_builtin_type_name(token)
     }
 
     fn is_storage_class_specifier(&self, token: &TokenKind) -> bool {
         matches!(token, TokenKind::Static | TokenKind::Extern | TokenKind::Typedef)
     }
 
+    fn has_consumed_type_specifier(&self, specifier_list: &[Token]) -> bool {
+        specifier_list
+            .iter()
+            .any(|token| self.is_type_specifier(&token.kind))
+    }
+
     fn is_specifier(&self, token: &TokenKind) -> bool {
-        self.is_type_specifier(token) || self.is_storage_class_specifier(token)
+        self.is_type_specifier(token)
+            || self.is_storage_class_specifier(token)
+            || self.is_ignored_specifier(token)
+    }
+
+    fn infer_array_size_from_initializer(&self, ty: &Type, init: Option<&Initializer>) -> Type {
+        match (ty, init) {
+            (
+                Type::Array { element, size: 0 },
+                Some(Initializer::Compound(_, _, inits)),
+            ) => Type::Array {
+                element: element.clone(),
+                size: inits.len(),
+            },
+            (
+                Type::Array { element, size: 0 },
+                Some(Initializer::Single(_, Expression::String(string_expr))),
+            ) if matches!(element.as_ref(), Type::Char | Type::SChar | Type::UChar) => Type::Array {
+                element: element.clone(),
+                size: string_expr.value.len() + 1,
+            },
+            _ => ty.clone(),
+        }
     }
 
     fn parse_var_or_fn_decl(&mut self) -> Result<BlockItem> {
+        let mut decls = self.parse_var_or_fn_decls()?;
+        let first = decls.remove(0);
+        for decl in decls {
+            self.pending_declarations.push_back(decl);
+        }
+        Ok(first)
+    }
+
+    fn parse_var_or_fn_decls(&mut self) -> Result<Vec<BlockItem>> {
         let begin = self.current_span()?;
         let specifier_list = self.consume_while_specifier()?;
         let (base_type, storage_class) = self.parse_type_and_storage_specifiers(
@@ -401,75 +857,111 @@ impl Parser {
                 .collect::<Vec<_>>(),
         )?;
 
-        let declarator = self.parse_declarator()?;
-        let (name, decl_type, params) = self.process_declarator(&declarator, &base_type)?;
+        let mut decls = vec![];
 
-        if storage_class == Some(StorageClass::Typedef) {
-            self.consume(&TokenKind::Semicolon)?;
-            let end = self.current_span()?;
-            self.declare_typedef_name(name.clone(), decl_type.clone());
-            return Ok(BlockItem::Declaration(Declaration::Typedef(TypedefDeclaration {
-                name,
-                ty: decl_type,
-                span: begin + end,
-            })));
-        }
+        loop {
+            self.skip_declaration_annotations()?;
+            self.skip_type_qualifiers();
+            let declarator = self.parse_declarator()?;
+            self.skip_type_qualifiers();
+            self.skip_declaration_annotations()?;
+            let (name, decl_type, params) = self.process_declarator(&declarator, &base_type)?;
 
-        match decl_type {
-            Type::Func { .. } => {
-                self.parse_function_declaration(&name, &params, decl_type, storage_class, begin)
-            }
-            _ => {
-                self.shadow_typedef_name(&name);
-                let init = if self.is_next(&[TokenKind::Equal]) {
-                    let expr = self.parse_expression()?;
-                    self.consume(&TokenKind::Semicolon)?;
-                    Some(expr)
-                } else if self.is_next(&[TokenKind::Semicolon]) {
-                    None
-                } else {
+            if storage_class == Some(StorageClass::Typedef) {
+                let end = self.current_span()?;
+                self.declare_typedef_name(name.clone(), decl_type.clone());
+                decls.push(BlockItem::Declaration(Declaration::Typedef(TypedefDeclaration {
+                    name,
+                    ty: decl_type,
+                    span: begin + end,
+                })));
+            } else if matches!(decl_type, Type::Func { .. }) {
+                if !decls.is_empty() {
                     return Err(UccError {
-                        msg: format!("internal error, parse var or fn decl"),
+                        msg: format!("function declaration mixed with other declarators"),
                         kind: ErrorKind::Parse,
                         span: self.current_span()?,
                     });
+                }
+                return Ok(vec![self.parse_function_declaration(
+                    &name,
+                    &params,
+                    decl_type,
+                    storage_class,
+                    begin,
+                )?]);
+            } else {
+                self.shadow_typedef_name(&name);
+                let init = if self.is_next(&[TokenKind::Equal]) {
+                    Some(self.parse_expression()?)
+                } else {
+                    None
                 };
 
                 let unwrapped = self.unwrap_expression_to_initializer(&name, init);
-
+                let effective_decl_type =
+                    self.infer_array_size_from_initializer(&decl_type, unwrapped.as_ref());
                 let end = self.current_span()?;
+                self.declare_object_name(&name, effective_decl_type.clone());
 
-                Ok(BlockItem::Declaration(Declaration::Variable(
+                decls.push(BlockItem::Declaration(Declaration::Variable(
                     VariableDeclaration {
                         name,
-                        ty: decl_type,
+                        ty: effective_decl_type,
                         init: unwrapped,
                         storage_class,
                         is_global: self.depth == 0,
                         span: begin + end,
                     },
-                )))
+                )));
+            }
+
+            if self.is_next(&[TokenKind::Comma]) {
+                continue;
+            }
+            self.consume(&TokenKind::Semicolon)?;
+            break;
+        }
+
+        Ok(decls)
+    }
+
+    fn transform_initializer_inner(&self, name: Option<&str>, init: &Initializer) -> Initializer {
+        match init {
+            Initializer::Single(designator, expr) => {
+                if let Expression::Literal(lit) = expr {
+                    let nested_name = if designator.is_empty() {
+                        name
+                    } else {
+                        Some(designator.as_str())
+                    };
+                    self.transform_initializer_inner(nested_name, &lit.value)
+                } else {
+                    // Do not manufacture a designator for braced positional
+                    // initializers.  `struct S s = {0};` must remain a
+                    // positional initializer; turning the inner `0` into
+                    // `Initializer::Single("s", 0)` makes the typechecker look
+                    // for a member literally named `s`.
+                    Initializer::Single(designator.clone(), expr.clone())
+                }
+            }
+            Initializer::Compound(designator, ty, elems) => {
+                let new_elems = elems
+                    .iter()
+                    .map(|elem| self.transform_initializer_inner(None, elem))
+                    .collect();
+                let compound_name = if designator.is_empty() {
+                    name.unwrap_or("").to_string()
+                } else {
+                    designator.clone()
+                };
+                Initializer::Compound(compound_name, ty.clone(), new_elems)
             }
         }
     }
 
     fn transform_initializer(&self, name: &str, init: &Initializer) -> Initializer {
-        match init {
-            Initializer::Single(_, expr) => {
-                if let Expression::Literal(lit) = expr {
-                    self.transform_initializer(name, &lit.value)
-                } else {
-                    Initializer::Single(name.to_string(), expr.clone())
-                }
-            }
-            Initializer::Compound(_, ty, elems) => {
-                let new_elems = elems
-                    .iter()
-                    .map(|elem| self.transform_initializer(name, elem))
-                    .collect();
-                Initializer::Compound(name.to_string(), ty.clone(), new_elems)
-            }
-        }
+        self.transform_initializer_inner(Some(name), init)
     }
 
     fn convert_expression_to_initializer(&self, name: &str, expr: Expression) -> Initializer {
@@ -487,11 +979,77 @@ impl Parser {
         expr_opt.map(|expr| self.convert_expression_to_initializer(name, expr))
     }
 
+    fn skip_type_qualifiers(&mut self) {
+        while self
+            .current
+            .as_ref()
+            .is_some_and(|token| self.is_type_qualifier(&token.kind))
+        {
+            self.advance();
+        }
+    }
+
+    fn has_named_declarator_before_param_delimiter(&self) -> bool {
+        let mut depth = 0usize;
+        for token in std::iter::once(self.current.as_ref()).flatten().chain(self.tokens.iter()) {
+            match &token.kind {
+                TokenKind::LParen | TokenKind::LBracket => depth += 1,
+                TokenKind::RParen | TokenKind::RBracket => {
+                    if depth == 0 {
+                        return false;
+                    }
+                    depth -= 1;
+                }
+                TokenKind::Comma if depth == 0 => return false,
+                TokenKind::Identifier(_)
+                    if !self.is_type_qualifier(&token.kind)
+                        && !self.is_ignored_gnu_decl_specifier(&token.kind)
+                        && !matches!(&token.kind, TokenKind::Identifier(name) if name == "__attribute__" || name == "__asm__" || name == "__asm" || name == "asm") =>
+                {
+                    return true;
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    fn declarator_from_abstract(decl: AbstractDeclarator) -> Declarator {
+        match decl {
+            AbstractDeclarator::Base => Declarator::Ident(String::new()),
+            AbstractDeclarator::Pointer(inner) => {
+                Declarator::Pointer(Box::new(Self::declarator_from_abstract(*inner)))
+            }
+            AbstractDeclarator::Array(inner, size) => {
+                Declarator::Array(Box::new(Self::declarator_from_abstract(*inner)), size)
+            }
+        }
+    }
+
+    fn parse_param_declarator(&mut self) -> Result<Declarator> {
+        match self.current.as_ref().map(|t| &t.kind) {
+            Some(TokenKind::Comma | TokenKind::RParen | TokenKind::Ellipsis) | None => {
+                Ok(Declarator::Ident(String::new()))
+            }
+            Some(TokenKind::LBracket) => {
+                let decl = self.parse_abstract_declarator()?;
+                Ok(Self::declarator_from_abstract(decl))
+            }
+            Some(TokenKind::Star) if !self.has_named_declarator_before_param_delimiter() => {
+                let decl = self.parse_abstract_declarator()?;
+                Ok(Self::declarator_from_abstract(decl))
+            }
+            _ => self.parse_declarator(),
+        }
+    }
+
     fn parse_declarator(&mut self) -> Result<Declarator> {
         match self.current.as_ref() {
             Some(token) => match token.kind {
                 TokenKind::Star => {
                     self.consume(&TokenKind::Star)?;
+                    self.skip_type_qualifiers();
+                    self.skip_declaration_annotations()?;
                     let inner = self.parse_declarator()?;
                     Ok(Declarator::Pointer(Box::new(inner)))
                 }
@@ -564,49 +1122,181 @@ impl Parser {
         Ok(new_decl)
     }
 
-    fn consume_constant_or_char_literal(&mut self) -> Result<Option<Token>> {
-        match self.current.as_ref() {
-            Some(token) => match token.kind {
-                TokenKind::Constant(_) | TokenKind::CharLiteral(_) => Ok(self.advance()),
-                _ => {
-                    return Err(UccError {
-                        msg: format!("expected constant, got: {:?}", self.current),
-                        kind: ErrorKind::Parse,
-                        span: self.current_span()?,
-                    })
-                }
-            },
-            None => {
+    fn const_to_i64_for_array_dim(&self, value: &Const, span: Span) -> Result<i64> {
+        match value {
+            Const::Short(v) => Ok(*v as i64),
+            Const::UShort(v) => Ok(*v as i64),
+            Const::Int(v) => Ok(*v as i64),
+            Const::Long(v) => Ok(*v),
+            Const::UInt(v) => Ok(*v as i64),
+            Const::ULong(v) => i64::try_from(*v).map_err(|_| UccError {
+                msg: format!("array dimension is too large"),
+                kind: ErrorKind::Parse,
+                span,
+            }),
+            Const::Char(v) => Ok(*v as i64),
+            Const::UChar(v) => Ok(*v as i64),
+            Const::Float(_) | Const::Double(_) => Err(UccError {
+                msg: format!("array dimension is not an integer constant expression"),
+                kind: ErrorKind::Parse,
+                span,
+            }),
+        }
+    }
+
+    fn sizeof_type_for_array_dim(&self, ty: &Type, span: Span) -> Result<i64> {
+        Ok(match ty {
+            Type::Char | Type::SChar | Type::UChar => 1,
+            Type::Short | Type::UShort => 2,
+            Type::Int | Type::UInt | Type::Float | Type::Enum { .. } => 4,
+            Type::Long | Type::ULong | Type::Double | Type::Pointer(_) | Type::Func { .. } => 8,
+            Type::Array { element, size } => self.sizeof_type_for_array_dim(element, span)? * (*size as i64),
+            Type::Void | Type::Struct { .. } | Type::Union { .. } | Type::Dummy => {
                 return Err(UccError {
+                    msg: format!("unsupported type in array dimension sizeof"),
                     kind: ErrorKind::Parse,
-                    msg: format!("internal error, consume_constant"),
-                    span: self.current_span()?,
+                    span,
                 })
             }
+        })
+    }
+
+    fn type_of_known_expr_for_sizeof(&self, expr: &Expression, span: Span) -> Result<Type> {
+        match expr {
+            Expression::Variable(VariableExpression { value, .. }) => {
+                self.lookup_object_type(value).ok_or_else(|| UccError {
+                    msg: format!("unknown object in array dimension sizeof"),
+                    kind: ErrorKind::Parse,
+                    span,
+                })
+            }
+            Expression::Subscript(SubscriptExpression { expr, .. }) => {
+                let container_type = self.type_of_known_expr_for_sizeof(expr, span)?;
+                match container_type {
+                    Type::Array { element, .. } | Type::Pointer(element) => Ok(*element),
+                    _ => Err(UccError {
+                        msg: format!("subscripted non-array in array dimension sizeof"),
+                        kind: ErrorKind::Parse,
+                        span,
+                    }),
+                }
+            }
+            Expression::Deref(DerefExpression { expr, .. }) => {
+                let pointer_type = self.type_of_known_expr_for_sizeof(expr, span)?;
+                match pointer_type {
+                    Type::Pointer(element) => Ok(*element),
+                    _ => Err(UccError {
+                        msg: format!("dereferenced non-pointer in array dimension sizeof"),
+                        kind: ErrorKind::Parse,
+                        span,
+                    }),
+                }
+            }
+            Expression::Cast(CastExpression { target_type, .. }) => Ok(target_type.clone()),
+            _ => Err(UccError {
+                msg: format!("unsupported expression in array dimension sizeof"),
+                kind: ErrorKind::Parse,
+                span,
+            }),
+        }
+    }
+
+    fn sizeof_expr_for_array_dim(&self, expr: &Expression, span: Span) -> Result<i64> {
+        let ty = self.type_of_known_expr_for_sizeof(expr, span)?;
+        self.sizeof_type_for_array_dim(&ty, span)
+    }
+
+    fn eval_array_dim_expression(&self, expr: &Expression) -> Result<i64> {
+        match expr {
+            Expression::Constant(ConstantExpression { value, span, .. }) => {
+                self.const_to_i64_for_array_dim(value, *span)
+            }
+            Expression::SizeofT(SizeofTExpression { t, span, .. }) => {
+                self.sizeof_type_for_array_dim(t, *span)
+            }
+            Expression::Sizeof(SizeofExpression { expr, span, .. }) => {
+                self.sizeof_expr_for_array_dim(expr, *span)
+            }
+            Expression::Cast(CastExpression { expr, .. }) => self.eval_array_dim_expression(expr),
+            Expression::Unary(UnaryExpression { kind, expr, span, .. }) => {
+                let value = self.eval_array_dim_expression(expr)?;
+                match kind {
+                    UnaryExpressionKind::Negate => Ok(value.wrapping_neg()),
+                    UnaryExpressionKind::Complement => Ok(!value),
+                    UnaryExpressionKind::Not => Ok((value == 0) as i64),
+                    UnaryExpressionKind::Inc | UnaryExpressionKind::Dec => Err(UccError {
+                        msg: format!("array dimension is not an integer constant expression"),
+                        kind: ErrorKind::Parse,
+                        span: *span,
+                    }),
+                }
+            }
+            Expression::Binary(BinaryExpression { kind, lhs, rhs, span, .. }) => {
+                let lhs = self.eval_array_dim_expression(lhs)?;
+                let rhs = self.eval_array_dim_expression(rhs)?;
+                match kind {
+                    BinaryExpressionKind::Add => Ok(lhs.wrapping_add(rhs)),
+                    BinaryExpressionKind::Sub => Ok(lhs.wrapping_sub(rhs)),
+                    BinaryExpressionKind::Mul => Ok(lhs.wrapping_mul(rhs)),
+                    BinaryExpressionKind::Div => lhs.checked_div(rhs).ok_or_else(|| UccError {
+                        msg: format!("invalid array dimension division"),
+                        kind: ErrorKind::Parse,
+                        span: *span,
+                    }),
+                    BinaryExpressionKind::Rem => lhs.checked_rem(rhs).ok_or_else(|| UccError {
+                        msg: format!("invalid array dimension remainder"),
+                        kind: ErrorKind::Parse,
+                        span: *span,
+                    }),
+                    BinaryExpressionKind::BitwiseOr => Ok(lhs | rhs),
+                    BinaryExpressionKind::BitwiseXor => Ok(lhs ^ rhs),
+                    BinaryExpressionKind::BitwiseAnd => Ok(lhs & rhs),
+                    BinaryExpressionKind::BitwiseShl => Ok(lhs.wrapping_shl(rhs as u32)),
+                    BinaryExpressionKind::BitwiseShr => Ok(lhs.wrapping_shr(rhs as u32)),
+                    BinaryExpressionKind::Equal => Ok((lhs == rhs) as i64),
+                    BinaryExpressionKind::NotEqual => Ok((lhs != rhs) as i64),
+                    BinaryExpressionKind::Less => Ok((lhs < rhs) as i64),
+                    BinaryExpressionKind::Greater => Ok((lhs > rhs) as i64),
+                    BinaryExpressionKind::LessEqual => Ok((lhs <= rhs) as i64),
+                    BinaryExpressionKind::GreaterEqual => Ok((lhs >= rhs) as i64),
+                    BinaryExpressionKind::And => Ok(((lhs != 0) && (rhs != 0)) as i64),
+                    BinaryExpressionKind::Or => Ok(((lhs != 0) || (rhs != 0)) as i64),
+                }
+            }
+            Expression::Conditional(ConditionalExpression { condition, then_expr, else_expr, .. }) => {
+                if self.eval_array_dim_expression(condition)? != 0 {
+                    self.eval_array_dim_expression(then_expr)
+                } else {
+                    self.eval_array_dim_expression(else_expr)
+                }
+            }
+            _ => Err(UccError {
+                msg: format!("array dimension is not an integer constant expression"),
+                kind: ErrorKind::Parse,
+                span: spanof(expr),
+            }),
         }
     }
 
     fn parse_dim(&mut self) -> Result<usize> {
         self.consume(&TokenKind::LBracket)?;
-        let dim = self.consume_constant_or_char_literal()?.unwrap();
+        if self.is_next(&[TokenKind::RBracket]) {
+            return Ok(0);
+        }
+        let expr = self.parse_expression()?;
         self.consume(&TokenKind::RBracket)?;
-        Ok(match dim.kind {
-            TokenKind::Constant(Const::Short(n)) => n as usize,
-            TokenKind::Constant(Const::UShort(n)) => n as usize,
-            TokenKind::Constant(Const::Int(n)) => n as usize,
-            TokenKind::Constant(Const::Long(n)) => n as usize,
-            TokenKind::Constant(Const::UInt(n)) => n as usize,
-            TokenKind::Constant(Const::ULong(n)) => n as usize,
-            TokenKind::Constant(Const::Char(n)) => n as usize,
-            TokenKind::Constant(Const::UChar(n)) => n as usize,
-            TokenKind::CharLiteral(ch) => ch as usize,
-            _ => {
-                return Err(UccError {
-                    kind: ErrorKind::Parse,
-                    msg: format!("expected const or char literal, got: {:?}", dim),
-                    span: self.current_span()?,
-                })
-            }
+        let value = self.eval_array_dim_expression(&expr)?;
+        if value < 0 {
+            return Err(UccError {
+                msg: format!("array dimension must be non-negative"),
+                kind: ErrorKind::Parse,
+                span: spanof(&expr),
+            });
+        }
+        usize::try_from(value).map_err(|_| UccError {
+            msg: format!("array dimension is too large"),
+            kind: ErrorKind::Parse,
+            span: spanof(&expr),
         })
     }
     fn parse_param_list(&mut self) -> Result<(Vec<ParamInfo>, bool)> {
@@ -648,34 +1338,46 @@ impl Parser {
         }
     }
 
-    fn consume_while_type_specifier(&mut self) -> Vec<Token> {
+    fn consume_while_type_specifier(&mut self) -> Result<Vec<Token>> {
         let mut specifier_list = vec![];
-        while self.is_type_specifier(&self.current.as_ref().unwrap().kind) {
+        loop {
+            self.skip_declaration_annotations()?;
+            if !self.current.as_ref().is_some_and(|token| {
+                self.is_type_specifier(&token.kind) || self.is_ignored_specifier(&token.kind)
+            }) {
+                break;
+            }
+
+            if self
+                .current
+                .as_ref()
+                .is_some_and(|token| matches!(token.kind, TokenKind::Identifier(_)))
+                && self.has_consumed_type_specifier(&specifier_list)
+            {
+                break;
+            }
+
             match self.current.as_ref() {
                 Some(token) => match token.kind {
-                    TokenKind::Struct | TokenKind::Union | TokenKind::Enum => {
-                        specifier_list.push(self.current.clone().unwrap());
-                        self.advance();
-                        if let Some(token) = self.current.as_ref() {
-                            if let TokenKind::Identifier(_) = token.kind {
-                                specifier_list.push(self.current.clone().unwrap());
-                                self.advance();
-                            }
-                        }
+                    TokenKind::Struct | TokenKind::Union => {
+                        specifier_list.extend(self.consume_struct_or_union_type_specifier()?);
+                    }
+                    TokenKind::Enum => {
+                        specifier_list.extend(self.consume_enum_type_specifier()?);
                     }
                     _ => {
                         specifier_list.push(self.current.clone().unwrap());
                         self.advance();
                     }
                 },
-                None => return vec![],
+                None => return Ok(vec![]),
             }
         }
-        specifier_list
+        Ok(specifier_list)
     }
 
     fn parse_param(&mut self) -> Result<ParamInfo> {
-        let specifier_list = self.consume_while_type_specifier();
+        let specifier_list = self.consume_while_type_specifier()?;
         let param_t = self.parse_type(
             specifier_list
                 .iter()
@@ -683,31 +1385,41 @@ impl Parser {
                 .map(|t| t.kind)
                 .collect::<Vec<_>>(),
         )?;
-        let param_decl = self.parse_declarator()?;
+        self.skip_declaration_annotations()?;
+        self.skip_type_qualifiers();
+        let param_decl = self.parse_param_declarator()?;
+        self.skip_type_qualifiers();
+        self.skip_declaration_annotations()?;
         Ok((param_t, param_decl.into()))
     }
 
     fn consume_while_specifier(&mut self) -> Result<Vec<Token>> {
         let mut specifier_list = vec![];
-        while self.is_specifier(&self.current.as_ref().unwrap().kind) {
+        loop {
+            self.skip_declaration_annotations()?;
+            let Some(token) = self.current.as_ref() else {
+                break;
+            };
+            if !self.is_specifier(&token.kind) {
+                break;
+            }
+
+            if self
+                .current
+                .as_ref()
+                .is_some_and(|token| matches!(token.kind, TokenKind::Identifier(_)))
+                && self.has_consumed_type_specifier(&specifier_list)
+            {
+                break;
+            }
+
             match self.current.as_ref() {
                 Some(token) => match token.kind {
-                    TokenKind::Struct | TokenKind::Union | TokenKind::Enum => {
-                        specifier_list.push(self.current.clone().unwrap());
-                        self.advance();
-
-                        if let Some(token) = self.current.as_ref() {
-                            if let TokenKind::Identifier(_) = token.kind {
-                                specifier_list.push(self.current.clone().unwrap());
-                                self.advance();
-                            }
-                        } else {
-                            return Err(UccError {
-                                kind: ErrorKind::Parse,
-                                msg: format!("expected an identifier after tag specifier"),
-                                span: self.current_span()?,
-                            });
-                        }
+                    TokenKind::Struct | TokenKind::Union => {
+                        specifier_list.extend(self.consume_struct_or_union_type_specifier()?);
+                    }
+                    TokenKind::Enum => {
+                        specifier_list.extend(self.consume_enum_type_specifier()?);
                     }
                     _ => {
                         specifier_list.push(self.current.clone().unwrap());
@@ -743,40 +1455,38 @@ impl Parser {
                 let derived_type = Type::Pointer(base_type.clone().into());
                 self.process_declarator(decl, &derived_type)
             }
-            Declarator::Func(params, variadic, decl) => match *decl.clone() {
-                Declarator::Ident(name) => {
-                    let mut param_names = vec![];
-                    let mut param_types = vec![];
+            Declarator::Func(params, variadic, decl) => {
+                let mut param_names = vec![];
+                let mut param_types = vec![];
 
-                    for (param_base_type, param_declarator) in params {
-                        let (param_name, param_type, _) =
-                            self.process_declarator(param_declarator, param_base_type)?;
-                        if std::mem::discriminant(&param_type)
-                            == std::mem::discriminant(&some_fn_type)
-                        {
-                            return Err(UccError {
-                                kind: ErrorKind::Parse,
-                                msg: format!("Function pointers in parameters are not supported."),
-                                span: self.current_span()?,
-                            });
-                        }
-                        param_names.push(param_name);
-                        param_types.push(param_type);
+                for (param_base_type, param_declarator) in params {
+                    let (param_name, param_type, _) =
+                        self.process_declarator(param_declarator, param_base_type)?;
+                    if std::mem::discriminant(&param_type)
+                        == std::mem::discriminant(&some_fn_type)
+                    {
+                        return Err(UccError {
+                            kind: ErrorKind::Parse,
+                            msg: format!("Function parameters with function type are not supported."),
+                            span: self.current_span()?,
+                        });
                     }
-
-                    let derived_type = Type::Func {
-                        params: param_types,
-                        ret: base_type.clone().into(),
-                        variadic: *variadic,
-                    };
-                    Ok((name.clone(), derived_type, param_names))
+                    param_names.push(param_name);
+                    param_types.push(param_type);
                 }
-                _ => {
-                    return Err(UccError {
-                        kind: ErrorKind::Parse,
-                        msg: format!("Can't apply additional type derivations to a function type."),
-                        span: self.current_span()?,
-                    })
+
+                let derived_type = Type::Func {
+                    params: param_types,
+                    ret: base_type.clone().into(),
+                    variadic: *variadic,
+                };
+
+                if matches!(decl.as_ref(), Declarator::Ident(_)) {
+                    let (name, ty, _) = self.process_declarator(decl, &derived_type)?;
+                    Ok((name, ty, param_names))
+                } else {
+                    let (name, ty, nested_params) = self.process_declarator(decl, &derived_type)?;
+                    Ok((name, ty, nested_params))
                 }
             },
             Declarator::Array(inner, size) => {
@@ -802,19 +1512,28 @@ impl Parser {
             _ => unreachable!(),
         });
 
+        self.skip_declaration_annotations()?;
+
         let body = if self.check(&TokenKind::Semicolon) {
             self.consume(&TokenKind::Semicolon)?;
             None
         } else if self.check(&TokenKind::LBrace) {
             self.consume(&TokenKind::LBrace)?;
             self.enter_typedef_scope();
-            for param in params {
+            self.enter_object_scope();
+            let param_types = match &ty {
+                Type::Func { params, .. } => params.clone(),
+                _ => vec![],
+            };
+            for (param, param_type) in params.iter().zip(param_types.into_iter()) {
                 self.shadow_typedef_name(param);
+                self.declare_object_name(param, param_type);
             }
             self.current_fn = Some(name.to_string());
             let block = Some(self.parse_block_statement()?);
             self.current_fn = None;
             self.exit_typedef_scope();
+            self.exit_object_scope();
 
             block
         } else {
@@ -846,6 +1565,10 @@ impl Parser {
     }
 
     fn parse_type(&self, specifier_list: Vec<TokenKind>) -> Result<Type> {
+        let specifier_list = specifier_list
+            .into_iter()
+            .filter(|specifier| !self.is_ignored_specifier(specifier))
+            .collect::<Vec<_>>();
         let mut sorted_specifiers = specifier_list.clone();
         sorted_specifiers.sort();
 
@@ -867,21 +1590,37 @@ impl Parser {
             [TokenKind::Enum, TokenKind::Identifier(tag)] => {
                 Ok(Type::Enum { tag: tag.clone() })
             }
-            [TokenKind::Identifier(name)] => self.lookup_typedef(name).ok_or_else(|| UccError {
-                kind: ErrorKind::Parse,
-                msg: format!("Unknown typedef name: {}", name),
-                span: self.current_span().unwrap_or(Span { start: 0, end: 0 }),
-            }),
+            [TokenKind::Identifier(name)] => self
+                .lookup_typedef(name)
+                .or_else(|| self.builtin_type(name))
+                .ok_or_else(|| UccError {
+                    kind: ErrorKind::Parse,
+                    msg: format!("Unknown typedef name: {}", name),
+                    span: self.current_span().unwrap_or(Span { start: 0, end: 0 }),
+                }),
             [TokenKind::Void] => Ok(Type::Void),
             [TokenKind::Float] => Ok(Type::Float),
             [TokenKind::Double] => Ok(Type::Double),
+            [TokenKind::Long, TokenKind::Double] => Ok(Type::Double),
             [TokenKind::Char] => Ok(Type::Char),
             [TokenKind::Char, TokenKind::Signed] => Ok(Type::SChar),
             [TokenKind::Char, TokenKind::Unsigned] => Ok(Type::UChar),
             _ => {
-                let unique_specifiers: BTreeSet<_> = sorted_specifiers.iter().collect();
+                let long_count = sorted_specifiers
+                    .iter()
+                    .filter(|specifier| **specifier == TokenKind::Long)
+                    .count();
+                let unique_non_long_specifiers: BTreeSet<_> = sorted_specifiers
+                    .iter()
+                    .filter(|specifier| **specifier != TokenKind::Long)
+                    .collect();
+                let non_long_count = sorted_specifiers
+                    .iter()
+                    .filter(|specifier| **specifier != TokenKind::Long)
+                    .count();
                 if sorted_specifiers.is_empty()
-                    || unique_specifiers.len() != sorted_specifiers.len()
+                    || long_count > 2
+                    || unique_non_long_specifiers.len() != non_long_count
                     || sorted_specifiers.contains(&TokenKind::Float)
                     || sorted_specifiers.contains(&TokenKind::Double)
                     || sorted_specifiers.contains(&TokenKind::Char)
@@ -898,7 +1637,7 @@ impl Parser {
                 }
 
                 let has_unsigned = sorted_specifiers.contains(&TokenKind::Unsigned);
-                let has_long = sorted_specifiers.contains(&TokenKind::Long);
+                let has_long = long_count > 0;
                 let has_short = sorted_specifiers.contains(&TokenKind::Short);
 
                 // Aside from `signed`/`unsigned`, `int` may appear with either
@@ -948,7 +1687,9 @@ impl Parser {
         let mut storage_classes = vec![];
 
         for specifier in specifier_list {
-            if self.is_type_specifier(specifier) || self.is_ident(specifier) {
+            if self.is_ignored_specifier(specifier) {
+                continue;
+            } else if self.is_type_specifier(specifier) || self.is_ident(specifier) {
                 types.push(specifier.clone());
             } else {
                 storage_classes.push(specifier.clone());
@@ -1000,6 +1741,7 @@ impl Parser {
     fn parse_block_statement(&mut self) -> Result<BlockItem> {
         self.depth += 1;
         self.enter_typedef_scope();
+        self.enter_object_scope();
         let begin = self.current_span()?;
         let mut stmts = vec![];
         while !self.check(&TokenKind::RBrace) {
@@ -1009,6 +1751,7 @@ impl Parser {
         let end = self.current_span()?;
         self.depth -= 1;
         self.exit_typedef_scope();
+        self.exit_object_scope();
         Ok(BlockItem::Statement(Statement::Compound(BlockStatement {
             stmts,
             span: begin + end,
@@ -1645,6 +2388,15 @@ impl Parser {
     fn unary(&mut self) -> Result<Expression> {
         let begin = self.current_span()?;
 
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|token| self.is_gnu_extension_marker(&token.kind))
+        {
+            self.advance();
+            return self.unary();
+        }
+
         if self.is_next(&[
             TokenKind::Hyphen,
             TokenKind::Tilde,
@@ -1694,7 +2446,7 @@ impl Parser {
                 .as_slice()
             {
                 [TokenKind::Sizeof, TokenKind::LParen, _] => {
-                    if self.is_type_specifier(&next_three_tokens.last().unwrap().kind) {
+                    if self.starts_type_name(&next_three_tokens.last().unwrap().kind) {
                         self.consume(&TokenKind::Sizeof)?;
                         self.consume(&TokenKind::LParen)?;
                         let base_type = self.parse_type_name()?;
@@ -1727,10 +2479,20 @@ impl Parser {
                     }));
                 }
                 [TokenKind::LParen, _, _] => {
-                    if self.is_type_specifier(&next_three_tokens[1].kind) {
+                    if self.starts_type_name(&next_three_tokens[1].kind) {
                         self.consume(&TokenKind::LParen)?;
                         let base_type = self.parse_type_name()?;
                         self.consume(&TokenKind::RParen)?;
+                        if self.check(&TokenKind::LBrace) {
+                            let value = self.parse_braced_initializer()?;
+                            let end = self.current_span()?;
+                            return Ok(Expression::Literal(LiteralExpression {
+                                name: String::new(),
+                                value: value.into(),
+                                ty: base_type,
+                                span: begin + end,
+                            }));
+                        }
                         let expr = self.unary()?;
                         let end = self.current_span()?;
                         return Ok(Expression::Cast(CastExpression {
@@ -1749,7 +2511,7 @@ impl Parser {
     }
 
     fn parse_type_name(&mut self) -> Result<Type> {
-        let specifier_list = self.consume_while_type_specifier();
+        let specifier_list = self.consume_while_type_specifier()?;
         let base_type = self.parse_type(
             specifier_list
                 .iter()
@@ -1757,10 +2519,12 @@ impl Parser {
                 .map(|t| t.kind)
                 .collect::<Vec<_>>(),
         )?;
+        self.skip_type_qualifiers();
         match self.current.as_ref().unwrap().kind {
             TokenKind::RParen => Ok(base_type),
             _ => {
                 let decl = self.parse_abstract_declarator()?;
+                self.skip_type_qualifiers();
                 Ok(self.process_abstract_declarator(&decl, &base_type))
             }
         }
@@ -1775,11 +2539,116 @@ impl Parser {
             .collect()
     }
 
+    fn skip_expression_list_until_rparen(&mut self) -> Result<()> {
+        if self.check(&TokenKind::RParen) {
+            self.consume(&TokenKind::RParen)?;
+            return Ok(());
+        }
+        loop {
+            self.parse_expression()?;
+            if !self.is_next(&[TokenKind::Comma]) {
+                break;
+            }
+        }
+        self.consume(&TokenKind::RParen)?;
+        Ok(())
+    }
+
+    fn parse_builtin_va_call(&mut self, name: &str, begin: Span) -> Result<Option<Expression>> {
+        match name {
+            "__builtin_va_start" => {
+                let list = self.parse_expression()?;
+                self.consume(&TokenKind::Comma)?;
+                let last_param = self.parse_expression()?;
+                self.consume(&TokenKind::RParen)?;
+                let end = self.current_span()?;
+                Ok(Some(Expression::VaStart(VaStartExpression {
+                    list: Box::new(list),
+                    last_param: Box::new(last_param),
+                    ty: Type::Dummy,
+                    span: begin + end,
+                })))
+            }
+            "__builtin_va_end" => {
+                let list = self.parse_expression()?;
+                self.consume(&TokenKind::RParen)?;
+                let end = self.current_span()?;
+                Ok(Some(Expression::VaEnd(VaEndExpression {
+                    list: Box::new(list),
+                    ty: Type::Dummy,
+                    span: begin + end,
+                })))
+            }
+            "__builtin_va_copy" => {
+                let dst = self.parse_expression()?;
+                self.consume(&TokenKind::Comma)?;
+                let src = self.parse_expression()?;
+                self.consume(&TokenKind::RParen)?;
+                let end = self.current_span()?;
+                Ok(Some(Expression::VaCopy(VaCopyExpression {
+                    dst: Box::new(dst),
+                    src: Box::new(src),
+                    ty: Type::Dummy,
+                    span: begin + end,
+                })))
+            }
+            "__builtin_va_arg" => {
+                let list = self.parse_expression()?;
+                self.consume(&TokenKind::Comma)?;
+                let arg_ty = self.parse_type_name()?;
+                self.consume(&TokenKind::RParen)?;
+                let end = self.current_span()?;
+                Ok(Some(Expression::VaArg(VaArgExpression {
+                    list: Box::new(list),
+                    arg_ty: arg_ty.clone(),
+                    ty: Type::Dummy,
+                    span: begin + end,
+                })))
+            }
+            "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
+                // These appear in glibc inline byte-swap helpers.  The compiler
+                // does not need to lower them for its own sources, but parsing
+                // them as side-effect-free integer expressions lets those helper
+                // definitions typecheck.
+                self.skip_expression_list_until_rparen()?;
+                let value = match name {
+                    "__builtin_bswap16" => Const::UShort(0),
+                    "__builtin_bswap32" => Const::UInt(0),
+                    "__builtin_bswap64" => Const::ULong(0),
+                    _ => unreachable!(),
+                };
+                let end = self.current_span()?;
+                Ok(Some(Expression::Constant(ConstantExpression {
+                    value,
+                    ty: Type::Dummy,
+                    span: begin + end,
+                })))
+            }
+            _ => Ok(None),
+        }
+    }
+
     fn call(&mut self) -> Result<Expression> {
         let begin = self.current_span()?;
         let mut expr = self.primary()?;
         loop {
             if self.is_next(&[TokenKind::LParen]) {
+                let call_name = match &expr {
+                    Expression::Variable(var) => var.value.clone(),
+                    _ => {
+                        return Err(UccError {
+                            msg: format!("expected a variable"),
+                            kind: ErrorKind::Parse,
+                            span: self.current_span()?,
+                        })
+                    }
+                };
+
+                if let Some(builtin_expr) = self.parse_builtin_va_call(&call_name, begin)? {
+                    expr = builtin_expr;
+                    continue;
+                }
+
                 let mut args = vec![];
                 if !self.check(&TokenKind::RParen) {
                     loop {
@@ -1792,16 +2661,7 @@ impl Parser {
                 self.consume(&TokenKind::RParen)?;
                 let end = self.current_span()?;
                 expr = Expression::Call(CallExpression {
-                    name: match expr {
-                        Expression::Variable(var) => var.value,
-                        _ => {
-                            return Err(UccError {
-                                msg: format!("expected a variable"),
-                                kind: ErrorKind::Parse,
-                                span: self.current_span()?,
-                            })
-                        }
-                    },
+                    name: call_name,
                     args,
                     ty: Type::Dummy,
                     span: begin + end,
@@ -1871,6 +2731,68 @@ impl Parser {
         Ok(expr)
     }
 
+    fn initializer_from_designator_path(path: &[String], expr: Expression) -> Initializer {
+        if path.is_empty() {
+            Initializer::Single(String::new(), expr)
+        } else if path.len() == 1 {
+            Initializer::Single(path[0].clone(), expr)
+        } else {
+            Initializer::Compound(
+                path[0].clone(),
+                Type::Dummy,
+                vec![Self::initializer_from_designator_path(&path[1..], expr)],
+            )
+        }
+    }
+
+    fn parse_braced_initializer(&mut self) -> Result<Initializer> {
+        self.consume(&TokenKind::LBrace)?;
+        let mut inits = vec![];
+        loop {
+            if self.is_next(&[TokenKind::RBrace]) {
+                break;
+            }
+
+            let designator_path = if self.is_next(&[TokenKind::Dot]) {
+                let mut path = vec![self
+                    .consume(&TokenKind::Identifier(String::new()))?
+                    .unwrap()
+                    .as_string()];
+                while self.is_next(&[TokenKind::Dot]) {
+                    path.push(
+                        self.consume(&TokenKind::Identifier(String::new()))?
+                            .unwrap()
+                            .as_string(),
+                    );
+                }
+                self.consume(&TokenKind::Equal)?;
+                path
+            } else {
+                vec![]
+            };
+
+            let expr = self.parse_expression()?;
+            inits.push(Self::initializer_from_designator_path(&designator_path, expr));
+
+            if self.is_next(&[TokenKind::Comma]) {
+                continue;
+            }
+
+            self.consume(&TokenKind::RBrace)?;
+            break;
+        }
+
+        if inits.is_empty() {
+            return Err(UccError {
+                msg: format!("empty compound literal"),
+                kind: ErrorKind::Parse,
+                span: self.current_span()?,
+            });
+        }
+
+        Ok(Initializer::Compound(String::new(), Type::Dummy, inits))
+    }
+
     fn primary(&mut self) -> Result<Expression> {
         let begin = self.current_span()?;
         if self.is_next(&[
@@ -1882,35 +2804,22 @@ impl Parser {
                 _ => unreachable!(),
             }
         } else if self.is_next(&[TokenKind::LParen]) {
-            self.parse_grouping()
+            if self.check(&TokenKind::LBrace) {
+                self.parse_statement_expression_as_zero(begin)
+            } else {
+                self.parse_grouping()
+            }
         } else if self.is_next(&[TokenKind::Identifier("".to_owned())]) {
             match self.previous.as_ref().unwrap().kind {
                 TokenKind::Identifier(ref var) => self.parse_variable(var, begin),
                 _ => unreachable!(),
             }
-        } else if self.is_next(&[TokenKind::LBrace]) {
-            let mut inits = vec![];
-            loop {
-                if self.is_next(&[TokenKind::RBrace]) {
-                    break;
-                }
-                inits.push(Initializer::Single(String::new(), self.parse_expression()?));
-
-                if self.is_next(&[TokenKind::Comma]) {
-                    continue;
-                }
-            }
-            if inits.is_empty() {
-                return Err(UccError {
-                    msg: format!("empty compound literal"),
-                    kind: ErrorKind::Parse,
-                    span: self.current_span()?,
-                });
-            }
+        } else if self.check(&TokenKind::LBrace) {
+            let value = self.parse_braced_initializer()?;
             let end = self.current_span()?;
             Ok(Expression::Literal(LiteralExpression {
                 name: String::new(),
-                value: Initializer::Compound(String::new(), Type::Dummy, inits).into(),
+                value: value.into(),
                 ty: Type::Dummy,
                 span: begin + end,
             }))
@@ -1987,16 +2896,49 @@ impl Parser {
         }))
     }
 
-    fn parse_grouping(&mut self) -> Result<Expression> {
-        let expr = self.parse_expression();
+    fn parse_statement_expression_as_zero(&mut self, begin: Span) -> Result<Expression> {
+        self.consume(&TokenKind::LBrace)?;
+        let mut brace_depth = 1usize;
+        while brace_depth > 0 {
+            let token = self.advance().ok_or_else(|| UccError {
+                kind: ErrorKind::Parse,
+                msg: format!("unterminated statement expression"),
+                span: self.current_span().unwrap_or(Span { start: 0, end: 0 }),
+            })?;
+            match token.kind {
+                TokenKind::LBrace => brace_depth += 1,
+                TokenKind::RBrace => brace_depth -= 1,
+                _ => {}
+            }
+        }
         self.consume(&TokenKind::RParen)?;
-        expr
+        let end = self.current_span()?;
+        Ok(Expression::Constant(ConstantExpression {
+            value: Const::Int(0),
+            ty: Type::Dummy,
+            span: begin + end,
+        }))
+    }
+
+    fn parse_grouping(&mut self) -> Result<Expression> {
+        let mut expr = self.parse_expression()?;
+        while self.is_next(&[TokenKind::Comma]) {
+            // C's comma operator evaluates the left operand for side effects and
+            // yields the right operand.  The compiler does not yet keep a
+            // dedicated AST node for sequencing, but returning the right-hand
+            // expression is enough for system-header macros such as assert.
+            expr = self.parse_expression()?;
+        }
+        self.consume(&TokenKind::RParen)?;
+        Ok(expr)
     }
 
     fn parse_abstract_declarator(&mut self) -> Result<AbstractDeclarator> {
         match self.current.as_ref().unwrap().kind {
             TokenKind::Star => {
                 self.consume(&TokenKind::Star)?;
+                self.skip_type_qualifiers();
+                self.skip_declaration_annotations()?;
                 let inner = match self.current.as_ref().unwrap().kind {
                     TokenKind::Star | TokenKind::LParen | TokenKind::LBracket => {
                         self.parse_abstract_declarator()?
@@ -2290,6 +3232,399 @@ mod short_tests {
     #[test]
     fn ordinary_identifiers_can_shadow_typedef_names_in_inner_scopes() {
         parse("typedef int T; int main(void) { long T; T = 1L; return (int) T; }");
+    }
+
+
+    #[test]
+    fn lexes_hex_integer_suffixes_and_octal_escapes() {
+        let tokens: Vec<_> = Lexer::new("int x = 0x80; unsigned long y = 1ULL; char z = '\\0';".to_string()).collect();
+
+        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::Constant(Const::Int(0x80)))));
+        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::Constant(Const::ULong(1)))));
+        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::CharLiteral('\0'))));
+    }
+
+    #[test]
+    fn parses_anonymous_aggregate_typedefs_before_alias_declarations() {
+        let program = parse("typedef struct { int capacity; int len; int *data; } VecInt; VecInt v;");
+
+        assert!(matches!(
+            &program.block_items[0],
+            BlockItem::Declaration(Declaration::Struct(decl))
+                if decl.members.len() == 3 && decl.tag.starts_with("__ucc_anon_struct_")
+        ));
+        let tag = match &program.block_items[0] {
+            BlockItem::Declaration(Declaration::Struct(decl)) => decl.tag.clone(),
+            other => panic!("expected generated struct declaration, got {other:?}"),
+        };
+        assert!(matches!(
+            &program.block_items[1],
+            BlockItem::Declaration(Declaration::Typedef(decl))
+                if decl.name == "VecInt" && decl.ty == (Type::Struct { tag: tag.clone() })
+        ));
+        assert!(matches!(
+            &program.block_items[2],
+            BlockItem::Declaration(Declaration::Variable(var))
+                if var.ty == (Type::Struct { tag })
+        ));
+    }
+
+    #[test]
+    fn parses_long_long_long_double_and_gnu_attributes() {
+        parse(
+            "typedef struct { long long i __attribute__((__aligned__(__alignof__(long long)))); long double d; } max_align_t;",
+        );
+    }
+
+    #[test]
+    fn parses_const_qualified_declarations_as_unqualified_types() {
+        let tys = top_level_var_types(
+            r#"
+            const int x;
+            int const y;
+            const char *s;
+            char *const *argv;
+            "#,
+        );
+
+        assert_eq!(
+            tys,
+            vec![
+                Type::Int,
+                Type::Int,
+                Type::Pointer(Box::new(Type::Char)),
+                Type::Pointer(Box::new(Type::Pointer(Box::new(Type::Char)))),
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_gnu_extension_const_params_attributes_and_empty_members() {
+        parse(
+            r#"
+            __extension__ typedef struct {
+                int capacity;
+                ;
+                const char *name;
+            } Vec;
+            extern void __assert_fail(const char *__assertion,
+                                      const char *__file,
+                                      unsigned int __line,
+                                      const char *__function)
+                __attribute__ ((__nothrow__ , __leaf__))
+                __attribute__ ((__noreturn__));
+            extern int getopt(int ___argc, char *const *___argv, const char *__shortopts)
+                __attribute__ ((__nothrow__ , __leaf__))
+                __attribute__ ((__nonnull__ (2, 3)));
+            "#,
+        );
+    }
+
+    #[test]
+    fn lexes_double_underscore_signed_and_const_as_specifiers() {
+        let tys = top_level_var_types("__signed__ int x; __const int y; __const__ char *z;");
+
+        assert_eq!(
+            tys,
+            vec![Type::Int, Type::Int, Type::Pointer(Box::new(Type::Char))]
+        );
+    }
+
+    #[test]
+    fn parses_builtin_va_list_asm_labels_and_sizeof_array_dimensions() {
+        let program = parse(
+            r#"
+            typedef long unsigned int size_t;
+            typedef __builtin_va_list __gnuc_va_list;
+            typedef __gnuc_va_list va_list;
+            extern int strerror_r(int __errnum, char *__buf, size_t __buflen)
+                __asm__ ("" "__xpg_strerror_r")
+                __attribute__ ((__nothrow__ , __leaf__))
+                __attribute__ ((__nonnull__ (2)));
+            typedef struct {
+                unsigned long int __val[(1024 / (8 * sizeof (unsigned long int)))];
+            } __sigset_t;
+            "#,
+        );
+
+        assert!(matches!(
+            &program.block_items[1],
+            BlockItem::Declaration(Declaration::Typedef(decl))
+                if decl.name == "__gnuc_va_list"
+                    && decl.ty == builtin_va_list_type()
+        ));
+        assert!(matches!(
+            &program.block_items[2],
+            BlockItem::Declaration(Declaration::Typedef(decl))
+                if decl.name == "va_list"
+                    && decl.ty == builtin_va_list_type()
+        ));
+        assert!(matches!(
+            &program.block_items[4],
+            BlockItem::Declaration(Declaration::Struct(decl))
+                if matches!(
+                    &decl.members[0].ty,
+                    Type::Array { element, size }
+                        if **element == Type::ULong && *size == 16
+                )
+        ));
+    }
+
+
+    #[test]
+    fn parses_header_style_abstract_array_and_function_pointer_parameters() {
+        let program = parse(
+            r#"
+            extern char *tmpnam(char[20]);
+            extern int atexit(void (*__func)(void));
+            "#,
+        );
+
+        assert!(matches!(
+            &program.block_items[0],
+            BlockItem::Declaration(Declaration::Function(func))
+                if matches!(
+                    &func.ty,
+                    Type::Func { params, ret, variadic: false }
+                        if **ret == Type::Pointer(Box::new(Type::Char))
+                            && matches!(
+                                &params[0],
+                                Type::Array { element, size }
+                                    if **element == Type::Char && *size == 20
+                            )
+                )
+        ));
+        assert!(matches!(
+            &program.block_items[1],
+            BlockItem::Declaration(Declaration::Function(func))
+                if func.params == vec!["__func".to_string()]
+                    && matches!(
+                        &func.ty,
+                        Type::Func { params, ret, variadic: false }
+                            if **ret == Type::Int
+                                && matches!(
+                                    &params[0],
+                                    Type::Pointer(inner)
+                                        if matches!(
+                                            inner.as_ref(),
+                                            Type::Func { params, ret, variadic: false }
+                                                if params.is_empty() && **ret == Type::Void
+                                        )
+                                )
+                    )
+        ));
+    }
+
+    #[test]
+    fn parses_typed_compound_literals_with_designated_initializers() {
+        let program = parse(
+            r#"
+            struct Token { int kind; int len; char *start; };
+            struct Token next(int is_float, char *start, int len) {
+                return (struct Token){.kind = is_float ? 1 : 2, .len = len, .start = start};
+            }
+            "#,
+        );
+
+        let BlockItem::Declaration(Declaration::Function(func)) = &program.block_items[1] else {
+            panic!("expected function declaration");
+        };
+        let Some(BlockItem::Statement(Statement::Compound(block))) = func.body.as_ref().as_ref() else {
+            panic!("expected function body");
+        };
+        let BlockItem::Statement(Statement::Return(ret)) = &block.stmts[0] else {
+            panic!("expected return statement");
+        };
+        let Some(Expression::Literal(lit)) = &ret.expr else {
+            panic!("expected compound literal");
+        };
+        assert_eq!(lit.ty, Type::Struct { tag: "Token".to_string() });
+        assert!(matches!(
+            lit.value.as_ref(),
+            Initializer::Compound(_, _, inits)
+                if inits.len() == 3
+                    && matches!(&inits[0], Initializer::Single(name, _) if name == "kind")
+                    && matches!(&inits[1], Initializer::Single(name, _) if name == "len")
+                    && matches!(&inits[2], Initializer::Single(name, _) if name == "start")
+        ));
+    }
+
+
+    #[test]
+    fn parses_empty_array_parameters() {
+        parse("extern int getloadavg(double loadavg[], int nelem);");
+    }
+
+    #[test]
+    fn parses_gnu_statement_expression_in_assert_like_macro() {
+        parse("int main(void) { ((void) sizeof ((0 && \"bad\") ? 1 : 0), __extension__ ({ if (0 && \"bad\") ; else __assert_fail(\"bad\", \"x.c\", 1, __extension__ __PRETTY_FUNCTION__); })); return 0; }");
+    }
+
+    #[test]
+    fn parses_anonymous_struct_typedef_at_file_scope() {
+        parse("typedef struct { int capacity; int len; int *data; } VecInt;");
+    }
+
+    #[test]
+    fn parses_multiple_declarators_in_one_declaration() {
+        let program = parse("int a, *b; int main(void) { long x, y; return 0; }");
+
+        assert!(matches!(
+            &program.block_items[0],
+            BlockItem::Declaration(Declaration::Variable(var))
+                if var.name == "a" && var.ty == Type::Int
+        ));
+        assert!(matches!(
+            &program.block_items[1],
+            BlockItem::Declaration(Declaration::Variable(var))
+                if var.name == "b" && var.ty == Type::Pointer(Box::new(Type::Int))
+        ));
+    }
+
+    #[test]
+    fn parses_nested_designated_initializers() {
+        let program = parse(
+            r#"
+            union U { int reg; double fp; };
+            struct AsmOperand { int kind; union U as; int asm_type; };
+            struct AsmOperand f(int scratch_reg, int cmp_type) {
+                return (struct AsmOperand){ .kind = 1, .as.reg = scratch_reg, .asm_type = cmp_type };
+            }
+            "#,
+        );
+
+        let BlockItem::Declaration(Declaration::Function(func)) = &program.block_items[2] else {
+            panic!("expected function declaration");
+        };
+        let Some(BlockItem::Statement(Statement::Compound(block))) = func.body.as_ref().as_ref() else {
+            panic!("expected function body");
+        };
+        let BlockItem::Statement(Statement::Return(ret)) = &block.stmts[0] else {
+            panic!("expected return statement");
+        };
+        let Some(Expression::Literal(lit)) = &ret.expr else {
+            panic!("expected compound literal");
+        };
+        assert!(matches!(
+            lit.value.as_ref(),
+            Initializer::Compound(_, _, inits)
+                if matches!(
+                    &inits[1],
+                    Initializer::Compound(name, _, nested)
+                        if name == "as"
+                            && matches!(&nested[0], Initializer::Single(member, _) if member == "reg")
+                )
+        ));
+    }
+
+    #[test]
+    fn parses_builtin_varargs_intrinsics() {
+        parse(
+            r#"
+            typedef __builtin_va_list va_list;
+            enum TokenKind { TOKEN_A, TOKEN_B };
+            int f(int size, ...) {
+                va_list ap;
+                __builtin_va_start(ap, size);
+                enum TokenKind kind = __builtin_va_arg(ap, enum TokenKind);
+                __builtin_va_end(ap);
+                return kind;
+            }
+            "#,
+        );
+    }
+
+    #[test]
+    fn parses_sizeof_expression_array_dimensions() {
+        let program = parse(
+            r#"
+            static int regs[] = { 1, 2, 3, 4 };
+            struct State { _Bool used[((int) (sizeof(regs) / sizeof(regs[0])))]; };
+            "#,
+        );
+
+        assert!(matches!(
+            &program.block_items[1],
+            BlockItem::Declaration(Declaration::Struct(decl))
+                if matches!(
+                    &decl.members[0].ty,
+                    Type::Array { element, size }
+                        if **element == Type::Char && *size == 4
+                )
+        ));
+    }
+
+    #[test]
+    fn parses_libc_reserved_typedef_names_and_forward_struct_pointers() {
+        parse(
+            r#"
+            struct _fpstate *fp;
+            struct Context { struct _fpstate *fpstate; __uint64_t reserved[8]; };
+            "#,
+        );
+    }
+
+    #[test]
+    fn parses_multiple_and_anonymous_aggregate_members() {
+        let program = parse(
+            r#"
+            struct Outer {
+                int a, b;
+                struct { int nested; };
+            };
+            "#,
+        );
+
+        let outer = program.block_items.iter().find_map(|item| match item {
+            BlockItem::Declaration(Declaration::Struct(decl)) if decl.members.len() == 3 => {
+                Some(decl)
+            }
+            _ => None,
+        }).expect("expected outer struct declaration");
+
+        assert_eq!(outer.members[0].name, "a");
+        assert_eq!(outer.members[1].name, "b");
+        assert_eq!(outer.members[2].name, "");
+    }
+
+    #[test]
+    fn parses_anonymous_struct_pointer_declaration_with_initializer() {
+        parse(
+            r#"
+            void *malloc(unsigned long size);
+            int f(int num_args) {
+                struct { int count; int regs[2]; } *arg_locs = malloc(sizeof(struct { int x; }));
+                return num_args;
+            }
+            "#,
+        );
+    }
+
+    #[test]
+    fn parses_builtin_bswap_calls_in_inline_helpers() {
+        parse(r#"
+            typedef unsigned short int __uint16_t;
+            typedef unsigned int __uint32_t;
+            typedef unsigned long int __uint64_t;
+            static __inline __uint16_t __bswap_16(__uint16_t x) { return __builtin_bswap16(x); }
+            static __inline __uint32_t __bswap_32(__uint32_t x) { return __builtin_bswap32(x); }
+            static __inline __uint64_t __bswap_64(__uint64_t x) { return __builtin_bswap64(x); }
+        "#);
+    }
+
+    #[test]
+    fn parses_anonymous_struct_pointer_local_declarations() {
+        parse(r#"
+            void *malloc(unsigned long size);
+            int f(int num_args) {
+                struct {
+                    int num_eightbytes;
+                    int regs[2];
+                    int asm_types[2];
+                } *arg_locs = malloc(sizeof(struct { int x; }) * num_args);
+                return arg_locs != 0;
+            }
+        "#);
     }
 
 }

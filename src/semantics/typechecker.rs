@@ -7,10 +7,11 @@ use crate::{
         CastExpression, CompoundExpression, ConditionalExpression, ConstantExpression, Declaration,
         DefaultStatement, DerefExpression, EnumDeclaration, DoWhileStatement, DotExpression, Expression,
         ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, GotoStatement,
-        IfStatement, Initializer, LabeledStatement, PostfixExpression, PostfixExpressionKind,
+        IfStatement, Initializer, LabeledStatement, LiteralExpression, PostfixExpression, PostfixExpressionKind,
         Program, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
         StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement, Type,
-        TypedefDeclaration, UnaryExpression, UnaryExpressionKind, VariableDeclaration, VariableExpression,
+        TypedefDeclaration, UnaryExpression, UnaryExpressionKind, VaArgExpression,
+        VaCopyExpression, VaEndExpression, VaStartExpression, VariableDeclaration, VariableExpression,
         WhileStatement,
     },
     util::error::{ErrorKind, Result, UccError},
@@ -22,9 +23,90 @@ use std::{
     sync::Mutex,
 };
 
+#[derive(Debug, Clone)]
+struct CurrentFunctionContext {
+    variadic: bool,
+    last_param: Option<String>,
+}
+
 lazy_static::lazy_static! {
     pub static ref SYMBOL_TABLE: Mutex<BTreeMap<String, Symbol>> = Mutex::new(BTreeMap::new());
     pub static ref TYPE_TABLE: Mutex<BTreeMap<String, StructEntry>> = Mutex::new(BTreeMap::new());
+    static ref CURRENT_FUNCTION_CONTEXT: Mutex<Option<CurrentFunctionContext>> = Mutex::new(None);
+}
+
+pub const BUILTIN_VA_LIST_TAG: &str = "__builtin_va_list_tag";
+
+pub fn ensure_builtin_va_list_type() {
+    let mut type_table = TYPE_TABLE.lock().unwrap();
+    if type_table.contains_key(BUILTIN_VA_LIST_TAG) {
+        return;
+    }
+
+    type_table.insert(
+        BUILTIN_VA_LIST_TAG.to_string(),
+        StructEntry {
+            kind: AggregateKind::Struct,
+            alignment: 8,
+            size: 24,
+            members: vec![
+                MemberEntry {
+                    name: "gp_offset".to_string(),
+                    ty: Type::UInt,
+                    offset: 0,
+                },
+                MemberEntry {
+                    name: "fp_offset".to_string(),
+                    ty: Type::UInt,
+                    offset: 4,
+                },
+                MemberEntry {
+                    name: "overflow_arg_area".to_string(),
+                    ty: Type::Pointer(Box::new(Type::Void)),
+                    offset: 8,
+                },
+                MemberEntry {
+                    name: "reg_save_area".to_string(),
+                    ty: Type::Pointer(Box::new(Type::Void)),
+                    offset: 16,
+                },
+            ],
+        },
+    );
+}
+
+pub fn builtin_va_list_element_type() -> Type {
+    ensure_builtin_va_list_type();
+    Type::Struct {
+        tag: BUILTIN_VA_LIST_TAG.to_string(),
+    }
+}
+
+pub fn builtin_va_list_type() -> Type {
+    Type::Array {
+        element: Box::new(builtin_va_list_element_type()),
+        size: 1,
+    }
+}
+
+pub fn is_builtin_va_list_object_type(t: &Type) -> bool {
+    matches!(
+        t,
+        Type::Array { element, size: 1 }
+            if matches!(element.as_ref(), Type::Struct { tag } if tag == BUILTIN_VA_LIST_TAG)
+    )
+}
+
+pub fn is_builtin_va_list_pointer_type(t: &Type) -> bool {
+    matches!(
+        t,
+        Type::Pointer(inner)
+            if matches!(inner.as_ref(), Type::Struct { tag } if tag == BUILTIN_VA_LIST_TAG)
+    )
+}
+
+pub fn is_builtin_va_list_compatible_type(t: &Type) -> bool {
+    is_builtin_va_list_object_type(t) || is_builtin_va_list_pointer_type(t)
 }
 
 pub trait Typecheck {
@@ -105,8 +187,29 @@ impl Typecheck for TypedefDeclaration {
     }
 }
 
+fn infer_array_size_from_initializer(ty: &Type, init: Option<&Initializer>) -> Type {
+    match (ty, init) {
+        (
+            Type::Array { element, size: 0 },
+            Some(Initializer::Compound(_, _, inits)),
+        ) => Type::Array {
+            element: element.clone(),
+            size: inits.len(),
+        },
+        (
+            Type::Array { element, size: 0 },
+            Some(Initializer::Single(_, Expression::String(string_expr))),
+        ) if matches!(element.as_ref(), Type::Char | Type::SChar | Type::UChar) => Type::Array {
+            element: element.clone(),
+            size: string_expr.value.len() + 1,
+        },
+        _ => ty.clone(),
+    }
+}
+
 impl Typecheck for VariableDeclaration {
-    fn typecheck(self) -> Result<Self> {
+    fn typecheck(mut self) -> Result<Self> {
+        self.ty = infer_array_size_from_initializer(&self.ty, self.init.as_ref());
         if self.ty == Type::Void {
             return Err(UccError {
                 msg: format!("Variable declared with void type"),
@@ -533,7 +636,7 @@ impl Typecheck for FunctionDeclaration {
         SYMBOL_TABLE.lock().unwrap().insert(
             self.name.clone(),
             Symbol {
-                ty: fun_type,
+                ty: fun_type.clone(),
                 attrs: IdentifierAttrs::FuncAttr { global, defined },
             },
         );
@@ -548,7 +651,18 @@ impl Typecheck for FunctionDeclaration {
             }
         }
 
-        let typechecked_body = self.body.map(|body| body.typecheck()).transpose()?;
+        let old_context = CURRENT_FUNCTION_CONTEXT.lock().unwrap().clone();
+        if has_body {
+            let variadic = matches!(&fun_type, Type::Func { variadic: true, .. });
+            *CURRENT_FUNCTION_CONTEXT.lock().unwrap() = Some(CurrentFunctionContext {
+                variadic,
+                last_param: self.params.last().cloned(),
+            });
+        }
+
+        let typechecked_body_result = self.body.map(|body| body.typecheck()).transpose();
+        *CURRENT_FUNCTION_CONTEXT.lock().unwrap() = old_context;
+        let typechecked_body = typechecked_body_result?;
 
         Ok(FunctionDeclaration {
             name: self.name.clone(),
@@ -778,17 +892,19 @@ fn validate_struct_definition(definition: &StructDeclaration) -> Result<StructDe
         for member in &definition.members {
             let member_name = &member.name;
 
-            if member_names.contains(member_name) {
-                return Err(UccError {
-                    msg: format!(
-                        "Duplicate declaration of member {} in aggregate {}",
-                        member_name, tag
-                    ),
-                    kind: ErrorKind::Typecheck,
-                    span: definition.span,
-                });
-            } else {
-                member_names.insert(member_name.clone());
+            if !member_name.is_empty() {
+                if member_names.contains(member_name) {
+                    return Err(UccError {
+                        msg: format!(
+                            "Duplicate declaration of member {} in aggregate {}",
+                            member_name, tag
+                        ),
+                        kind: ErrorKind::Typecheck,
+                        span: definition.span,
+                    });
+                } else {
+                    member_names.insert(member_name.clone());
+                }
             }
 
             validate_type_specifier(&member.ty)?;
@@ -1098,6 +1214,150 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             PostfixExpressionKind::Dec => typecheck_postfix_dec(expr, *span),
         },
 
+        Expression::VaStart(VaStartExpression {
+            list,
+            last_param,
+            ty: _,
+            span,
+        }) => {
+            let typed_list = typecheck_expr(list)?;
+            let typed_last_param = typecheck_expr(last_param)?;
+            let list_ty = get_type(&typed_list);
+
+            let context = CURRENT_FUNCTION_CONTEXT.lock().unwrap().clone();
+            if !context.as_ref().is_some_and(|ctx| ctx.variadic) {
+                return Err(UccError {
+                    msg: format!("__builtin_va_start may only be used in a variadic function"),
+                    kind: ErrorKind::Typecheck,
+                    span: *span,
+                });
+            }
+
+            if let Some(expected_last_param) = context.and_then(|ctx| ctx.last_param) {
+                match &typed_last_param {
+                    Expression::Variable(VariableExpression { value, .. })
+                        if value == &expected_last_param => {}
+                    _ => {
+                        return Err(UccError {
+                            msg: format!("__builtin_va_start second argument must be the last named parameter"),
+                            kind: ErrorKind::Typecheck,
+                            span: *span,
+                        });
+                    }
+                }
+            }
+
+            if !is_builtin_va_list_compatible_type(list_ty) {
+                return Err(UccError {
+                    msg: format!("__builtin_va_start first argument must be a va_list"),
+                    kind: ErrorKind::Typecheck,
+                    span: *span,
+                });
+            }
+
+            if is_builtin_va_list_object_type(list_ty) && !is_lvalue(&typed_list) {
+                return Err(UccError {
+                    msg: format!("__builtin_va_start first argument must be a va_list lvalue"),
+                    kind: ErrorKind::Typecheck,
+                    span: *span,
+                });
+            }
+
+            Ok(Expression::VaStart(VaStartExpression {
+                list: Box::new(typed_list),
+                last_param: Box::new(typed_last_param),
+                ty: Type::Void,
+                span: *span,
+            }))
+        }
+
+        Expression::VaArg(VaArgExpression {
+            list,
+            arg_ty,
+            ty: _,
+            span,
+        }) => {
+            let typed_list = typecheck_expr(list)?;
+            let list_ty = get_type(&typed_list);
+
+            if !is_builtin_va_list_compatible_type(list_ty) {
+                return Err(UccError {
+                    msg: format!("__builtin_va_arg first argument must be a va_list"),
+                    kind: ErrorKind::Typecheck,
+                    span: *span,
+                });
+            }
+
+            if !is_complete(arg_ty)
+                || matches!(arg_ty, Type::Void | Type::Func { .. } | Type::Array { .. })
+            {
+                return Err(UccError {
+                    msg: format!("__builtin_va_arg needs a complete object type"),
+                    kind: ErrorKind::Typecheck,
+                    span: *span,
+                });
+            }
+
+            Ok(Expression::VaArg(VaArgExpression {
+                list: Box::new(typed_list),
+                arg_ty: arg_ty.clone(),
+                ty: arg_ty.clone(),
+                span: *span,
+            }))
+        }
+
+        Expression::VaCopy(VaCopyExpression {
+            dst,
+            src,
+            ty: _,
+            span,
+        }) => {
+            let typed_dst = typecheck_expr(dst)?;
+            let typed_src = typecheck_expr(src)?;
+
+            if !is_builtin_va_list_compatible_type(get_type(&typed_dst))
+                || !is_builtin_va_list_compatible_type(get_type(&typed_src))
+            {
+                return Err(UccError {
+                    msg: format!("__builtin_va_copy arguments must be va_list values"),
+                    kind: ErrorKind::Typecheck,
+                    span: *span,
+                });
+            }
+
+            if is_builtin_va_list_object_type(get_type(&typed_dst)) && !is_lvalue(&typed_dst) {
+                return Err(UccError {
+                    msg: format!("__builtin_va_copy destination must be a va_list lvalue"),
+                    kind: ErrorKind::Typecheck,
+                    span: *span,
+                });
+            }
+
+            Ok(Expression::VaCopy(VaCopyExpression {
+                dst: Box::new(typed_dst),
+                src: Box::new(typed_src),
+                ty: Type::Void,
+                span: *span,
+            }))
+        }
+
+        Expression::VaEnd(VaEndExpression { list, ty: _, span }) => {
+            let typed_list = typecheck_expr(list)?;
+            if !is_builtin_va_list_compatible_type(get_type(&typed_list)) {
+                return Err(UccError {
+                    msg: format!("__builtin_va_end argument must be a va_list"),
+                    kind: ErrorKind::Typecheck,
+                    span: *span,
+                });
+            }
+
+            Ok(Expression::VaEnd(VaEndExpression {
+                list: Box::new(typed_list),
+                ty: Type::Void,
+                span: *span,
+            }))
+        }
+
         Expression::Call(CallExpression {
             name,
             args,
@@ -1154,7 +1414,16 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
         }
 
         Expression::Variable(VariableExpression { value, ty: _, span }) => {
-            let symbol = SYMBOL_TABLE.lock().unwrap().get(value).cloned().unwrap();
+            let symbol = SYMBOL_TABLE
+                .lock()
+                .unwrap()
+                .get(value)
+                .cloned()
+                .ok_or_else(|| UccError {
+                    msg: format!("Undeclared variable reached typechecker: {}", value),
+                    kind: ErrorKind::Typecheck,
+                    span: *span,
+                })?;
 
             if let IdentifierAttrs::EnumConstantAttr(v) = symbol.attrs {
                 return Ok(Expression::Constant(ConstantExpression {
@@ -1165,20 +1434,6 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }
 
             let v_type = symbol.ty;
-
-            let some_fn_type = Type::Func {
-                params: vec![Type::Int],
-                ret: Type::Int.into(),
-                variadic: false,
-            };
-
-            if std::mem::discriminant(&v_type) == std::mem::discriminant(&some_fn_type) {
-                return Err(UccError {
-                    msg: format!("function used as a variable"),
-                    kind: ErrorKind::Typecheck,
-                    span: *span,
-                });
-            }
 
             Ok(Expression::Variable(VariableExpression {
                 value: value.clone(),
@@ -1504,6 +1759,32 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }))
         }
 
+        Expression::Literal(LiteralExpression { name, value, ty, span }) => {
+            if ty == &Type::Dummy {
+                return Err(UccError {
+                    kind: ErrorKind::Typecheck,
+                    msg: format!("Compound literal is missing a target type."),
+                    span: *span,
+                });
+            }
+
+            validate_type_specifier(ty)?;
+            if !is_complete(ty) {
+                return Err(UccError {
+                    kind: ErrorKind::Typecheck,
+                    msg: format!("Compound literal has incomplete type."),
+                    span: *span,
+                });
+            }
+
+            Ok(Expression::Literal(LiteralExpression {
+                name: name.clone(),
+                value: Box::new(typecheck_init(ty, value)?),
+                ty: ty.clone(),
+                span: *span,
+            }))
+        }
+
         Expression::SizeofT(SizeofTExpression { t, ty: _, span }) => {
             validate_type_specifier(t)?;
             if !is_complete(t) {
@@ -1545,27 +1826,11 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             let typed_structure = typecheck_and_convert(structure)?;
             match get_type(&typed_structure) {
                 Type::Struct { tag } | Type::Union { tag } => {
-                    let struct_def = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
-
-                    if !struct_def
-                        .members
-                        .iter()
-                        .cloned()
-                        .any(|m| m.name == *member)
-                    {
-                        return Err(UccError {
-                            kind: ErrorKind::Typecheck,
-                            msg: format!("Unknown aggregate member."),
-                            span: *span,
-                        });
-                    }
-
-                    let member_def = struct_def
-                        .members
-                        .iter()
-                        .find(|&m| m.name == *member)
-                        .cloned()
-                        .unwrap();
+                    let member_def = find_aggregate_member(tag, member).ok_or_else(|| UccError {
+                        kind: ErrorKind::Typecheck,
+                        msg: format!("Unknown aggregate member."),
+                        span: *span,
+                    })?;
 
                     Ok(Expression::Dot(DotExpression {
                         structure: Box::new(typed_structure),
@@ -1594,26 +1859,11 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             match get_type(&typed_pointer) {
                 Type::Pointer(referenced) => {
                     if let Type::Struct { tag } | Type::Union { tag } = &**referenced {
-                        let struct_def = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
-
-                        if !struct_def
-                            .members
-                            .iter()
-                            .cloned()
-                            .any(|m| m.name == *member)
-                        {
-                            return Err(UccError {
-                                kind: ErrorKind::Typecheck,
-                                msg: format!("Unknown member in aggregate."),
-                                span: *span,
-                            });
-                        }
-
-                        let member_def = struct_def
-                            .members
-                            .into_iter()
-                            .find(|m| m.name == *member)
-                            .unwrap();
+                        let member_def = find_aggregate_member(tag, member).ok_or_else(|| UccError {
+                            kind: ErrorKind::Typecheck,
+                            msg: format!("Unknown member in aggregate."),
+                            span: *span,
+                        })?;
 
                         Ok(Expression::Arrow(ArrowExpression {
                             pointer: Box::new(typed_pointer),
@@ -1638,8 +1888,6 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 }
             }
         }
-
-        _ => todo!(),
     }
 }
 
@@ -1657,8 +1905,317 @@ fn optionally_typecheck_for_init(init: ForInit) -> Result<ForInit> {
     }
 }
 
+fn find_aggregate_member_in_entry(entry: &StructEntry, member_name: &str) -> Option<MemberEntry> {
+    if let Some(member) = entry
+        .members
+        .iter()
+        .find(|member| !member.name.is_empty() && member.name == member_name)
+    {
+        return Some(member.clone());
+    }
+
+    for member in &entry.members {
+        if !member.name.is_empty() {
+            continue;
+        }
+
+        if let Some(nested_entry) = aggregate_entry_for_type(&member.ty) {
+            if let Some(mut nested_member) =
+                find_aggregate_member_in_entry(&nested_entry, member_name)
+            {
+                nested_member.offset += member.offset;
+                return Some(nested_member);
+            }
+        }
+    }
+
+    None
+}
+
+fn find_aggregate_member(tag: &str, member_name: &str) -> Option<MemberEntry> {
+    let entry = TYPE_TABLE.lock().unwrap().get(tag).cloned()?;
+    find_aggregate_member_in_entry(&entry, member_name)
+}
+
+fn initializer_designator_name(init: &Initializer) -> Option<&str> {
+    match init {
+        Initializer::Single(name, _) | Initializer::Compound(name, _, _) if !name.is_empty() => {
+            Some(name.as_str())
+        }
+        _ => None,
+    }
+}
+
+fn initializer_with_name(name: &str, init: &Initializer) -> Initializer {
+    match init {
+        Initializer::Single(_, expr) => Initializer::Single(name.to_string(), expr.clone()),
+        Initializer::Compound(_, ty, elems) => {
+            Initializer::Compound(name.to_string(), ty.clone(), elems.clone())
+        }
+    }
+}
+
+fn unwrap_untyped_braced_initializer(name: &str, lit: &LiteralExpression) -> Option<Initializer> {
+    if lit.ty == Type::Dummy {
+        Some(initializer_with_name(name, &lit.value))
+    } else {
+        None
+    }
+}
+
+fn aggregate_entry_for_type(t: &Type) -> Option<StructEntry> {
+    match t {
+        Type::Struct { tag } | Type::Union { tag } => {
+            TYPE_TABLE.lock().unwrap().get(tag).cloned()
+        }
+        _ => None,
+    }
+}
+
+fn find_visible_member_in_entry(entry: &StructEntry, member_name: &str) -> Option<MemberEntry> {
+    // First: directly declared member.
+    if let Some(member) = entry
+        .members
+        .iter()
+        .find(|member| !member.name.is_empty() && member.name == member_name)
+    {
+        return Some(member.clone());
+    }
+
+    // Then: members promoted through anonymous struct/union members.
+    for member in &entry.members {
+        if !member.name.is_empty() {
+            continue;
+        }
+
+        let Some(nested_entry) = aggregate_entry_for_type(&member.ty) else {
+            continue;
+        };
+
+        if let Some(mut nested_member) = find_visible_member_in_entry(&nested_entry, member_name) {
+            nested_member.offset += member.offset;
+            return Some(nested_member);
+        }
+    }
+
+    None
+}
+
+fn member_type_contains_designator(member_ty: &Type, member_name: &str) -> bool {
+    aggregate_entry_for_type(member_ty)
+        .and_then(|entry| find_visible_member_in_entry(&entry, member_name))
+        .is_some()
+}
+
+fn find_designated_member_index(members: &[MemberEntry], member_name: &str) -> Option<usize> {
+    // Direct designator: `.field = ...`
+    if let Some(index) = members
+        .iter()
+        .position(|member| !member.name.is_empty() && member.name == member_name)
+    {
+        return Some(index);
+    }
+
+    // Anonymous aggregate designator:
+    //
+    // struct Outer {
+    //     union { int reg; long imm; };
+    //     int tag;
+    // };
+    //
+    // struct Outer x = { .reg = 1 };
+    //
+    // `.reg` should select the anonymous union slot.
+    members.iter().position(|member| {
+        member.name.is_empty() && member_type_contains_designator(&member.ty, member_name)
+    })
+}
+
+fn is_zero_initializer_expr(expr: &Expression) -> bool {
+    match expr {
+        Expression::Constant(ConstantExpression { value, .. }) => matches!(
+            value,
+            Const::Short(0)
+                | Const::Int(0)
+                | Const::Long(0)
+                | Const::UShort(0)
+                | Const::UInt(0)
+                | Const::ULong(0)
+                | Const::Char(0)
+                | Const::UChar(0)
+        ),
+        Expression::Cast(CastExpression { expr, .. }) => is_zero_initializer_expr(expr),
+        _ => false,
+    }
+}
+
+fn is_aggregate_type(t: &Type) -> bool {
+    matches!(t, Type::Array { .. } | Type::Struct { .. } | Type::Union { .. })
+}
+
+fn initializer_for_selected_member(member: &MemberEntry, init: &Initializer) -> Initializer {
+    // C permits zero-initializing an aggregate member with a scalar zero through
+    // brace elision, e.g.:
+    //
+    //     struct Outer { struct Inner inner; int tag; } x = {0};
+    //
+    // The outer struct selects `inner` for the `0`.  Passing that scalar `0`
+    // directly to typecheck_init(&Inner, ...) fails with "cannot convert".
+    // Since the scalar is zero, the result is exactly the same as a fully-zeroed
+    // initializer for the selected aggregate member.
+    if is_aggregate_type(&member.ty) {
+        if let Initializer::Single(_, expr) = init {
+            if is_zero_initializer_expr(expr) {
+                return Initializer::zero(&member.ty);
+            }
+        }
+    }
+
+    let Some(member_name) = initializer_designator_name(init) else {
+        return init.clone();
+    };
+
+    // If `.reg = 1` selected an anonymous union/struct member, recurse into that
+    // anonymous aggregate with a compound initializer that still contains `.reg`.
+    //
+    // Without this wrapping, typecheck_init sees:
+    //
+    //     target type: anonymous union
+    //     initializer: Single("reg", ...)
+    //
+    // and rejects it as "single initializer for aggregate type".
+    if member.name.is_empty() && member_type_contains_designator(&member.ty, member_name) {
+        Initializer::Compound(
+            String::new(),
+            member.ty.clone(),
+            vec![init.clone()],
+        )
+    } else {
+        init.clone()
+    }
+}
+
+fn typecheck_struct_init_with_designators(
+    tag: &str,
+    name: &str,
+    compound_init: &[Initializer],
+) -> Result<Initializer> {
+    let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+
+    if compound_init.len() > struct_def.members.len() {
+        return Err(UccError {
+            kind: ErrorKind::Typecheck,
+            msg: format!("Too many initiailezers."),
+            span: Span { start: 0, end: 0 },
+        });
+    }
+
+    let mut typechecked_inits = struct_def
+        .members
+        .iter()
+        .map(|member| Initializer::zero(&member.ty))
+        .collect::<Vec<_>>();
+    let mut next_member = 0usize;
+
+    for init_elem in compound_init {
+        let member_index = if let Some(member_name) = initializer_designator_name(init_elem) {
+            find_designated_member_index(&struct_def.members, member_name).ok_or_else(|| UccError {
+                kind: ErrorKind::Typecheck,
+                msg: format!(
+                    "Unknown aggregate member `{}` in designated initializer.",
+                    member_name
+                ),
+                span: Span { start: 0, end: 0 },
+            })?
+        } else {
+            let idx = next_member;
+            if idx >= struct_def.members.len() {
+                return Err(UccError {
+                    kind: ErrorKind::Typecheck,
+                    msg: format!("Too many initiailezers."),
+                    span: Span { start: 0, end: 0 },
+                });
+            }
+            idx
+        };
+
+        let member = &struct_def.members[member_index];
+        let init_for_member = initializer_for_selected_member(member, init_elem);
+
+        typechecked_inits[member_index] = typecheck_init(&member.ty, &init_for_member)?;
+
+        next_member = member_index + 1;
+    }
+
+    Ok(Initializer::Compound(
+        name.to_string(),
+        Type::Struct { tag: tag.to_string() },
+        typechecked_inits,
+    ))
+}
+
+fn typecheck_union_init_with_designator(
+    tag: &str,
+    name: &str,
+    compound_init: &[Initializer],
+) -> Result<Initializer> {
+    let union_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+
+    if compound_init.len() > 1 {
+        return Err(UccError {
+            kind: ErrorKind::Typecheck,
+            msg: format!("Too many initiailezers."),
+            span: Span { start: 0, end: 0 },
+        });
+    }
+
+    let Some(init_elem) = compound_init.first() else {
+        let first_member = union_def.members.first().unwrap();
+        return Ok(Initializer::Compound(
+            name.to_string(),
+            Type::Union { tag: tag.to_string() },
+            vec![Initializer::zero(&first_member.ty)],
+        ));
+    };
+
+    let member = if let Some(member_name) = initializer_designator_name(init_elem) {
+        let member_index = find_designated_member_index(&union_def.members, member_name).ok_or_else(|| UccError {
+            kind: ErrorKind::Typecheck,
+            msg: format!(
+                "Unknown aggregate member `{}` in designated initializer.",
+                member_name
+            ),
+            span: Span { start: 0, end: 0 },
+        })?;
+        &union_def.members[member_index]
+    } else {
+        union_def.members.first().unwrap()
+    };
+
+    let init_for_member = initializer_for_selected_member(member, init_elem);
+
+    Ok(Initializer::Compound(
+        name.to_string(),
+        Type::Union { tag: tag.to_string() },
+        vec![typecheck_init(&member.ty, &init_for_member)?],
+    ))
+}
+
 fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer> {
     match (target_type, init) {
+        (_, Initializer::Single(name, Expression::Literal(lit))) => {
+            if let Some(nested_init) = unwrap_untyped_braced_initializer(name, lit) {
+                return typecheck_init(target_type, &nested_init);
+            }
+
+            let typechecked_expr = typecheck_and_convert(&Expression::Literal(lit.clone()))?;
+            let converted_expr = convert_by_assignment(&typechecked_expr, target_type)?;
+            Ok(Initializer::Single(name.clone(), converted_expr))
+        }
+        (_, Initializer::Compound(name, _, inits)) if is_scalar(target_type) && inits.len() == 1 => {
+            let inner = initializer_with_name(name, &inits[0]);
+            typecheck_init(target_type, &inner)
+        }
         (
             Type::Array { element, size },
             Initializer::Single(
@@ -1696,61 +2253,10 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             ))
         }
         (Type::Struct { tag }, Initializer::Compound(name, _, compound_init)) => {
-            let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
-
-            if compound_init.len() > struct_def.members.len() {
-                return Err(UccError {
-                    kind: ErrorKind::Typecheck,
-                    msg: format!("Too many initiailezers."),
-                    span: Span { start: 0, end: 0 },
-                });
-            }
-
-            let mut i = 0;
-            let mut typechecked_inits = vec![];
-
-            for init_elem in compound_init.iter() {
-                let member = &struct_def.members[i];
-                let typechecked_init = typecheck_init(&member.ty, init_elem)?;
-                typechecked_inits.push(typechecked_init);
-                i += 1;
-            }
-
-            while i < struct_def.members.len() {
-                let member = &struct_def.members[i];
-                typechecked_inits.push(Initializer::zero(&member.ty));
-                i += 1;
-            }
-
-            Ok(Initializer::Compound(
-                name.clone(),
-                Type::Struct { tag: tag.clone() },
-                typechecked_inits,
-            ))
+            typecheck_struct_init_with_designators(tag, name, compound_init)
         }
         (Type::Union { tag }, Initializer::Compound(name, _, compound_init)) => {
-            let union_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
-
-            if compound_init.len() > 1 {
-                return Err(UccError {
-                    kind: ErrorKind::Typecheck,
-                    msg: format!("Too many initiailezers."),
-                    span: Span { start: 0, end: 0 },
-                });
-            }
-
-            let first_member = union_def.members.first().unwrap();
-            let typechecked_inits = if let Some(init_elem) = compound_init.first() {
-                vec![typecheck_init(&first_member.ty, init_elem)?]
-            } else {
-                vec![Initializer::zero(&first_member.ty)]
-            };
-
-            Ok(Initializer::Compound(
-                name.clone(),
-                Type::Union { tag: tag.clone() },
-                typechecked_inits,
-            ))
+            typecheck_union_init_with_designator(tag, name, compound_init)
         }
         (_, Initializer::Single(name, expr)) => {
             let typechecked_expr = typecheck_and_convert(expr)?;
@@ -2370,6 +2876,19 @@ pub fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
             span: spanof(e),
         })),
 
+        // In most expression contexts, a function designator converts to a
+        // pointer to that function. This is required for code such as:
+        //
+        //     qsort(base, n, size, compare_fn);
+        //
+        // where the fourth argument has function-pointer type and
+        // `compare_fn` is written without an explicit `&`.
+        Type::Func { .. } => Ok(Expression::AddrOf(AddrOfExpression {
+            expr: typed_expr.to_owned().into(),
+            ty: Type::Pointer(Box::new(type_of_expr.to_owned())),
+            span: spanof(e),
+        })),
+
         Type::Struct { .. } | Type::Union { .. } => {
             if !is_complete(type_of_expr) {
                 return Err(UccError {
@@ -2530,6 +3049,10 @@ pub fn get_type(e: &Expression) -> &Type {
         Expression::Assign(assign) => &assign.ty,
         Expression::Binary(binary) => &binary.ty,
         Expression::Call(call) => &call.ty,
+        Expression::VaStart(va_start) => &va_start.ty,
+        Expression::VaArg(va_arg) => &va_arg.ty,
+        Expression::VaCopy(va_copy) => &va_copy.ty,
+        Expression::VaEnd(va_end) => &va_end.ty,
         Expression::Cast(cast) => &cast.ty,
         Expression::Conditional(conditional) => &conditional.ty,
         Expression::Constant(constant) => &constant.ty,
@@ -2627,6 +3150,7 @@ fn is_null_ptr_constant(e: &Expression) -> bool {
                 | Const::Char(0)
                 | Const::UChar(0)
         ),
+        Expression::Cast(CastExpression { expr, .. }) => is_null_ptr_constant(expr),
         _ => false,
     }
 }
@@ -2810,6 +3334,21 @@ fn const2staticinit(konst: &Const, t: &Type) -> StaticInit {
 
 fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
     match (t, init) {
+        (_, Initializer::Single(name, Expression::Literal(lit))) => {
+            if let Some(nested_init) = unwrap_untyped_braced_initializer(name, lit) {
+                return static_init_helper(&nested_init, t);
+            }
+
+            Err(UccError {
+                msg: format!("StaticInitError::NonConstantInitializer"),
+                kind: ErrorKind::Typecheck,
+                span: Span { start: 0, end: 0 },
+            })
+        }
+        (_, Initializer::Compound(name, _, inits)) if is_scalar(t) && inits.len() == 1 => {
+            let inner = initializer_with_name(name, &inits[0]);
+            static_init_helper(&inner, t)
+        }
         (Type::Pointer(_), Initializer::Single(_, Expression::String(string_expr))) => {
             let str_id = format!("string.{}", make_temporary());
             let symbol = Symbol {
@@ -2836,11 +3375,44 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 });
             }
 
+            let mut ordered_inits = struct_def
+                .members
+                .iter()
+                .map(|member| Initializer::zero(&member.ty))
+                .collect::<Vec<_>>();
+            let mut next_member = 0usize;
+
+            for init_elem in compound_init {
+                let member_index = if let Some(member_name) = initializer_designator_name(init_elem) {
+                    find_designated_member_index(&struct_def.members, member_name).ok_or_else(|| UccError {
+                        msg: format!(
+                            "Unknown aggregate member `{}` in designated initializer.",
+                            member_name
+                        ),
+                        kind: ErrorKind::Typecheck,
+                        span: Span { start: 0, end: 0 },
+                    })?
+                } else {
+                    let idx = next_member;
+                    if idx >= struct_def.members.len() {
+                        return Err(UccError {
+                            msg: format!("Too many initializers"),
+                            kind: ErrorKind::Typecheck,
+                            span: Span { start: 0, end: 0 },
+                        });
+                    }
+                    idx
+                };
+                let member = &struct_def.members[member_index];
+                ordered_inits[member_index] = initializer_for_selected_member(member, init_elem);
+                next_member = member_index + 1;
+            }
+
             let mut current_offset = 0;
 
             let mut static_inits = vec![];
 
-            for (i, init_elem) in compound_init.iter().enumerate() {
+            for (i, init_elem) in ordered_inits.iter().enumerate() {
                 let member = struct_def.members[i].clone();
                 if member.offset != current_offset {
                     static_inits.push(StaticInit::Zero(member.offset - current_offset));
@@ -2869,14 +3441,34 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 });
             }
 
-            let first_member = union_def.members.first().unwrap();
-            let mut static_inits = if let Some(init_elem) = compound_init.first() {
-                static_init_helper(init_elem, &first_member.ty)?
+            let first_init = compound_init.first();
+            let member = if let Some(init_elem) = first_init {
+                if let Some(member_name) = initializer_designator_name(init_elem) {
+                    let member_index = find_designated_member_index(&union_def.members, member_name)
+                        .ok_or_else(|| UccError {
+                            msg: format!(
+                                "Unknown aggregate member `{}` in designated initializer.",
+                                member_name
+                            ),
+                            kind: ErrorKind::Typecheck,
+                            span: Span { start: 0, end: 0 },
+                        })?;
+                    &union_def.members[member_index]
+                } else {
+                    union_def.members.first().unwrap()
+                }
             } else {
-                vec![StaticInit::Zero(get_size_of_type(&first_member.ty))]
+                union_def.members.first().unwrap()
             };
 
-            let initialized_size = get_size_of_type(&first_member.ty);
+            let mut static_inits = if let Some(init_elem) = first_init {
+                let init_for_member = initializer_for_selected_member(member, init_elem);
+                static_init_helper(&init_for_member, &member.ty)?
+            } else {
+                vec![StaticInit::Zero(get_size_of_type(&member.ty))]
+            };
+
+            let initialized_size = get_size_of_type(&member.ty);
             if union_def.size != initialized_size {
                 static_inits.push(StaticInit::Zero(union_def.size - initialized_size));
             }
@@ -2977,6 +3569,9 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                     span: Span { start: 0, end: 0 },
                 });
             }
+        }
+        (Type::Pointer(_), Initializer::Single(_, expr)) if is_null_ptr_constant(expr) => {
+            Ok(vec![StaticInit::Zero(get_size_of_type(t))])
         }
         (Type::Pointer(_), _) => {
             return Err(UccError {
@@ -3102,6 +3697,60 @@ mod union_tests {
             typed,
             Initializer::Compound(_, Type::Union { tag: ref typed_tag }, ref inits)
                 if typed_tag == &tag && inits.len() == 1
+        ));
+    }
+
+    #[test]
+    fn typechecks_designated_aggregate_initializers() {
+        let tag = "struct.designated.init.test".to_string();
+        TYPE_TABLE.lock().unwrap().remove(&tag);
+
+        StructDeclaration {
+            tag: tag.clone(),
+            kind: AggregateKind::Struct,
+            members: vec![member("kind", Type::Int), member("len", Type::Long)],
+            span: span(),
+        }
+        .typecheck()
+        .unwrap();
+
+        let init = Initializer::Compound(
+            String::new(),
+            Type::Dummy,
+            vec![
+                Initializer::Single(
+                    "len".to_string(),
+                    Expression::Constant(ConstantExpression {
+                        value: Const::Long(42),
+                        ty: Type::Long,
+                        span: span(),
+                    }),
+                ),
+                Initializer::Single(
+                    "kind".to_string(),
+                    Expression::Constant(ConstantExpression {
+                        value: Const::Int(7),
+                        ty: Type::Int,
+                        span: span(),
+                    }),
+                ),
+            ],
+        );
+
+        let typed = typecheck_init(&Type::Struct { tag: tag.clone() }, &init).unwrap();
+        let Initializer::Compound(_, Type::Struct { tag: typed_tag }, inits) = typed else {
+            panic!("expected typed struct initializer");
+        };
+        assert_eq!(typed_tag, tag);
+        assert!(matches!(
+            &inits[0],
+            Initializer::Single(name, Expression::Constant(ConstantExpression { value: Const::Int(7), .. }))
+                if name == "kind"
+        ));
+        assert!(matches!(
+            &inits[1],
+            Initializer::Single(name, Expression::Constant(ConstantExpression { value: Const::Long(42), .. }))
+                if name == "len"
         ));
     }
 }
@@ -3350,5 +3999,52 @@ mod typedef_varargs_tests {
         };
 
         assert_eq!(decl.clone().typecheck().unwrap(), decl);
+    }
+}
+
+#[cfg(test)]
+mod selfhost_regression_tests {
+    use super::*;
+    use crate::lexer::lex::Lexer;
+    use crate::parser::recursive_descent::Parser;
+    use crate::semantics::resolver::Resolve;
+    use std::collections::{BTreeMap, VecDeque};
+
+    fn parse_resolve_typecheck(src: &str) -> Result<Program> {
+        let tokens: VecDeque<_> = Lexer::new(src.to_string()).collect();
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse()?;
+        let resolved = program.resolve(&mut BTreeMap::new(), &mut BTreeMap::new())?;
+        resolved.typecheck()
+    }
+
+    #[test]
+    fn local_variables_reuse_complete_file_scope_struct_tags() {
+        let suffix = make_temporary();
+        let src = format!(
+            "struct Token_{suffix} {{ int kind; int len; char *start; }}; \
+             int f_{suffix}(void) {{ struct Token_{suffix} token; token.kind = 1; return token.kind; }}"
+        );
+
+        parse_resolve_typecheck(&src).unwrap();
+    }
+
+    #[test]
+    fn designated_initializers_find_anonymous_aggregate_members() {
+        let suffix = make_temporary();
+        let src = format!(
+            "struct Outer_{suffix} {{ union {{ int a; long b; }}; int c; }}; \
+             struct Outer_{suffix} obj_{suffix} = {{ .a = 1, .c = 2 }};"
+        );
+
+        parse_resolve_typecheck(&src).unwrap();
+    }
+
+    #[test]
+    fn static_pointer_initializers_accept_cast_null_pointer_constants() {
+        let suffix = make_temporary();
+        let src = format!("char *ptr_{suffix} = (void *)0;");
+
+        parse_resolve_typecheck(&src).unwrap();
     }
 }

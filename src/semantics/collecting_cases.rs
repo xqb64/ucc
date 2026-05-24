@@ -323,7 +323,6 @@ impl SwitchCaseCollect for CaseStatement {
         } else {
             &self.value
         };
-        println!("this_value: {:?}", this_value);
         if cases.iter().any(|stmt| {
             if let Statement::Case(case_stmt) = stmt {
                 expr_eq_ignoring_span(&case_stmt.value, this_value)

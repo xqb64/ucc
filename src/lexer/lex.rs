@@ -2,6 +2,61 @@ use crate::lexer::util::parse_integer;
 use regex::Regex;
 use std::{collections::HashMap, hash::Hash};
 
+fn decode_escape(chars: &[char], pos: &mut usize) -> char {
+    let ch = chars[*pos];
+    if ch != '\\' {
+        *pos += 1;
+        return ch;
+    }
+
+    *pos += 1;
+    if *pos >= chars.len() {
+        return '\\';
+    }
+
+    let escaped = chars[*pos];
+    *pos += 1;
+
+    match escaped {
+        'a' => '\x07',
+        'b' => '\x08',
+        'f' => '\x0c',
+        'n' => '\x0a',
+        'r' => '\x0d',
+        't' => '\x09',
+        'v' => '\x0b',
+        '\\' => '\x5c',
+        '\'' => '\x27',
+        '"' => '\x22',
+        '?' => '\x3f',
+        '0'..='7' => {
+            let mut value = escaped.to_digit(8).unwrap();
+            let mut consumed = 1;
+            while consumed < 3 && *pos < chars.len() {
+                if let Some(digit) = chars[*pos].to_digit(8) {
+                    value = value * 8 + digit;
+                    *pos += 1;
+                    consumed += 1;
+                } else {
+                    break;
+                }
+            }
+            char::from_u32(value).unwrap_or('\0')
+        }
+        other => other,
+    }
+}
+
+fn decode_escaped_string(s: &str) -> String {
+    let chars = s.chars().collect::<Vec<_>>();
+    let mut pos = 0;
+    let mut result = String::new();
+    while pos < chars.len() {
+        result.push(decode_escape(&chars, &mut pos));
+    }
+    result
+}
+
 pub struct Lexer {
     src: String,
     pos: usize,
@@ -11,7 +66,7 @@ pub struct Lexer {
 impl Lexer {
     pub fn new(src: String) -> Lexer {
         let keywords = vec![
-            "char", "short", "int", "long", "signed", "unsigned", "float", "double", "void", "typedef", "return",
+            "char", "short", "int", "long", "signed", "unsigned", "float", "double", "void", "_Bool", "const", "typedef", "return",
             "if", "else", "do", "while", "for", "break", "continue", "static", "extern",
             "sizeof", "struct", "union", "enum", "goto", "switch", "case", "default",
         ];
@@ -34,7 +89,7 @@ impl Lexer {
         );
         regexes.insert(
             "constant",
-            Regex::new(r"^[0-9]+(?P<suffix>[lL]?[uU]?|[uU]?[lL]?)\b").unwrap(),
+            Regex::new(r"^(?P<number>0[xX][0-9a-fA-F]+|[0-9]+)(?P<suffix>([uU]([lL]{1,2})?|([lL]{1,2})[uU]?))?\b").unwrap(),
         );
         regexes.insert(
             "double_constant",
@@ -46,11 +101,11 @@ impl Lexer {
         regexes.insert("identifier", Regex::new(r"^[a-zA-Z_]\w*\b").unwrap());
         regexes.insert(
             "char_const",
-            Regex::new(r#"^'([^'\\\n]|\\['"?\\abfnrtv])'"#).unwrap(),
+            Regex::new(r#"^'([^'\\\n]|\\([0-7]{1,3}|['"?\\abfnrtv]))'"#).unwrap(),
         );
         regexes.insert(
             "string",
-            Regex::new(r#"^"([^"\\\n]|\\['"\\?abfnrtv])*""#).unwrap(),
+            Regex::new(r#"^"([^"\\\n]|\\([0-7]{1,3}|['"\\?abfnrtv]))*""#).unwrap(),
         );
 
         Lexer {
@@ -104,6 +159,8 @@ impl Iterator for Lexer {
                 "float" => self.make_token(TokenKind::Float, len),
                 "double" => self.make_token(TokenKind::Double, len),
                 "void" => self.make_token(TokenKind::Void, len),
+                "_Bool" => self.make_token(TokenKind::Char, len),
+                "const" => self.make_token(TokenKind::Const, len),
                 "typedef" => self.make_token(TokenKind::Typedef, len),
                 "return" => self.make_token(TokenKind::Return, len),
                 "if" => self.make_token(TokenKind::If, len),
@@ -125,7 +182,7 @@ impl Iterator for Lexer {
                 "default" => self.make_token(TokenKind::Default, len),
                 _ => unreachable!(),
             }
-        } else if let Some(m) = self.regexes["double_constant"].find(src) {
+        } else if let Some(_m) = self.regexes["double_constant"].find(src) {
             let captures = self.regexes["double_constant"].captures(src).unwrap();
             let literal = captures.name("literal").unwrap().as_str();
             let suffix = captures.name("suffix").map(|m| m.as_str()).unwrap_or("");
@@ -156,13 +213,9 @@ impl Iterator for Lexer {
                 return Some(self.make_token(TokenKind::Error, len));
             }
 
-            let suffix = self.regexes["constant"]
-                .captures(src)
-                .unwrap()
-                .name("suffix")
-                .unwrap()
-                .as_str();
-            let just_number = m.as_str().trim_end_matches(suffix);
+            let captures = self.regexes["constant"].captures(src).unwrap();
+            let suffix = captures.name("suffix").map(|m| m.as_str()).unwrap_or("");
+            let just_number = captures.name("number").unwrap().as_str();
 
             let normalized_suffix = suffix
                 .chars()
@@ -252,49 +305,27 @@ impl Iterator for Lexer {
             let len = m.as_str().chars().count();
             self.pos += len;
 
-            self.make_token(TokenKind::Identifier(m.as_str().to_string()), len)
+            match m.as_str() {
+                "__signed" | "__signed__" => self.make_token(TokenKind::Signed, len),
+                "__const" | "__const__" => self.make_token(TokenKind::Const, len),
+                _ => self.make_token(TokenKind::Identifier(m.as_str().to_string()), len),
+            }
         } else if let Some(m) = self.regexes["string"].find(src) {
             let len = m.as_str().chars().count();
             self.pos += len;
 
             let s = m.as_str().trim_start_matches("\"").trim_end_matches("\"");
+            let result = decode_escaped_string(s);
 
-            let mut result = String::new();
-
-            s.replace(r"\a", "\x07")
-                .replace(r"\b", "\x08")
-                .replace(r"\f", "\x0c")
-                .replace(r"\n", "\x0a")
-                .replace(r"\r", "\x0d")
-                .replace(r"\t", "\x09")
-                .replace(r"\v", "\x0b")
-                .replace(r#"\'"#, "\x27")
-                .replace(r#"\""#, "\x22")
-                .replace(r"\\", "\x5c")
-                .replace(r"\?", "\x3f")
-                .chars()
-                .for_each(|ch| result.push(ch));
-
-            self.make_token(TokenKind::StringLiteral(result.to_string()), len)
+            self.make_token(TokenKind::StringLiteral(result), len)
         } else if let Some(m) = self.regexes["char_const"].find(src) {
             let len = m.as_str().chars().count();
             self.pos += len;
 
-            let ch = &m.as_str().chars().skip(1).take(len - 2).collect::<String>();
-            let ch = match ch.as_str() {
-                r"\a" => '\x07',
-                r"\b" => '\x08',
-                r"\f" => '\x0c',
-                r"\n" => '\x0a',
-                r"\r" => '\x0d',
-                r"\t" => '\x09',
-                r"\v" => '\x0b',
-                r"\'" => '\x27',
-                r#"\""# => '\x22',
-                r"\\" => '\x5c',
-                r"\?" => '\x3f',
-                _ => ch.parse().unwrap(),
-            };
+            let ch = m.as_str().chars().skip(1).take(len - 2).collect::<String>();
+            let chars = ch.chars().collect::<Vec<_>>();
+            let mut pos = 0;
+            let ch = decode_escape(&chars, &mut pos);
             self.make_token(TokenKind::CharLiteral(ch), len)
         } else {
             if src.is_empty() {
@@ -341,6 +372,7 @@ pub enum TokenKind {
     Float,
     Double,
     Void,
+    Const,
     Typedef,
     Return,
     If,

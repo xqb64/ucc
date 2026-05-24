@@ -16,6 +16,10 @@ use crate::{
     },
 };
 
+const VA_GP_REG_SAVE_SIZE: usize = 48;
+const VA_FP_REG_SAVE_SIZE: usize = 128;
+const VA_REG_SAVE_AREA_SIZE: usize = VA_GP_REG_SAVE_SIZE + VA_FP_REG_SAVE_SIZE;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum AsmNode {
     Program(AsmProgram),
@@ -392,6 +396,563 @@ impl Codegen for IRStaticConstant {
     }
 }
 
+fn vararg_register_save_area_name(function_name: &str) -> String {
+    format!("{}.va_reg_save_area", function_name)
+}
+
+fn ensure_local_object_asm_symbol(name: String, ty: AsmType) {
+    ASM_SYMBOL_TABLE.lock().unwrap().entry(name).or_insert(
+        AsmSymtabEntry::Object {
+            ty,
+            is_static: false,
+            is_constant: false,
+        },
+    );
+}
+
+fn emit_vararg_register_save_area(function_name: &str) -> Vec<AsmInstruction> {
+    let save_area_name = vararg_register_save_area_name(function_name);
+    ensure_local_object_asm_symbol(
+        save_area_name.clone(),
+        AsmType::Bytearray {
+            size: VA_REG_SAVE_AREA_SIZE,
+            alignment: 16,
+        },
+    );
+
+    let mut instructions = vec![];
+    let int_regs = [
+        AsmRegister::Di,
+        AsmRegister::Si,
+        AsmRegister::Dx,
+        AsmRegister::Cx,
+        AsmRegister::R8,
+        AsmRegister::R9,
+    ];
+
+    for (idx, reg) in int_regs.iter().enumerate() {
+        instructions.push(AsmInstruction::Mov {
+            asm_type: AsmType::Quadword,
+            src: AsmOperand::Register(*reg),
+            dst: AsmOperand::PseudoMem(save_area_name.clone(), (idx * 8) as isize),
+        });
+    }
+
+    let double_regs = [
+        AsmRegister::Xmm0,
+        AsmRegister::Xmm1,
+        AsmRegister::Xmm2,
+        AsmRegister::Xmm3,
+        AsmRegister::Xmm4,
+        AsmRegister::Xmm5,
+        AsmRegister::Xmm6,
+        AsmRegister::Xmm7,
+    ];
+
+    for (idx, reg) in double_regs.iter().enumerate() {
+        instructions.push(AsmInstruction::Mov {
+            asm_type: AsmType::Double,
+            src: AsmOperand::Register(*reg),
+            dst: AsmOperand::PseudoMem(
+                save_area_name.clone(),
+                (VA_GP_REG_SAVE_SIZE + idx * 16) as isize,
+            ),
+        });
+    }
+
+    instructions
+}
+
+fn function_vararg_offsets(function_name: &str) -> (usize, usize, isize) {
+    let symbol = SYMBOL_TABLE.lock().unwrap().get(function_name).cloned().unwrap();
+    let return_on_stack = returns_on_stack(function_name);
+    let Type::Func { params, .. } = symbol.ty else {
+        unreachable!()
+    };
+
+    let typed_params = params
+        .iter()
+        .map(|t| {
+            if is_scalar(t) {
+                (t.clone(), AsmOperand::Pseudo("DUMMY".to_string()))
+            } else {
+                (t.clone(), AsmOperand::PseudoMem("DUMMY".to_string(), 0))
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let (int_reg_params, double_reg_params, stack_params) =
+        classify_params_helper(&typed_params, return_on_stack);
+
+    let hidden_sret_registers = if return_on_stack { 1 } else { 0 };
+    let gp_offset = (hidden_sret_registers + int_reg_params.len()) * 8;
+    let fp_offset = VA_GP_REG_SAVE_SIZE + double_reg_params.len() * 16;
+    let overflow_arg_area = 16 + stack_params.len() * 8;
+
+    (gp_offset, fp_offset, overflow_arg_area as isize)
+}
+
+fn codegen_va_start(function_name: &str, list: &IRValue) -> Vec<AsmInstruction> {
+    let (gp_offset, fp_offset, overflow_arg_area) = function_vararg_offsets(function_name);
+    let save_area_name = vararg_register_save_area_name(function_name);
+
+    vec![
+        AsmInstruction::Mov {
+            asm_type: AsmType::Quadword,
+            src: list.codegen().into(),
+            dst: AsmOperand::Register(AsmRegister::R11),
+        },
+        AsmInstruction::Mov {
+            asm_type: AsmType::Longword,
+            src: AsmOperand::Imm(gp_offset as i64),
+            dst: AsmOperand::Memory(AsmRegister::R11, 0),
+        },
+        AsmInstruction::Mov {
+            asm_type: AsmType::Longword,
+            src: AsmOperand::Imm(fp_offset as i64),
+            dst: AsmOperand::Memory(AsmRegister::R11, 4),
+        },
+        AsmInstruction::Lea {
+            src: AsmOperand::Memory(AsmRegister::Bp, overflow_arg_area),
+            dst: AsmOperand::Register(AsmRegister::R10),
+        },
+        AsmInstruction::Mov {
+            asm_type: AsmType::Quadword,
+            src: AsmOperand::Register(AsmRegister::R10),
+            dst: AsmOperand::Memory(AsmRegister::R11, 8),
+        },
+        AsmInstruction::Lea {
+            src: AsmOperand::PseudoMem(save_area_name, 0),
+            dst: AsmOperand::Register(AsmRegister::R10),
+        },
+        AsmInstruction::Mov {
+            asm_type: AsmType::Quadword,
+            src: AsmOperand::Register(AsmRegister::R10),
+            dst: AsmOperand::Memory(AsmRegister::R11, 16),
+        },
+    ]
+}
+
+#[derive(Debug, Clone)]
+struct VaArgPiece {
+    class: Class,
+    offset: usize,
+    asm_type: AsmType,
+}
+
+#[derive(Debug, Clone)]
+struct VaArgLayout {
+    pieces: Vec<VaArgPiece>,
+    gp_count: usize,
+    fp_count: usize,
+    stack_only: bool,
+    stack_size: usize,
+    stack_alignment: usize,
+}
+
+fn round_up_to(value: usize, alignment: usize) -> usize {
+    if alignment == 0 {
+        value
+    } else {
+        (value + alignment - 1) & !(alignment - 1)
+    }
+}
+
+fn classify_va_arg_type(ty: &Type) -> VaArgLayout {
+    let size = get_size_of_type(ty);
+    let stack_size = round_up_to(size, 8);
+    let stack_alignment = get_alignment_of_type(ty);
+
+    match ty {
+        Type::Struct { tag } | Type::Union { tag } => {
+            let entry = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
+            let classes = classify_structure(&entry);
+
+            if classes.first() == Some(&Class::Memory) {
+                return VaArgLayout {
+                    pieces: vec![],
+                    gp_count: 0,
+                    fp_count: 0,
+                    stack_only: true,
+                    stack_size,
+                    stack_alignment,
+                };
+            }
+
+            let mut pieces = vec![];
+            let mut gp_count = 0;
+            let mut fp_count = 0;
+            let mut offset = 0;
+
+            for class in classes {
+                let asm_type = match class {
+                    Class::Integer => {
+                        gp_count += 1;
+                        get_eightbyte_type(offset, entry.size)
+                    }
+                    Class::Sse => {
+                        fp_count += 1;
+                        get_sse_eightbyte_type(offset, entry.size)
+                    }
+                    Class::Memory => unreachable!(),
+                };
+
+                pieces.push(VaArgPiece {
+                    class,
+                    offset: offset.try_into().unwrap(),
+                    asm_type,
+                });
+                offset += 8;
+            }
+
+            VaArgLayout {
+                pieces,
+                gp_count,
+                fp_count,
+                stack_only: false,
+                stack_size,
+                stack_alignment,
+            }
+        }
+        Type::Float | Type::Double => VaArgLayout {
+            pieces: vec![VaArgPiece {
+                class: Class::Sse,
+                offset: 0,
+                asm_type: type2asmtype(ty),
+            }],
+            gp_count: 0,
+            fp_count: 1,
+            stack_only: false,
+            stack_size,
+            stack_alignment,
+        },
+        _ => VaArgLayout {
+            pieces: vec![VaArgPiece {
+                class: Class::Integer,
+                offset: 0,
+                asm_type: type2asmtype(ty),
+            }],
+            gp_count: 1,
+            fp_count: 0,
+            stack_only: false,
+            stack_size,
+            stack_alignment,
+        },
+    }
+}
+
+fn offset_operand(op: &AsmOperand, offset: usize) -> AsmOperand {
+    if offset == 0 {
+        op.clone()
+    } else {
+        add_offset(offset, op)
+    }
+}
+
+fn copy_bytes_with_gp_scratch(
+    src: &AsmOperand,
+    dst: &AsmOperand,
+    byte_count: usize,
+    scratch: AsmRegister,
+) -> Vec<AsmInstruction> {
+    if byte_count == 0 {
+        return vec![];
+    }
+
+    let (operand_type, operand_size) = if byte_count >= 8 {
+        (AsmType::Quadword, 8)
+    } else if byte_count >= 4 {
+        (AsmType::Longword, 4)
+    } else if byte_count >= 2 {
+        (AsmType::Word, 2)
+    } else {
+        (AsmType::Byte, 1)
+    };
+
+    let mut instructions = vec![
+        AsmInstruction::Mov {
+            asm_type: operand_type,
+            src: src.clone(),
+            dst: AsmOperand::Register(scratch),
+        },
+        AsmInstruction::Mov {
+            asm_type: operand_type,
+            src: AsmOperand::Register(scratch),
+            dst: dst.clone(),
+        },
+    ];
+
+    instructions.extend(copy_bytes_with_gp_scratch(
+        &add_offset(operand_size, src),
+        &add_offset(operand_size, dst),
+        byte_count - operand_size,
+        scratch,
+    ));
+
+    instructions
+}
+
+fn copy_qwords_with_xmm_scratch(
+    src: &AsmOperand,
+    dst: &AsmOperand,
+    byte_count: usize,
+) -> Vec<AsmInstruction> {
+    assert!(byte_count % 8 == 0);
+
+    let mut instructions = vec![];
+    let mut offset = 0;
+
+    while offset < byte_count {
+        instructions.push(AsmInstruction::Mov {
+            asm_type: AsmType::Double,
+            src: add_offset(offset, src),
+            dst: AsmOperand::Register(AsmRegister::Xmm14),
+        });
+        instructions.push(AsmInstruction::Mov {
+            asm_type: AsmType::Double,
+            src: AsmOperand::Register(AsmRegister::Xmm14),
+            dst: add_offset(offset, dst),
+        });
+        offset += 8;
+    }
+
+    instructions
+}
+
+fn copy_va_arg_from_address(
+    src_reg: AsmRegister,
+    dst: &IRValue,
+    ty: &Type,
+) -> Vec<AsmInstruction> {
+    let dst_operand = dst.codegen().into();
+
+    if is_scalar(ty) {
+        let asm_type = type2asmtype(ty);
+        let scratch = if is_sse_asm_type(&asm_type) {
+            AsmOperand::Register(AsmRegister::Xmm14)
+        } else {
+            AsmOperand::Register(AsmRegister::R11)
+        };
+
+        vec![
+            AsmInstruction::Mov {
+                asm_type,
+                src: AsmOperand::Memory(src_reg, 0),
+                dst: scratch.clone(),
+            },
+            AsmInstruction::Mov {
+                asm_type,
+                src: scratch,
+                dst: dst_operand,
+            },
+        ]
+    } else {
+        copy_bytes_with_gp_scratch(
+            &AsmOperand::Memory(src_reg, 0),
+            &dst_operand,
+            get_size_of_type(ty),
+            AsmRegister::R11,
+        )
+    }
+}
+
+fn codegen_va_arg(list: &IRValue, arg_ty: &Type, dst: &IRValue) -> Vec<AsmInstruction> {
+    let layout = classify_va_arg_type(arg_ty);
+    let overflow_label = format!("VaArg.{}.overflow", make_temporary());
+    let done_label = format!("VaArg.{}.done", make_temporary());
+    let mut instructions = vec![AsmInstruction::Mov {
+        asm_type: AsmType::Quadword,
+        src: list.codegen().into(),
+        dst: AsmOperand::Register(AsmRegister::R11),
+    }];
+
+    if !layout.stack_only {
+        if layout.gp_count > 0 {
+            instructions.extend(vec![
+                AsmInstruction::Mov {
+                    asm_type: AsmType::Longword,
+                    src: AsmOperand::Memory(AsmRegister::R11, 0),
+                    dst: AsmOperand::Register(AsmRegister::R10),
+                },
+                AsmInstruction::Cmp {
+                    asm_type: AsmType::Longword,
+                    lhs: AsmOperand::Imm((VA_GP_REG_SAVE_SIZE - layout.gp_count * 8) as i64),
+                    rhs: AsmOperand::Register(AsmRegister::R10),
+                },
+                AsmInstruction::JmpCC {
+                    condition: ConditionCode::A,
+                    target: overflow_label.clone(),
+                },
+            ]);
+        }
+
+        if layout.fp_count > 0 {
+            instructions.extend(vec![
+                AsmInstruction::Mov {
+                    asm_type: AsmType::Longword,
+                    src: AsmOperand::Memory(AsmRegister::R11, 4),
+                    dst: AsmOperand::Register(AsmRegister::R10),
+                },
+                AsmInstruction::Cmp {
+                    asm_type: AsmType::Longword,
+                    lhs: AsmOperand::Imm(
+                        (VA_REG_SAVE_AREA_SIZE - layout.fp_count * 16) as i64,
+                    ),
+                    rhs: AsmOperand::Register(AsmRegister::R10),
+                },
+                AsmInstruction::JmpCC {
+                    condition: ConditionCode::A,
+                    target: overflow_label.clone(),
+                },
+            ]);
+        }
+
+        let dst_operand: AsmOperand = dst.codegen().into();
+        let mut gp_piece_index = 0;
+        let mut fp_piece_index = 0;
+        for piece in &layout.pieces {
+            let (offset_field, piece_reg_save_offset) = match piece.class {
+                Class::Integer => {
+                    let offset = gp_piece_index * 8;
+                    gp_piece_index += 1;
+                    (0, offset)
+                }
+                Class::Sse => {
+                    let offset = fp_piece_index * 16;
+                    fp_piece_index += 1;
+                    (4, offset)
+                }
+                Class::Memory => unreachable!(),
+            };
+
+            instructions.extend(vec![
+                AsmInstruction::Mov {
+                    asm_type: AsmType::Quadword,
+                    src: AsmOperand::Memory(AsmRegister::R11, 16),
+                    dst: AsmOperand::Register(AsmRegister::R10),
+                },
+                AsmInstruction::Mov {
+                    asm_type: AsmType::Longword,
+                    src: AsmOperand::Memory(AsmRegister::R11, offset_field),
+                    dst: AsmOperand::Register(AsmRegister::R9),
+                },
+            ]);
+
+            if piece_reg_save_offset != 0 {
+                instructions.push(AsmInstruction::Binary {
+                    asm_type: AsmType::Longword,
+                    op: AsmBinaryOp::Add,
+                    lhs: AsmOperand::Imm(piece_reg_save_offset as i64),
+                    rhs: AsmOperand::Register(AsmRegister::R9),
+                });
+            }
+
+            instructions.extend(vec![
+                AsmInstruction::Lea {
+                    src: AsmOperand::Indexed(AsmRegister::R10, AsmRegister::R9, 1),
+                    dst: AsmOperand::Register(AsmRegister::R10),
+                },
+                AsmInstruction::Mov {
+                    asm_type: piece.asm_type,
+                    src: AsmOperand::Memory(AsmRegister::R10, 0),
+                    dst: offset_operand(&dst_operand, piece.offset),
+                },
+            ]);
+        }
+
+        if layout.gp_count > 0 {
+            instructions.push(AsmInstruction::Binary {
+                asm_type: AsmType::Longword,
+                op: AsmBinaryOp::Add,
+                lhs: AsmOperand::Imm((layout.gp_count * 8) as i64),
+                rhs: AsmOperand::Memory(AsmRegister::R11, 0),
+            });
+        }
+
+        if layout.fp_count > 0 {
+            instructions.push(AsmInstruction::Binary {
+                asm_type: AsmType::Longword,
+                op: AsmBinaryOp::Add,
+                lhs: AsmOperand::Imm((layout.fp_count * 16) as i64),
+                rhs: AsmOperand::Memory(AsmRegister::R11, 4),
+            });
+        }
+
+        instructions.push(AsmInstruction::Jmp {
+            target: done_label.clone(),
+        });
+    }
+
+    instructions.push(AsmInstruction::Label(overflow_label));
+    instructions.push(AsmInstruction::Mov {
+        asm_type: AsmType::Quadword,
+        src: AsmOperand::Memory(AsmRegister::R11, 8),
+        dst: AsmOperand::Register(AsmRegister::R10),
+    });
+
+    if layout.stack_alignment > 8 {
+        let alignment = layout.stack_alignment as i64;
+        instructions.extend(vec![
+            AsmInstruction::Binary {
+                asm_type: AsmType::Quadword,
+                op: AsmBinaryOp::Add,
+                lhs: AsmOperand::Imm(alignment - 1),
+                rhs: AsmOperand::Register(AsmRegister::R10),
+            },
+            AsmInstruction::Binary {
+                asm_type: AsmType::Quadword,
+                op: AsmBinaryOp::And,
+                lhs: AsmOperand::Imm(-alignment),
+                rhs: AsmOperand::Register(AsmRegister::R10),
+            },
+        ]);
+    }
+
+    instructions.extend(copy_va_arg_from_address(AsmRegister::R10, dst, arg_ty));
+    instructions.push(AsmInstruction::Mov {
+        asm_type: AsmType::Quadword,
+        src: list.codegen().into(),
+        dst: AsmOperand::Register(AsmRegister::R11),
+    });
+    instructions.extend(vec![
+        AsmInstruction::Lea {
+            src: AsmOperand::Memory(AsmRegister::R10, layout.stack_size as isize),
+            dst: AsmOperand::Register(AsmRegister::R10),
+        },
+        AsmInstruction::Mov {
+            asm_type: AsmType::Quadword,
+            src: AsmOperand::Register(AsmRegister::R10),
+            dst: AsmOperand::Memory(AsmRegister::R11, 8),
+        },
+        AsmInstruction::Label(done_label),
+    ]);
+
+    instructions
+}
+
+fn codegen_va_copy(dst: &IRValue, src: &IRValue) -> Vec<AsmInstruction> {
+    let mut instructions = vec![
+        AsmInstruction::Mov {
+            asm_type: AsmType::Quadword,
+            src: dst.codegen().into(),
+            dst: AsmOperand::Register(AsmRegister::R11),
+        },
+        AsmInstruction::Mov {
+            asm_type: AsmType::Quadword,
+            src: src.codegen().into(),
+            dst: AsmOperand::Register(AsmRegister::R10),
+        },
+    ];
+
+    instructions.extend(copy_qwords_with_xmm_scratch(
+        &AsmOperand::Memory(AsmRegister::R10, 0),
+        &AsmOperand::Memory(AsmRegister::R11, 0),
+        24,
+    ));
+
+    instructions
+}
+
 impl Codegen for IRFunction {
     fn codegen(&self) -> AsmNode {
         /* Determine if the function returns a value on the stack.
@@ -427,6 +988,10 @@ impl Codegen for IRFunction {
         ];
 
         let mut reg_index = 0;
+
+        if is_variadic_function(&self.name) {
+            instructions.extend(emit_vararg_register_save_area(&self.name));
+        }
 
         /* If the function returns a value on the stack, we need to store the pointer to
          * the return buffer in memory at -8(%bp). This is done because the Di register is
@@ -520,7 +1085,11 @@ impl Codegen for IRFunction {
         }
 
         for instr in &self.body {
-            instructions.extend::<Vec<AsmInstruction>>(instr.codegen().into());
+            if let IRInstruction::VaStart { list } = instr {
+                instructions.extend(codegen_va_start(&self.name, list));
+            } else {
+                instructions.extend::<Vec<AsmInstruction>>(instr.codegen().into());
+            }
         }
 
         let symbol = match SYMBOL_TABLE.lock().unwrap().get(&self.name).cloned() {
@@ -590,6 +1159,10 @@ impl Codegen for IRValue {
                 let type_of_symbol = symbol.ty.clone();
 
                 match type_of_symbol {
+                    // A function designator used as a value is represented by
+                    // its label address, not by stack/object storage. This lets
+                    // `leaq foo(%rip), %reg` materialize a function pointer.
+                    Type::Func { .. } => AsmNode::Operand(AsmOperand::Data(name.to_owned(), 0)),
                     _ if is_scalar(&type_of_symbol) => {
                         AsmNode::Operand(AsmOperand::Pseudo(name.to_owned()))
                     }
@@ -1482,6 +2055,20 @@ impl Codegen for IRInstruction {
 
                 AsmNode::Instructions(instructions)
             }
+
+            IRInstruction::VaStart { .. } => {
+                unreachable!("VaStart needs the enclosing function during codegen")
+            }
+
+            IRInstruction::VaArg { list, arg_ty, dst } => {
+                AsmNode::Instructions(codegen_va_arg(list, arg_ty, dst))
+            }
+
+            IRInstruction::VaCopy { dst, src } => {
+                AsmNode::Instructions(codegen_va_copy(dst, src))
+            }
+
+            IRInstruction::VaEnd { .. } => AsmNode::Instructions(vec![]),
 
             IRInstruction::SignExtend { src, dst } => {
                 AsmNode::Instructions(vec![AsmInstruction::Movsx {

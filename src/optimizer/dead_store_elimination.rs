@@ -51,7 +51,12 @@ pub fn dead_store_elimination(
 
 fn is_dead_store((live_vars, i): &(BTreeSet<String>, IRInstruction)) -> bool {
     match i {
-        IRInstruction::Call { .. } | IRInstruction::Store { .. } => false,
+        IRInstruction::Call { .. }
+        | IRInstruction::Store { .. }
+        | IRInstruction::VaStart { .. }
+        | IRInstruction::VaArg { .. }
+        | IRInstruction::VaCopy { .. }
+        | IRInstruction::VaEnd { .. } => false,
         _ => match get_dst(i) {
             Some(IRValue::Var(v)) => !live_vars.contains(&v),
             _ => false,
@@ -236,6 +241,36 @@ fn transfer(
             IRInstruction::Store { src, dst_ptr } => {
                 current_live_vars.insert(src.to_string());
                 current_live_vars.insert(dst_ptr.to_string());
+            }
+
+            IRInstruction::VaStart { list } => {
+                current_live_vars.insert(list.to_string());
+                current_live_vars = current_live_vars
+                    .union(static_and_aliased_vars)
+                    .cloned()
+                    .collect();
+            }
+
+            IRInstruction::VaArg { list, dst, .. } => {
+                current_live_vars.remove(&dst.to_string());
+                current_live_vars.insert(list.to_string());
+                current_live_vars = current_live_vars
+                    .union(static_and_aliased_vars)
+                    .cloned()
+                    .collect();
+            }
+
+            IRInstruction::VaCopy { dst, src } => {
+                current_live_vars.insert(dst.to_string());
+                current_live_vars.insert(src.to_string());
+                current_live_vars = current_live_vars
+                    .union(static_and_aliased_vars)
+                    .cloned()
+                    .collect();
+            }
+
+            IRInstruction::VaEnd { list } => {
+                current_live_vars.insert(list.to_string());
             }
 
             IRInstruction::CopyToOffset {

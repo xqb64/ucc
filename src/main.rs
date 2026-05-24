@@ -47,8 +47,21 @@ fn main() {
 }
 
 fn run(opts: &Opt) -> Result<()> {
-    let compile_handles = opts
+    // `ucc` is used as both the compiler and the linker by normal Makefiles:
+    //
+    //     ucc -c src/foo.c -o obj/foo.o
+    //     ucc obj/foo.o obj/bar.o -o program -lm
+    //
+    // Only C source files should go through the frontend.  Object files are
+    // linker inputs and must be passed straight through to gcc during link.
+    let source_paths = opts
         .paths
+        .iter()
+        .filter(|path| is_source_input(path))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let compile_handles = source_paths
         .iter()
         .cloned()
         .map(|path| {
@@ -64,11 +77,13 @@ fn run(opts: &Opt) -> Result<()> {
         }
     }
 
-    let asm_handles = opts
-        .paths
+    let asm_handles = source_paths
         .iter()
         .cloned()
-        .map(|path| std::thread::spawn(move || asm_file(path)))
+        .map(|path| {
+            let opts = opts.clone();
+            std::thread::spawn(move || asm_file(&opts, path))
+        })
         .collect::<Vec<_>>();
 
     for handle in asm_handles {
@@ -79,19 +94,13 @@ fn run(opts: &Opt) -> Result<()> {
     }
 
     if opts.c {
+        cleanup_intermediates(&source_paths, false);
         return Ok(());
     }
 
     link(opts)?;
 
-    opts.paths
-        .iter()
-        .flat_map(|path| {
-            ["i", "s", "o"]
-                .into_iter()
-                .map(move |ext| path.with_extension(ext))
-        })
-        .try_for_each(|file| std::fs::remove_file(file))?;
+    cleanup_intermediates(&source_paths, true);
 
     Ok(())
 }
@@ -257,18 +266,60 @@ fn compile_file(opts: Opt, file: PathBuf) -> Result<Status> {
     Ok(Status::Continue)
 }
 
-fn asm_file(path: PathBuf) -> Result<Status> {
+fn asm_file(opts: &Opt, path: PathBuf) -> Result<Status> {
     let s_path = path.with_extension("s");
-    let o_path = path.with_extension("o");
+    let o_path = object_path_for_input(opts, &path);
 
-    std::process::Command::new("gcc")
+    let status = std::process::Command::new("gcc")
         .arg("-c")
         .arg(&s_path)
         .arg("-o")
         .arg(&o_path)
         .status()?;
 
+    if !status.success() {
+        return Err(UccError {
+            kind: ErrorKind::Codegen,
+            msg: format!("assembler failed"),
+            span: Span { start: 0, end: 0 },
+        });
+    }
+
     Ok(Status::Continue)
+}
+
+fn is_source_input(path: &PathBuf) -> bool {
+    matches!(
+        path.extension().and_then(|ext| ext.to_str()),
+        Some("c")
+    )
+}
+
+fn object_path_for_input(opts: &Opt, input: &PathBuf) -> PathBuf {
+    // Honor `-o` for the common compile-only form:
+    //
+    //     ucc -c src/foo.c -o obj/foo.o
+    //
+    // For multi-file compilation or normal compile+link, use the traditional
+    // sibling object path, e.g. `src/foo.c` -> `src/foo.o`.
+    if opts.c && opts.paths.len() == 1 {
+        if let Some(output) = &opts.output {
+            return output.clone();
+        }
+    }
+
+    input.with_extension("o")
+}
+
+fn cleanup_intermediates(source_paths: &[PathBuf], remove_objects: bool) {
+    for path in source_paths {
+        let _ = std::fs::remove_file(path.with_extension("i"));
+        // let _ = std::fs::remove_file(path.with_extension("s"));
+
+        if remove_objects {
+            let _ = std::fs::remove_file(path.with_extension("o"));
+        }
+    }
 }
 
 fn link(opts: &Opt) -> Result<Status> {
@@ -288,7 +339,15 @@ fn link(opts: &Opt) -> Result<Status> {
         final_executable_cmd.arg("-l").arg(lib);
     }
 
-    final_executable_cmd.status()?;
+    let status = final_executable_cmd.status()?;
+
+    if !status.success() {
+        return Err(UccError {
+            kind: ErrorKind::Codegen,
+            msg: format!("linker failed"),
+            span: Span { start: 0, end: 0 },
+        });
+    }
 
     Ok(Status::Continue)
 }
@@ -296,13 +355,21 @@ fn link(opts: &Opt) -> Result<Status> {
 fn preprocess(path: &PathBuf) -> Result<PathBuf> {
     let new_path = path.with_extension("i");
 
-    std::process::Command::new("gcc")
+    let status = std::process::Command::new("gcc")
         .arg("-E")
         .arg("-P")
         .arg(path)
         .arg("-o")
         .arg(new_path.clone())
         .status()?;
+
+    if !status.success() {
+        return Err(UccError {
+            kind: ErrorKind::Lex,
+            msg: format!("preprocessor failed"),
+            span: Span { start: 0, end: 0 },
+        });
+    }
 
     Ok(new_path)
 }

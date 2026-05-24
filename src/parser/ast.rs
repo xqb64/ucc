@@ -256,6 +256,10 @@ pub enum Expression {
     Assign(AssignExpression),
     Conditional(ConditionalExpression),
     Call(CallExpression),
+    VaStart(VaStartExpression),
+    VaArg(VaArgExpression),
+    VaCopy(VaCopyExpression),
+    VaEnd(VaEndExpression),
     Cast(CastExpression),
     Deref(DerefExpression),
     AddrOf(AddrOfExpression),
@@ -287,6 +291,10 @@ pub fn spanof(e: &Expression) -> Span {
         Expression::Constant(ConstantExpression { span, .. }) => span.to_owned(),
         Expression::Dot(DotExpression { span, .. }) => span.to_owned(),
         Expression::Call(CallExpression { span, .. }) => span.to_owned(),
+        Expression::VaStart(VaStartExpression { span, .. }) => span.to_owned(),
+        Expression::VaArg(VaArgExpression { span, .. }) => span.to_owned(),
+        Expression::VaCopy(VaCopyExpression { span, .. }) => span.to_owned(),
+        Expression::VaEnd(VaEndExpression { span, .. }) => span.to_owned(),
         Expression::Cast(CastExpression { span, .. }) => span.to_owned(),
         Expression::Unary(UnaryExpression { span, .. }) => span.to_owned(),
         Expression::Deref(DerefExpression { span, .. }) => span.to_owned(),
@@ -643,6 +651,37 @@ pub struct ConditionalExpression {
 pub struct CallExpression {
     pub name: String,
     pub args: Vec<Expression>,
+    pub ty: Type,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct VaStartExpression {
+    pub list: Box<Expression>,
+    pub last_param: Box<Expression>,
+    pub ty: Type,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct VaArgExpression {
+    pub list: Box<Expression>,
+    pub arg_ty: Type,
+    pub ty: Type,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct VaCopyExpression {
+    pub dst: Box<Expression>,
+    pub src: Box<Expression>,
+    pub ty: Type,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct VaEndExpression {
+    pub list: Box<Expression>,
     pub ty: Type,
     pub span: Span,
 }

@@ -112,7 +112,15 @@ fn transfer(
                 copies_after_dst_filter.filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
             }
 
-            IRInstruction::Store { .. } => {
+            IRInstruction::VaArg { dst, .. } => {
+                let copies_after_dst_filter = filter_updated(current_copies, dst);
+                copies_after_dst_filter.filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
+            }
+
+            IRInstruction::Store { .. }
+            | IRInstruction::VaStart { .. }
+            | IRInstruction::VaCopy { .. }
+            | IRInstruction::VaEnd { .. } => {
                 current_copies.filter(|cp| !(is_aliased(&cp.src) || is_aliased(&cp.dst)))
             }
 
@@ -420,6 +428,25 @@ fn rewrite_instruction(
                 dst: dst.clone(),
             })
         }
+
+        IRInstruction::VaStart { list } => Some(IRInstruction::VaStart {
+            list: replace(list),
+        }),
+
+        IRInstruction::VaArg { list, arg_ty, dst } => Some(IRInstruction::VaArg {
+            list: replace(list),
+            arg_ty: arg_ty.clone(),
+            dst: dst.clone(),
+        }),
+
+        IRInstruction::VaCopy { dst, src } => Some(IRInstruction::VaCopy {
+            dst: replace(dst),
+            src: replace(src),
+        }),
+
+        IRInstruction::VaEnd { list } => Some(IRInstruction::VaEnd {
+            list: replace(list),
+        }),
 
         _ => Some(instr.clone()),
     }

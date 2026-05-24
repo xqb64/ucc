@@ -4,8 +4,9 @@ use crate::{
     lexer::lex::{Const, Span},
     parser::ast::*,
     semantics::typechecker::{
-        get_signedness, get_size_of_type, get_type, is_integer_type, is_pointer_type,
-        IdentifierAttrs, InitialValue, StaticInit, Symbol, SYMBOL_TABLE, TYPE_TABLE,
+        get_signedness, get_size_of_type, get_type, is_builtin_va_list_object_type,
+        is_builtin_va_list_pointer_type, is_integer_type, is_pointer_type, IdentifierAttrs,
+        InitialValue, StaticInit, Symbol, SYMBOL_TABLE, TYPE_TABLE,
     },
     util::cfg::{self, Instr, SimpleInstr},
 };
@@ -93,6 +94,21 @@ pub enum IRInstruction {
         target: String,
         args: Vec<IRValue>,
         dst: Option<IRValue>,
+    },
+    VaStart {
+        list: IRValue,
+    },
+    VaArg {
+        list: IRValue,
+        arg_ty: Type,
+        dst: IRValue,
+    },
+    VaCopy {
+        dst: IRValue,
+        src: IRValue,
+    },
+    VaEnd {
+        list: IRValue,
     },
     SignExtend {
         src: IRValue,
@@ -926,6 +942,46 @@ fn optionally_emit_tacky_and_convert(
     e.as_ref().map(|e| emit_tacky_and_convert(e, instructions))
 }
 
+fn emit_va_list_address(e: &Expression, instructions: &mut Vec<IRInstruction>) -> IRValue {
+    let ty = get_type(e).clone();
+
+    if is_builtin_va_list_pointer_type(&ty) {
+        return emit_tacky_and_convert(e, instructions);
+    }
+
+    let lvalue = emit_tacky(e, instructions);
+    match lvalue {
+        ExpResult::PlainOperand(val) if is_builtin_va_list_object_type(&ty) => {
+            let dst = make_tacky_variable(&Type::Pointer(Box::new(builtin_va_list_element_type_for_ir())));
+            instructions.push(IRInstruction::GetAddress {
+                src: val,
+                dst: dst.clone(),
+            });
+            dst
+        }
+        ExpResult::DereferencedPointer(ptr) => ptr,
+        ExpResult::SubObject { base, offset } => {
+            let dst = make_tacky_variable(&Type::Pointer(Box::new(builtin_va_list_element_type_for_ir())));
+            instructions.push(IRInstruction::GetAddress {
+                src: IRValue::Var(base),
+                dst: dst.clone(),
+            });
+            instructions.push(IRInstruction::AddPtr {
+                ptr: dst.clone(),
+                index: IRValue::Constant(Const::Long(offset as i64)),
+                scale: 1,
+                dst: dst.clone(),
+            });
+            dst
+        }
+        _ => unreachable!("invalid va_list expression after typechecking"),
+    }
+}
+
+fn builtin_va_list_element_type_for_ir() -> Type {
+    crate::semantics::typechecker::builtin_va_list_element_type()
+}
+
 fn make_constexpr(konst: isize, ty: Type) -> Expression {
     match ty {
         Type::Char | Type::SChar => Expression::Constant(ConstantExpression {
@@ -1001,7 +1057,6 @@ fn make_const(konst: isize, ty: Type) -> Const {
         Type::Double => Const::Double(konst as f64),
         Type::Pointer(_) => Const::ULong(konst as i64 as u64),
         _ => {
-            println!("ty: {:?}", ty);
             unreachable!()
         }
     }
@@ -1369,7 +1424,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
                         IRInstruction::CopyFromOffset {
                             src: base.clone(),
                             offset: *offset,
-                            dst: tmp.clone(),
+                            dst: dst.clone(),
                         },
                         do_op(*kind, dst.clone(), tmp.clone()),
                         IRInstruction::CopyToOffset {
@@ -1667,6 +1722,46 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             ExpResult::PlainOperand(result.unwrap_or(IRValue::Var("DUMMY".to_owned())))
         }
 
+        Expression::VaStart(VaStartExpression {
+            list,
+            last_param: _,
+            ty: _,
+            ..
+        }) => {
+            let list = emit_va_list_address(list, instructions);
+            instructions.push(IRInstruction::VaStart { list });
+            ExpResult::PlainOperand(IRValue::Var("DUMMY".to_owned()))
+        }
+
+        Expression::VaArg(VaArgExpression {
+            list,
+            arg_ty,
+            ty,
+            ..
+        }) => {
+            let list = emit_va_list_address(list, instructions);
+            let dst = make_tacky_variable(ty);
+            instructions.push(IRInstruction::VaArg {
+                list,
+                arg_ty: arg_ty.clone(),
+                dst: dst.clone(),
+            });
+            ExpResult::PlainOperand(dst)
+        }
+
+        Expression::VaCopy(VaCopyExpression { dst, src, .. }) => {
+            let dst = emit_va_list_address(dst, instructions);
+            let src = emit_va_list_address(src, instructions);
+            instructions.push(IRInstruction::VaCopy { dst, src });
+            ExpResult::PlainOperand(IRValue::Var("DUMMY".to_owned()))
+        }
+
+        Expression::VaEnd(VaEndExpression { list, .. }) => {
+            let list = emit_va_list_address(list, instructions);
+            instructions.push(IRInstruction::VaEnd { list });
+            ExpResult::PlainOperand(IRValue::Var("DUMMY".to_owned()))
+        }
+
         Expression::Cast(CastExpression {
             target_type,
             expr,
@@ -1731,7 +1826,27 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             }
         }
 
-        Expression::Literal(_) => todo!(),
+        Expression::Literal(literal) => {
+            let dst = make_tacky_variable(&literal.ty);
+            let IRValue::Var(dst_name) = dst.clone() else {
+                unreachable!();
+            };
+
+            match literal.value.as_ref() {
+                Initializer::Single(_, expr) => {
+                    let value = emit_tacky_and_convert(expr, instructions);
+                    instructions.push(IRInstruction::Copy {
+                        src: value,
+                        dst: dst.clone(),
+                    });
+                }
+                Initializer::Compound(_, _, _) => {
+                    emit_compound_init(&dst_name, &literal.value, instructions, 0, &literal.ty);
+                }
+            }
+
+            ExpResult::PlainOperand(dst)
+        },
 
         Expression::String(StringExpression { value, ty: _, .. }) => {
             let var_name = format!("str.{}", make_temporary());
@@ -1965,10 +2080,26 @@ fn emit_compound_init(
                     let new_offset = offset + idx * get_size_of_type(ty);
                     emit_compound_init(name, elem_init, instructions, new_offset, element);
                 }
-            } else if let Type::Struct { tag } | Type::Union { tag } = inited_type {
+            } else if let Type::Struct { tag } = inited_type {
                 let members = TYPE_TABLE.lock().unwrap().get(tag).unwrap().members.clone();
 
                 for (member, mem_init) in members.iter().zip(compound_init) {
+                    let mem_offset = offset + member.offset;
+                    emit_compound_init(name, mem_init, instructions, mem_offset, &member.ty);
+                }
+            } else if let Type::Union { tag } = inited_type {
+                let members = TYPE_TABLE.lock().unwrap().get(tag).unwrap().members.clone();
+
+                if let Some(mem_init) = compound_init.first() {
+                    let member = match mem_init {
+                        Initializer::Single(designator, _)
+                        | Initializer::Compound(designator, _, _)
+                            if !designator.is_empty() => members
+                                .iter()
+                                .find(|member| member.name == *designator)
+                                .unwrap_or_else(|| members.first().unwrap()),
+                        _ => members.first().unwrap(),
+                    };
                     let mem_offset = offset + member.offset;
                     emit_compound_init(name, mem_init, instructions, mem_offset, &member.ty);
                 }
@@ -2295,6 +2426,7 @@ pub fn get_dst(instr: &IRInstruction) -> Option<IRValue> {
         IRInstruction::Unary { dst, .. } => Some(dst.clone()),
         IRInstruction::Binary { dst, .. } => Some(dst.clone()),
         IRInstruction::Call { dst, .. } => dst.clone(),
+        IRInstruction::VaArg { dst, .. } => Some(dst.clone()),
         IRInstruction::SignExtend { dst, .. } => Some(dst.clone()),
         IRInstruction::ZeroExtend { dst, .. } => Some(dst.clone()),
         IRInstruction::Truncate { dst, .. } => Some(dst.clone()),

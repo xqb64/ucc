@@ -9,10 +9,11 @@ use crate::{
         CompoundExpression, ConditionalExpression, ContinueStatement, Declaration,
         DefaultStatement, EnumDeclaration, EnumMemberDeclaration, DerefExpression, DoWhileStatement, DotExpression, Expression,
         ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, GotoStatement,
-        IfStatement, Initializer, LabeledStatement, MemberDeclaration, PostfixExpression, Program,
+        IfStatement, Initializer, LabeledStatement, LiteralExpression, MemberDeclaration, PostfixExpression, Program,
         ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
         StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement, Type,
-        TypedefDeclaration, UnaryExpression, VariableDeclaration, VariableExpression, WhileStatement,
+        TypedefDeclaration, UnaryExpression, VaArgExpression, VaCopyExpression, VaEndExpression,
+        VaStartExpression, VariableDeclaration, VariableExpression, WhileStatement,
     },
     util::error::{ErrorKind, Result, UccError},
 };
@@ -359,7 +360,37 @@ impl Resolve for StructDeclaration {
         let prev_entry = struct_map.get(&self.tag);
 
         let unique_tag;
-        if prev_entry.is_none() || !prev_entry.as_ref().unwrap().from_current_scope {
+        if let Some(prev_entry) = prev_entry {
+            if prev_entry.kind != TagKind::from(self.kind) {
+                return Err(UccError {
+                    kind: ErrorKind::Resolve,
+                    msg: format!("Conflicting tag declaration"),
+                    span: self.span,
+                });
+            }
+
+            if self.members.is_empty() || prev_entry.from_current_scope {
+                // Parser-generated empty aggregate declarations are used for type
+                // references such as `struct Token x;` and `struct Token *p;`.
+                // When an outer complete tag is visible, reuse that tag instead
+                // of creating a new local incomplete type.
+                unique_tag = prev_entry.name.clone();
+            } else {
+                let aggregate_prefix = match self.kind {
+                    AggregateKind::Struct => "struct",
+                    AggregateKind::Union => "union",
+                };
+                unique_tag = format!("{}.{}.{}", aggregate_prefix, self.tag.clone(), make_temporary());
+                struct_map.insert(
+                    self.tag.clone(),
+                    StructTableEntry {
+                        name: unique_tag.clone(),
+                        kind: self.kind.into(),
+                        from_current_scope: true,
+                    },
+                );
+            }
+        } else {
             let aggregate_prefix = match self.kind {
                 AggregateKind::Struct => "struct",
                 AggregateKind::Union => "union",
@@ -373,16 +404,6 @@ impl Resolve for StructDeclaration {
                     from_current_scope: true,
                 },
             );
-        } else {
-            let prev_entry = prev_entry.unwrap();
-            if prev_entry.kind != TagKind::from(self.kind) {
-                return Err(UccError {
-                    kind: ErrorKind::Resolve,
-                    msg: format!("Conflicting tag declaration"),
-                    span: self.span,
-                });
-            }
-            unique_tag = prev_entry.name.clone();
         }
 
         let mut processed_members = vec![];
@@ -467,6 +488,7 @@ impl Resolve for EnumDeclaration {
                     from_current_scope: true,
                     name: unique_name.clone(),
                     has_linkage: false,
+                    is_typedef: false,
                 },
             );
             resolved_members.push(EnumMemberDeclaration {
@@ -828,9 +850,10 @@ impl Resolve for CaseStatement {
         Self: Sized,
     {
         let resolved_body = self.body.resolve(variable_map, struct_map)?;
+        let resolved_value = self.value.resolve(variable_map, struct_map)?;
 
         Ok(CaseStatement {
-            value: self.value.clone(),
+            value: resolved_value,
             body: resolved_body.into(),
             label: self.label.clone(),
             span: self.span,
@@ -1022,6 +1045,63 @@ impl Resolve for Expression {
                 }
             }
 
+            Expression::VaStart(VaStartExpression {
+                list,
+                last_param,
+                ty,
+                span,
+            }) => {
+                let resolved_list = list.resolve(variable_map, struct_map)?;
+                let resolved_last_param = last_param.resolve(variable_map, struct_map)?;
+
+                Ok(Expression::VaStart(VaStartExpression {
+                    list: resolved_list.into(),
+                    last_param: resolved_last_param.into(),
+                    ty,
+                    span,
+                }))
+            }
+
+            Expression::VaArg(VaArgExpression {
+                list,
+                arg_ty,
+                ty,
+                span,
+            }) => {
+                let resolved_list = list.resolve(variable_map, struct_map)?;
+                let resolved_arg_ty = arg_ty.resolve(variable_map, struct_map)?;
+
+                Ok(Expression::VaArg(VaArgExpression {
+                    list: resolved_list.into(),
+                    arg_ty: resolved_arg_ty,
+                    ty,
+                    span,
+                }))
+            }
+
+            Expression::VaCopy(VaCopyExpression { dst, src, ty, span }) => {
+                let resolved_dst = dst.resolve(variable_map, struct_map)?;
+                let resolved_src = src.resolve(variable_map, struct_map)?;
+
+                Ok(Expression::VaCopy(VaCopyExpression {
+                    dst: resolved_dst.into(),
+                    src: resolved_src.into(),
+                    ty,
+                    span,
+                }))
+            }
+
+            Expression::VaEnd(VaEndExpression { list, ty, span }) => {
+                let resolved_list = list.resolve(variable_map, struct_map)?;
+
+                Ok(Expression::VaEnd(VaEndExpression {
+                    list: resolved_list.into(),
+                    ty,
+                    span,
+                }))
+            }
+
+
             Expression::Cast(CastExpression {
                 target_type,
                 expr,
@@ -1078,6 +1158,17 @@ impl Resolve for Expression {
 
             Expression::String(StringExpression { value, ty, span }) => {
                 Ok(Expression::String(StringExpression { value, ty, span }))
+            }
+
+            Expression::Literal(LiteralExpression { name, value, ty, span }) => {
+                let resolved_type = ty.resolve(variable_map, struct_map)?;
+                let resolved_value = value.resolve(variable_map, struct_map)?;
+                Ok(Expression::Literal(LiteralExpression {
+                    name,
+                    value: resolved_value.into(),
+                    ty: resolved_type,
+                    span,
+                }))
             }
 
             Expression::Sizeof(SizeofExpression { expr, ty, span }) => {
@@ -1218,6 +1309,10 @@ impl Resolve for Type {
     {
         match self {
             Type::Struct { tag } => {
+                if tag == "__builtin_va_list_tag" {
+                    return Ok(Type::Struct { tag });
+                }
+
                 if let Some(entry) = struct_map.get(&tag) {
                     if entry.kind == TagKind::Struct {
                         Ok(Type::Struct {
@@ -1231,11 +1326,22 @@ impl Resolve for Type {
                         });
                     }
                 } else {
-                    return Err(UccError {
-                        kind: ErrorKind::Resolve,
-                        msg: format!("Specified an undeclared structure tag."),
-                        span: Span { start: 0, end: 0 },
-                    });
+                    // In C, a use like `struct Foo *p;` introduces `struct Foo`
+                    // as an incomplete type in the current scope.  The parser used
+                    // to synthesize a pending empty declaration for that, but pending
+                    // declarations can be emitted in the wrong statement position
+                    // inside blocks/for initializers.  Do the scope bookkeeping here
+                    // instead, without injecting an AST item.
+                    let unique_tag = format!("struct.{}.{}", tag, make_temporary());
+                    struct_map.insert(
+                        tag,
+                        StructTableEntry {
+                            name: unique_tag.clone(),
+                            kind: TagKind::Struct,
+                            from_current_scope: true,
+                        },
+                    );
+                    Ok(Type::Struct { tag: unique_tag })
                 }
             }
 
@@ -1253,11 +1359,17 @@ impl Resolve for Type {
                         });
                     }
                 } else {
-                    return Err(UccError {
-                        kind: ErrorKind::Resolve,
-                        msg: format!("Specified an undeclared union tag."),
-                        span: Span { start: 0, end: 0 },
-                    });
+                    // Same incomplete-tag rule as `struct Foo *p;` above.
+                    let unique_tag = format!("union.{}.{}", tag, make_temporary());
+                    struct_map.insert(
+                        tag,
+                        StructTableEntry {
+                            name: unique_tag.clone(),
+                            kind: TagKind::Union,
+                            from_current_scope: true,
+                        },
+                    );
+                    Ok(Type::Union { tag: unique_tag })
                 }
             }
 
@@ -1314,6 +1426,10 @@ impl Resolve for Type {
 }
 
 fn resolve_param(param: &str, variable_map: &mut BTreeMap<String, Variable>) -> Result<String> {
+    if param.is_empty() {
+        return Ok(String::new());
+    }
+
     if variable_map.contains_key(param) && variable_map.get(param).unwrap().from_current_scope {
         return Err(UccError {
             kind: ErrorKind::Resolve,
@@ -1452,4 +1568,27 @@ mod enum_tests {
             .resolve(&mut BTreeMap::new(), &mut BTreeMap::new())
             .is_err());
     }
+    #[test]
+    fn resolves_prototypes_with_unnamed_parameters() {
+        let program = parse("int f(int, char *, struct Unknown *); struct Unknown { int x; };");
+        program
+            .resolve(&mut BTreeMap::new(), &mut BTreeMap::new())
+            .unwrap();
+    }
+
+    #[test]
+    fn resolves_compound_literal_initializers() {
+        let program = parse(
+            r#"
+            struct Token { int kind; int len; };
+            struct Token next(void) {
+                return (struct Token){ .kind = 1, .len = 2 };
+            }
+            "#,
+        );
+        program
+            .resolve(&mut BTreeMap::new(), &mut BTreeMap::new())
+            .unwrap();
+    }
+
 }
