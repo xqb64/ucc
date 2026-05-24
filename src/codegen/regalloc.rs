@@ -224,9 +224,12 @@ fn regs_used_and_written(
 
         AsmInstruction::MovZeroExtend { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
 
-        AsmInstruction::Cvtsi2sd { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
-
-        AsmInstruction::Cvttsd2si { src, dst, .. } => (vec![src.clone()], vec![dst.clone()]),
+        AsmInstruction::Cvtsi2sd { src, dst, .. }
+        | AsmInstruction::Cvtsi2ss { src, dst, .. }
+        | AsmInstruction::Cvttsd2si { src, dst, .. }
+        | AsmInstruction::Cvttss2si { src, dst, .. }
+        | AsmInstruction::Cvtsd2ss { src, dst }
+        | AsmInstruction::Cvtss2sd { src, dst } => (vec![src.clone()], vec![dst.clone()]),
 
         AsmInstruction::Binary { lhs, rhs, .. } => {
             (vec![lhs.clone(), rhs.clone()], vec![rhs.clone()])
@@ -451,8 +454,12 @@ fn get_operands(instr: &AsmInstruction) -> Vec<AsmOperand> {
         AsmInstruction::Movsx { src, dst, .. } => vec![src.clone(), dst.clone()],
         AsmInstruction::MovZeroExtend { src, dst, .. } => vec![src.clone(), dst.clone()],
         AsmInstruction::Lea { src, dst, .. } => vec![src.clone(), dst.clone()],
-        AsmInstruction::Cvttsd2si { src, dst, .. } => vec![src.clone(), dst.clone()],
-        AsmInstruction::Cvtsi2sd { src, dst, .. } => vec![src.clone(), dst.clone()],
+        AsmInstruction::Cvttsd2si { src, dst, .. }
+        | AsmInstruction::Cvttss2si { src, dst, .. }
+        | AsmInstruction::Cvtsi2sd { src, dst, .. }
+        | AsmInstruction::Cvtsi2ss { src, dst, .. }
+        | AsmInstruction::Cvtsd2ss { src, dst }
+        | AsmInstruction::Cvtss2sd { src, dst } => vec![src.clone(), dst.clone()],
         AsmInstruction::Unary { operand, .. } => vec![operand.clone()],
         AsmInstruction::Binary { lhs, rhs, .. } => vec![lhs.clone(), rhs.clone()],
         AsmInstruction::Cmp { lhs, rhs, .. } => vec![lhs.clone(), rhs.clone()],
@@ -471,7 +478,7 @@ fn pseudo_is_current_type(pseudo: &str, register_class: &RegisterClass) -> bool 
                 ty,
                 is_static: _,
                 is_constant: _,
-            } => ty != &AsmType::Double,
+            } => !matches!(ty, AsmType::Float | AsmType::Double),
             _ => false,
         }
     } else if register_class == &RegisterClass::Xmm {
@@ -481,7 +488,7 @@ fn pseudo_is_current_type(pseudo: &str, register_class: &RegisterClass) -> bool 
                 is_static: _,
                 is_constant: _,
             } => {
-                return ty == &AsmType::Double;
+                return matches!(ty, AsmType::Float | AsmType::Double);
             }
             _ => false,
         }
@@ -906,8 +913,30 @@ where
             dst: f(dst),
         },
 
+        AsmInstruction::Cvttss2si { asm_type, src, dst } => AsmInstruction::Cvttss2si {
+            asm_type,
+            src: f(src),
+            dst: f(dst),
+        },
+
         AsmInstruction::Cvtsi2sd { asm_type, src, dst } => AsmInstruction::Cvtsi2sd {
             asm_type,
+            src: f(src),
+            dst: f(dst),
+        },
+
+        AsmInstruction::Cvtsi2ss { asm_type, src, dst } => AsmInstruction::Cvtsi2ss {
+            asm_type,
+            src: f(src),
+            dst: f(dst),
+        },
+
+        AsmInstruction::Cvtsd2ss { src, dst } => AsmInstruction::Cvtsd2ss {
+            src: f(src),
+            dst: f(dst),
+        },
+
+        AsmInstruction::Cvtss2sd { src, dst } => AsmInstruction::Cvtss2sd {
             src: f(src),
             dst: f(dst),
         },

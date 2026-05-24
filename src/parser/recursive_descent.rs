@@ -116,6 +116,7 @@ impl Parser {
             TokenKind::Short,
             TokenKind::Int,
             TokenKind::Long,
+            TokenKind::Float,
             TokenKind::Double,
             TokenKind::Signed,
             TokenKind::Unsigned,
@@ -245,6 +246,7 @@ impl Parser {
                 | TokenKind::Long
                 | TokenKind::Unsigned
                 | TokenKind::Signed
+                | TokenKind::Float
                 | TokenKind::Double
                 | TokenKind::Void
                 | TokenKind::Struct
@@ -695,6 +697,7 @@ impl Parser {
                 Ok(Type::Struct { tag: tag.clone() })
             }
             [TokenKind::Void] => Ok(Type::Void),
+            [TokenKind::Float] => Ok(Type::Float),
             [TokenKind::Double] => Ok(Type::Double),
             [TokenKind::Char] => Ok(Type::Char),
             [TokenKind::Char, TokenKind::Signed] => Ok(Type::SChar),
@@ -703,6 +706,7 @@ impl Parser {
                 let unique_specifiers: BTreeSet<_> = sorted_specifiers.iter().collect();
                 if sorted_specifiers.is_empty()
                     || unique_specifiers.len() != sorted_specifiers.len()
+                    || sorted_specifiers.contains(&TokenKind::Float)
                     || sorted_specifiers.contains(&TokenKind::Double)
                     || sorted_specifiers.contains(&TokenKind::Char)
                     || sorted_specifiers.contains(&TokenKind::Void)
@@ -1886,7 +1890,7 @@ impl Parser {
 #[cfg(test)]
 mod short_tests {
     use super::*;
-    use crate::lexer::lex::Lexer;
+    use crate::lexer::lex::{Const, Lexer, TokenKind};
     use crate::parser::ast::{BlockItem, Declaration, Program, Type};
     use crate::semantics::typechecker::{get_common_type, get_signedness, get_size_of_type};
     use std::collections::VecDeque;
@@ -1960,4 +1964,42 @@ mod short_tests {
         assert_eq!(get_common_type(&Type::Short, &Type::UShort), &Type::Int);
         assert_eq!(get_common_type(&Type::UShort, &Type::UShort), &Type::Int);
     }
+
+    #[test]
+    fn parses_float_type_and_rejects_invalid_float_combinations() {
+        let tys = top_level_var_types(
+            r#"
+            float f;
+            double d;
+            "#,
+        );
+
+        assert_eq!(tys, vec![Type::Float, Type::Double]);
+
+        parse_errs("float double x;");
+        parse_errs("unsigned float x;");
+        parse_errs("float int x;");
+        parse_errs("short float x;");
+    }
+
+    #[test]
+    fn lexes_f_suffix_as_float_constant() {
+        let tokens: Vec<_> = Lexer::new("float f = 1.25f; double d = 2.5;".to_string()).collect();
+
+        assert!(tokens.iter().any(|token| {
+            matches!(&token.kind, TokenKind::Constant(Const::Float(f)) if *f == 1.25)
+        }));
+        assert!(tokens.iter().any(|token| {
+            matches!(&token.kind, TokenKind::Constant(Const::Double(d)) if *d == 2.5)
+        }));
+    }
+
+    #[test]
+    fn float_size_and_usual_arithmetic_conversions() {
+        assert_eq!(get_size_of_type(&Type::Float), 4);
+        assert_eq!(get_common_type(&Type::Float, &Type::Int), &Type::Float);
+        assert_eq!(get_common_type(&Type::Float, &Type::Double), &Type::Double);
+        assert_eq!(get_common_type(&Type::Float, &Type::UShort), &Type::Float);
+    }
+
 }

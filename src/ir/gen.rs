@@ -122,6 +122,30 @@ pub enum IRInstruction {
         src: IRValue,
         dst: IRValue,
     },
+    DoubleToFloat {
+        src: IRValue,
+        dst: IRValue,
+    },
+    FloatToDouble {
+        src: IRValue,
+        dst: IRValue,
+    },
+    FloatToInt {
+        src: IRValue,
+        dst: IRValue,
+    },
+    IntToFloat {
+        src: IRValue,
+        dst: IRValue,
+    },
+    FloattoUInt {
+        src: IRValue,
+        dst: IRValue,
+    },
+    UIntToFloat {
+        src: IRValue,
+        dst: IRValue,
+    },
     AddPtr {
         ptr: IRValue,
         index: IRValue,
@@ -379,6 +403,7 @@ fn cast_const_to(c: &Const, target: &Type) -> Const {
         Type::UShort => Const::UShort(c.to_u16()),
         Type::UInt => Const::UInt(c.to_u32()),
         Type::ULong => Const::ULong(c.to_u64()),
+        Type::Float => Const::Float(c.to_f32()),
         Type::Double => Const::Double(c.to_f64()),
         Type::Char | Type::SChar => Const::Char(c.to_i8()),
         Type::UChar => Const::UChar(c.to_u8()),
@@ -393,6 +418,7 @@ pub trait ConstCast {
     fn to_u16(&self) -> u16;
     fn to_u32(&self) -> u32;
     fn to_u64(&self) -> u64;
+    fn to_f32(&self) -> f32;
     fn to_f64(&self) -> f64;
     fn to_i8(&self) -> i8;
     fn to_u8(&self) -> u8;
@@ -407,6 +433,7 @@ impl ConstCast for Const {
             Const::UShort(v) => v as i16,
             Const::UInt(v) => v as i16,
             Const::ULong(v) => v as i16,
+            Const::Float(v) => v as i16,
             Const::Double(v) => v as i16,
             Const::Char(v) => v as i16,
             Const::UChar(v) => v as i16,
@@ -421,6 +448,7 @@ impl ConstCast for Const {
             Const::UShort(v) => v as i32,
             Const::UInt(v) => v as i32,
             Const::ULong(v) => v as i32,
+            Const::Float(v) => v as i32,
             Const::Double(v) => v as i32,
             Const::Char(v) => v as i32,
             Const::UChar(v) => v as i32,
@@ -435,6 +463,7 @@ impl ConstCast for Const {
             Const::UShort(v) => v as i64,
             Const::UInt(v) => v as i64,
             Const::ULong(v) => v as i64,
+            Const::Float(v) => v as i64,
             Const::Double(v) => v as i64,
             Const::Char(v) => v as i64,
             Const::UChar(v) => v as i64,
@@ -449,6 +478,7 @@ impl ConstCast for Const {
             Const::UShort(v) => v,
             Const::UInt(v) => v as u16,
             Const::ULong(v) => v as u16,
+            Const::Float(v) => v as u16,
             Const::Double(v) => v as u16,
             Const::Char(v) => v as u16,
             Const::UChar(v) => v as u16,
@@ -463,6 +493,7 @@ impl ConstCast for Const {
             Const::UShort(v) => v as u32,
             Const::UInt(v) => v,
             Const::ULong(v) => v as u32,
+            Const::Float(v) => v as u32,
             Const::Double(v) => v as u32,
             Const::Char(v) => v as u32,
             Const::UChar(v) => v as u32,
@@ -477,9 +508,25 @@ impl ConstCast for Const {
             Const::UShort(v) => v as u64,
             Const::UInt(v) => v as u64,
             Const::ULong(v) => v,
+            Const::Float(v) => v as u64,
             Const::Double(v) => v as u64,
             Const::Char(v) => v as u64,
             Const::UChar(v) => v as u64,
+        }
+    }
+
+    fn to_f32(&self) -> f32 {
+        match *self {
+            Const::Short(v) => v as f32,
+            Const::Int(v) => v as f32,
+            Const::Long(v) => v as f32,
+            Const::UShort(v) => v as f32,
+            Const::UInt(v) => v as f32,
+            Const::ULong(v) => v as f32,
+            Const::Float(v) => v,
+            Const::Double(v) => v as f32,
+            Const::Char(v) => v as f32,
+            Const::UChar(v) => v as f32,
         }
     }
 
@@ -491,6 +538,7 @@ impl ConstCast for Const {
             Const::UShort(v) => v as f64,
             Const::UInt(v) => v as f64,
             Const::ULong(v) => v as f64,
+            Const::Float(v) => v as f64,
             Const::Double(v) => v,
             Const::Char(v) => v as f64,
             Const::UChar(v) => v as f64,
@@ -505,6 +553,7 @@ impl ConstCast for Const {
             Const::UShort(v) => v as i8,
             Const::UInt(v) => v as i8,
             Const::ULong(v) => v as i8,
+            Const::Float(v) => v as i8,
             Const::Double(v) => v as i8,
             Const::Char(v) => v,
             Const::UChar(v) => v as i8,
@@ -519,6 +568,7 @@ impl ConstCast for Const {
             Const::UShort(v) => v as u8,
             Const::UInt(v) => v as u8,
             Const::ULong(v) => v as u8,
+            Const::Float(v) => v as u8,
             Const::Double(v) => v as u8,
             Const::Char(v) => v as u8,
             Const::UChar(v) => v,
@@ -918,6 +968,11 @@ fn make_constexpr(konst: isize, ty: Type) -> Expression {
             ty: ty.clone(),
             span: Span { start: 0, end: 0 },
         }),
+        Type::Float => Expression::Constant(ConstantExpression {
+            value: Const::Float(konst as f32),
+            ty: ty.clone(),
+            span: Span { start: 0, end: 0 },
+        }),
         Type::Double => Expression::Constant(ConstantExpression {
             value: Const::Double(konst as f64),
             ty: ty.clone(),
@@ -942,11 +997,100 @@ fn make_const(konst: isize, ty: Type) -> Const {
         Type::UInt => Const::UInt(konst as u32),
         Type::Long => Const::Long(konst as i64),
         Type::ULong => Const::ULong(konst as u64),
+        Type::Float => Const::Float(konst as f32),
         Type::Double => Const::Double(konst as f64),
         Type::Pointer(_) => Const::ULong(konst as i64 as u64),
         _ => {
             println!("ty: {:?}", ty);
             unreachable!()
+        }
+    }
+}
+
+fn make_cast_instruction(src: &IRValue, dst: &IRValue, src_t: &Type, dst_t: &Type) -> IRInstruction {
+    match (dst_t, src_t) {
+        (Type::Float, Type::Double) => IRInstruction::DoubleToFloat {
+            src: src.clone(),
+            dst: dst.clone(),
+        },
+        (Type::Double, Type::Float) => IRInstruction::FloatToDouble {
+            src: src.clone(),
+            dst: dst.clone(),
+        },
+        (Type::Float, _) => {
+            if get_signedness(src_t) {
+                IRInstruction::IntToFloat {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                }
+            } else {
+                IRInstruction::UIntToFloat {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                }
+            }
+        }
+        (Type::Double, _) => {
+            if get_signedness(src_t) {
+                IRInstruction::IntToDouble {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                }
+            } else {
+                IRInstruction::UIntToDouble {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                }
+            }
+        }
+        (_, Type::Float) => {
+            if get_signedness(dst_t) {
+                IRInstruction::FloatToInt {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                }
+            } else {
+                IRInstruction::FloattoUInt {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                }
+            }
+        }
+        (_, Type::Double) => {
+            if get_signedness(dst_t) {
+                IRInstruction::DoubleToInt {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                }
+            } else {
+                IRInstruction::DoubletoUInt {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                }
+            }
+        }
+        _ => {
+            if get_size_of_type(dst_t) == get_size_of_type(src_t) {
+                IRInstruction::Copy {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                }
+            } else if get_size_of_type(dst_t) < get_size_of_type(src_t) {
+                IRInstruction::Truncate {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                }
+            } else if get_signedness(src_t) {
+                IRInstruction::SignExtend {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                }
+            } else {
+                IRInstruction::ZeroExtend {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                }
+            }
         }
     }
 }
@@ -1005,58 +1149,9 @@ fn emit_compound_expression(
         src_t: &Type,
         dst_t: &Type,
     ) -> IRInstruction {
-        match (dst_t, src_t) {
-            (Type::Double, _) => {
-                if get_signedness(src_t) {
-                    IRInstruction::IntToDouble {
-                        src: src.clone(),
-                        dst: dst.clone(),
-                    }
-                } else {
-                    IRInstruction::UIntToDouble {
-                        src: src.clone(),
-                        dst: dst.clone(),
-                    }
-                }
-            }
-            (_, Type::Double) => {
-                if get_signedness(dst_t) {
-                    IRInstruction::DoubleToInt {
-                        src: src.clone(),
-                        dst: dst.clone(),
-                    }
-                } else {
-                    IRInstruction::DoubletoUInt {
-                        src: src.clone(),
-                        dst: dst.clone(),
-                    }
-                }
-            }
-            _ => {
-                if get_size_of_type(dst_t) == get_size_of_type(src_t) {
-                    IRInstruction::Copy {
-                        src: src.clone(),
-                        dst: dst.clone(),
-                    }
-                } else if get_size_of_type(dst_t) < get_size_of_type(src_t) {
-                    IRInstruction::Truncate {
-                        src: src.clone(),
-                        dst: dst.clone(),
-                    }
-                } else if get_signedness(src_t) {
-                    IRInstruction::SignExtend {
-                        src: src.clone(),
-                        dst: dst.clone(),
-                    }
-                } else {
-                    IRInstruction::ZeroExtend {
-                        src: src.clone(),
-                        dst: dst.clone(),
-                    }
-                }
-            }
-        }
+        make_cast_instruction(src, dst, src_t, dst_t)
     }
+
 
     let (result_var, cast_to, cast_from) = if &lhs_ty == result_t {
         (dst.clone(), None, None)
@@ -1586,58 +1681,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             }
 
             let dst = make_tacky_variable(target_type);
-
-            match (target_type, &inner_type) {
-                (Type::Double, _) => {
-                    if get_signedness(inner_type) {
-                        instructions.push(IRInstruction::IntToDouble {
-                            src: result.clone(),
-                            dst: dst.clone(),
-                        });
-                    } else {
-                        instructions.push(IRInstruction::UIntToDouble {
-                            src: result.clone(),
-                            dst: dst.clone(),
-                        });
-                    }
-                }
-                (_, Type::Double) => {
-                    if get_signedness(target_type) {
-                        instructions.push(IRInstruction::DoubleToInt {
-                            src: result.clone(),
-                            dst: dst.clone(),
-                        });
-                    } else {
-                        instructions.push(IRInstruction::DoubletoUInt {
-                            src: result.clone(),
-                            dst: dst.clone(),
-                        });
-                    }
-                }
-                (_, _) => {
-                    if get_size_of_type(target_type) == get_size_of_type(inner_type) {
-                        instructions.push(IRInstruction::Copy {
-                            src: result.clone(),
-                            dst: dst.clone(),
-                        });
-                    } else if get_size_of_type(target_type) < get_size_of_type(inner_type) {
-                        instructions.push(IRInstruction::Truncate {
-                            src: result.clone(),
-                            dst: dst.clone(),
-                        });
-                    } else if get_signedness(inner_type) {
-                        instructions.push(IRInstruction::SignExtend {
-                            src: result.clone(),
-                            dst: dst.clone(),
-                        });
-                    } else {
-                        instructions.push(IRInstruction::ZeroExtend {
-                            src: result.clone(),
-                            dst: dst.clone(),
-                        });
-                    }
-                }
-            }
+            instructions.push(make_cast_instruction(&result, &dst, inner_type, target_type));
 
             ExpResult::PlainOperand(dst)
         }
@@ -2013,6 +2057,7 @@ pub fn convert_symbols_to_tacky() -> (Vec<IRStaticVariable>, Vec<IRStaticConstan
                         Type::Long => StaticInit::Long(0),
                         Type::ULong => StaticInit::ULong(0),
                         Type::UInt => StaticInit::UInt(0),
+                        Type::Float => StaticInit::Float(0.0),
                         Type::Double => StaticInit::Double(0.0),
                         Type::Pointer(_) => StaticInit::ULong(0),
                         Type::Array { element, size } => {
@@ -2257,6 +2302,12 @@ pub fn get_dst(instr: &IRInstruction) -> Option<IRValue> {
         IRInstruction::DoubleToInt { dst, .. } => Some(dst.clone()),
         IRInstruction::DoubletoUInt { dst, .. } => Some(dst.clone()),
         IRInstruction::UIntToDouble { dst, .. } => Some(dst.clone()),
+        IRInstruction::DoubleToFloat { dst, .. } => Some(dst.clone()),
+        IRInstruction::FloatToDouble { dst, .. } => Some(dst.clone()),
+        IRInstruction::FloatToInt { dst, .. } => Some(dst.clone()),
+        IRInstruction::IntToFloat { dst, .. } => Some(dst.clone()),
+        IRInstruction::FloattoUInt { dst, .. } => Some(dst.clone()),
+        IRInstruction::UIntToFloat { dst, .. } => Some(dst.clone()),
         IRInstruction::CopyFromOffset { dst, .. } => Some(dst.clone()),
         IRInstruction::CopyToOffset { dst, .. } => Some(IRValue::Var(dst.to_owned())),
         IRInstruction::GetAddress { dst, .. } => Some(dst.clone()),

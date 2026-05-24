@@ -48,6 +48,7 @@ pub enum Type {
     UShort,
     UInt,
     ULong,
+    Float,
     Double,
     Func { params: Vec<Type>, ret: Box<Type> },
     Pointer(Box<Type>),
@@ -426,6 +427,14 @@ impl Initializer {
                 Expression::Constant(ConstantExpression {
                     value: Const::ULong(0),
                     ty: Type::ULong,
+                    span: Span { start: 0, end: 0 },
+                }),
+            ),
+            Type::Float => Initializer::Single(
+                String::new(),
+                Expression::Constant(ConstantExpression {
+                    value: Const::Float(0.0),
+                    ty: Type::Float,
                     span: Span { start: 0, end: 0 },
                 }),
             ),

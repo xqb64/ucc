@@ -198,6 +198,12 @@ fn transfer(
             | IRInstruction::IntToDouble { dst, src }
             | IRInstruction::DoubletoUInt { dst, src }
             | IRInstruction::UIntToDouble { dst, src }
+            | IRInstruction::DoubleToFloat { dst, src }
+            | IRInstruction::FloatToDouble { dst, src }
+            | IRInstruction::FloatToInt { dst, src }
+            | IRInstruction::IntToFloat { dst, src }
+            | IRInstruction::FloattoUInt { dst, src }
+            | IRInstruction::UIntToFloat { dst, src }
             | IRInstruction::Truncate { dst, src } => {
                 current_live_vars.remove(&dst.to_string());
                 current_live_vars.insert(src.to_string());

@@ -98,6 +98,7 @@ impl Emit for AsmStaticVariable {
                     0 => writeln!(f, "\t.zero 8")?,
                     _ => writeln!(f, "\t.quad {}", n)?,
                 },
+                StaticInit::Float(n) => writeln!(f, "\t.long {}", n.to_bits())?,
                 StaticInit::Double(n) => writeln!(f, "\t.quad {}", n.to_bits())?,
                 StaticInit::Zero(n) => {
                     writeln!(f, "\t.zero {}", n)?;
@@ -134,6 +135,7 @@ impl Emit for AsmStaticConstant {
             StaticInit::UShort(n) => writeln!(f, "\t.short {}", n)?,
             StaticInit::UInt(n) => writeln!(f, "\t.long {}", n)?,
             StaticInit::ULong(n) => writeln!(f, "\t.quad {}", n)?,
+            StaticInit::Float(n) => writeln!(f, "\t.long {}", n.to_bits())?,
             StaticInit::Double(n) => writeln!(f, "\t.quad {}", n.to_bits())?,
             StaticInit::Char(c) => writeln!(f, "\t.byte {}", c)?,
             StaticInit::UChar(c) => writeln!(f, "\t.byte {}", c)?,
@@ -194,6 +196,7 @@ impl Emit for AsmInstruction {
                     AsmType::Word => "w",
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
+                    AsmType::Float => "ss",
                     AsmType::Double => "sd",
                     _ => unreachable!(),
                 };
@@ -277,6 +280,7 @@ impl Emit for AsmInstruction {
                         AsmType::Word => "imul",
                         AsmType::Longword => "imul",
                         AsmType::Quadword => "imul",
+                        AsmType::Float => "mul",
                         AsmType::Double => "mul",
                         _ => unreachable!(),
                     },
@@ -294,6 +298,11 @@ impl Emit for AsmInstruction {
                     AsmType::Word => "w",
                     AsmType::Longword => "l",
                     AsmType::Quadword => "q",
+                    AsmType::Float => match op {
+                        AsmBinaryOp::Xor => "ps",
+                        AsmBinaryOp::DivDouble => "ss",
+                        _ => "ss",
+                    },
                     AsmType::Double => match op {
                         AsmBinaryOp::Xor => "pd",
                         AsmBinaryOp::DivDouble => "sd",
@@ -344,6 +353,7 @@ impl Emit for AsmInstruction {
                     AsmType::Word => "cmpw",
                     AsmType::Longword => "cmpl",
                     AsmType::Quadword => "cmpq",
+                    AsmType::Float => "comiss",
                     AsmType::Double => "comisd",
                     _ => unreachable!(),
                 };
@@ -470,6 +480,50 @@ impl Emit for AsmInstruction {
                 writeln!(f)?;
             }
 
+            AsmInstruction::Cvtsi2ss { asm_type, src, dst } => {
+                let suffix = match asm_type {
+                    AsmType::Longword => "l",
+                    AsmType::Quadword => "q",
+                    _ => unreachable!(),
+                };
+
+                write!(f, "cvtsi2ss{} ", suffix)?;
+                src.emit(f, *asm_type)?;
+                write!(f, ", ")?;
+                dst.emit(f, AsmType::Float)?;
+                writeln!(f)?;
+            }
+
+            AsmInstruction::Cvttss2si { asm_type, src, dst } => {
+                let suffix = match asm_type {
+                    AsmType::Longword => "l",
+                    AsmType::Quadword => "q",
+                    _ => unreachable!(),
+                };
+
+                write!(f, "cvttss2si{} ", suffix)?;
+                src.emit(f, AsmType::Float)?;
+                write!(f, ", ")?;
+                dst.emit(f, *asm_type)?;
+                writeln!(f)?;
+            }
+
+            AsmInstruction::Cvtsd2ss { src, dst } => {
+                write!(f, "cvtsd2ss ")?;
+                src.emit(f, AsmType::Double)?;
+                write!(f, ", ")?;
+                dst.emit(f, AsmType::Float)?;
+                writeln!(f)?;
+            }
+
+            AsmInstruction::Cvtss2sd { src, dst } => {
+                write!(f, "cvtss2sd ")?;
+                src.emit(f, AsmType::Float)?;
+                write!(f, ", ")?;
+                dst.emit(f, AsmType::Double)?;
+                writeln!(f)?;
+            }
+
             AsmInstruction::Pop(reg) => {
                 write!(f, "popq ")?;
                 reg.emit(f, AsmType::Quadword)?;
@@ -586,22 +640,22 @@ impl Emit for AsmRegister {
             (R14, Longword) => write!(f, "%r14d")?,
             (R15, Longword) => write!(f, "%r15d")?,
 
-            (Ax, Quadword | Double) => write!(f, "%rax")?,
-            (Bx, Quadword | Double) => write!(f, "%rbx")?,
-            (Dx, Quadword | Double) => write!(f, "%rdx")?,
-            (Cx, Quadword | Double) => write!(f, "%rcx")?,
-            (Di, Quadword | Double) => write!(f, "%rdi")?,
-            (Si, Quadword | Double) => write!(f, "%rsi")?,
-            (Bp, Quadword | Double) => write!(f, "%rbp")?,
-            (Sp, Quadword | Double) => write!(f, "%rsp")?,
-            (R8, Quadword | Double) => write!(f, "%r8")?,
-            (R9, Quadword | Double) => write!(f, "%r9")?,
-            (R10, Quadword | Double) => write!(f, "%r10")?,
-            (R11, Quadword | Double) => write!(f, "%r11")?,
-            (R12, Quadword | Double) => write!(f, "%r12")?,
-            (R13, Quadword | Double) => write!(f, "%r13")?,
-            (R14, Quadword | Double) => write!(f, "%r14")?,
-            (R15, Quadword | Double) => write!(f, "%r15")?,
+            (Ax, Quadword | Float | Double) => write!(f, "%rax")?,
+            (Bx, Quadword | Float | Double) => write!(f, "%rbx")?,
+            (Dx, Quadword | Float | Double) => write!(f, "%rdx")?,
+            (Cx, Quadword | Float | Double) => write!(f, "%rcx")?,
+            (Di, Quadword | Float | Double) => write!(f, "%rdi")?,
+            (Si, Quadword | Float | Double) => write!(f, "%rsi")?,
+            (Bp, Quadword | Float | Double) => write!(f, "%rbp")?,
+            (Sp, Quadword | Float | Double) => write!(f, "%rsp")?,
+            (R8, Quadword | Float | Double) => write!(f, "%r8")?,
+            (R9, Quadword | Float | Double) => write!(f, "%r9")?,
+            (R10, Quadword | Float | Double) => write!(f, "%r10")?,
+            (R11, Quadword | Float | Double) => write!(f, "%r11")?,
+            (R12, Quadword | Float | Double) => write!(f, "%r12")?,
+            (R13, Quadword | Float | Double) => write!(f, "%r13")?,
+            (R14, Quadword | Float | Double) => write!(f, "%r14")?,
+            (R15, Quadword | Float | Double) => write!(f, "%r15")?,
 
             (Xmm0, _) => write!(f, "%xmm0")?,
             (Xmm1, _) => write!(f, "%xmm1")?,

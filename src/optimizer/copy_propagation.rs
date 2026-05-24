@@ -343,6 +343,36 @@ fn rewrite_instruction(
             dst: dst.clone(),
         }),
 
+        IRInstruction::DoubleToFloat { src, dst } => Some(IRInstruction::DoubleToFloat {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
+
+        IRInstruction::FloatToDouble { src, dst } => Some(IRInstruction::FloatToDouble {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
+
+        IRInstruction::FloatToInt { src, dst } => Some(IRInstruction::FloatToInt {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
+
+        IRInstruction::FloattoUInt { src, dst } => Some(IRInstruction::FloattoUInt {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
+
+        IRInstruction::IntToFloat { src, dst } => Some(IRInstruction::IntToFloat {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
+
+        IRInstruction::UIntToFloat { src, dst } => Some(IRInstruction::UIntToFloat {
+            src: replace(src),
+            dst: dst.clone(),
+        }),
+
         IRInstruction::CopyToOffset { src, dst, offset } => Some(IRInstruction::CopyToOffset {
             src: replace(src),
             dst: dst.clone(),
@@ -431,6 +461,7 @@ impl std::fmt::Debug for Cp {
                     Const::UShort(us) => us.to_string(),
                     Const::UInt(u) => u.to_string(),
                     Const::ULong(ul) => ul.to_string(),
+                    Const::Float(fl) => fl.to_string(),
                     Const::Double(d) => d.to_string(),
                     Const::Char(c) => c.to_string(),
                     Const::UChar(uc) => uc.to_string(),

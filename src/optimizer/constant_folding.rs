@@ -14,7 +14,7 @@ fn evaluate_leftshift(val: &Const, shift: u32) -> Const {
         Const::ULong(v) => Const::ULong(*v << shift),
         Const::Char(v) => Const::Char(*v << shift),
         Const::UChar(v) => Const::UChar(*v << shift),
-        Const::Double(_) => panic!("bitshift operation applied to double!"),
+        Const::Float(_) | Const::Double(_) => panic!("bitshift operation applied to floating type!"),
     }
 }
 
@@ -28,7 +28,7 @@ fn evaluate_rightshift(val: &Const, shift: u32) -> Const {
         Const::ULong(v) => Const::ULong(*v >> shift),
         Const::Char(v) => Const::Char(*v >> shift),
         Const::UChar(v) => Const::UChar(*v >> shift),
-        Const::Double(_) => panic!("bitshift operation applied to double!"),
+        Const::Float(_) | Const::Double(_) => panic!("bitshift operation applied to floating type!"),
     }
 }
 
@@ -101,6 +101,8 @@ pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
                             Const::UShort(i) => Const::UShort(i.wrapping_add(1)),
                             Const::UInt(i) => Const::UInt(i.wrapping_add(1)),
                             Const::ULong(i) => Const::ULong(i.wrapping_add(1)),
+                            Const::Float(f) => Const::Float(f + 1.0),
+                            Const::Double(f) => Const::Double(f + 1.0),
                             _ => panic!("Increment requires numeric type"),
                         },
                         UnaryOp::Dec => match src_val {
@@ -110,6 +112,8 @@ pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
                             Const::UShort(i) => Const::UShort(i.wrapping_sub(1)),
                             Const::UInt(i) => Const::UInt(i.wrapping_sub(1)),
                             Const::ULong(i) => Const::ULong(i.wrapping_sub(1)),
+                            Const::Float(f) => Const::Float(f - 1.0),
+                            Const::Double(f) => Const::Double(f - 1.0),
                             _ => panic!("Decrement requires numeric type"),
                         },
                     };
@@ -195,6 +199,48 @@ pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
                 optimized_instructions.extend(evaluate_cast(konst, dst));
             }
 
+            IRInstruction::DoubleToFloat {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
+
+            IRInstruction::FloatToDouble {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
+
+            IRInstruction::FloatToInt {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
+
+            IRInstruction::FloattoUInt {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
+
+            IRInstruction::IntToFloat {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
+
+            IRInstruction::UIntToFloat {
+                src: IRValue::Constant(konst),
+                dst,
+            } => {
+                optimized_instructions.extend(evaluate_cast(konst, dst));
+            }
+
             IRInstruction::Copy {
                 src: IRValue::Constant(konst),
                 dst,
@@ -240,6 +286,7 @@ macro_rules! convert_const {
             Const::UShort(val) => $variant(*val as $ty),
             Const::UInt(val) => $variant(*val as $ty),
             Const::ULong(val) => $variant(*val as $ty),
+            Const::Float(val) => $variant(*val as $ty),
             Const::Double(val) => $variant(*val as $ty),
             Const::Char(val) => $variant(*val as $ty),
             Const::UChar(val) => $variant(*val as $ty),
@@ -255,6 +302,7 @@ fn const_convert(konst: &Const, dst_type: &Type) -> Const {
         Type::UShort => convert_const!(konst, Const::UShort, u16),
         Type::UInt => convert_const!(konst, Const::UInt, u32),
         Type::ULong => convert_const!(konst, Const::ULong, u64),
+        Type::Float => convert_const!(konst, Const::Float, f32),
         Type::Double => convert_const!(konst, Const::Double, f64),
         Type::Char => convert_const!(konst, Const::Char, i8),
         Type::UChar => convert_const!(konst, Const::UChar, u8),
@@ -272,6 +320,7 @@ fn is_zero(konst: &Const) -> bool {
         Const::UShort(val) => *val == 0,
         Const::UInt(val) => *val == 0,
         Const::ULong(val) => *val == 0,
+        Const::Float(val) => *val == 0.0,
         Const::Double(val) => *val == 0.0,
         Const::Char(val) => *val == 0,
         Const::UChar(val) => *val == 0,

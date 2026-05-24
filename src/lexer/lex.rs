@@ -11,7 +11,7 @@ pub struct Lexer {
 impl Lexer {
     pub fn new(src: String) -> Lexer {
         let keywords = vec![
-            "char", "short", "int", "long", "signed", "unsigned", "double", "void", "return",
+            "char", "short", "int", "long", "signed", "unsigned", "float", "double", "void", "return",
             "if", "else", "do", "while", "for", "break", "continue", "static", "extern",
             "sizeof", "struct", "goto", "switch", "case", "default",
         ];
@@ -39,7 +39,7 @@ impl Lexer {
         regexes.insert(
             "double_constant",
             Regex::new(
-                r"^(([0-9]*\.[0-9]+|[0-9]+\.?)[Ee][+-]?[0-9]+|[0-9]*\.[0-9]+|[0-9]+\.)[^\w.]",
+                r"^(?P<literal>(([0-9]*\.[0-9]+|[0-9]+\.?)[Ee][+-]?[0-9]+|[0-9]*\.[0-9]+|[0-9]+\.)(?P<suffix>[fF])?)[^\w.]",
             )
             .unwrap(),
         );
@@ -101,6 +101,7 @@ impl Iterator for Lexer {
                 "long" => self.make_token(TokenKind::Long, len),
                 "signed" => self.make_token(TokenKind::Signed, len),
                 "unsigned" => self.make_token(TokenKind::Unsigned, len),
+                "float" => self.make_token(TokenKind::Float, len),
                 "double" => self.make_token(TokenKind::Double, len),
                 "void" => self.make_token(TokenKind::Void, len),
                 "return" => self.make_token(TokenKind::Return, len),
@@ -122,19 +123,28 @@ impl Iterator for Lexer {
                 _ => unreachable!(),
             }
         } else if let Some(m) = self.regexes["double_constant"].find(src) {
-            let len = m.as_str().chars().count() - 1;
+            let captures = self.regexes["double_constant"].captures(src).unwrap();
+            let literal = captures.name("literal").unwrap().as_str();
+            let suffix = captures.name("suffix").map(|m| m.as_str()).unwrap_or("");
+            let len = literal.chars().count();
             self.pos += len;
-            self.make_token(
-                TokenKind::Constant(Const::Double(
-                    m.as_str()
-                        .chars()
-                        .take(len)
-                        .collect::<String>()
-                        .parse::<f64>()
-                        .unwrap(),
-                )),
-                len,
-            )
+
+            let just_number = if suffix.is_empty() {
+                literal
+            } else {
+                &literal[..literal.len() - suffix.len()]
+            };
+            if suffix.is_empty() {
+                self.make_token(
+                    TokenKind::Constant(Const::Double(just_number.parse::<f64>().unwrap())),
+                    len,
+                )
+            } else {
+                self.make_token(
+                    TokenKind::Constant(Const::Float(just_number.parse::<f32>().unwrap())),
+                    len,
+                )
+            }
         } else if let Some(m) = self.regexes["constant"].find(src) {
             let len = m.as_str().chars().count();
             self.pos += len;
@@ -324,6 +334,7 @@ pub enum TokenKind {
     Long,
     Signed,
     Unsigned,
+    Float,
     Double,
     Void,
     Return,
@@ -422,6 +433,7 @@ pub enum Const {
     Long(i64),
     UInt(u32),
     ULong(u64),
+    Float(f32),
     Double(f64),
     Char(i8),
     UChar(u8),
@@ -494,6 +506,7 @@ impl std::ops::Add for Const {
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs + rhs),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs + rhs),
             (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs + rhs),
+            (Const::Float(lhs), Const::Float(rhs)) => Const::Float(lhs + rhs),
             (Const::Double(lhs), Const::Double(rhs)) => Const::Double(lhs + rhs),
             (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs + rhs),
             (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs + rhs),
@@ -513,6 +526,7 @@ impl std::ops::Sub for Const {
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs - rhs),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs - rhs),
             (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs - rhs),
+            (Const::Float(lhs), Const::Float(rhs)) => Const::Float(lhs - rhs),
             (Const::Double(lhs), Const::Double(rhs)) => Const::Double(lhs - rhs),
             (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs - rhs),
             (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs - rhs),
@@ -532,6 +546,7 @@ impl std::ops::Mul for Const {
             (Const::Long(lhs), Const::Long(rhs)) => Const::Long(lhs * rhs),
             (Const::UInt(lhs), Const::UInt(rhs)) => Const::UInt(lhs * rhs),
             (Const::ULong(lhs), Const::ULong(rhs)) => Const::ULong(lhs * rhs),
+            (Const::Float(lhs), Const::Float(rhs)) => Const::Float(lhs * rhs),
             (Const::Double(lhs), Const::Double(rhs)) => Const::Double(lhs * rhs),
             (Const::Char(lhs), Const::Char(rhs)) => Const::Char(lhs * rhs),
             (Const::UChar(lhs), Const::UChar(rhs)) => Const::UChar(lhs * rhs),
@@ -561,6 +576,7 @@ impl std::ops::Div for Const {
             (Const::UChar(lhs), Const::UChar(rhs)) => {
                 Const::UChar(lhs.checked_div(rhs).unwrap_or(0))
             }
+            (Const::Float(lhs), Const::Float(rhs)) => Const::Float(lhs / rhs),
             (Const::Double(lhs), Const::Double(rhs)) => Const::Double(lhs / rhs),
             _ => {
                 unreachable!()
@@ -606,6 +622,7 @@ impl std::ops::Neg for Const {
             Const::Long(val) => Const::Long(-val),
             Const::UInt(val) => Const::Int(-(val as i32)),
             Const::ULong(val) => Const::Long(-(val as i64)),
+            Const::Float(val) => Const::Float(-val),
             Const::Double(val) => Const::Double(-val),
             _ => unreachable!(),
         }
@@ -633,6 +650,7 @@ impl Ord for Const {
         use std::any::Any;
         use Const::*;
         match (self, other) {
+            (Float(f1), Float(f2)) => f1.total_cmp(f2),
             (Double(d1), Double(d2)) => d1.total_cmp(d2),
             (Int(i1), Int(i2)) => i1.cmp(i2),
             (Long(l1), Long(l2)) => l1.cmp(l2),
@@ -653,6 +671,7 @@ impl PartialEq for Const {
     fn eq(&self, other: &Self) -> bool {
         use Const::*;
         match (self, other) {
+            (Float(f1), Float(f2)) => f1.partial_cmp(f2) == Some(std::cmp::Ordering::Equal),
             (Double(d1), Double(d2)) => d1.partial_cmp(d2) == Some(std::cmp::Ordering::Equal),
             (Int(i1), Int(i2)) => i1 == i2,
             (Long(l1), Long(l2)) => l1 == l2,
@@ -685,6 +704,7 @@ impl Hash for Const {
             Const::Long(i) => i.hash(state),
             Const::UInt(i) => i.hash(state),
             Const::ULong(i) => i.hash(state),
+            Const::Float(f) => f.to_bits().hash(state),
             Const::Double(d) => d.to_bits().hash(state),
             Const::Char(c) => c.hash(state),
             Const::UChar(c) => c.hash(state),
@@ -703,6 +723,7 @@ impl ToString for Const {
             Const::Long(l) => l.to_string(),
             Const::UInt(u) => u.to_string(),
             Const::ULong(ul) => ul.to_string(),
+            Const::Float(f) => f.to_string(),
             Const::Double(d) => d.to_string(),
             Const::Char(c) => c.to_string(),
             Const::UChar(uc) => uc.to_string(),

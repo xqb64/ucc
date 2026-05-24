@@ -113,6 +113,28 @@ impl ReplacePseudo for AsmInstruction {
                 dst: dst.replace_pseudo(),
             },
 
+            AsmInstruction::Cvtsi2ss { asm_type, src, dst } => AsmInstruction::Cvtsi2ss {
+                asm_type: *asm_type,
+                src: src.replace_pseudo(),
+                dst: dst.replace_pseudo(),
+            },
+
+            AsmInstruction::Cvttss2si { asm_type, src, dst } => AsmInstruction::Cvttss2si {
+                asm_type: *asm_type,
+                src: src.replace_pseudo(),
+                dst: dst.replace_pseudo(),
+            },
+
+            AsmInstruction::Cvtsd2ss { src, dst } => AsmInstruction::Cvtsd2ss {
+                src: src.replace_pseudo(),
+                dst: dst.replace_pseudo(),
+            },
+
+            AsmInstruction::Cvtss2sd { src, dst } => AsmInstruction::Cvtss2sd {
+                src: src.replace_pseudo(),
+                dst: dst.replace_pseudo(),
+            },
+
             AsmInstruction::Lea { src, dst } => AsmInstruction::Lea {
                 src: src.replace_pseudo(),
                 dst: dst.replace_pseudo(),

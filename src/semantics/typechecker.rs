@@ -852,9 +852,9 @@ impl Typecheck for Statement {
             }) => {
                 let typechecked_expr = typecheck_and_convert(&value)?;
 
-                if get_type(&typechecked_expr) == &Type::Double {
+                if is_floating_type(get_type(&typechecked_expr)) {
                     return Err(UccError {
-                        msg: format!("Case expression can't be a double."),
+                        msg: format!("Case expression can't be a floating type."),
                         kind: ErrorKind::Typecheck,
                         span,
                     });
@@ -1136,6 +1136,11 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 ty: Type::ULong,
                 span: *span,
             })),
+            Const::Float(f) => Ok(Expression::Constant(ConstantExpression {
+                value: Const::Float(*f),
+                ty: Type::Float,
+                span: *span,
+            })),
             Const::Double(d) => Ok(Expression::Constant(ConstantExpression {
                 value: Const::Double(*d),
                 ty: Type::Double,
@@ -1174,9 +1179,9 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }
 
             if let Type::Pointer(_) = t1 {
-                if let Type::Double = t2 {
+                if is_floating_type(t2) {
                     return Err(UccError {
-                        msg: format!("Pointer to double cast."),
+                        msg: format!("Pointer to floating type cast."),
                         kind: ErrorKind::Typecheck,
                         span: *span,
                     });
@@ -1184,9 +1189,9 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }
 
             if let Type::Pointer(_) = t2 {
-                if let Type::Double = t1 {
+                if is_floating_type(t1) {
                     return Err(UccError {
-                        msg: format!("Double to pointer cast."),
+                        msg: format!("Floating type to pointer cast."),
                         kind: ErrorKind::Typecheck,
                         span: *span,
                     });
@@ -1686,7 +1691,7 @@ fn typecheck_multiplicative(
         let converted_rhs = convert_to(&typed_rhs, common_type);
 
         match kind {
-            BinaryExpressionKind::Rem if common_type == &Type::Double => {
+            BinaryExpressionKind::Rem if is_floating_type(common_type) => {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
                     msg: format!("Rem can't be applied to float types."),
@@ -2220,6 +2225,10 @@ pub fn get_common_type<'a>(mut type1: &'a Type, mut type2: &'a Type) -> &'a Type
         return &Type::Double;
     }
 
+    if type1 == &Type::Float || type2 == &Type::Float {
+        return &Type::Float;
+    }
+
     if get_size_of_type(type1) == get_size_of_type(type2) {
         if get_signedness(type1) {
             return type2;
@@ -2243,6 +2252,7 @@ pub fn get_size_of_type(t: &Type) -> usize {
         Type::UInt => 4,
         Type::Long => 8,
         Type::ULong => 8,
+        Type::Float => 4,
         Type::Double => 8,
         Type::Pointer(_) => 8,
         Type::Array { element, size } => get_size_of_type(element) * size,
@@ -2318,6 +2328,10 @@ fn optionally_typecheck_scalar(e: &Option<Expression>) -> Result<Option<Expressi
     }
 }
 
+fn is_floating_type(t: &Type) -> bool {
+    matches!(t, Type::Float | Type::Double)
+}
+
 fn is_arithmetic(t: &Type) -> bool {
     matches!(
         t,
@@ -2327,6 +2341,7 @@ fn is_arithmetic(t: &Type) -> bool {
             | Type::UInt
             | Type::Long
             | Type::ULong
+            | Type::Float
             | Type::Double
             | Type::Char
             | Type::UChar
@@ -2420,6 +2435,7 @@ pub enum StaticInit {
     UShort(u16),
     UInt(u32),
     ULong(u64),
+    Float(f32),
     Double(f64),
     Char(i32),
     UChar(u32),
@@ -2437,6 +2453,9 @@ impl PartialEq for StaticInit {
             (StaticInit::UShort(us1), StaticInit::UShort(us2)) => us1 == us2,
             (StaticInit::UInt(u1), StaticInit::UInt(u2)) => u1 == u2,
             (StaticInit::ULong(ul1), StaticInit::ULong(ul2)) => ul1 == ul2,
+            (StaticInit::Float(f1), StaticInit::Float(f2)) => {
+                f1 == f2 || f1.total_cmp(f2) == Ordering::Equal
+            }
             (StaticInit::Double(d1), StaticInit::Double(d2)) => {
                 d1 == d2 || d1.total_cmp(d2) == Ordering::Equal
             }
@@ -2495,7 +2514,7 @@ fn alignment(t: &Type) -> usize {
     match t {
         Type::Char | Type::UChar | Type::SChar => 1,
         Type::Short | Type::UShort => 2,
-        Type::Int | Type::UInt => 4,
+        Type::Int | Type::UInt | Type::Float => 4,
         Type::Double | Type::Long | Type::ULong | Type::Pointer(_) => 8,
         Type::Struct { tag } => TYPE_TABLE.lock().unwrap()[tag].alignment,
         Type::Array { element, size: _ } => alignment(element),
@@ -2516,6 +2535,7 @@ macro_rules! convert_to_static {
             Const::Long(val) => $variant(*val as $ty),
             Const::UInt(val) => $variant(*val as $ty),
             Const::ULong(val) => $variant(*val as $ty),
+            Const::Float(val) => $variant(*val as $ty),
             Const::Double(val) => $variant(*val as $ty),
             _ => unreachable!(),
         }
@@ -2530,6 +2550,7 @@ fn const2staticinit(konst: &Const, t: &Type) -> StaticInit {
         Type::UInt => convert_to_static!(konst, u32, StaticInit::UInt),
         Type::Long => convert_to_static!(konst, i64, StaticInit::Long),
         Type::ULong => convert_to_static!(konst, u64, StaticInit::ULong),
+        Type::Float => convert_to_static!(konst, f32, StaticInit::Float),
         Type::Double => convert_to_static!(konst, f64, StaticInit::Double),
         Type::Pointer(_) => convert_to_static!(konst, u64, StaticInit::ULong),
         Type::Char | Type::SChar => convert_to_static!(konst, i32, StaticInit::Char),
@@ -2643,6 +2664,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                     | Const::Long(0)
                     | Const::UInt(0)
                     | Const::ULong(0)
+                    | Const::Float(0.0)
                     | Const::Double(0.0)
             ) {
                 Ok(vec![StaticInit::Zero(get_size_of_type(t))])
