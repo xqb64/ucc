@@ -1,7 +1,7 @@
 use crate::{
     lexer::lex::{Const, Span, Token, TokenKind},
     parser::ast::{
-        AbstractDeclarator, AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
+        AbstractDeclarator, AggregateKind, AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
         BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,
         CastExpression, ConditionalExpression, ConstantExpression, ContinueStatement, Declaration,
         Declarator, DerefExpression, DoWhileStatement, DotExpression, Expression,
@@ -124,6 +124,7 @@ impl Parser {
             TokenKind::Static,
             TokenKind::Extern,
             TokenKind::Struct,
+            TokenKind::Union,
         ]) {
             self.parse_declaration()
         } else if self.is_next(&[TokenKind::Return]) {
@@ -166,16 +167,26 @@ impl Parser {
             .collect::<Vec<_>>()
             .as_slice()
         {
-            [TokenKind::Struct, TokenKind::Identifier(_), TokenKind::LBrace | TokenKind::Semicolon] => {
-                self.parse_struct_decl()
+            [TokenKind::Struct | TokenKind::Union, TokenKind::Identifier(_), TokenKind::LBrace | TokenKind::Semicolon] => {
+                self.parse_struct_or_union_decl()
             }
             _ => self.parse_var_or_fn_decl(),
         }
     }
 
-    fn parse_struct_decl(&mut self) -> Result<BlockItem> {
+    fn parse_struct_or_union_decl(&mut self) -> Result<BlockItem> {
         let begin = self.current_span()?;
-        self.consume(&TokenKind::Struct)?;
+        let kind = match self.current.as_ref().unwrap().kind {
+            TokenKind::Struct => {
+                self.consume(&TokenKind::Struct)?;
+                AggregateKind::Struct
+            }
+            TokenKind::Union => {
+                self.consume(&TokenKind::Union)?;
+                AggregateKind::Union
+            }
+            _ => unreachable!(),
+        };
         let tag = self
             .consume(&TokenKind::Identifier("".to_owned()))?
             .unwrap()
@@ -196,13 +207,20 @@ impl Parser {
         };
         self.consume(&TokenKind::Semicolon)?;
         let end = self.current_span()?;
-        Ok(BlockItem::Declaration(Declaration::Struct(
-            StructDeclaration {
+        Ok(BlockItem::Declaration(match kind {
+            AggregateKind::Struct => Declaration::Struct(StructDeclaration {
                 tag,
+                kind,
                 members,
                 span: begin + end,
-            },
-        )))
+            }),
+            AggregateKind::Union => Declaration::Union(StructDeclaration {
+                tag,
+                kind,
+                members,
+                span: begin + end,
+            }),
+        }))
     }
 
     fn parse_member_decl(&mut self) -> Result<MemberDeclaration> {
@@ -250,6 +268,7 @@ impl Parser {
                 | TokenKind::Double
                 | TokenKind::Void
                 | TokenKind::Struct
+                | TokenKind::Union
         )
     }
 
@@ -499,7 +518,7 @@ impl Parser {
         while self.is_type_specifier(&self.current.as_ref().unwrap().kind) {
             match self.current.as_ref() {
                 Some(token) => match token.kind {
-                    TokenKind::Struct => {
+                    TokenKind::Struct | TokenKind::Union => {
                         specifier_list.push(self.current.clone().unwrap());
                         self.advance();
                         specifier_list.push(self.current.clone().unwrap());
@@ -534,7 +553,7 @@ impl Parser {
         while self.is_specifier(&self.current.as_ref().unwrap().kind) {
             match self.current.as_ref() {
                 Some(token) => match token.kind {
-                    TokenKind::Struct => {
+                    TokenKind::Struct | TokenKind::Union => {
                         specifier_list.push(self.current.clone().unwrap());
                         self.advance();
 
@@ -695,6 +714,9 @@ impl Parser {
         match &sorted_specifiers[..] {
             [TokenKind::Struct, TokenKind::Identifier(tag)] => {
                 Ok(Type::Struct { tag: tag.clone() })
+            }
+            [TokenKind::Union, TokenKind::Identifier(tag)] => {
+                Ok(Type::Union { tag: tag.clone() })
             }
             [TokenKind::Void] => Ok(Type::Void),
             [TokenKind::Float] => Ok(Type::Float),
@@ -1891,7 +1913,7 @@ impl Parser {
 mod short_tests {
     use super::*;
     use crate::lexer::lex::{Const, Lexer, TokenKind};
-    use crate::parser::ast::{BlockItem, Declaration, Program, Type};
+    use crate::parser::ast::{AggregateKind, BlockItem, Declaration, Program, Type};
     use crate::semantics::typechecker::{get_common_type, get_signedness, get_size_of_type};
     use std::collections::VecDeque;
 
@@ -1963,6 +1985,31 @@ mod short_tests {
         assert_eq!(get_common_type(&Type::Short, &Type::Short), &Type::Int);
         assert_eq!(get_common_type(&Type::Short, &Type::UShort), &Type::Int);
         assert_eq!(get_common_type(&Type::UShort, &Type::UShort), &Type::Int);
+    }
+
+
+    #[test]
+    fn lexes_and_parses_union_declaration_and_type_references() {
+        let tokens: Vec<_> = Lexer::new("union U { int i; double d; }; union U u;".to_string()).collect();
+        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::Union)));
+
+        let program = parse("union U { int i; double d; }; union U u; union U *p;");
+        assert!(matches!(
+            &program.block_items[0],
+            BlockItem::Declaration(Declaration::Union(decl))
+                if decl.tag == "U" && decl.kind == AggregateKind::Union && decl.members.len() == 2
+        ));
+
+        assert!(matches!(
+            &program.block_items[1],
+            BlockItem::Declaration(Declaration::Variable(var))
+                if var.ty == (Type::Union { tag: "U".to_string() })
+        ));
+        assert!(matches!(
+            &program.block_items[2],
+            BlockItem::Declaration(Declaration::Variable(var))
+                if var.ty == Type::Pointer(Box::new(Type::Union { tag: "U".to_string() }))
+        ));
     }
 
     #[test]

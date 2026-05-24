@@ -4,7 +4,7 @@ use crate::{
     ir::gen::make_temporary,
     lexer::lex::Span,
     parser::ast::{
-        AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression, BlockItem,
+        AddrOfExpression, AggregateKind, ArrowExpression, AssignExpression, BinaryExpression, BlockItem,
         BlockStatement, BreakStatement, CallExpression, CaseStatement, CastExpression,
         CompoundExpression, ConditionalExpression, ContinueStatement, Declaration,
         DefaultStatement, DerefExpression, DoWhileStatement, DotExpression, Expression,
@@ -81,6 +81,10 @@ impl Resolve for Declaration {
             Declaration::Struct(struct_decl) => {
                 let resolved = struct_decl.resolve(variable_map, struct_map)?;
                 Ok(Declaration::Struct(resolved))
+            }
+            Declaration::Union(union_decl) => {
+                let resolved = union_decl.resolve(variable_map, struct_map)?;
+                Ok(Declaration::Union(resolved))
             }
         }
     }
@@ -299,16 +303,29 @@ impl Resolve for StructDeclaration {
 
         let unique_tag;
         if prev_entry.is_none() || !prev_entry.as_ref().unwrap().from_current_scope {
-            unique_tag = format!("struct.{}.{}", self.tag.clone(), make_temporary());
+            let aggregate_prefix = match self.kind {
+                AggregateKind::Struct => "struct",
+                AggregateKind::Union => "union",
+            };
+            unique_tag = format!("{}.{}.{}", aggregate_prefix, self.tag.clone(), make_temporary());
             struct_map.insert(
                 self.tag.clone(),
                 StructTableEntry {
                     name: unique_tag.clone(),
+                    kind: self.kind,
                     from_current_scope: true,
                 },
             );
         } else {
-            unique_tag = prev_entry.unwrap().name.clone();
+            let prev_entry = prev_entry.unwrap();
+            if prev_entry.kind != self.kind {
+                return Err(UccError {
+                    kind: ErrorKind::Resolve,
+                    msg: format!("Conflicting tag declaration"),
+                    span: self.span,
+                });
+            }
+            unique_tag = prev_entry.name.clone();
         }
 
         let mut processed_members = vec![];
@@ -326,6 +343,7 @@ impl Resolve for StructDeclaration {
 
         Ok(StructDeclaration {
             tag: unique_tag,
+            kind: self.kind,
             members: processed_members,
             span: self.span,
         })
@@ -1050,13 +1068,44 @@ impl Resolve for Type {
     {
         match self {
             Type::Struct { tag } => {
-                if struct_map.contains_key(&tag) {
-                    let unique_tag = struct_map.get(&tag).cloned().unwrap().name.clone();
-                    Ok(Type::Struct { tag: unique_tag })
+                if let Some(entry) = struct_map.get(&tag) {
+                    if entry.kind == AggregateKind::Struct {
+                        Ok(Type::Struct {
+                            tag: entry.name.clone(),
+                        })
+                    } else {
+                        return Err(UccError {
+                            kind: ErrorKind::Resolve,
+                            msg: format!("Specified a non-struct tag as a structure."),
+                            span: Span { start: 0, end: 0 },
+                        });
+                    }
                 } else {
                     return Err(UccError {
                         kind: ErrorKind::Resolve,
                         msg: format!("Specified an undeclared structure tag."),
+                        span: Span { start: 0, end: 0 },
+                    });
+                }
+            }
+
+            Type::Union { tag } => {
+                if let Some(entry) = struct_map.get(&tag) {
+                    if entry.kind == AggregateKind::Union {
+                        Ok(Type::Union {
+                            tag: entry.name.clone(),
+                        })
+                    } else {
+                        return Err(UccError {
+                            kind: ErrorKind::Resolve,
+                            msg: format!("Specified a non-union tag as a union."),
+                            span: Span { start: 0, end: 0 },
+                        });
+                    }
+                } else {
+                    return Err(UccError {
+                        kind: ErrorKind::Resolve,
+                        msg: format!("Specified an undeclared union tag."),
                         span: Span { start: 0, end: 0 },
                     });
                 }
@@ -1142,6 +1191,7 @@ fn copy_struct_map(
                 k.clone(),
                 StructTableEntry {
                     name: v.name.clone(),
+                    kind: v.kind,
                     from_current_scope: false,
                 },
             )
@@ -1160,5 +1210,6 @@ pub struct Variable {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructTableEntry {
     name: String,
+    kind: AggregateKind,
     from_current_scope: bool,
 }

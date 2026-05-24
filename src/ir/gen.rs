@@ -318,7 +318,7 @@ impl Irfy for BlockStatement {
 
                     Declaration::Function(_func_decl) => {}
 
-                    Declaration::Struct(_) => {}
+                    Declaration::Struct(_) | Declaration::Union(_) => {}
                 },
 
                 BlockItem::Statement(stmt) => {
@@ -832,7 +832,7 @@ impl Irfy for BlockItem {
             BlockItem::Declaration(decl) => match decl {
                 Declaration::Function(func) => func.irfy(funcname),
                 Declaration::Variable(var) => var.irfy(funcname),
-                _ => todo!(),
+                Declaration::Struct(_) | Declaration::Union(_) => None,
             },
             BlockItem::Statement(stmt) => stmt.irfy(funcname),
         }
@@ -1766,7 +1766,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             ..
         }) => {
             let struct_tag = match get_type(structure) {
-                Type::Struct { tag } => tag,
+                Type::Struct { tag } | Type::Union { tag } => tag,
                 _ => unreachable!(),
             };
             let struct_def = TYPE_TABLE.lock().unwrap().get(struct_tag).cloned().unwrap();
@@ -1812,7 +1812,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
         }) => {
             let struct_tag = match get_type(pointer) {
                 Type::Pointer(referenced) => match &**referenced {
-                    Type::Struct { tag } => tag,
+                    Type::Struct { tag } | Type::Union { tag } => tag,
                     _ => unreachable!(),
                 },
                 _ => unreachable!(),
@@ -1965,7 +1965,7 @@ fn emit_compound_init(
                     let new_offset = offset + idx * get_size_of_type(ty);
                     emit_compound_init(name, elem_init, instructions, new_offset, element);
                 }
-            } else if let Type::Struct { tag } = inited_type {
+            } else if let Type::Struct { tag } | Type::Union { tag } = inited_type {
                 let members = TYPE_TABLE.lock().unwrap().get(tag).unwrap().members.clone();
 
                 for (member, mem_init) in members.iter().zip(compound_init) {
@@ -2063,7 +2063,7 @@ pub fn convert_symbols_to_tacky() -> (Vec<IRStaticVariable>, Vec<IRStaticConstan
                         Type::Array { element, size } => {
                             StaticInit::Zero(get_size_of_type(element) * size)
                         }
-                        Type::Struct { tag } => {
+                        Type::Struct { tag } | Type::Union { tag } => {
                             StaticInit::Zero(TYPE_TABLE.lock().unwrap().get(tag).unwrap().size)
                         }
                         _ => {

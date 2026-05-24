@@ -56,7 +56,7 @@ impl SwitchCaseCollect for Declaration {
                 let collected = func_decl.collect_switch_cases(cases, control)?;
                 Ok(Declaration::Function(collected))
             }
-            Declaration::Struct(_) => Ok(self),
+            Declaration::Struct(_) | Declaration::Union(_) => Ok(self),
         }
     }
 }

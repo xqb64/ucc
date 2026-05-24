@@ -2280,7 +2280,7 @@ fn classify_params_helper(
         let typed_operand = (type2asmtype(t), operand.clone());
 
         match t {
-            Type::Struct { tag } => {
+            Type::Struct { tag } | Type::Union { tag } => {
                 let struct_entry = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
 
                 /* Classify the structure into register classes */
@@ -2420,7 +2420,7 @@ fn classify_param_types(params: &[Type], return_on_stack: bool) -> Vec<AsmRegist
 fn returns_on_stack(name: &str) -> bool {
     match SYMBOL_TABLE.lock().unwrap().get(name).cloned().unwrap().ty {
         Type::Func { params: _, ret } => match &*ret {
-            Type::Struct { tag } => {
+            Type::Struct { tag } | Type::Union { tag } => {
                 let struct_entry = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
 
                 matches!(
@@ -2541,7 +2541,7 @@ pub enum Class {
 fn classify_structure(struct_entry: &StructEntry) -> Vec<Class> {
     let mut size: isize = struct_entry.size as isize;
 
-    /* If the structure size is greater than 16 bytes, it cannot be returned in registers.
+    /* If the aggregate size is greater than 16 bytes, it cannot be returned in registers.
      * We push Class::Memory for each 8-byte block and return the result. */
     if size > 16 {
         let mut result = vec![];
@@ -2552,58 +2552,54 @@ fn classify_structure(struct_entry: &StructEntry) -> Vec<Class> {
         return result;
     }
 
-    /* If the structure size is equal to 16 bytes or smaller, this means it can be returned
-     * in registers because it fits the two registers (2x 8 bytes). */
-    let scalar_types = flatten_member_types(&struct_entry.members);
+    let eightbyte_count = (struct_entry.size + 7) / 8;
+    let mut classes = vec![Class::Sse; eightbyte_count.max(1)];
+    let mut scalar_fields = vec![];
+    collect_scalar_fields(&struct_entry.members, 0, &mut scalar_fields);
 
-    /* Since, at this point, we're working with 16 bytes or smaller, and we have two registers,
-     * and the System V AMD64 ABI is only concerned with how the structure's first and last parts
-     * fit into one (or both) registers, we can safely ignore all "in between" members. */
-    let first = scalar_types.first().unwrap();
-    let last = scalar_types.last().unwrap();
-
-    /* If structure size is between 8 and 16 bytes, it means it fits into two registers, and we
-     * classify accordingly. */
-    if size > 8 {
-        if is_floating_type(first) && is_floating_type(last) {
-            return vec![Class::Sse, Class::Sse];
+    for (offset, ty) in scalar_fields {
+        let field_size = get_size_of_type(&ty);
+        if field_size == 0 {
+            continue;
         }
 
-        if is_floating_type(first) {
-            return vec![Class::Sse, Class::Integer];
-        }
+        let first_eightbyte = offset / 8;
+        let last_eightbyte = (offset + field_size - 1) / 8;
 
-        if is_floating_type(last) {
-            return vec![Class::Integer, Class::Sse];
+        for idx in first_eightbyte..=last_eightbyte {
+            if !is_floating_type(&ty) {
+                classes[idx] = Class::Integer;
+            }
         }
+    }
 
-        vec![Class::Integer, Class::Integer]
-    } else if is_floating_type(first) {
-        /* Less than or equal to 8 bytes. */
-        return vec![Class::Sse];
-    } else {
-        /* Less than or equal to 8 bytes. */
-        return vec![Class::Integer];
+    classes
+}
+
+fn collect_scalar_fields(
+    members: &Vec<MemberEntry>,
+    base_offset: usize,
+    result: &mut Vec<(usize, Type)>,
+) {
+    for member in members {
+        collect_scalar_type(&member.ty, base_offset + member.offset, result);
     }
 }
 
-fn flatten_member_types(members: &Vec<MemberEntry>) -> Vec<Type> {
-    let mut result = vec![];
-    for member in members {
-        match &member.ty {
-            Type::Struct { tag } => {
-                let struct_entry = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
-                result.extend(flatten_member_types(&struct_entry.members));
-            }
-            Type::Array { element, size } => {
-                for _ in 0..*size {
-                    result.push(*element.clone());
-                }
-            }
-            _ => result.push(member.ty.clone()),
+fn collect_scalar_type(ty: &Type, offset: usize, result: &mut Vec<(usize, Type)>) {
+    match ty {
+        Type::Struct { tag } | Type::Union { tag } => {
+            let entry = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
+            collect_scalar_fields(&entry.members, offset, result);
         }
+        Type::Array { element, size } => {
+            let element_size = get_size_of_type(element);
+            for idx in 0..*size {
+                collect_scalar_type(element, offset + idx * element_size, result);
+            }
+        }
+        _ => result.push((offset, ty.clone())),
     }
-    result
 }
 
 fn classify_return_value(retval: &IRValue) -> (Vec<(AsmType, AsmOperand)>, Vec<(AsmType, AsmOperand)>, bool) {
@@ -2657,7 +2653,7 @@ fn classify_return_helper(
     asm_retval: &AsmOperand,
 ) -> (Vec<(AsmType, AsmOperand)>, Vec<(AsmType, AsmOperand)>, bool) {
     match ret_type {
-        Type::Struct { tag } => {
+        Type::Struct { tag } | Type::Union { tag } => {
             /* For structures, we get the struct entry from the type table and classify it. */
 
             let struct_entry = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
@@ -2861,7 +2857,7 @@ fn type2asmtype(t: &Type) -> AsmType {
             size: get_size_of_type(element) * size,
             alignment: get_alignment_of_type(t),
         },
-        Type::Struct { tag } => {
+        Type::Struct { tag } | Type::Union { tag } => {
             let struct_size = TYPE_TABLE.lock().unwrap().get(tag).unwrap().size;
             let struct_alignment = TYPE_TABLE.lock().unwrap().get(tag).unwrap().alignment;
             AsmType::Bytearray {
@@ -2915,7 +2911,7 @@ fn get_alignment_of_type(t: &Type) -> usize {
                 get_alignment_of_type(element)
             }
         }
-        Type::Struct { tag } => {
+        Type::Struct { tag } | Type::Union { tag } => {
             let struct_type = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
             struct_type.alignment
         }
@@ -3112,7 +3108,7 @@ mod short_tests {
     use super::*;
     use crate::ir::gen::IRValue;
     use crate::lexer::lex::Const;
-    use crate::parser::ast::Type;
+    use crate::parser::ast::{AggregateKind, Type};
 
     #[test]
     fn maps_short_types_to_word_asm_type() {
@@ -3171,4 +3167,61 @@ mod short_tests {
         assert_eq!(get_sse_eightbyte_type(0, 8), AsmType::Double);
         assert_eq!(get_sse_eightbyte_type(8, 12), AsmType::Float);
     }
+
+    #[test]
+    fn classifies_union_with_integer_and_float_members_as_integer() {
+        let entry = StructEntry {
+            kind: AggregateKind::Union,
+            alignment: 4,
+            size: 4,
+            members: vec![
+                MemberEntry {
+                    name: "f".to_string(),
+                    ty: Type::Float,
+                    offset: 0,
+                },
+                MemberEntry {
+                    name: "i".to_string(),
+                    ty: Type::Int,
+                    offset: 0,
+                },
+            ],
+        };
+
+        assert_eq!(classify_structure(&entry), vec![Class::Integer]);
+    }
+
+    #[test]
+    fn maps_union_type_to_bytearray_asm_type() {
+        let tag = "union.codegen.test".to_string();
+        TYPE_TABLE.lock().unwrap().insert(
+            tag.clone(),
+            StructEntry {
+                kind: AggregateKind::Union,
+                alignment: 8,
+                size: 8,
+                members: vec![
+                    MemberEntry {
+                        name: "i".to_string(),
+                        ty: Type::Int,
+                        offset: 0,
+                    },
+                    MemberEntry {
+                        name: "d".to_string(),
+                        ty: Type::Double,
+                        offset: 0,
+                    },
+                ],
+            },
+        );
+
+        assert_eq!(
+            type2asmtype(&Type::Union { tag }),
+            AsmType::Bytearray {
+                size: 8,
+                alignment: 8,
+            }
+        );
+    }
+
 }

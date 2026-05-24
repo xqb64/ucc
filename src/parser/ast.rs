@@ -14,11 +14,19 @@ pub enum Declaration {
     Variable(VariableDeclaration),
     Function(FunctionDeclaration),
     Struct(StructDeclaration),
+    Union(StructDeclaration),
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum AggregateKind {
+    Struct,
+    Union,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructDeclaration {
     pub tag: String,
+    pub kind: AggregateKind,
     pub members: Vec<MemberDeclaration>,
     pub span: Span,
 }
@@ -58,6 +66,7 @@ pub enum Type {
     UChar,
     Void,
     Struct { tag: String },
+    Union { tag: String },
     Dummy,
 }
 
@@ -488,6 +497,15 @@ impl Initializer {
                 }
 
                 Initializer::Compound(String::new(), Type::Struct { tag: tag.clone() }, inits)
+            }
+            Type::Union { tag } => {
+                let union_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+                let first_member = union_def.members.first().unwrap();
+                Initializer::Compound(
+                    String::new(),
+                    Type::Union { tag: tag.clone() },
+                    vec![Self::zero(&first_member.ty)],
+                )
             }
             _ => unreachable!(),
         }

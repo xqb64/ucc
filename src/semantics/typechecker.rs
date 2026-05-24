@@ -2,7 +2,7 @@ use crate::{
     ir::gen::make_temporary,
     lexer::lex::{Const, Span},
     parser::ast::{
-        spanof, AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
+        spanof, AddrOfExpression, AggregateKind, ArrowExpression, AssignExpression, BinaryExpression,
         BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CaseStatement,
         CastExpression, CompoundExpression, ConditionalExpression, ConstantExpression, Declaration,
         DefaultStatement, DerefExpression, DoWhileStatement, DotExpression, Expression,
@@ -79,6 +79,11 @@ impl Typecheck for Declaration {
             Declaration::Struct(struct_decl) => {
                 let typechecked = struct_decl.typecheck()?;
                 Ok(Declaration::Struct(typechecked))
+            }
+
+            Declaration::Union(union_decl) => {
+                let typechecked = union_decl.typecheck()?;
+                Ok(Declaration::Union(typechecked))
             }
         }
     }
@@ -441,7 +446,7 @@ impl Typecheck for FunctionDeclaration {
                 _ => unreachable!(),
             };
 
-            if let Type::Struct { tag } = &**ret_type {
+            if let Type::Struct { tag } | Type::Union { tag } = &**ret_type {
                 if !TYPE_TABLE.lock().unwrap().contains_key(tag) {
                     return Err(UccError {
                         kind: ErrorKind::Typecheck,
@@ -545,12 +550,15 @@ impl Typecheck for StructDeclaration {
         validate_struct_definition(&self)?;
 
         let mut member_entries = vec![];
-        let mut struct_size = 0;
-        let mut struct_alignment = 1;
+        let mut aggregate_size = 0;
+        let mut aggregate_alignment = 1;
 
         for member in &self.members {
             let member_alignment = alignment(&member.ty);
-            let member_offset = round_up(struct_size, member_alignment);
+            let member_offset = match self.kind {
+                AggregateKind::Struct => round_up(aggregate_size, member_alignment),
+                AggregateKind::Union => 0,
+            };
             let m = MemberEntry {
                 name: member.name.clone(),
                 ty: member.ty.clone(),
@@ -559,14 +567,18 @@ impl Typecheck for StructDeclaration {
 
             member_entries.push(m);
 
-            struct_alignment = max(struct_alignment, member_alignment);
-            struct_size = member_offset + get_size_of_type(&member.ty);
+            aggregate_alignment = max(aggregate_alignment, member_alignment);
+            aggregate_size = match self.kind {
+                AggregateKind::Struct => member_offset + get_size_of_type(&member.ty),
+                AggregateKind::Union => max(aggregate_size, get_size_of_type(&member.ty)),
+            };
         }
 
-        struct_size = round_up(struct_size, struct_alignment);
+        aggregate_size = round_up(aggregate_size, aggregate_alignment);
         let s = StructEntry {
-            alignment: struct_alignment,
-            size: struct_size,
+            kind: self.kind,
+            alignment: aggregate_alignment,
+            size: aggregate_size,
             members: member_entries,
         };
 
@@ -582,7 +594,7 @@ fn validate_struct_definition(definition: &StructDeclaration) -> Result<StructDe
     let tag = &definition.tag;
 
     if TYPE_TABLE.lock().unwrap().contains_key(tag) {
-        panic!("Structure was already declared");
+        panic!("Structure or union was already declared");
     } else {
         let mut member_names = BTreeSet::new();
 
@@ -592,7 +604,7 @@ fn validate_struct_definition(definition: &StructDeclaration) -> Result<StructDe
             if member_names.contains(member_name) {
                 return Err(UccError {
                     msg: format!(
-                        "Duplicate declaration of member {} in structure {}",
+                        "Duplicate declaration of member {} in aggregate {}",
                         member_name, tag
                     ),
                     kind: ErrorKind::Typecheck,
@@ -607,7 +619,7 @@ fn validate_struct_definition(definition: &StructDeclaration) -> Result<StructDe
             match &member.ty {
                 Type::Func { .. } => {
                     return Err(UccError {
-                        msg: format!("Can't declare structure member with function type",),
+                        msg: format!("Can't declare aggregate member with function type",),
                         kind: ErrorKind::Typecheck,
                         span: definition.span,
                     });
@@ -615,7 +627,7 @@ fn validate_struct_definition(definition: &StructDeclaration) -> Result<StructDe
                 _ => {
                     if !is_complete(&member.ty) {
                         return Err(UccError {
-                            msg: format!("Cannot declare structure member with incomplete type"),
+                            msg: format!("Cannot declare aggregate member with incomplete type"),
                             kind: ErrorKind::Typecheck,
                             span: definition.span,
                         });
@@ -1338,7 +1350,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
         }) => {
             let typed_structure = typecheck_and_convert(structure)?;
             match get_type(&typed_structure) {
-                Type::Struct { tag } => {
+                Type::Struct { tag } | Type::Union { tag } => {
                     let struct_def = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
 
                     if !struct_def
@@ -1349,7 +1361,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     {
                         return Err(UccError {
                             kind: ErrorKind::Typecheck,
-                            msg: format!("Unknown struct member."),
+                            msg: format!("Unknown aggregate member."),
                             span: *span,
                         });
                     }
@@ -1371,7 +1383,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 _ => {
                     return Err(UccError {
                         kind: ErrorKind::Typecheck,
-                        msg: format!("Non struct type in dot expression."),
+                        msg: format!("Non aggregate type in dot expression."),
                         span: *span,
                     })
                 }
@@ -1387,7 +1399,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             let typed_pointer = typecheck_and_convert(pointer)?;
             match get_type(&typed_pointer) {
                 Type::Pointer(referenced) => {
-                    if let Type::Struct { tag } = &**referenced {
+                    if let Type::Struct { tag } | Type::Union { tag } = &**referenced {
                         let struct_def = TYPE_TABLE.lock().unwrap().get(tag).cloned().unwrap();
 
                         if !struct_def
@@ -1398,7 +1410,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                         {
                             return Err(UccError {
                                 kind: ErrorKind::Typecheck,
-                                msg: format!("Unknown member in struct."),
+                                msg: format!("Unknown member in aggregate."),
                                 span: *span,
                             });
                         }
@@ -1418,7 +1430,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     } else {
                         return Err(UccError {
                             kind: ErrorKind::Typecheck,
-                            msg: format!("Non struct type in arrow expression."),
+                            msg: format!("Non aggregate type in arrow expression."),
                             span: *span,
                         });
                     }
@@ -1519,6 +1531,30 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             Ok(Initializer::Compound(
                 name.clone(),
                 Type::Struct { tag: tag.clone() },
+                typechecked_inits,
+            ))
+        }
+        (Type::Union { tag }, Initializer::Compound(name, _, compound_init)) => {
+            let union_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+
+            if compound_init.len() > 1 {
+                return Err(UccError {
+                    kind: ErrorKind::Typecheck,
+                    msg: format!("Too many initiailezers."),
+                    span: Span { start: 0, end: 0 },
+                });
+            }
+
+            let first_member = union_def.members.first().unwrap();
+            let typechecked_inits = if let Some(init_elem) = compound_init.first() {
+                vec![typecheck_init(&first_member.ty, init_elem)?]
+            } else {
+                vec![Initializer::zero(&first_member.ty)]
+            };
+
+            Ok(Initializer::Compound(
+                name.clone(),
+                Type::Union { tag: tag.clone() },
                 typechecked_inits,
             ))
         }
@@ -2140,11 +2176,11 @@ pub fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
             span: spanof(e),
         })),
 
-        Type::Struct { .. } => {
+        Type::Struct { .. } | Type::Union { .. } => {
             if !is_complete(type_of_expr) {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Unknown struct type."),
+                    msg: format!("Unknown aggregate type."),
                     span: spanof(e),
                 });
             }
@@ -2256,9 +2292,9 @@ pub fn get_size_of_type(t: &Type) -> usize {
         Type::Double => 8,
         Type::Pointer(_) => 8,
         Type::Array { element, size } => get_size_of_type(element) * size,
-        Type::Struct { tag } => {
-            let struct_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
-            struct_def.size
+        Type::Struct { tag } | Type::Union { tag } => {
+            let aggregate_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+            aggregate_def.size
         }
         _ => {
             unreachable!()
@@ -2396,14 +2432,14 @@ pub fn is_small_integer_type(t: &Type) -> bool {
 pub fn is_scalar(t: &Type) -> bool {
     !matches!(
         t,
-        Type::Void | Type::Array { .. } | Type::Func { .. } | Type::Struct { .. }
+        Type::Void | Type::Array { .. } | Type::Func { .. } | Type::Struct { .. } | Type::Union { .. }
     )
 }
 
 pub fn is_complete(t: &Type) -> bool {
     match t {
         Type::Void => false,
-        Type::Struct { tag } => TYPE_TABLE.lock().unwrap().contains_key(tag),
+        Type::Struct { tag } | Type::Union { tag } => TYPE_TABLE.lock().unwrap().contains_key(tag),
         _ => true,
     }
 }
@@ -2498,6 +2534,7 @@ pub struct Symbol {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructEntry {
+    pub kind: AggregateKind,
     pub alignment: usize,
     pub size: usize,
     pub members: Vec<MemberEntry>,
@@ -2516,7 +2553,7 @@ fn alignment(t: &Type) -> usize {
         Type::Short | Type::UShort => 2,
         Type::Int | Type::UInt | Type::Float => 4,
         Type::Double | Type::Long | Type::ULong | Type::Pointer(_) => 8,
-        Type::Struct { tag } => TYPE_TABLE.lock().unwrap()[tag].alignment,
+        Type::Struct { tag } | Type::Union { tag } => TYPE_TABLE.lock().unwrap()[tag].alignment,
         Type::Array { element, size: _ } => alignment(element),
         Type::Dummy | Type::Void | Type::Func { .. } => unreachable!(),
     }
@@ -2609,10 +2646,35 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
 
             Ok(static_inits)
         }
-        (Type::Struct { .. }, Initializer::Single(_, _)) => {
+        (Type::Union { tag }, Initializer::Compound(_name, _ty, compound_init)) => {
+            let union_def = TYPE_TABLE.lock().unwrap().get(tag).unwrap().clone();
+
+            if compound_init.len() > 1 {
+                return Err(UccError {
+                    msg: format!("Too many initializers"),
+                    kind: ErrorKind::Typecheck,
+                    span: Span { start: 0, end: 0 },
+                });
+            }
+
+            let first_member = union_def.members.first().unwrap();
+            let mut static_inits = if let Some(init_elem) = compound_init.first() {
+                static_init_helper(init_elem, &first_member.ty)?
+            } else {
+                vec![StaticInit::Zero(get_size_of_type(&first_member.ty))]
+            };
+
+            let initialized_size = get_size_of_type(&first_member.ty);
+            if union_def.size != initialized_size {
+                static_inits.push(StaticInit::Zero(union_def.size - initialized_size));
+            }
+
+            Ok(static_inits)
+        }
+        (Type::Struct { .. } | Type::Union { .. }, Initializer::Single(_, _)) => {
             return Err(UccError {
                 kind: ErrorKind::Typecheck,
-                msg: format!("Single initializer for struct type"),
+                msg: format!("Single initializer for aggregate type"),
                 span: Span { start: 0, end: 0 },
             });
         }
@@ -2724,4 +2786,78 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
 fn to_static_init(init: &Initializer, t: &Type) -> Result<InitialValue> {
     let init_list = static_init_helper(init, t)?;
     Ok(InitialValue::Initial(init_list))
+}
+
+#[cfg(test)]
+mod union_tests {
+    use super::*;
+    use crate::parser::ast::{AggregateKind, MemberDeclaration};
+
+    fn span() -> Span {
+        Span { start: 0, end: 0 }
+    }
+
+    fn member(name: &str, ty: Type) -> MemberDeclaration {
+        MemberDeclaration {
+            name: name.to_string(),
+            ty,
+            span: span(),
+        }
+    }
+
+    #[test]
+    fn lays_out_union_members_at_offset_zero() {
+        let tag = "union.layout.test".to_string();
+        TYPE_TABLE.lock().unwrap().remove(&tag);
+
+        StructDeclaration {
+            tag: tag.clone(),
+            kind: AggregateKind::Union,
+            members: vec![member("i", Type::Int), member("d", Type::Double)],
+            span: span(),
+        }
+        .typecheck()
+        .unwrap();
+
+        let entry = TYPE_TABLE.lock().unwrap().get(&tag).cloned().unwrap();
+        assert_eq!(entry.kind, AggregateKind::Union);
+        assert_eq!(entry.size, 8);
+        assert_eq!(entry.alignment, 8);
+        assert_eq!(entry.members.iter().map(|m| m.offset).collect::<Vec<_>>(), vec![0, 0]);
+    }
+
+    #[test]
+    fn typechecks_union_initializer_against_first_member() {
+        let tag = "union.init.test".to_string();
+        TYPE_TABLE.lock().unwrap().remove(&tag);
+
+        StructDeclaration {
+            tag: tag.clone(),
+            kind: AggregateKind::Union,
+            members: vec![member("i", Type::Int), member("d", Type::Double)],
+            span: span(),
+        }
+        .typecheck()
+        .unwrap();
+
+        let init = Initializer::Compound(
+            String::new(),
+            Type::Dummy,
+            vec![Initializer::Single(
+                String::new(),
+                Expression::Constant(ConstantExpression {
+                    value: Const::Int(7),
+                    ty: Type::Int,
+                    span: span(),
+                }),
+            )],
+        );
+
+        let typed = typecheck_init(&Type::Union { tag: tag.clone() }, &init).unwrap();
+        assert!(matches!(
+            typed,
+            Initializer::Compound(_, Type::Union { tag: ref typed_tag }, ref inits)
+                if typed_tag == &tag && inits.len() == 1
+        ));
+    }
 }
