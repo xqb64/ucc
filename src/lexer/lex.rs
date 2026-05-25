@@ -93,7 +93,7 @@ impl Lexer {
         );
         regexes.insert(
             "constant",
-            Regex::new(r"^(?P<number>0[xX][0-9a-fA-F]+|[0-9]+)(?P<suffix>([uU]([lL]{1,2})?|([lL]{1,2})[uU]?))?\b").unwrap(),
+            Regex::new(r"^(?P<number>0[xX][0-9a-fA-F]+|[0-9]+)(?P<suffix>([uU]([lL]|ll|LL)?|([lL]|ll|LL)[uU]?))?\b").unwrap(),
         );
         regexes.insert(
             "double_constant",
@@ -715,8 +715,13 @@ impl PartialEq for Const {
     fn eq(&self, other: &Self) -> bool {
         use Const::*;
         match (self, other) {
-            (Float(f1), Float(f2)) => f1.partial_cmp(f2) == Some(std::cmp::Ordering::Equal),
-            (Double(d1), Double(d2)) => d1.partial_cmp(d2) == Some(std::cmp::Ordering::Equal),
+            // This equality is used to compare compiler IR/AST nodes while
+            // optimization passes search for a fixed point.  Use bitwise
+            // equality for floating constants so a folded NaN is equal to
+            // itself; otherwise the optimizer can loop forever because
+            // NaN != NaN under normal floating-point comparison semantics.
+            (Float(f1), Float(f2)) => f1.to_bits() == f2.to_bits(),
+            (Double(d1), Double(d2)) => d1.to_bits() == d2.to_bits(),
             (Int(i1), Int(i2)) => i1 == i2,
             (Long(l1), Long(l2)) => l1 == l2,
             (UInt(u1), UInt(u2)) => u1 == u2,

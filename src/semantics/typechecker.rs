@@ -2990,15 +2990,18 @@ pub fn convert_to(e: &Expression, ty: &Type) -> Expression {
 fn get_common_ptr_type<'a>(e1: &'a Expression, e2: &'a Expression) -> Result<Type> {
     let e1_t = get_type(e1);
     let e2_t = get_type(e2);
+    let e1_is_ptr = is_pointer_type(e1_t);
+    let e2_is_ptr = is_pointer_type(e2_t);
 
-    if e1_t == e2_t {
+    if e1_is_ptr && e2_is_ptr && e1_t == e2_t {
         Ok(e1_t.to_owned())
-    } else if is_null_ptr_constant(e1) {
+    } else if e1_is_ptr && !e2_is_ptr && is_null_ptr_constant(e2) {
+        Ok(e1_t.to_owned())
+    } else if e2_is_ptr && !e1_is_ptr && is_null_ptr_constant(e1) {
         Ok(e2_t.to_owned())
-    } else if is_null_ptr_constant(e2) {
-        Ok(e1_t.to_owned())
-    } else if e1_t == &Type::Pointer(Type::Void.into()) && is_pointer_type(e2_t)
-        || e2_t == &Type::Pointer(Type::Void.into()) && is_pointer_type(e1_t)
+    } else if e1_is_ptr
+        && e2_is_ptr
+        && (e1_t == &Type::Pointer(Type::Void.into()) || e2_t == &Type::Pointer(Type::Void.into()))
     {
         Ok(Type::Pointer(Type::Void.into()))
     } else {
@@ -3357,6 +3360,8 @@ macro_rules! convert_to_static {
             Const::ULong(val) => $variant(*val as $ty),
             Const::Float(val) => $variant(*val as $ty),
             Const::Double(val) => $variant(*val as $ty),
+            Const::Char(val) => $variant(*val as $ty),
+            Const::UChar(val) => $variant(*val as $ty),
             _ => unreachable!(),
         }
     };

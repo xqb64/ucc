@@ -240,6 +240,8 @@ pub enum ConditionCode {
     AE, /* above or equal */
     B,  /* below */
     BE, /* below or equal */
+    P,  /* parity / unordered floating-point comparison */
+    NP, /* not parity / ordered floating-point comparison */
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -1239,6 +1241,7 @@ impl Codegen for IRInstruction {
 
                     UnaryOp::Not => {
                         if is_sse_asm_type(&asm_type) {
+                            let dst_operand: AsmOperand = dst.codegen().into();
                             AsmNode::Instructions(vec![
                                 AsmInstruction::Binary {
                                     asm_type,
@@ -1254,11 +1257,21 @@ impl Codegen for IRInstruction {
                                 AsmInstruction::Mov {
                                     asm_type: ir2asmtype(dst),
                                     src: AsmOperand::Imm(0),
-                                    dst: dst.codegen().into(),
+                                    dst: dst_operand.clone(),
                                 },
                                 AsmInstruction::SetCC {
                                     condition: ConditionCode::E,
-                                    operand: dst.codegen().into(),
+                                    operand: dst_operand.clone(),
+                                },
+                                AsmInstruction::SetCC {
+                                    condition: ConditionCode::NP,
+                                    operand: AsmOperand::Register(AsmRegister::R11),
+                                },
+                                AsmInstruction::Binary {
+                                    asm_type: AsmType::Byte,
+                                    op: AsmBinaryOp::And,
+                                    lhs: AsmOperand::Register(AsmRegister::R11),
+                                    rhs: dst_operand,
                                 },
                             ])
                         } else {
@@ -1592,7 +1605,8 @@ impl Codegen for IRInstruction {
                         let rhs_type = ir2type(rhs);
 
                         if is_floating_type(&lhs_type) && is_floating_type(&rhs_type) {
-                            AsmNode::Instructions(vec![
+                            let dst_operand: AsmOperand = dst.codegen().into();
+                            let mut instrs = vec![
                                 AsmInstruction::Cmp {
                                     asm_type,
                                     lhs: rhs.codegen().into(),
@@ -1601,7 +1615,7 @@ impl Codegen for IRInstruction {
                                 AsmInstruction::Mov {
                                     asm_type: AsmType::Longword,
                                     src: AsmOperand::Imm(0),
-                                    dst: dst.codegen().into(),
+                                    dst: dst_operand.clone(),
                                 },
                                 AsmInstruction::SetCC {
                                     condition: match op {
@@ -1613,9 +1627,39 @@ impl Codegen for IRInstruction {
                                         BinaryOp::NotEqual => ConditionCode::NE,
                                         _ => unreachable!(),
                                     },
-                                    operand: dst.codegen().into(),
+                                    operand: dst_operand.clone(),
                                 },
-                            ])
+                            ];
+
+                            if *op == BinaryOp::NotEqual {
+                                instrs.extend(vec![
+                                    AsmInstruction::SetCC {
+                                        condition: ConditionCode::P,
+                                        operand: AsmOperand::Register(AsmRegister::R11),
+                                    },
+                                    AsmInstruction::Binary {
+                                        asm_type: AsmType::Byte,
+                                        op: AsmBinaryOp::Or,
+                                        lhs: AsmOperand::Register(AsmRegister::R11),
+                                        rhs: dst_operand,
+                                    },
+                                ]);
+                            } else {
+                                instrs.extend(vec![
+                                    AsmInstruction::SetCC {
+                                        condition: ConditionCode::NP,
+                                        operand: AsmOperand::Register(AsmRegister::R11),
+                                    },
+                                    AsmInstruction::Binary {
+                                        asm_type: AsmType::Byte,
+                                        op: AsmBinaryOp::And,
+                                        lhs: AsmOperand::Register(AsmRegister::R11),
+                                        rhs: dst_operand,
+                                    },
+                                ]);
+                            }
+
+                            AsmNode::Instructions(instrs)
                         } else {
                             let signedness = get_signedness(get_common_type(&lhs_type, &rhs_type));
 
@@ -1769,6 +1813,7 @@ impl Codegen for IRInstruction {
                 let asm_type = ir2asmtype(condition);
 
                 if is_sse_asm_type(&asm_type) {
+                    let unordered_label = make_temporary().to_string();
                     AsmNode::Instructions(vec![
                         AsmInstruction::Binary {
                             asm_type,
@@ -1782,9 +1827,14 @@ impl Codegen for IRInstruction {
                             rhs: AsmOperand::Register(AsmRegister::Xmm0),
                         },
                         AsmInstruction::JmpCC {
+                            condition: ConditionCode::P,
+                            target: unordered_label.clone(),
+                        },
+                        AsmInstruction::JmpCC {
                             condition: ConditionCode::E,
                             target: target.clone(),
                         },
+                        AsmInstruction::Label(unordered_label),
                     ])
                 } else {
                     AsmNode::Instructions(vec![
@@ -1816,6 +1866,10 @@ impl Codegen for IRInstruction {
                             asm_type,
                             lhs: condition.codegen().into(),
                             rhs: AsmOperand::Register(AsmRegister::Xmm0),
+                        },
+                        AsmInstruction::JmpCC {
+                            condition: ConditionCode::P,
+                            target: target.clone(),
                         },
                         AsmInstruction::JmpCC {
                             condition: ConditionCode::NE,

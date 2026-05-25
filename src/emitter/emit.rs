@@ -380,6 +380,8 @@ impl Emit for AsmInstruction {
                     ConditionCode::AE => "ae",
                     ConditionCode::B => "b",
                     ConditionCode::BE => "be",
+                    ConditionCode::P => "p",
+                    ConditionCode::NP => "np",
                 };
 
                 writeln!(f, "j{} .L{}", suffix, target)?;
@@ -397,6 +399,8 @@ impl Emit for AsmInstruction {
                     ConditionCode::AE => "ae",
                     ConditionCode::B => "b",
                     ConditionCode::BE => "be",
+                    ConditionCode::P => "p",
+                    ConditionCode::NP => "np",
                 };
 
                 write!(f, "set{} ", suffix)?;

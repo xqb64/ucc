@@ -461,9 +461,23 @@ impl Parser {
         let members = if self.is_next(&[TokenKind::LBrace]) {
             let mut members = vec![];
             loop {
-                while self.is_next(&[TokenKind::Semicolon]) {}
-                if self.is_next(&[TokenKind::RBrace]) {
+                if self.check(&TokenKind::RBrace) {
+                    if members.is_empty() {
+                        return Err(UccError {
+                            kind: ErrorKind::Parse,
+                            msg: format!("aggregate member list cannot be empty"),
+                            span: self.current_span()?,
+                        });
+                    }
+                    self.consume(&TokenKind::RBrace)?;
                     break members;
+                }
+                if self.check(&TokenKind::Semicolon) {
+                    return Err(UccError {
+                        kind: ErrorKind::Parse,
+                        msg: format!("stray semicolon in aggregate member list"),
+                        span: self.current_span()?,
+                    });
                 }
                 members.extend(self.parse_member_decls()?);
             }
@@ -663,13 +677,27 @@ impl Parser {
                     self.make_anonymous_tag(prefix)
                 });
             let mut members = vec![];
-            while !self.check(&TokenKind::RBrace) {
-                if self.is_next(&[TokenKind::Semicolon]) {
-                    continue;
+            loop {
+                if self.check(&TokenKind::RBrace) {
+                    if members.is_empty() {
+                        return Err(UccError {
+                            kind: ErrorKind::Parse,
+                            msg: format!("aggregate member list cannot be empty"),
+                            span: self.current_span()?,
+                        });
+                    }
+                    self.consume(&TokenKind::RBrace)?;
+                    break;
+                }
+                if self.check(&TokenKind::Semicolon) {
+                    return Err(UccError {
+                        kind: ErrorKind::Parse,
+                        msg: format!("stray semicolon in aggregate member list"),
+                        span: self.current_span()?,
+                    });
                 }
                 members.extend(self.parse_member_decls()?);
             }
-            self.consume(&TokenKind::RBrace)?;
             let end = self.current_span()?;
             let decl = StructDeclaration {
                 tag: tag.clone(),
@@ -778,19 +806,12 @@ impl Parser {
             self.skip_declaration_annotations()?;
             self.skip_type_qualifiers();
 
-            // GNU/system headers use anonymous aggregate fields such as
-            // `struct { ... };`.  Preserve the aggregate in the layout with an
-            // empty member name; member-name validation intentionally ignores
-            // empty names.
             if self.check(&TokenKind::Semicolon) {
-                self.consume(&TokenKind::Semicolon)?;
-                let end = self.current_span()?;
-                members.push(MemberDeclaration {
-                    name: String::new(),
-                    ty: base_type.clone(),
-                    span: begin + end,
+                return Err(UccError {
+                    msg: format!("aggregate members must have declarators"),
+                    kind: ErrorKind::Parse,
+                    span: self.current_span()?,
                 });
-                break;
             }
 
             let declarator = self.parse_declarator()?;

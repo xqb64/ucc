@@ -365,19 +365,14 @@ impl Resolve for StructDeclaration {
 
         let unique_tag;
         if let Some(prev_entry) = prev_entry {
-            if prev_entry.kind != TagKind::from(self.kind) {
-                return Err(UccError {
-                    kind: ErrorKind::Resolve,
-                    msg: format!("Conflicting tag declaration"),
-                    span: self.span,
-                });
-            }
-
-            if self.members.is_empty() || prev_entry.from_current_scope {
-                // Parser-generated empty aggregate declarations are used for type
-                // references such as `struct Token x;` and `struct Token *p;`.
-                // When an outer complete tag is visible, reuse that tag instead
-                // of creating a new local incomplete type.
+            if prev_entry.from_current_scope {
+                if prev_entry.kind != TagKind::from(self.kind) {
+                    return Err(UccError {
+                        kind: ErrorKind::Resolve,
+                        msg: format!("Conflicting tag declaration"),
+                        span: self.span,
+                    });
+                }
                 unique_tag = prev_entry.name.clone();
             } else {
                 let aggregate_prefix = match self.kind {

@@ -54,8 +54,8 @@ pub fn constant_folding(instructions: &[IRInstruction]) -> Vec<IRInstruction> {
                         BinaryOp::Rem => lhs_val % rhs_val,
                         BinaryOp::Less => (lhs_val < rhs_val).into(),
                         BinaryOp::Greater => (lhs_val > rhs_val).into(),
-                        BinaryOp::Equal => (lhs_val == rhs_val).into(),
-                        BinaryOp::NotEqual => (lhs_val != rhs_val).into(),
+                        BinaryOp::Equal => c_value_eq(&lhs_val, &rhs_val).into(),
+                        BinaryOp::NotEqual => (!c_value_eq(&lhs_val, &rhs_val)).into(),
                         BinaryOp::GreaterEqual => (lhs_val >= rhs_val).into(),
                         BinaryOp::LessEqual => (lhs_val <= rhs_val).into(),
                         BinaryOp::BitwiseOr => lhs_val | rhs_val,
@@ -313,6 +313,14 @@ fn const_convert(konst: &Const, dst_type: &Type) -> Const {
         Type::SChar => convert_const!(konst, Const::Char, i8),
         Type::Pointer(_) => convert_const!(konst, Const::ULong, u64),
         _ => unreachable!(),
+    }
+}
+
+fn c_value_eq(lhs: &Const, rhs: &Const) -> bool {
+    match (lhs, rhs) {
+        (Const::Float(lhs), Const::Float(rhs)) => lhs == rhs,
+        (Const::Double(lhs), Const::Double(rhs)) => lhs == rhs,
+        _ => lhs == rhs,
     }
 }
 
