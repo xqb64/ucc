@@ -4,16 +4,17 @@ use crate::{
     ir::gen::make_temporary,
     lexer::lex::Span,
     parser::ast::{
-        AddrOfExpression, AggregateKind, ArrowExpression, AssignExpression, BinaryExpression, BlockItem,
-        BlockStatement, BreakStatement, CallExpression, CaseStatement, CastExpression,
+        AddrOfExpression, AggregateKind, ArrowExpression, AssignExpression, BinaryExpression,
+        BlockItem, BlockStatement, BreakStatement, CallExpression, CaseStatement, CastExpression,
         CompoundExpression, ConditionalExpression, ContinueStatement, Declaration,
-        DefaultStatement, EnumDeclaration, EnumMemberDeclaration, DerefExpression, DoWhileStatement, DotExpression, Expression,
-        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, GotoStatement,
-        IfStatement, Initializer, LabeledStatement, LiteralExpression, MemberDeclaration, PostfixExpression, Program,
-        ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
-        StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement, Type,
-        TypedefDeclaration, UnaryExpression, VaArgExpression, VaCopyExpression, VaEndExpression,
-        VaStartExpression, VariableDeclaration, VariableExpression, WhileStatement,
+        DefaultStatement, DerefExpression, DoWhileStatement, DotExpression, EnumDeclaration,
+        EnumMemberDeclaration, Expression, ExpressionStatement, ForInit, ForStatement,
+        FunctionDeclaration, GotoStatement, IfStatement, Initializer, LabeledStatement,
+        LiteralExpression, MemberDeclaration, PostfixExpression, Program, ReturnStatement,
+        SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
+        StructDeclaration, SubscriptExpression, SwitchStatement, Type, TypedefDeclaration,
+        UnaryExpression, VaArgExpression, VaCopyExpression, VaEndExpression, VaStartExpression,
+        VariableDeclaration, VariableExpression, WhileStatement,
     },
     util::error::{ErrorKind, Result, UccError},
 };
@@ -109,7 +110,10 @@ impl Resolve for TypedefDeclaration {
             if prev_entry.from_current_scope && !prev_entry.is_typedef {
                 return Err(UccError {
                     kind: ErrorKind::Resolve,
-                    msg: format!("typedef name conflicts with ordinary identifier: {}", self.name),
+                    msg: format!(
+                        "typedef name conflicts with ordinary identifier: {}",
+                        self.name
+                    ),
                     span: self.span,
                 });
             }
@@ -380,7 +384,12 @@ impl Resolve for StructDeclaration {
                     AggregateKind::Struct => "struct",
                     AggregateKind::Union => "union",
                 };
-                unique_tag = format!("{}.{}.{}", aggregate_prefix, self.tag.clone(), make_temporary());
+                unique_tag = format!(
+                    "{}.{}.{}",
+                    aggregate_prefix,
+                    self.tag.clone(),
+                    make_temporary()
+                );
                 struct_map.insert(
                     self.tag.clone(),
                     StructTableEntry {
@@ -395,7 +404,12 @@ impl Resolve for StructDeclaration {
                 AggregateKind::Struct => "struct",
                 AggregateKind::Union => "union",
             };
-            unique_tag = format!("{}.{}.{}", aggregate_prefix, self.tag.clone(), make_temporary());
+            unique_tag = format!(
+                "{}.{}.{}",
+                aggregate_prefix,
+                self.tag.clone(),
+                make_temporary()
+            );
             struct_map.insert(
                 self.tag.clone(),
                 StructTableEntry {
@@ -1101,7 +1115,6 @@ impl Resolve for Expression {
                 }))
             }
 
-
             Expression::Cast(CastExpression {
                 target_type,
                 expr,
@@ -1160,7 +1173,12 @@ impl Resolve for Expression {
                 Ok(Expression::String(StringExpression { value, ty, span }))
             }
 
-            Expression::Literal(LiteralExpression { name, value, ty, span }) => {
+            Expression::Literal(LiteralExpression {
+                name,
+                value,
+                ty,
+                span,
+            }) => {
                 let resolved_type = ty.resolve(variable_map, struct_map)?;
                 let resolved_value = value.resolve(variable_map, struct_map)?;
                 Ok(Expression::Literal(LiteralExpression {
@@ -1407,7 +1425,11 @@ impl Resolve for Type {
                 })
             }
 
-            Type::Func { params, ret, variadic } => {
+            Type::Func {
+                params,
+                ret,
+                variadic,
+            } => {
                 let mut resolved_params = vec![];
                 for param in params {
                     resolved_params.push(param.resolve(variable_map, struct_map)?);
@@ -1590,5 +1612,4 @@ mod enum_tests {
             .resolve(&mut BTreeMap::new(), &mut BTreeMap::new())
             .unwrap();
     }
-
 }

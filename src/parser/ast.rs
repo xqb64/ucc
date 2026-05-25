@@ -81,16 +81,29 @@ pub enum Type {
     ULong,
     Float,
     Double,
-    Func { params: Vec<Type>, ret: Box<Type>, variadic: bool },
+    Func {
+        params: Vec<Type>,
+        ret: Box<Type>,
+        variadic: bool,
+    },
     Pointer(Box<Type>),
-    Array { element: Box<Type>, size: usize },
+    Array {
+        element: Box<Type>,
+        size: usize,
+    },
     Char,
     SChar,
     UChar,
     Void,
-    Struct { tag: String },
-    Union { tag: String },
-    Enum { tag: String },
+    Struct {
+        tag: String,
+    },
+    Union {
+        tag: String,
+    },
+    Enum {
+        tag: String,
+    },
     Dummy,
 }
 

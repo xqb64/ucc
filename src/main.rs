@@ -289,10 +289,7 @@ fn asm_file(opts: &Opt, path: PathBuf) -> Result<Status> {
 }
 
 fn is_source_input(path: &PathBuf) -> bool {
-    matches!(
-        path.extension().and_then(|ext| ext.to_str()),
-        Some("c")
-    )
+    matches!(path.extension().and_then(|ext| ext.to_str()), Some("c"))
 }
 
 fn object_path_for_input(opts: &Opt, input: &PathBuf) -> PathBuf {

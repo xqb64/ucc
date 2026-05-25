@@ -51,7 +51,10 @@ impl LabelCollect for Declaration {
                 let collected = func_decl.collect_labels(labels, &name)?;
                 Ok(Declaration::Function(collected))
             }
-            Declaration::Struct(_) | Declaration::Union(_) | Declaration::Enum(_) | Declaration::Typedef(_) => Ok(self),
+            Declaration::Struct(_)
+            | Declaration::Union(_)
+            | Declaration::Enum(_)
+            | Declaration::Typedef(_) => Ok(self),
         }
     }
 }
@@ -362,7 +365,10 @@ impl LabelCheck for Declaration {
 
                 Ok(Declaration::Function(checked))
             }
-            Declaration::Struct(_) | Declaration::Union(_) | Declaration::Enum(_) | Declaration::Typedef(_) => Ok(self),
+            Declaration::Struct(_)
+            | Declaration::Union(_)
+            | Declaration::Enum(_)
+            | Declaration::Typedef(_) => Ok(self),
         }
     }
 }

@@ -66,9 +66,10 @@ pub struct Lexer {
 impl Lexer {
     pub fn new(src: String) -> Lexer {
         let keywords = vec![
-            "char", "short", "int", "long", "signed", "unsigned", "float", "double", "void", "_Bool", "const", "typedef", "return",
-            "if", "else", "do", "while", "for", "break", "continue", "static", "extern",
-            "sizeof", "struct", "union", "enum", "goto", "switch", "case", "default",
+            "char", "short", "int", "long", "signed", "unsigned", "float", "double", "void",
+            "_Bool", "const", "typedef", "return", "if", "else", "do", "while", "for", "break",
+            "continue", "static", "extern", "sizeof", "struct", "union", "enum", "goto", "switch",
+            "case", "default",
         ];
 
         let mut regexes = HashMap::new();
@@ -77,7 +78,10 @@ impl Lexer {
             "punctuation",
             Regex::new(r"^[-+*/%~(){};!<>=?:,&\[\].^|]").unwrap(),
         );
-        regexes.insert("punctuation_triple", Regex::new(r"^(\.\.\.|<<=|>>=)").unwrap());
+        regexes.insert(
+            "punctuation_triple",
+            Regex::new(r"^(\.\.\.|<<=|>>=)").unwrap(),
+        );
         regexes.insert(
             "punctuation_double",
             Regex::new(r"^(--|==|!=|>=|<=|&&|\|\||->|>>|<<|\+\+|\+=|-=|\*=|/=|\|=|\^=|&=|%=)")
@@ -770,4 +774,3 @@ impl ToString for Const {
         }
     }
 }
-

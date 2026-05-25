@@ -2,17 +2,17 @@ use crate::{
     ir::gen::make_temporary,
     lexer::lex::{Const, Span},
     parser::ast::{
-        spanof, AddrOfExpression, AggregateKind, ArrowExpression, AssignExpression, BinaryExpression,
-        BinaryExpressionKind, BlockItem, BlockStatement, CallExpression, CaseStatement,
-        CastExpression, CompoundExpression, ConditionalExpression, ConstantExpression, Declaration,
-        DefaultStatement, DerefExpression, EnumDeclaration, DoWhileStatement, DotExpression, Expression,
-        ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, GotoStatement,
-        IfStatement, Initializer, LabeledStatement, LiteralExpression, PostfixExpression, PostfixExpressionKind,
-        Program, ReturnStatement, SizeofExpression, SizeofTExpression, Statement, StorageClass,
-        StringExpression, StructDeclaration, SubscriptExpression, SwitchStatement, Type,
-        TypedefDeclaration, UnaryExpression, UnaryExpressionKind, VaArgExpression,
-        VaCopyExpression, VaEndExpression, VaStartExpression, VariableDeclaration, VariableExpression,
-        WhileStatement,
+        spanof, AddrOfExpression, AggregateKind, ArrowExpression, AssignExpression,
+        BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement, CallExpression,
+        CaseStatement, CastExpression, CompoundExpression, ConditionalExpression,
+        ConstantExpression, Declaration, DefaultStatement, DerefExpression, DoWhileStatement,
+        DotExpression, EnumDeclaration, Expression, ExpressionStatement, ForInit, ForStatement,
+        FunctionDeclaration, GotoStatement, IfStatement, Initializer, LabeledStatement,
+        LiteralExpression, PostfixExpression, PostfixExpressionKind, Program, ReturnStatement,
+        SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
+        StructDeclaration, SubscriptExpression, SwitchStatement, Type, TypedefDeclaration,
+        UnaryExpression, UnaryExpressionKind, VaArgExpression, VaCopyExpression, VaEndExpression,
+        VaStartExpression, VariableDeclaration, VariableExpression, WhileStatement,
     },
     util::error::{ErrorKind, Result, UccError},
 };
@@ -189,13 +189,12 @@ impl Typecheck for TypedefDeclaration {
 
 fn infer_array_size_from_initializer(ty: &Type, init: Option<&Initializer>) -> Type {
     match (ty, init) {
-        (
-            Type::Array { element, size: 0 },
-            Some(Initializer::Compound(_, _, inits)),
-        ) => Type::Array {
-            element: element.clone(),
-            size: inits.len(),
-        },
+        (Type::Array { element, size: 0 }, Some(Initializer::Compound(_, _, inits))) => {
+            Type::Array {
+                element: element.clone(),
+                size: inits.len(),
+            }
+        }
         (
             Type::Array { element, size: 0 },
             Some(Initializer::Single(_, Expression::String(string_expr))),
@@ -524,7 +523,11 @@ impl Typecheck for FunctionDeclaration {
         };
 
         let (param_ts, _, fun_type) = match self.ty.clone() {
-            Type::Func { params, ret, variadic } => {
+            Type::Func {
+                params,
+                ret,
+                variadic,
+            } => {
                 if let Type::Array { .. } = *ret {
                     return Err(UccError {
                         msg: format!("Function return type is an array"),
@@ -809,7 +812,12 @@ fn eval_integer_constant_expression(expr: &Expression) -> Result<i64> {
 
     match expr {
         Expression::Constant(ConstantExpression { value, .. }) => const_to_i64(value),
-        Expression::Cast(CastExpression { expr, target_type, span, .. }) => {
+        Expression::Cast(CastExpression {
+            expr,
+            target_type,
+            span,
+            ..
+        }) => {
             if !is_integer_type(target_type) {
                 return Err(UccError {
                     msg: format!("Enumerator value is not an integer constant expression"),
@@ -819,7 +827,9 @@ fn eval_integer_constant_expression(expr: &Expression) -> Result<i64> {
             }
             Ok(eval_integer_constant_expression(expr)? as i32 as i64)
         }
-        Expression::Unary(UnaryExpression { kind, expr, span, .. }) => {
+        Expression::Unary(UnaryExpression {
+            kind, expr, span, ..
+        }) => {
             let value = eval_integer_constant_expression(expr)?;
             match kind {
                 UnaryExpressionKind::Negate => Ok(value.wrapping_neg()),
@@ -832,7 +842,13 @@ fn eval_integer_constant_expression(expr: &Expression) -> Result<i64> {
                 }),
             }
         }
-        Expression::Binary(BinaryExpression { kind, lhs, rhs, span, .. }) => {
+        Expression::Binary(BinaryExpression {
+            kind,
+            lhs,
+            rhs,
+            span,
+            ..
+        }) => {
             let lhs = eval_integer_constant_expression(lhs)?;
             let rhs = eval_integer_constant_expression(rhs)?;
             match kind {
@@ -864,7 +880,12 @@ fn eval_integer_constant_expression(expr: &Expression) -> Result<i64> {
                 BinaryExpressionKind::Or => Ok(((lhs != 0) || (rhs != 0)) as i64),
             }
         }
-        Expression::Conditional(ConditionalExpression { condition, then_expr, else_expr, .. }) => {
+        Expression::Conditional(ConditionalExpression {
+            condition,
+            then_expr,
+            else_expr,
+            ..
+        }) => {
             if eval_integer_constant_expression(condition)? != 0 {
                 eval_integer_constant_expression(then_expr)
             } else {
@@ -1368,7 +1389,11 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             let f_type = f.ty.clone();
 
             match f_type {
-                Type::Func { params, ret, variadic } => {
+                Type::Func {
+                    params,
+                    ret,
+                    variadic,
+                } => {
                     if (!variadic && args.len() != params.len())
                         || (variadic && args.len() < params.len())
                     {
@@ -1759,7 +1784,12 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             }))
         }
 
-        Expression::Literal(LiteralExpression { name, value, ty, span }) => {
+        Expression::Literal(LiteralExpression {
+            name,
+            value,
+            ty,
+            span,
+        }) => {
             if ty == &Type::Dummy {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
@@ -1826,11 +1856,12 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             let typed_structure = typecheck_and_convert(structure)?;
             match get_type(&typed_structure) {
                 Type::Struct { tag } | Type::Union { tag } => {
-                    let member_def = find_aggregate_member(tag, member).ok_or_else(|| UccError {
-                        kind: ErrorKind::Typecheck,
-                        msg: format!("Unknown aggregate member."),
-                        span: *span,
-                    })?;
+                    let member_def =
+                        find_aggregate_member(tag, member).ok_or_else(|| UccError {
+                            kind: ErrorKind::Typecheck,
+                            msg: format!("Unknown aggregate member."),
+                            span: *span,
+                        })?;
 
                     Ok(Expression::Dot(DotExpression {
                         structure: Box::new(typed_structure),
@@ -1859,11 +1890,12 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             match get_type(&typed_pointer) {
                 Type::Pointer(referenced) => {
                     if let Type::Struct { tag } | Type::Union { tag } = &**referenced {
-                        let member_def = find_aggregate_member(tag, member).ok_or_else(|| UccError {
-                            kind: ErrorKind::Typecheck,
-                            msg: format!("Unknown member in aggregate."),
-                            span: *span,
-                        })?;
+                        let member_def =
+                            find_aggregate_member(tag, member).ok_or_else(|| UccError {
+                                kind: ErrorKind::Typecheck,
+                                msg: format!("Unknown member in aggregate."),
+                                span: *span,
+                            })?;
 
                         Ok(Expression::Arrow(ArrowExpression {
                             pointer: Box::new(typed_pointer),
@@ -1965,9 +1997,7 @@ fn unwrap_untyped_braced_initializer(name: &str, lit: &LiteralExpression) -> Opt
 
 fn aggregate_entry_for_type(t: &Type) -> Option<StructEntry> {
     match t {
-        Type::Struct { tag } | Type::Union { tag } => {
-            TYPE_TABLE.lock().unwrap().get(tag).cloned()
-        }
+        Type::Struct { tag } | Type::Union { tag } => TYPE_TABLE.lock().unwrap().get(tag).cloned(),
         _ => None,
     }
 }
@@ -2050,7 +2080,10 @@ fn is_zero_initializer_expr(expr: &Expression) -> bool {
 }
 
 fn is_aggregate_type(t: &Type) -> bool {
-    matches!(t, Type::Array { .. } | Type::Struct { .. } | Type::Union { .. })
+    matches!(
+        t,
+        Type::Array { .. } | Type::Struct { .. } | Type::Union { .. }
+    )
 }
 
 fn initializer_for_selected_member(member: &MemberEntry, init: &Initializer) -> Initializer {
@@ -2085,11 +2118,7 @@ fn initializer_for_selected_member(member: &MemberEntry, init: &Initializer) -> 
     //
     // and rejects it as "single initializer for aggregate type".
     if member.name.is_empty() && member_type_contains_designator(&member.ty, member_name) {
-        Initializer::Compound(
-            String::new(),
-            member.ty.clone(),
-            vec![init.clone()],
-        )
+        Initializer::Compound(String::new(), member.ty.clone(), vec![init.clone()])
     } else {
         init.clone()
     }
@@ -2119,13 +2148,15 @@ fn typecheck_struct_init_with_designators(
 
     for init_elem in compound_init {
         let member_index = if let Some(member_name) = initializer_designator_name(init_elem) {
-            find_designated_member_index(&struct_def.members, member_name).ok_or_else(|| UccError {
-                kind: ErrorKind::Typecheck,
-                msg: format!(
-                    "Unknown aggregate member `{}` in designated initializer.",
-                    member_name
-                ),
-                span: Span { start: 0, end: 0 },
+            find_designated_member_index(&struct_def.members, member_name).ok_or_else(|| {
+                UccError {
+                    kind: ErrorKind::Typecheck,
+                    msg: format!(
+                        "Unknown aggregate member `{}` in designated initializer.",
+                        member_name
+                    ),
+                    span: Span { start: 0, end: 0 },
+                }
             })?
         } else {
             let idx = next_member;
@@ -2149,7 +2180,9 @@ fn typecheck_struct_init_with_designators(
 
     Ok(Initializer::Compound(
         name.to_string(),
-        Type::Struct { tag: tag.to_string() },
+        Type::Struct {
+            tag: tag.to_string(),
+        },
         typechecked_inits,
     ))
 }
@@ -2173,20 +2206,23 @@ fn typecheck_union_init_with_designator(
         let first_member = union_def.members.first().unwrap();
         return Ok(Initializer::Compound(
             name.to_string(),
-            Type::Union { tag: tag.to_string() },
+            Type::Union {
+                tag: tag.to_string(),
+            },
             vec![Initializer::zero(&first_member.ty)],
         ));
     };
 
     let member = if let Some(member_name) = initializer_designator_name(init_elem) {
-        let member_index = find_designated_member_index(&union_def.members, member_name).ok_or_else(|| UccError {
-            kind: ErrorKind::Typecheck,
-            msg: format!(
-                "Unknown aggregate member `{}` in designated initializer.",
-                member_name
-            ),
-            span: Span { start: 0, end: 0 },
-        })?;
+        let member_index = find_designated_member_index(&union_def.members, member_name)
+            .ok_or_else(|| UccError {
+                kind: ErrorKind::Typecheck,
+                msg: format!(
+                    "Unknown aggregate member `{}` in designated initializer.",
+                    member_name
+                ),
+                span: Span { start: 0, end: 0 },
+            })?;
         &union_def.members[member_index]
     } else {
         union_def.members.first().unwrap()
@@ -2196,7 +2232,9 @@ fn typecheck_union_init_with_designator(
 
     Ok(Initializer::Compound(
         name.to_string(),
-        Type::Union { tag: tag.to_string() },
+        Type::Union {
+            tag: tag.to_string(),
+        },
         vec![typecheck_init(&member.ty, &init_for_member)?],
     ))
 }
@@ -2212,7 +2250,9 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             let converted_expr = convert_by_assignment(&typechecked_expr, target_type)?;
             Ok(Initializer::Single(name.clone(), converted_expr))
         }
-        (_, Initializer::Compound(name, _, inits)) if is_scalar(target_type) && inits.len() == 1 => {
+        (_, Initializer::Compound(name, _, inits))
+            if is_scalar(target_type) && inits.len() == 1 =>
+        {
             let inner = initializer_with_name(name, &inits[0]);
             typecheck_init(target_type, &inner)
         }
@@ -3160,13 +3200,20 @@ pub fn is_char_type(t: &Type) -> bool {
 }
 
 pub fn is_small_integer_type(t: &Type) -> bool {
-    matches!(t, Type::Char | Type::UChar | Type::SChar | Type::Short | Type::UShort)
+    matches!(
+        t,
+        Type::Char | Type::UChar | Type::SChar | Type::Short | Type::UShort
+    )
 }
 
 pub fn is_scalar(t: &Type) -> bool {
     !matches!(
         t,
-        Type::Void | Type::Array { .. } | Type::Func { .. } | Type::Struct { .. } | Type::Union { .. }
+        Type::Void
+            | Type::Array { .. }
+            | Type::Func { .. }
+            | Type::Struct { .. }
+            | Type::Union { .. }
     )
 }
 
@@ -3383,15 +3430,18 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             let mut next_member = 0usize;
 
             for init_elem in compound_init {
-                let member_index = if let Some(member_name) = initializer_designator_name(init_elem) {
-                    find_designated_member_index(&struct_def.members, member_name).ok_or_else(|| UccError {
-                        msg: format!(
-                            "Unknown aggregate member `{}` in designated initializer.",
-                            member_name
-                        ),
-                        kind: ErrorKind::Typecheck,
-                        span: Span { start: 0, end: 0 },
-                    })?
+                let member_index = if let Some(member_name) = initializer_designator_name(init_elem)
+                {
+                    find_designated_member_index(&struct_def.members, member_name).ok_or_else(
+                        || UccError {
+                            msg: format!(
+                                "Unknown aggregate member `{}` in designated initializer.",
+                                member_name
+                            ),
+                            kind: ErrorKind::Typecheck,
+                            span: Span { start: 0, end: 0 },
+                        },
+                    )?
                 } else {
                     let idx = next_member;
                     if idx >= struct_def.members.len() {
@@ -3444,15 +3494,17 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             let first_init = compound_init.first();
             let member = if let Some(init_elem) = first_init {
                 if let Some(member_name) = initializer_designator_name(init_elem) {
-                    let member_index = find_designated_member_index(&union_def.members, member_name)
-                        .ok_or_else(|| UccError {
-                            msg: format!(
-                                "Unknown aggregate member `{}` in designated initializer.",
-                                member_name
-                            ),
-                            kind: ErrorKind::Typecheck,
-                            span: Span { start: 0, end: 0 },
-                        })?;
+                    let member_index =
+                        find_designated_member_index(&union_def.members, member_name).ok_or_else(
+                            || UccError {
+                                msg: format!(
+                                    "Unknown aggregate member `{}` in designated initializer.",
+                                    member_name
+                                ),
+                                kind: ErrorKind::Typecheck,
+                                span: Span { start: 0, end: 0 },
+                            },
+                        )?;
                     &union_def.members[member_index]
                 } else {
                     union_def.members.first().unwrap()
@@ -3662,7 +3714,10 @@ mod union_tests {
         assert_eq!(entry.kind, AggregateKind::Union);
         assert_eq!(entry.size, 8);
         assert_eq!(entry.alignment, 8);
-        assert_eq!(entry.members.iter().map(|m| m.offset).collect::<Vec<_>>(), vec![0, 0]);
+        assert_eq!(
+            entry.members.iter().map(|m| m.offset).collect::<Vec<_>>(),
+            vec![0, 0]
+        );
     }
 
     #[test]
@@ -3759,7 +3814,9 @@ mod union_tests {
 mod enum_tests {
     use super::*;
     use crate::ir::gen::make_temporary;
-    use crate::parser::ast::{BinaryExpression, BinaryExpressionKind, EnumMemberDeclaration, VariableExpression};
+    use crate::parser::ast::{
+        BinaryExpression, BinaryExpressionKind, EnumMemberDeclaration, VariableExpression,
+    };
 
     fn span() -> Span {
         Span { start: 0, end: 0 }
@@ -3836,7 +3893,10 @@ mod enum_tests {
             }),
         );
 
-        assert_eq!(static_init_helper(&init, &Type::Int).unwrap(), vec![StaticInit::Int(9)]);
+        assert_eq!(
+            static_init_helper(&init, &Type::Int).unwrap(),
+            vec![StaticInit::Int(9)]
+        );
     }
 
     #[test]

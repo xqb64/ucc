@@ -401,13 +401,15 @@ fn vararg_register_save_area_name(function_name: &str) -> String {
 }
 
 fn ensure_local_object_asm_symbol(name: String, ty: AsmType) {
-    ASM_SYMBOL_TABLE.lock().unwrap().entry(name).or_insert(
-        AsmSymtabEntry::Object {
+    ASM_SYMBOL_TABLE
+        .lock()
+        .unwrap()
+        .entry(name)
+        .or_insert(AsmSymtabEntry::Object {
             ty,
             is_static: false,
             is_constant: false,
-        },
-    );
+        });
 }
 
 fn emit_vararg_register_save_area(function_name: &str) -> Vec<AsmInstruction> {
@@ -464,7 +466,12 @@ fn emit_vararg_register_save_area(function_name: &str) -> Vec<AsmInstruction> {
 }
 
 fn function_vararg_offsets(function_name: &str) -> (usize, usize, isize) {
-    let symbol = SYMBOL_TABLE.lock().unwrap().get(function_name).cloned().unwrap();
+    let symbol = SYMBOL_TABLE
+        .lock()
+        .unwrap()
+        .get(function_name)
+        .cloned()
+        .unwrap();
     let return_on_stack = returns_on_stack(function_name);
     let Type::Func { params, .. } = symbol.ty else {
         unreachable!()
@@ -719,11 +726,7 @@ fn copy_qwords_with_xmm_scratch(
     instructions
 }
 
-fn copy_va_arg_from_address(
-    src_reg: AsmRegister,
-    dst: &IRValue,
-    ty: &Type,
-) -> Vec<AsmInstruction> {
+fn copy_va_arg_from_address(src_reg: AsmRegister, dst: &IRValue, ty: &Type) -> Vec<AsmInstruction> {
     let dst_operand = dst.codegen().into();
 
     if is_scalar(ty) {
@@ -795,9 +798,7 @@ fn codegen_va_arg(list: &IRValue, arg_ty: &Type, dst: &IRValue) -> Vec<AsmInstru
                 },
                 AsmInstruction::Cmp {
                     asm_type: AsmType::Longword,
-                    lhs: AsmOperand::Imm(
-                        (VA_REG_SAVE_AREA_SIZE - layout.fp_count * 16) as i64,
-                    ),
+                    lhs: AsmOperand::Imm((VA_REG_SAVE_AREA_SIZE - layout.fp_count * 16) as i64),
                     rhs: AsmOperand::Register(AsmRegister::R10),
                 },
                 AsmInstruction::JmpCC {
@@ -2064,9 +2065,7 @@ impl Codegen for IRInstruction {
                 AsmNode::Instructions(codegen_va_arg(list, arg_ty, dst))
             }
 
-            IRInstruction::VaCopy { dst, src } => {
-                AsmNode::Instructions(codegen_va_copy(dst, src))
-            }
+            IRInstruction::VaCopy { dst, src } => AsmNode::Instructions(codegen_va_copy(dst, src)),
 
             IRInstruction::VaEnd { .. } => AsmNode::Instructions(vec![]),
 
@@ -2339,19 +2338,19 @@ impl Codegen for IRInstruction {
                 }
             }
 
-            IRInstruction::DoubleToFloat { src, dst } => AsmNode::Instructions(vec![
-                AsmInstruction::Cvtsd2ss {
+            IRInstruction::DoubleToFloat { src, dst } => {
+                AsmNode::Instructions(vec![AsmInstruction::Cvtsd2ss {
                     src: src.codegen().into(),
                     dst: dst.codegen().into(),
-                },
-            ]),
+                }])
+            }
 
-            IRInstruction::FloatToDouble { src, dst } => AsmNode::Instructions(vec![
-                AsmInstruction::Cvtss2sd {
+            IRInstruction::FloatToDouble { src, dst } => {
+                AsmNode::Instructions(vec![AsmInstruction::Cvtss2sd {
                     src: src.codegen().into(),
                     dst: dst.codegen().into(),
-                },
-            ]),
+                }])
+            }
 
             IRInstruction::FloatToInt { src, dst } => {
                 let dst_type = ir2asmtype(dst);
@@ -2415,7 +2414,10 @@ impl Codegen for IRInstruction {
                             init: StaticInit::Float(i64_ceil_as_f32),
                             alignment: 4,
                         };
-                        STATIC_CONSTANTS.lock().unwrap().push(static_constant.clone());
+                        STATIC_CONSTANTS
+                            .lock()
+                            .unwrap()
+                            .push(static_constant.clone());
 
                         let label_out_of_range = format!("label_out_of_range.{}", make_temporary());
                         let label_end = format!("label_end.{}", make_temporary());
@@ -3207,7 +3209,9 @@ fn collect_scalar_type(ty: &Type, offset: usize, result: &mut Vec<(usize, Type)>
     }
 }
 
-fn classify_return_value(retval: &IRValue) -> (Vec<(AsmType, AsmOperand)>, Vec<(AsmType, AsmOperand)>, bool) {
+fn classify_return_value(
+    retval: &IRValue,
+) -> (Vec<(AsmType, AsmOperand)>, Vec<(AsmType, AsmOperand)>, bool) {
     let t = ir2type(retval);
     let val = retval.codegen().into();
     classify_return_helper(&t, &val)
@@ -3310,7 +3314,11 @@ fn classify_return_helper(
         }
 
         /* For floating-point scalars, the return value is added to SSE retvals. */
-        Type::Float | Type::Double => (vec![], vec![(type2asmtype(ret_type), asm_retval.clone())], false),
+        Type::Float | Type::Double => (
+            vec![],
+            vec![(type2asmtype(ret_type), asm_retval.clone())],
+            false,
+        ),
 
         /* For other types, the return value is added to the integer-like basket. */
         t => {
@@ -3440,7 +3448,6 @@ fn add_offset(byte_count: usize, operand: &AsmOperand) -> AsmOperand {
         }
     }
 }
-
 
 fn is_sse_asm_type(asm_type: &AsmType) -> bool {
     matches!(asm_type, AsmType::Float | AsmType::Double)
@@ -3736,7 +3743,10 @@ mod short_tests {
 
     #[test]
     fn word_operands_are_two_bytes() {
-        assert!(matches!(OperandByteLen::from(AsmType::Word), OperandByteLen::B2));
+        assert!(matches!(
+            OperandByteLen::from(AsmType::Word),
+            OperandByteLen::B2
+        ));
         assert_eq!(Alignment::default_of(AsmType::Word), Alignment::B2);
     }
 
@@ -3762,7 +3772,10 @@ mod short_tests {
 
     #[test]
     fn float_operands_are_four_bytes() {
-        assert!(matches!(OperandByteLen::from(AsmType::Float), OperandByteLen::B4));
+        assert!(matches!(
+            OperandByteLen::from(AsmType::Float),
+            OperandByteLen::B4
+        ));
         assert_eq!(Alignment::default_of(AsmType::Float), Alignment::B4);
     }
 
@@ -3891,5 +3904,4 @@ mod short_tests {
 
         assert!(load_al < call);
     }
-
 }

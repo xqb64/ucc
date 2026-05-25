@@ -334,7 +334,10 @@ impl Irfy for BlockStatement {
 
                     Declaration::Function(_func_decl) => {}
 
-                    Declaration::Struct(_) | Declaration::Union(_) | Declaration::Enum(_) | Declaration::Typedef(_) => {}
+                    Declaration::Struct(_)
+                    | Declaration::Union(_)
+                    | Declaration::Enum(_)
+                    | Declaration::Typedef(_) => {}
                 },
 
                 BlockItem::Statement(stmt) => {
@@ -848,7 +851,10 @@ impl Irfy for BlockItem {
             BlockItem::Declaration(decl) => match decl {
                 Declaration::Function(func) => func.irfy(funcname),
                 Declaration::Variable(var) => var.irfy(funcname),
-                Declaration::Struct(_) | Declaration::Union(_) | Declaration::Enum(_) | Declaration::Typedef(_) => None,
+                Declaration::Struct(_)
+                | Declaration::Union(_)
+                | Declaration::Enum(_)
+                | Declaration::Typedef(_) => None,
             },
             BlockItem::Statement(stmt) => stmt.irfy(funcname),
         }
@@ -952,7 +958,9 @@ fn emit_va_list_address(e: &Expression, instructions: &mut Vec<IRInstruction>) -
     let lvalue = emit_tacky(e, instructions);
     match lvalue {
         ExpResult::PlainOperand(val) if is_builtin_va_list_object_type(&ty) => {
-            let dst = make_tacky_variable(&Type::Pointer(Box::new(builtin_va_list_element_type_for_ir())));
+            let dst = make_tacky_variable(&Type::Pointer(Box::new(
+                builtin_va_list_element_type_for_ir(),
+            )));
             instructions.push(IRInstruction::GetAddress {
                 src: val,
                 dst: dst.clone(),
@@ -961,7 +969,9 @@ fn emit_va_list_address(e: &Expression, instructions: &mut Vec<IRInstruction>) -
         }
         ExpResult::DereferencedPointer(ptr) => ptr,
         ExpResult::SubObject { base, offset } => {
-            let dst = make_tacky_variable(&Type::Pointer(Box::new(builtin_va_list_element_type_for_ir())));
+            let dst = make_tacky_variable(&Type::Pointer(Box::new(
+                builtin_va_list_element_type_for_ir(),
+            )));
             instructions.push(IRInstruction::GetAddress {
                 src: IRValue::Var(base),
                 dst: dst.clone(),
@@ -1062,7 +1072,12 @@ fn make_const(konst: isize, ty: Type) -> Const {
     }
 }
 
-fn make_cast_instruction(src: &IRValue, dst: &IRValue, src_t: &Type, dst_t: &Type) -> IRInstruction {
+fn make_cast_instruction(
+    src: &IRValue,
+    dst: &IRValue,
+    src_t: &Type,
+    dst_t: &Type,
+) -> IRInstruction {
     match (dst_t, src_t) {
         (Type::Float, Type::Double) => IRInstruction::DoubleToFloat {
             src: src.clone(),
@@ -1206,7 +1221,6 @@ fn emit_compound_expression(
     ) -> IRInstruction {
         make_cast_instruction(src, dst, src_t, dst_t)
     }
-
 
     let (result_var, cast_to, cast_from) = if &lhs_ty == result_t {
         (dst.clone(), None, None)
@@ -1734,10 +1748,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
         }
 
         Expression::VaArg(VaArgExpression {
-            list,
-            arg_ty,
-            ty,
-            ..
+            list, arg_ty, ty, ..
         }) => {
             let list = emit_va_list_address(list, instructions);
             let dst = make_tacky_variable(ty);
@@ -1776,7 +1787,12 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             }
 
             let dst = make_tacky_variable(target_type);
-            instructions.push(make_cast_instruction(&result, &dst, inner_type, target_type));
+            instructions.push(make_cast_instruction(
+                &result,
+                &dst,
+                inner_type,
+                target_type,
+            ));
 
             ExpResult::PlainOperand(dst)
         }
@@ -1846,7 +1862,7 @@ fn emit_tacky(e: &Expression, instructions: &mut Vec<IRInstruction>) -> ExpResul
             }
 
             ExpResult::PlainOperand(dst)
-        },
+        }
 
         Expression::String(StringExpression { value, ty: _, .. }) => {
             let var_name = format!("str.{}", make_temporary());
@@ -2094,10 +2110,13 @@ fn emit_compound_init(
                     let member = match mem_init {
                         Initializer::Single(designator, _)
                         | Initializer::Compound(designator, _, _)
-                            if !designator.is_empty() => members
+                            if !designator.is_empty() =>
+                        {
+                            members
                                 .iter()
                                 .find(|member| member.name == *designator)
-                                .unwrap_or_else(|| members.first().unwrap()),
+                                .unwrap_or_else(|| members.first().unwrap())
+                        }
                         _ => members.first().unwrap(),
                     };
                     let mem_offset = offset + member.offset;

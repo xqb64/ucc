@@ -639,11 +639,7 @@ impl Fixup for AsmFunction {
                     rhs: AsmOperand::Register(_),
                 } if is_sse_asm_type(asm_type) => instructions.push(instr.clone()),
 
-                AsmInstruction::Cmp {
-                    asm_type,
-                    lhs,
-                    rhs,
-                } if is_sse_asm_type(asm_type) => {
+                AsmInstruction::Cmp { asm_type, lhs, rhs } if is_sse_asm_type(asm_type) => {
                     instructions.extend(vec![
                         AsmInstruction::Mov {
                             asm_type: *asm_type,

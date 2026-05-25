@@ -52,7 +52,10 @@ impl LoopLabel for Declaration {
                 let labeled = func_decl.loop_label(ctx)?;
                 Ok(Declaration::Function(labeled))
             }
-            Declaration::Struct(_) | Declaration::Union(_) | Declaration::Enum(_) | Declaration::Typedef(_) => Ok(self),
+            Declaration::Struct(_)
+            | Declaration::Union(_)
+            | Declaration::Enum(_)
+            | Declaration::Typedef(_) => Ok(self),
         }
     }
 }

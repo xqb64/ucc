@@ -14,7 +14,9 @@ fn evaluate_leftshift(val: &Const, shift: u32) -> Const {
         Const::ULong(v) => Const::ULong(*v << shift),
         Const::Char(v) => Const::Char(*v << shift),
         Const::UChar(v) => Const::UChar(*v << shift),
-        Const::Float(_) | Const::Double(_) => panic!("bitshift operation applied to floating type!"),
+        Const::Float(_) | Const::Double(_) => {
+            panic!("bitshift operation applied to floating type!")
+        }
     }
 }
 
@@ -28,7 +30,9 @@ fn evaluate_rightshift(val: &Const, shift: u32) -> Const {
         Const::ULong(v) => Const::ULong(*v >> shift),
         Const::Char(v) => Const::Char(*v >> shift),
         Const::UChar(v) => Const::UChar(*v >> shift),
-        Const::Float(_) | Const::Double(_) => panic!("bitshift operation applied to floating type!"),
+        Const::Float(_) | Const::Double(_) => {
+            panic!("bitshift operation applied to floating type!")
+        }
     }
 }
 

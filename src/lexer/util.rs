@@ -2,7 +2,8 @@ use crate::lexer::lex::Const;
 use anyhow::{bail, Result};
 
 pub fn parse_integer(suffix: &str, just_number: &str) -> Result<Const> {
-    let (digits, radix, is_hex) = if just_number.starts_with("0x") || just_number.starts_with("0X") {
+    let (digits, radix, is_hex) = if just_number.starts_with("0x") || just_number.starts_with("0X")
+    {
         (&just_number[2..], 16, true)
     } else {
         (just_number, 10, false)

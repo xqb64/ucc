@@ -1,16 +1,17 @@
 use crate::{
     lexer::lex::{Const, Span, Token, TokenKind},
     parser::ast::{
-        AbstractDeclarator, AggregateKind, AddrOfExpression, ArrowExpression, AssignExpression, BinaryExpression,
-        BinaryExpressionKind, BlockItem, BlockStatement, BreakStatement, CallExpression,
-        CastExpression, ConditionalExpression, ConstantExpression, ContinueStatement, Declaration,
-        Declarator, DerefExpression, DoWhileStatement, DotExpression, EnumDeclaration,
-        EnumMemberDeclaration, Expression, ExpressionStatement, ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer,
-        LiteralExpression, MemberDeclaration, ParamInfo, Program, ReturnStatement,
-        SizeofExpression, SizeofTExpression, Statement, StorageClass, StringExpression,
-        spanof, StructDeclaration, SubscriptExpression, Type, TypedefDeclaration, UnaryExpression, UnaryExpressionKind,
-        VaArgExpression, VaCopyExpression, VaEndExpression, VaStartExpression,
-        VariableDeclaration, VariableExpression, WhileStatement,
+        spanof, AbstractDeclarator, AddrOfExpression, AggregateKind, ArrowExpression,
+        AssignExpression, BinaryExpression, BinaryExpressionKind, BlockItem, BlockStatement,
+        BreakStatement, CallExpression, CastExpression, ConditionalExpression, ConstantExpression,
+        ContinueStatement, Declaration, Declarator, DerefExpression, DoWhileStatement,
+        DotExpression, EnumDeclaration, EnumMemberDeclaration, Expression, ExpressionStatement,
+        ForInit, ForStatement, FunctionDeclaration, IfStatement, Initializer, LiteralExpression,
+        MemberDeclaration, ParamInfo, Program, ReturnStatement, SizeofExpression,
+        SizeofTExpression, Statement, StorageClass, StringExpression, StructDeclaration,
+        SubscriptExpression, Type, TypedefDeclaration, UnaryExpression, UnaryExpressionKind,
+        VaArgExpression, VaCopyExpression, VaEndExpression, VaStartExpression, VariableDeclaration,
+        VariableExpression, WhileStatement,
     },
     semantics::typechecker::{builtin_va_list_type, ensure_builtin_va_list_type},
     util::error::{ErrorKind, Result, UccError},
@@ -34,7 +35,6 @@ pub struct Parser {
     pub pending_declarations: VecDeque<BlockItem>,
     pub anonymous_tag_counter: usize,
     pub object_scopes: Vec<BTreeMap<String, Type>>,
-
 }
 
 impl Parser {
@@ -138,7 +138,12 @@ impl Parser {
     }
 
     fn lookup_typedef(&self, name: &str) -> Option<Type> {
-        for (aliases, shadows) in self.typedef_scopes.iter().zip(self.typedef_shadows.iter()).rev() {
+        for (aliases, shadows) in self
+            .typedef_scopes
+            .iter()
+            .zip(self.typedef_shadows.iter())
+            .rev()
+        {
             if shadows.contains(name) {
                 return None;
             }
@@ -183,11 +188,10 @@ impl Parser {
             "__uint32_t" => Some(Type::UInt),
             "__int64_t" | "__quad_t" => Some(Type::Long),
             "__uint64_t" | "__u_quad_t" => Some(Type::ULong),
-            "__intptr_t" | "__ssize_t" | "__off_t" | "__off64_t" | "__time_t"
-            | "__suseconds_t" | "__useconds_t" | "__clock_t" | "__clockid_t"
-            | "__pid_t" | "__uid_t" | "__gid_t" | "__mode_t" | "__nlink_t"
-            | "__ino_t" | "__ino64_t" | "__dev_t" | "__rlim_t" | "__rlim64_t"
-            | "__blksize_t" | "__blkcnt_t" | "__blkcnt64_t" | "__fsblkcnt_t"
+            "__intptr_t" | "__ssize_t" | "__off_t" | "__off64_t" | "__time_t" | "__suseconds_t"
+            | "__useconds_t" | "__clock_t" | "__clockid_t" | "__pid_t" | "__uid_t" | "__gid_t"
+            | "__mode_t" | "__nlink_t" | "__ino_t" | "__ino64_t" | "__dev_t" | "__rlim_t"
+            | "__rlim64_t" | "__blksize_t" | "__blkcnt_t" | "__blkcnt64_t" | "__fsblkcnt_t"
             | "__fsblkcnt64_t" | "__fsfilcnt_t" | "__fsfilcnt64_t" => Some(Type::Long),
             "__socklen_t" | "__id_t" | "__key_t" | "__timer_t" => Some(Type::Int),
             _ => {
@@ -211,7 +215,9 @@ impl Parser {
     }
 
     fn shadow_typedef_name(&mut self, name: &str) {
-        if self.lookup_typedef(name).is_some() && !self.typedef_scopes.last().unwrap().contains_key(name) {
+        if self.lookup_typedef(name).is_some()
+            && !self.typedef_scopes.last().unwrap().contains_key(name)
+        {
             self.typedef_shadows
                 .last_mut()
                 .unwrap()
@@ -263,7 +269,11 @@ impl Parser {
 
     fn starts_declaration(&self) -> bool {
         match self.current.as_ref().map(|token| &token.kind) {
-            Some(kind) => self.is_specifier(kind) || self.is_typedef_name(kind) || self.is_builtin_type_name(kind),
+            Some(kind) => {
+                self.is_specifier(kind)
+                    || self.is_typedef_name(kind)
+                    || self.is_builtin_type_name(kind)
+            }
             None => false,
         }
     }
@@ -332,11 +342,13 @@ impl Parser {
             self.pending_declarations.push_back(item);
         }
 
-        self.pending_declarations.pop_front().ok_or_else(|| UccError {
-            kind: ErrorKind::Parse,
-            msg: format!("internal error, parse_declaration"),
-            span: self.current_span().unwrap_or(Span { start: 0, end: 0 }),
-        })
+        self.pending_declarations
+            .pop_front()
+            .ok_or_else(|| UccError {
+                kind: ErrorKind::Parse,
+                msg: format!("internal error, parse_declaration"),
+                span: self.current_span().unwrap_or(Span { start: 0, end: 0 }),
+            })
     }
 
     fn is_standalone_struct_or_union_decl_start(&self) -> bool {
@@ -350,7 +362,10 @@ impl Parser {
         }
 
         let mut i = 1usize;
-        if matches!(tokens.get(i).map(|t| &t.kind), Some(TokenKind::Identifier(_))) {
+        if matches!(
+            tokens.get(i).map(|t| &t.kind),
+            Some(TokenKind::Identifier(_))
+        ) {
             i += 1;
         }
 
@@ -364,7 +379,10 @@ impl Parser {
                 let Some(after_brace) = Self::index_after_balanced_braces(&tokens, i) else {
                     return false;
                 };
-                matches!(tokens.get(after_brace).map(|t| &t.kind), Some(TokenKind::Semicolon))
+                matches!(
+                    tokens.get(after_brace).map(|t| &t.kind),
+                    Some(TokenKind::Semicolon)
+                )
             }
             _ => false,
         }
@@ -381,7 +399,10 @@ impl Parser {
         }
 
         let mut i = 1usize;
-        if matches!(tokens.get(i).map(|t| &t.kind), Some(TokenKind::Identifier(_))) {
+        if matches!(
+            tokens.get(i).map(|t| &t.kind),
+            Some(TokenKind::Identifier(_))
+        ) {
             i += 1;
         }
 
@@ -394,7 +415,10 @@ impl Parser {
                 let Some(after_brace) = Self::index_after_balanced_braces(&tokens, i) else {
                     return false;
                 };
-                matches!(tokens.get(after_brace).map(|t| &t.kind), Some(TokenKind::Semicolon))
+                matches!(
+                    tokens.get(after_brace).map(|t| &t.kind),
+                    Some(TokenKind::Semicolon)
+                )
             }
             _ => false,
         }
@@ -468,7 +492,10 @@ impl Parser {
         let begin = self.current_span()?;
         self.consume(&TokenKind::Enum)?;
 
-        let tag = if matches!(self.current.as_ref().map(|t| &t.kind), Some(TokenKind::Identifier(_))) {
+        let tag = if matches!(
+            self.current.as_ref().map(|t| &t.kind),
+            Some(TokenKind::Identifier(_))
+        ) {
             Some(
                 self.consume(&TokenKind::Identifier(String::new()))?
                     .unwrap()
@@ -615,7 +642,10 @@ impl Parser {
         };
         self.advance();
 
-        let explicit_tag = if matches!(self.current.as_ref().map(|t| &t.kind), Some(TokenKind::Identifier(_))) {
+        let explicit_tag = if matches!(
+            self.current.as_ref().map(|t| &t.kind),
+            Some(TokenKind::Identifier(_))
+        ) {
             Some(self.advance().unwrap())
         } else {
             None
@@ -647,10 +677,11 @@ impl Parser {
                 members,
                 span: begin + end,
             };
-            self.pending_declarations.push_back(BlockItem::Declaration(match aggregate_kind {
-                AggregateKind::Struct => Declaration::Struct(decl),
-                AggregateKind::Union => Declaration::Union(decl),
-            }));
+            self.pending_declarations
+                .push_back(BlockItem::Declaration(match aggregate_kind {
+                    AggregateKind::Struct => Declaration::Struct(decl),
+                    AggregateKind::Union => Declaration::Union(decl),
+                }));
             tag
         } else if let Some(tag) = explicit_tag {
             // A reference such as `struct foo *p` must not enqueue a synthetic
@@ -667,7 +698,10 @@ impl Parser {
             });
         };
 
-        Ok(vec![kind_token, self.make_synthetic_identifier(tag_name, begin)])
+        Ok(vec![
+            kind_token,
+            self.make_synthetic_identifier(tag_name, begin),
+        ])
     }
 
     fn consume_enum_type_specifier(&mut self) -> Result<Vec<Token>> {
@@ -675,7 +709,10 @@ impl Parser {
         let kind_token = self.current.clone().unwrap();
         self.consume(&TokenKind::Enum)?;
 
-        let explicit_tag = if matches!(self.current.as_ref().map(|t| &t.kind), Some(TokenKind::Identifier(_))) {
+        let explicit_tag = if matches!(
+            self.current.as_ref().map(|t| &t.kind),
+            Some(TokenKind::Identifier(_))
+        ) {
             Some(self.advance().unwrap())
         } else {
             None
@@ -701,13 +738,12 @@ impl Parser {
             }
             self.consume(&TokenKind::RBrace)?;
             let end = self.current_span()?;
-            self.pending_declarations.push_back(BlockItem::Declaration(Declaration::Enum(
-                EnumDeclaration {
+            self.pending_declarations
+                .push_back(BlockItem::Declaration(Declaration::Enum(EnumDeclaration {
                     tag: Some(tag.clone()),
                     members,
                     span: begin + end,
-                },
-            )));
+                })));
             tag
         } else if let Some(tag) = explicit_tag {
             tag.as_string()
@@ -719,7 +755,10 @@ impl Parser {
             });
         };
 
-        Ok(vec![kind_token, self.make_synthetic_identifier(tag_name, begin)])
+        Ok(vec![
+            kind_token,
+            self.make_synthetic_identifier(tag_name, begin),
+        ])
     }
 
     fn parse_member_decls(&mut self) -> Result<Vec<MemberDeclaration>> {
@@ -798,11 +837,15 @@ impl Parser {
                 | TokenKind::Struct
                 | TokenKind::Union
                 | TokenKind::Enum
-        ) || self.is_typedef_name(token) || self.is_builtin_type_name(token)
+        ) || self.is_typedef_name(token)
+            || self.is_builtin_type_name(token)
     }
 
     fn is_storage_class_specifier(&self, token: &TokenKind) -> bool {
-        matches!(token, TokenKind::Static | TokenKind::Extern | TokenKind::Typedef)
+        matches!(
+            token,
+            TokenKind::Static | TokenKind::Extern | TokenKind::Typedef
+        )
     }
 
     fn has_consumed_type_specifier(&self, specifier_list: &[Token]) -> bool {
@@ -819,20 +862,21 @@ impl Parser {
 
     fn infer_array_size_from_initializer(&self, ty: &Type, init: Option<&Initializer>) -> Type {
         match (ty, init) {
-            (
-                Type::Array { element, size: 0 },
-                Some(Initializer::Compound(_, _, inits)),
-            ) => Type::Array {
-                element: element.clone(),
-                size: inits.len(),
-            },
+            (Type::Array { element, size: 0 }, Some(Initializer::Compound(_, _, inits))) => {
+                Type::Array {
+                    element: element.clone(),
+                    size: inits.len(),
+                }
+            }
             (
                 Type::Array { element, size: 0 },
                 Some(Initializer::Single(_, Expression::String(string_expr))),
-            ) if matches!(element.as_ref(), Type::Char | Type::SChar | Type::UChar) => Type::Array {
-                element: element.clone(),
-                size: string_expr.value.len() + 1,
-            },
+            ) if matches!(element.as_ref(), Type::Char | Type::SChar | Type::UChar) => {
+                Type::Array {
+                    element: element.clone(),
+                    size: string_expr.value.len() + 1,
+                }
+            }
             _ => ty.clone(),
         }
     }
@@ -870,11 +914,13 @@ impl Parser {
             if storage_class == Some(StorageClass::Typedef) {
                 let end = self.current_span()?;
                 self.declare_typedef_name(name.clone(), decl_type.clone());
-                decls.push(BlockItem::Declaration(Declaration::Typedef(TypedefDeclaration {
-                    name,
-                    ty: decl_type,
-                    span: begin + end,
-                })));
+                decls.push(BlockItem::Declaration(Declaration::Typedef(
+                    TypedefDeclaration {
+                        name,
+                        ty: decl_type,
+                        span: begin + end,
+                    },
+                )));
             } else if matches!(decl_type, Type::Func { .. }) {
                 if !decls.is_empty() {
                     return Err(UccError {
@@ -991,7 +1037,10 @@ impl Parser {
 
     fn has_named_declarator_before_param_delimiter(&self) -> bool {
         let mut depth = 0usize;
-        for token in std::iter::once(self.current.as_ref()).flatten().chain(self.tokens.iter()) {
+        for token in std::iter::once(self.current.as_ref())
+            .flatten()
+            .chain(self.tokens.iter())
+        {
             match &token.kind {
                 TokenKind::LParen | TokenKind::LBracket => depth += 1,
                 TokenKind::RParen | TokenKind::RBracket => {
@@ -1072,7 +1121,11 @@ impl Parser {
                 TokenKind::LParen => {
                     self.consume(&TokenKind::LParen)?;
                     let (params, variadic) = self.parse_param_list()?;
-                    Ok(Declarator::Func(params, variadic, Box::new(simple_declarator)))
+                    Ok(Declarator::Func(
+                        params,
+                        variadic,
+                        Box::new(simple_declarator),
+                    ))
                 }
                 TokenKind::LBracket => {
                     let decl = self.parse_array_decl_suffix(&simple_declarator)?;
@@ -1150,7 +1203,9 @@ impl Parser {
             Type::Short | Type::UShort => 2,
             Type::Int | Type::UInt | Type::Float | Type::Enum { .. } => 4,
             Type::Long | Type::ULong | Type::Double | Type::Pointer(_) | Type::Func { .. } => 8,
-            Type::Array { element, size } => self.sizeof_type_for_array_dim(element, span)? * (*size as i64),
+            Type::Array { element, size } => {
+                self.sizeof_type_for_array_dim(element, span)? * (*size as i64)
+            }
             Type::Void | Type::Struct { .. } | Type::Union { .. } | Type::Dummy => {
                 return Err(UccError {
                     msg: format!("unsupported type in array dimension sizeof"),
@@ -1218,7 +1273,9 @@ impl Parser {
                 self.sizeof_expr_for_array_dim(expr, *span)
             }
             Expression::Cast(CastExpression { expr, .. }) => self.eval_array_dim_expression(expr),
-            Expression::Unary(UnaryExpression { kind, expr, span, .. }) => {
+            Expression::Unary(UnaryExpression {
+                kind, expr, span, ..
+            }) => {
                 let value = self.eval_array_dim_expression(expr)?;
                 match kind {
                     UnaryExpressionKind::Negate => Ok(value.wrapping_neg()),
@@ -1231,7 +1288,13 @@ impl Parser {
                     }),
                 }
             }
-            Expression::Binary(BinaryExpression { kind, lhs, rhs, span, .. }) => {
+            Expression::Binary(BinaryExpression {
+                kind,
+                lhs,
+                rhs,
+                span,
+                ..
+            }) => {
                 let lhs = self.eval_array_dim_expression(lhs)?;
                 let rhs = self.eval_array_dim_expression(rhs)?;
                 match kind {
@@ -1263,7 +1326,12 @@ impl Parser {
                     BinaryExpressionKind::Or => Ok(((lhs != 0) || (rhs != 0)) as i64),
                 }
             }
-            Expression::Conditional(ConditionalExpression { condition, then_expr, else_expr, .. }) => {
+            Expression::Conditional(ConditionalExpression {
+                condition,
+                then_expr,
+                else_expr,
+                ..
+            }) => {
                 if self.eval_array_dim_expression(condition)? != 0 {
                     self.eval_array_dim_expression(then_expr)
                 } else {
@@ -1319,7 +1387,9 @@ impl Parser {
                 if self.is_next(&[TokenKind::Ellipsis]) {
                     if params.is_empty() {
                         return Err(UccError {
-                            msg: format!("Variadic parameter list needs at least one named parameter"),
+                            msg: format!(
+                                "Variadic parameter list needs at least one named parameter"
+                            ),
                             kind: ErrorKind::Parse,
                             span: self.current_span()?,
                         });
@@ -1462,12 +1532,13 @@ impl Parser {
                 for (param_base_type, param_declarator) in params {
                     let (param_name, param_type, _) =
                         self.process_declarator(param_declarator, param_base_type)?;
-                    if std::mem::discriminant(&param_type)
-                        == std::mem::discriminant(&some_fn_type)
+                    if std::mem::discriminant(&param_type) == std::mem::discriminant(&some_fn_type)
                     {
                         return Err(UccError {
                             kind: ErrorKind::Parse,
-                            msg: format!("Function parameters with function type are not supported."),
+                            msg: format!(
+                                "Function parameters with function type are not supported."
+                            ),
                             span: self.current_span()?,
                         });
                     }
@@ -1488,7 +1559,7 @@ impl Parser {
                     let (name, ty, nested_params) = self.process_declarator(decl, &derived_type)?;
                     Ok((name, ty, nested_params))
                 }
-            },
+            }
             Declarator::Array(inner, size) => {
                 let derived_type = Type::Array {
                     element: Box::new(base_type.clone()),
@@ -1584,12 +1655,8 @@ impl Parser {
             [TokenKind::Struct, TokenKind::Identifier(tag)] => {
                 Ok(Type::Struct { tag: tag.clone() })
             }
-            [TokenKind::Union, TokenKind::Identifier(tag)] => {
-                Ok(Type::Union { tag: tag.clone() })
-            }
-            [TokenKind::Enum, TokenKind::Identifier(tag)] => {
-                Ok(Type::Enum { tag: tag.clone() })
-            }
+            [TokenKind::Union, TokenKind::Identifier(tag)] => Ok(Type::Union { tag: tag.clone() }),
+            [TokenKind::Enum, TokenKind::Identifier(tag)] => Ok(Type::Enum { tag: tag.clone() }),
             [TokenKind::Identifier(name)] => self
                 .lookup_typedef(name)
                 .or_else(|| self.builtin_type(name))
@@ -1642,19 +1709,16 @@ impl Parser {
 
                 // Aside from `signed`/`unsigned`, `int` may appear with either
                 // `short` or `long`; no other type-specifier combinations are valid here.
-                if sorted_specifiers
-                    .iter()
-                    .any(|specifier| {
-                        !matches!(
-                            specifier,
-                            TokenKind::Signed
-                                | TokenKind::Unsigned
-                                | TokenKind::Int
-                                | TokenKind::Short
-                                | TokenKind::Long
-                        )
-                    })
-                {
+                if sorted_specifiers.iter().any(|specifier| {
+                    !matches!(
+                        specifier,
+                        TokenKind::Signed
+                            | TokenKind::Unsigned
+                            | TokenKind::Int
+                            | TokenKind::Short
+                            | TokenKind::Long
+                    )
+                }) {
                     return invalid_type();
                 }
 
@@ -2772,7 +2836,10 @@ impl Parser {
             };
 
             let expr = self.parse_expression()?;
-            inits.push(Self::initializer_from_designator_path(&designator_path, expr));
+            inits.push(Self::initializer_from_designator_path(
+                &designator_path,
+                expr,
+            ));
 
             if self.is_next(&[TokenKind::Comma]) {
                 continue;
@@ -3050,7 +3117,10 @@ mod short_tests {
             "#,
         );
 
-        assert_eq!(tys, vec![Type::Short, Type::Short, Type::Short, Type::Short]);
+        assert_eq!(
+            tys,
+            vec![Type::Short, Type::Short, Type::Short, Type::Short]
+        );
     }
 
     #[test]
@@ -3064,7 +3134,10 @@ mod short_tests {
             "#,
         );
 
-        assert_eq!(tys, vec![Type::UShort, Type::UShort, Type::UShort, Type::UShort]);
+        assert_eq!(
+            tys,
+            vec![Type::UShort, Type::UShort, Type::UShort, Type::UShort]
+        );
     }
 
     #[test]
@@ -3086,11 +3159,13 @@ mod short_tests {
         assert_eq!(get_common_type(&Type::UShort, &Type::UShort), &Type::Int);
     }
 
-
     #[test]
     fn lexes_and_parses_union_declaration_and_type_references() {
-        let tokens: Vec<_> = Lexer::new("union U { int i; double d; }; union U u;".to_string()).collect();
-        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::Union)));
+        let tokens: Vec<_> =
+            Lexer::new("union U { int i; double d; }; union U u;".to_string()).collect();
+        assert!(tokens
+            .iter()
+            .any(|token| matches!(token.kind, TokenKind::Union)));
 
         let program = parse("union U { int i; double d; }; union U u; union U *p;");
         assert!(matches!(
@@ -3111,11 +3186,13 @@ mod short_tests {
         ));
     }
 
-
     #[test]
     fn lexes_and_parses_enum_declaration_and_type_references() {
-        let tokens: Vec<_> = Lexer::new("enum Color { RED, GREEN = 5, BLUE, }; enum Color c;".to_string()).collect();
-        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::Enum)));
+        let tokens: Vec<_> =
+            Lexer::new("enum Color { RED, GREEN = 5, BLUE, }; enum Color c;".to_string()).collect();
+        assert!(tokens
+            .iter()
+            .any(|token| matches!(token.kind, TokenKind::Enum)));
 
         let program = parse("enum Color { RED, GREEN = 5, BLUE, }; enum Color c; enum Color *p;");
         assert!(matches!(
@@ -3173,13 +3250,17 @@ mod short_tests {
         assert_eq!(get_common_type(&Type::Float, &Type::UShort), &Type::Float);
     }
 
-
     #[test]
     fn lexes_typedef_and_variadic_ellipsis() {
-        let tokens: Vec<_> = Lexer::new("typedef int I; int log(I code, ...);".to_string()).collect();
+        let tokens: Vec<_> =
+            Lexer::new("typedef int I; int log(I code, ...);".to_string()).collect();
 
-        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::Typedef)));
-        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::Ellipsis)));
+        assert!(tokens
+            .iter()
+            .any(|token| matches!(token.kind, TokenKind::Typedef)));
+        assert!(tokens
+            .iter()
+            .any(|token| matches!(token.kind, TokenKind::Ellipsis)));
     }
 
     #[test]
@@ -3234,19 +3315,27 @@ mod short_tests {
         parse("typedef int T; int main(void) { long T; T = 1L; return (int) T; }");
     }
 
-
     #[test]
     fn lexes_hex_integer_suffixes_and_octal_escapes() {
-        let tokens: Vec<_> = Lexer::new("int x = 0x80; unsigned long y = 1ULL; char z = '\\0';".to_string()).collect();
+        let tokens: Vec<_> =
+            Lexer::new("int x = 0x80; unsigned long y = 1ULL; char z = '\\0';".to_string())
+                .collect();
 
-        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::Constant(Const::Int(0x80)))));
-        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::Constant(Const::ULong(1)))));
-        assert!(tokens.iter().any(|token| matches!(token.kind, TokenKind::CharLiteral('\0'))));
+        assert!(tokens
+            .iter()
+            .any(|token| matches!(token.kind, TokenKind::Constant(Const::Int(0x80)))));
+        assert!(tokens
+            .iter()
+            .any(|token| matches!(token.kind, TokenKind::Constant(Const::ULong(1)))));
+        assert!(tokens
+            .iter()
+            .any(|token| matches!(token.kind, TokenKind::CharLiteral('\0'))));
     }
 
     #[test]
     fn parses_anonymous_aggregate_typedefs_before_alias_declarations() {
-        let program = parse("typedef struct { int capacity; int len; int *data; } VecInt; VecInt v;");
+        let program =
+            parse("typedef struct { int capacity; int len; int *data; } VecInt; VecInt v;");
 
         assert!(matches!(
             &program.block_items[0],
@@ -3370,7 +3459,6 @@ mod short_tests {
         ));
     }
 
-
     #[test]
     fn parses_header_style_abstract_array_and_function_pointer_parameters() {
         let program = parse(
@@ -3429,7 +3517,8 @@ mod short_tests {
         let BlockItem::Declaration(Declaration::Function(func)) = &program.block_items[1] else {
             panic!("expected function declaration");
         };
-        let Some(BlockItem::Statement(Statement::Compound(block))) = func.body.as_ref().as_ref() else {
+        let Some(BlockItem::Statement(Statement::Compound(block))) = func.body.as_ref().as_ref()
+        else {
             panic!("expected function body");
         };
         let BlockItem::Statement(Statement::Return(ret)) = &block.stmts[0] else {
@@ -3438,7 +3527,12 @@ mod short_tests {
         let Some(Expression::Literal(lit)) = &ret.expr else {
             panic!("expected compound literal");
         };
-        assert_eq!(lit.ty, Type::Struct { tag: "Token".to_string() });
+        assert_eq!(
+            lit.ty,
+            Type::Struct {
+                tag: "Token".to_string()
+            }
+        );
         assert!(matches!(
             lit.value.as_ref(),
             Initializer::Compound(_, _, inits)
@@ -3448,7 +3542,6 @@ mod short_tests {
                     && matches!(&inits[2], Initializer::Single(name, _) if name == "start")
         ));
     }
-
 
     #[test]
     fn parses_empty_array_parameters() {
@@ -3496,7 +3589,8 @@ mod short_tests {
         let BlockItem::Declaration(Declaration::Function(func)) = &program.block_items[2] else {
             panic!("expected function declaration");
         };
-        let Some(BlockItem::Statement(Statement::Compound(block))) = func.body.as_ref().as_ref() else {
+        let Some(BlockItem::Statement(Statement::Compound(block))) = func.body.as_ref().as_ref()
+        else {
             panic!("expected function body");
         };
         let BlockItem::Statement(Statement::Return(ret)) = &block.stmts[0] else {
@@ -3575,12 +3669,16 @@ mod short_tests {
             "#,
         );
 
-        let outer = program.block_items.iter().find_map(|item| match item {
-            BlockItem::Declaration(Declaration::Struct(decl)) if decl.members.len() == 3 => {
-                Some(decl)
-            }
-            _ => None,
-        }).expect("expected outer struct declaration");
+        let outer = program
+            .block_items
+            .iter()
+            .find_map(|item| match item {
+                BlockItem::Declaration(Declaration::Struct(decl)) if decl.members.len() == 3 => {
+                    Some(decl)
+                }
+                _ => None,
+            })
+            .expect("expected outer struct declaration");
 
         assert_eq!(outer.members[0].name, "a");
         assert_eq!(outer.members[1].name, "b");
@@ -3602,19 +3700,22 @@ mod short_tests {
 
     #[test]
     fn parses_builtin_bswap_calls_in_inline_helpers() {
-        parse(r#"
+        parse(
+            r#"
             typedef unsigned short int __uint16_t;
             typedef unsigned int __uint32_t;
             typedef unsigned long int __uint64_t;
             static __inline __uint16_t __bswap_16(__uint16_t x) { return __builtin_bswap16(x); }
             static __inline __uint32_t __bswap_32(__uint32_t x) { return __builtin_bswap32(x); }
             static __inline __uint64_t __bswap_64(__uint64_t x) { return __builtin_bswap64(x); }
-        "#);
+        "#,
+        );
     }
 
     #[test]
     fn parses_anonymous_struct_pointer_local_declarations() {
-        parse(r#"
+        parse(
+            r#"
             void *malloc(unsigned long size);
             int f(int num_args) {
                 struct {
@@ -3624,7 +3725,7 @@ mod short_tests {
                 } *arg_locs = malloc(sizeof(struct { int x; }) * num_args);
                 return arg_locs != 0;
             }
-        "#);
+        "#,
+        );
     }
-
 }
