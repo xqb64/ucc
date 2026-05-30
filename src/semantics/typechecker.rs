@@ -211,7 +211,7 @@ impl Typecheck for VariableDeclaration {
         self.ty = infer_array_size_from_initializer(&self.ty, self.init.as_ref());
         if self.ty == Type::Void {
             return Err(UccError {
-                msg: format!("Variable declared with void type"),
+                msg: "Variable declared with void type".to_string(),
                 kind: ErrorKind::Typecheck,
                 span: self.span,
             });
@@ -223,7 +223,7 @@ impl Typecheck for VariableDeclaration {
             true => {
                 if !is_complete(&self.ty) && self.storage_class != Some(StorageClass::Extern) {
                     return Err(UccError {
-                        msg: format!("Variable declared with incomplete type"),
+                        msg: "Variable declared with incomplete type".to_string(),
                         kind: ErrorKind::Typecheck,
                         span: self.span,
                     });
@@ -247,7 +247,7 @@ impl Typecheck for VariableDeclaration {
                 let check_against_previous = |old_d: &Symbol| -> Result<(bool, InitialValue)> {
                     if old_d.ty != self.ty {
                         return Err(UccError {
-                            msg: format!("Variable redeclared with different type"),
+                            msg: "Variable redeclared with different type".to_string(),
                             kind: ErrorKind::Typecheck,
                             span: self.span,
                         });
@@ -264,7 +264,7 @@ impl Typecheck for VariableDeclaration {
                                 is_global
                             } else {
                                 return Err(UccError {
-                                    msg: format!("Conflicting variable linkage."),
+                                    msg: "Conflicting variable linkage.".to_string(),
                                     kind: ErrorKind::Typecheck,
                                     span: self.span,
                                 });
@@ -273,9 +273,7 @@ impl Typecheck for VariableDeclaration {
                             let init = match (&prev_init, &static_init) {
                                 (InitialValue::Initial(_), InitialValue::Initial(_)) => {
                                     return Err(UccError {
-                                        msg: format!(
-                                            "Conflicting file-scope variable initializers."
-                                        ),
+                                        msg: "Conflicting file-scope variable initializers.".to_string(),
                                         kind: ErrorKind::Typecheck,
                                         span: self.span,
                                     });
@@ -333,7 +331,7 @@ impl Typecheck for VariableDeclaration {
             false => {
                 if !is_complete(&self.ty) {
                     return Err(UccError {
-                        msg: format!("Variable declared with incomplete type."),
+                        msg: "Variable declared with incomplete type.".to_string(),
                         kind: ErrorKind::Typecheck,
                         span: self.span,
                     });
@@ -343,7 +341,7 @@ impl Typecheck for VariableDeclaration {
                     Some(StorageClass::Extern) => {
                         if self.init.is_some() {
                             return Err(UccError {
-                                msg: format!("Extern variable with initializer."),
+                                msg: "Extern variable with initializer.".to_string(),
                                 kind: ErrorKind::Typecheck,
                                 span: self.span,
                             });
@@ -355,7 +353,7 @@ impl Typecheck for VariableDeclaration {
                             Some(sym) => {
                                 if sym.ty != self.ty {
                                     return Err(UccError {
-                                        msg: format!("Variable redeclared with different type."),
+                                        msg: "Variable redeclared with different type.".to_string(),
                                         kind: ErrorKind::Typecheck,
                                         span: self.span,
                                     });
@@ -429,11 +427,11 @@ impl Typecheck for VariableDeclaration {
                         })
                     }
                     Some(StorageClass::Typedef) => {
-                        return Err(UccError {
-                            msg: format!("Typedef storage class reached variable typechecker"),
+                        Err(UccError {
+                            msg: "Typedef storage class reached variable typechecker".to_string(),
                             kind: ErrorKind::Typecheck,
                             span: self.span,
-                        });
+                        })
                     }
                     None => {
                         let symbol = Symbol {
@@ -471,7 +469,7 @@ fn validate_type_specifier(t: &Type) -> Result<()> {
         Type::Array { element, size: _ } => {
             if !is_complete(element) {
                 return Err(UccError {
-                    msg: format!("Incomplete type."),
+                    msg: "Incomplete type.".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: Span { start: 0, end: 0 },
                 });
@@ -500,7 +498,7 @@ impl Typecheck for FunctionDeclaration {
     fn typecheck(self) -> Result<Self> {
         if self.ty == Type::Void {
             return Err(UccError {
-                msg: format!("Variable declared with void type."),
+                msg: "Variable declared with void type.".to_string(),
                 kind: ErrorKind::Typecheck,
                 span: Span { start: 0, end: 0 },
             });
@@ -512,8 +510,8 @@ impl Typecheck for FunctionDeclaration {
             match t {
                 Type::Array { element, .. } => Ok(Type::Pointer(element)),
                 Type::Void => {
-                    return Err(UccError {
-                        msg: format!("Function parameter has void type"),
+                    Err(UccError {
+                        msg: "Function parameter has void type".to_string(),
                         kind: ErrorKind::Typecheck,
                         span: self.span,
                     })
@@ -530,7 +528,7 @@ impl Typecheck for FunctionDeclaration {
             } => {
                 if let Type::Array { .. } = *ret {
                     return Err(UccError {
-                        msg: format!("Function return type is an array"),
+                        msg: "Function return type is an array".to_string(),
                         kind: ErrorKind::Typecheck,
                         span: self.span,
                     });
@@ -551,7 +549,7 @@ impl Typecheck for FunctionDeclaration {
             }
             _ => {
                 return Err(UccError {
-                    msg: format!("Function has non function type"),
+                    msg: "Function has non function type".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: self.span,
                 })
@@ -565,7 +563,7 @@ impl Typecheck for FunctionDeclaration {
                 if !is_complete(param) {
                     return Err(UccError {
                         kind: ErrorKind::Typecheck,
-                        msg: format!("Function parameter has incomplete type"),
+                        msg: "Function parameter has incomplete type".to_string(),
                         span: self.span,
                     });
                 }
@@ -580,7 +578,7 @@ impl Typecheck for FunctionDeclaration {
                 if !TYPE_TABLE.lock().unwrap().contains_key(tag) {
                     return Err(UccError {
                         kind: ErrorKind::Typecheck,
-                        msg: format!("Function return type is incomplete."),
+                        msg: "Function return type is incomplete.".to_string(),
                         span: self.span,
                     });
                 }
@@ -593,7 +591,7 @@ impl Typecheck for FunctionDeclaration {
             if prev.ty != fun_type {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Redeclared function."),
+                    msg: "Redeclared function.".to_string(),
                     span: self.span,
                 });
             }
@@ -606,13 +604,13 @@ impl Typecheck for FunctionDeclaration {
                     if *prev_defined && has_body {
                         return Err(UccError {
                             kind: ErrorKind::Typecheck,
-                            msg: format!("Function defined twice."),
+                            msg: "Function defined twice.".to_string(),
                             span: self.span,
                         });
                     } else if *prev_global && self.storage_class == Some(StorageClass::Static) {
                         return Err(UccError {
                             kind: ErrorKind::Typecheck,
-                            msg: format!("StaticFunctionDeclarationAfterNonStatic"),
+                            msg: "StaticFunctionDeclarationAfterNonStatic".to_string(),
                             span: self.span,
                         });
                     }
@@ -621,8 +619,8 @@ impl Typecheck for FunctionDeclaration {
                     Ok((defined, *prev_global))
                 }
                 _ => {
-                    return Err(UccError {
-                        msg: format!("Symbol has function type but not function attributes"),
+                    Err(UccError {
+                        msg: "Symbol has function type but not function attributes".to_string(),
                         kind: ErrorKind::Typecheck,
                         span: self.span,
                     })
@@ -742,7 +740,7 @@ impl Typecheck for EnumDeclaration {
                 let typed_expr = typecheck_and_convert(expr)?;
                 if !is_integer_type(get_type(&typed_expr)) {
                     return Err(UccError {
-                        msg: format!("Enumerator value is not an integer constant expression"),
+                        msg: "Enumerator value is not an integer constant expression".to_string(),
                         kind: ErrorKind::Typecheck,
                         span: member.span,
                     });
@@ -753,7 +751,7 @@ impl Typecheck for EnumDeclaration {
             };
 
             let value_i32 = i32::try_from(value).map_err(|_| UccError {
-                msg: format!("Enumerator value is outside the range of int"),
+                msg: "Enumerator value is outside the range of int".to_string(),
                 kind: ErrorKind::Typecheck,
                 span: member.span,
             })?;
@@ -796,14 +794,14 @@ fn eval_integer_constant_expression(expr: &Expression) -> Result<i64> {
             Const::Long(v) => Ok(*v),
             Const::UInt(v) => Ok(*v as i64),
             Const::ULong(v) => i64::try_from(*v).map_err(|_| UccError {
-                msg: format!("Integer constant expression is outside the supported range"),
+                msg: "Integer constant expression is outside the supported range".to_string(),
                 kind: ErrorKind::Typecheck,
                 span: Span { start: 0, end: 0 },
             }),
             Const::Char(v) => Ok(*v as i64),
             Const::UChar(v) => Ok(*v as i64),
             Const::Float(_) | Const::Double(_) => Err(UccError {
-                msg: format!("Enumerator value is not an integer constant expression"),
+                msg: "Enumerator value is not an integer constant expression".to_string(),
                 kind: ErrorKind::Typecheck,
                 span: Span { start: 0, end: 0 },
             }),
@@ -820,7 +818,7 @@ fn eval_integer_constant_expression(expr: &Expression) -> Result<i64> {
         }) => {
             if !is_integer_type(target_type) {
                 return Err(UccError {
-                    msg: format!("Enumerator value is not an integer constant expression"),
+                    msg: "Enumerator value is not an integer constant expression".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 });
@@ -836,7 +834,7 @@ fn eval_integer_constant_expression(expr: &Expression) -> Result<i64> {
                 UnaryExpressionKind::Complement => Ok(!value),
                 UnaryExpressionKind::Not => Ok((value == 0) as i64),
                 UnaryExpressionKind::Inc | UnaryExpressionKind::Dec => Err(UccError {
-                    msg: format!("Enumerator value is not an integer constant expression"),
+                    msg: "Enumerator value is not an integer constant expression".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 }),
@@ -856,12 +854,12 @@ fn eval_integer_constant_expression(expr: &Expression) -> Result<i64> {
                 BinaryExpressionKind::Sub => Ok(lhs.wrapping_sub(rhs)),
                 BinaryExpressionKind::Mul => Ok(lhs.wrapping_mul(rhs)),
                 BinaryExpressionKind::Div => Ok(lhs.checked_div(rhs).ok_or_else(|| UccError {
-                    msg: format!("Invalid enumerator division"),
+                    msg: "Invalid enumerator division".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 })?),
                 BinaryExpressionKind::Rem => Ok(lhs.checked_rem(rhs).ok_or_else(|| UccError {
-                    msg: format!("Invalid enumerator remainder"),
+                    msg: "Invalid enumerator remainder".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 })?),
@@ -893,7 +891,7 @@ fn eval_integer_constant_expression(expr: &Expression) -> Result<i64> {
             }
         }
         _ => Err(UccError {
-            msg: format!("Enumerator value is not an integer constant expression"),
+            msg: "Enumerator value is not an integer constant expression".to_string(),
             kind: ErrorKind::Typecheck,
             span: spanof(expr),
         }),
@@ -933,7 +931,7 @@ fn validate_struct_definition(definition: &StructDeclaration) -> Result<StructDe
             match &member.ty {
                 Type::Func { .. } => {
                     return Err(UccError {
-                        msg: format!("Can't declare aggregate member with function type",),
+                        msg: "Can't declare aggregate member with function type".to_string(),
                         kind: ErrorKind::Typecheck,
                         span: definition.span,
                     });
@@ -941,7 +939,7 @@ fn validate_struct_definition(definition: &StructDeclaration) -> Result<StructDe
                 _ => {
                     if !is_complete(&member.ty) {
                         return Err(UccError {
-                            msg: format!("Cannot declare aggregate member with incomplete type"),
+                            msg: "Cannot declare aggregate member with incomplete type".to_string(),
                             kind: ErrorKind::Typecheck,
                             span: definition.span,
                         });
@@ -964,11 +962,11 @@ impl Typecheck for Statement {
                 span,
             }) => {
                 if target_type == Some(Type::Void) {
-                    return Err(UccError {
-                        msg: format!("Return statement with expression in void function"),
+                    Err(UccError {
+                        msg: "Return statement with expression in void function".to_string(),
                         kind: ErrorKind::Typecheck,
                         span,
-                    });
+                    })
                 } else {
                     let ret_type = SYMBOL_TABLE
                         .lock()
@@ -1009,11 +1007,11 @@ impl Typecheck for Statement {
                         span,
                     }))
                 } else {
-                    return Err(UccError {
-                        msg: format!("Return statement with no expression in non-void function"),
+                    Err(UccError {
+                        msg: "Return statement with no expression in non-void function".to_string(),
                         kind: ErrorKind::Typecheck,
                         span,
-                    });
+                    })
                 }
             }
 
@@ -1102,7 +1100,7 @@ impl Typecheck for Statement {
                 if let ForInit::Declaration(decl) = &init {
                     if decl.storage_class.is_some() {
                         return Err(UccError {
-                            msg: format!("Storage class specifier in for loop init."),
+                            msg: "Storage class specifier in for loop init.".to_string(),
                             kind: ErrorKind::Typecheck,
                             span,
                         });
@@ -1147,7 +1145,7 @@ impl Typecheck for Statement {
 
                 if !is_integer_type(get_type(&typechecked_expr)) {
                     return Err(UccError {
-                        msg: format!("Controlling expression in switch statement must be integer."),
+                        msg: "Controlling expression in switch statement must be integer.".to_string(),
                         kind: ErrorKind::Typecheck,
                         span,
                     });
@@ -1180,7 +1178,7 @@ impl Typecheck for Statement {
 
                 if is_floating_type(get_type(&typechecked_expr)) {
                     return Err(UccError {
-                        msg: format!("Case expression can't be a floating type."),
+                        msg: "Case expression can't be a floating type.".to_string(),
                         kind: ErrorKind::Typecheck,
                         span,
                     });
@@ -1248,7 +1246,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             let context = CURRENT_FUNCTION_CONTEXT.lock().unwrap().clone();
             if !context.as_ref().is_some_and(|ctx| ctx.variadic) {
                 return Err(UccError {
-                    msg: format!("__builtin_va_start may only be used in a variadic function"),
+                    msg: "__builtin_va_start may only be used in a variadic function".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 });
@@ -1260,7 +1258,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                         if value == &expected_last_param => {}
                     _ => {
                         return Err(UccError {
-                            msg: format!("__builtin_va_start second argument must be the last named parameter"),
+                            msg: "__builtin_va_start second argument must be the last named parameter".to_string(),
                             kind: ErrorKind::Typecheck,
                             span: *span,
                         });
@@ -1270,7 +1268,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
             if !is_builtin_va_list_compatible_type(list_ty) {
                 return Err(UccError {
-                    msg: format!("__builtin_va_start first argument must be a va_list"),
+                    msg: "__builtin_va_start first argument must be a va_list".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 });
@@ -1278,7 +1276,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
             if is_builtin_va_list_object_type(list_ty) && !is_lvalue(&typed_list) {
                 return Err(UccError {
-                    msg: format!("__builtin_va_start first argument must be a va_list lvalue"),
+                    msg: "__builtin_va_start first argument must be a va_list lvalue".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 });
@@ -1303,7 +1301,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
             if !is_builtin_va_list_compatible_type(list_ty) {
                 return Err(UccError {
-                    msg: format!("__builtin_va_arg first argument must be a va_list"),
+                    msg: "__builtin_va_arg first argument must be a va_list".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 });
@@ -1313,7 +1311,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 || matches!(arg_ty, Type::Void | Type::Func { .. } | Type::Array { .. })
             {
                 return Err(UccError {
-                    msg: format!("__builtin_va_arg needs a complete object type"),
+                    msg: "__builtin_va_arg needs a complete object type".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 });
@@ -1340,7 +1338,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                 || !is_builtin_va_list_compatible_type(get_type(&typed_src))
             {
                 return Err(UccError {
-                    msg: format!("__builtin_va_copy arguments must be va_list values"),
+                    msg: "__builtin_va_copy arguments must be va_list values".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 });
@@ -1348,7 +1346,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
             if is_builtin_va_list_object_type(get_type(&typed_dst)) && !is_lvalue(&typed_dst) {
                 return Err(UccError {
-                    msg: format!("__builtin_va_copy destination must be a va_list lvalue"),
+                    msg: "__builtin_va_copy destination must be a va_list lvalue".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 });
@@ -1366,7 +1364,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             let typed_list = typecheck_expr(list)?;
             if !is_builtin_va_list_compatible_type(get_type(&typed_list)) {
                 return Err(UccError {
-                    msg: format!("__builtin_va_end argument must be a va_list"),
+                    msg: "__builtin_va_end argument must be a va_list".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 });
@@ -1398,7 +1396,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                         || (variadic && args.len() < params.len())
                     {
                         return Err(UccError {
-                            msg: format!("Function called with the wrong number of arguments."),
+                            msg: "Function called with the wrong number of arguments.".to_string(),
                             kind: ErrorKind::Typecheck,
                             span: *span,
                         });
@@ -1429,8 +1427,8 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     }))
                 }
                 _ => {
-                    return Err(UccError {
-                        msg: format!("Variable used as function name"),
+                    Err(UccError {
+                        msg: "Variable used as function name".to_string(),
                         kind: ErrorKind::Typecheck,
                         span: *span,
                     })
@@ -1519,11 +1517,11 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     span: *span,
                 }))
             } else {
-                return Err(UccError {
-                    msg: format!("Invalid lvalue in assignment"),
+                Err(UccError {
+                    msg: "Invalid lvalue in assignment".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
-                });
+                })
             }
         }
 
@@ -1541,7 +1539,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
             if !is_scalar(get_type(&typed_condition)) {
                 return Err(UccError {
-                    msg: format!("Non-scalar condition in scalar expression."),
+                    msg: "Non-scalar condition in scalar expression.".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 });
@@ -1658,7 +1656,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
 
             if let Type::Array { .. } = t2 {
                 return Err(UccError {
-                    msg: format!("Array type in cast."),
+                    msg: "Array type in cast.".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: *span,
                 });
@@ -1667,7 +1665,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             if let Type::Pointer(_) = t1 {
                 if is_floating_type(t2) {
                     return Err(UccError {
-                        msg: format!("Pointer to floating type cast."),
+                        msg: "Pointer to floating type cast.".to_string(),
                         kind: ErrorKind::Typecheck,
                         span: *span,
                     });
@@ -1677,7 +1675,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             if let Type::Pointer(_) = t2 {
                 if is_floating_type(t1) {
                     return Err(UccError {
-                        msg: format!("Floating type to pointer cast."),
+                        msg: "Floating type to pointer cast.".to_string(),
                         kind: ErrorKind::Typecheck,
                         span: *span,
                     });
@@ -1696,7 +1694,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             if !is_scalar(target_type) {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Non-scalar type in cast (can only cast to scalar or void)"),
+                    msg: "Non-scalar type in cast (can only cast to scalar or void)".to_string(),
                     span: Span { start: 0, end: 0 },
                 });
             }
@@ -1704,7 +1702,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             if !is_scalar(t1) {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Cannot cast non-scalar expression to scalar type."),
+                    msg: "Cannot cast non-scalar expression to scalar type.".to_string(),
                     span: Span { start: 0, end: 0 },
                 });
             }
@@ -1727,7 +1725,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     if inner_type == &Type::Void.into() {
                         return Err(UccError {
                             kind: ErrorKind::Typecheck,
-                            msg: format!("Cannot dereference a void pointer."),
+                            msg: "Cannot dereference a void pointer.".to_string(),
                             span: *span,
                         });
                     }
@@ -1739,9 +1737,9 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     Ok(deref_expr)
                 }
                 _ => {
-                    return Err(UccError {
+                    Err(UccError {
                         kind: ErrorKind::Typecheck,
-                        msg: format!("Cannot dereference a non-pointer type."),
+                        msg: "Cannot dereference a non-pointer type.".to_string(),
                         span: *span,
                     })
                 }
@@ -1758,11 +1756,11 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     span: *span,
                 }))
             } else {
-                return Err(UccError {
+                Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Cannot take address of non-lvalue."),
+                    msg: "Cannot take address of non-lvalue.".to_string(),
                     span: *span,
-                });
+                })
             }
         }
 
@@ -1793,7 +1791,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             if ty == &Type::Dummy {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Compound literal is missing a target type."),
+                    msg: "Compound literal is missing a target type.".to_string(),
                     span: *span,
                 });
             }
@@ -1802,7 +1800,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             if !is_complete(ty) {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Compound literal has incomplete type."),
+                    msg: "Compound literal has incomplete type.".to_string(),
                     span: *span,
                 });
             }
@@ -1820,7 +1818,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             if !is_complete(t) {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Sizeof operator applied to incomplete type."),
+                    msg: "Sizeof operator applied to incomplete type.".to_string(),
                     span: *span,
                 });
             }
@@ -1836,7 +1834,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
             if !is_complete(get_type(&typed_inner)) {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Sizeof operator applied to incomplete type."),
+                    msg: "Sizeof operator applied to incomplete type.".to_string(),
                     span: *span,
                 });
             }
@@ -1859,7 +1857,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     let member_def =
                         find_aggregate_member(tag, member).ok_or_else(|| UccError {
                             kind: ErrorKind::Typecheck,
-                            msg: format!("Unknown aggregate member."),
+                            msg: "Unknown aggregate member.".to_string(),
                             span: *span,
                         })?;
 
@@ -1871,9 +1869,9 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                     }))
                 }
                 _ => {
-                    return Err(UccError {
+                    Err(UccError {
                         kind: ErrorKind::Typecheck,
-                        msg: format!("Non aggregate type in dot expression."),
+                        msg: "Non aggregate type in dot expression.".to_string(),
                         span: *span,
                     })
                 }
@@ -1893,7 +1891,7 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                         let member_def =
                             find_aggregate_member(tag, member).ok_or_else(|| UccError {
                                 kind: ErrorKind::Typecheck,
-                                msg: format!("Unknown member in aggregate."),
+                                msg: "Unknown member in aggregate.".to_string(),
                                 span: *span,
                             })?;
 
@@ -1904,17 +1902,17 @@ fn typecheck_expr(expr: &Expression) -> Result<Expression> {
                             span: *span,
                         }))
                     } else {
-                        return Err(UccError {
+                        Err(UccError {
                             kind: ErrorKind::Typecheck,
-                            msg: format!("Non aggregate type in arrow expression."),
+                            msg: "Non aggregate type in arrow expression.".to_string(),
                             span: *span,
-                        });
+                        })
                     }
                 }
                 _ => {
-                    return Err(UccError {
+                    Err(UccError {
                         kind: ErrorKind::Typecheck,
-                        msg: format!("Non struct type in arrow expression."),
+                        msg: "Non struct type in arrow expression.".to_string(),
                         span: *span,
                     })
                 }
@@ -2134,7 +2132,7 @@ fn typecheck_struct_init_with_designators(
     if compound_init.len() > struct_def.members.len() {
         return Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("Too many initiailezers."),
+            msg: "Too many initiailezers.".to_string(),
             span: Span { start: 0, end: 0 },
         });
     }
@@ -2163,7 +2161,7 @@ fn typecheck_struct_init_with_designators(
             if idx >= struct_def.members.len() {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Too many initiailezers."),
+                    msg: "Too many initiailezers.".to_string(),
                     span: Span { start: 0, end: 0 },
                 });
             }
@@ -2197,7 +2195,7 @@ fn typecheck_union_init_with_designator(
     if compound_init.len() > 1 {
         return Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("Too many initiailezers."),
+            msg: "Too many initiailezers.".to_string(),
             span: Span { start: 0, end: 0 },
         });
     }
@@ -2270,7 +2268,7 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             if !is_char_type(element) {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Cannot init array with non-char type."),
+                    msg: "Cannot init array with non-char type.".to_string(),
                     span: Span { start: 0, end: 0 },
                 });
             }
@@ -2278,7 +2276,7 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             if value.len() > *size {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("String too long for array."),
+                    msg: "String too long for array.".to_string(),
                     span: Span { start: 0, end: 0 },
                 });
             }
@@ -2307,7 +2305,7 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             if inits.len() > *size {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Too many initiailezers."),
+                    msg: "Too many initiailezers.".to_string(),
                     span: Span { start: 0, end: 0 },
                 });
             }
@@ -2330,9 +2328,9 @@ fn typecheck_init(target_type: &Type, init: &Initializer) -> Result<Initializer>
             ))
         }
         _ => {
-            return Err(UccError {
+            Err(UccError {
                 kind: ErrorKind::Typecheck,
-                msg: format!("Cannot init a scalar object with compound init."),
+                msg: "Cannot init a scalar object with compound init.".to_string(),
                 span: Span { start: 0, end: 0 },
             })
         }
@@ -2395,11 +2393,11 @@ fn typecheck_addition(lhs: &Expression, rhs: &Expression, span: Span) -> Result<
             span,
         }))
     } else {
-        return Err(UccError {
+        Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("Invalid operands for addition."),
+            msg: "Invalid operands for addition.".to_string(),
             span,
-        });
+        })
     }
 }
 
@@ -2441,11 +2439,11 @@ fn typecheck_subtraction(lhs: &Expression, rhs: &Expression, span: Span) -> Resu
             span,
         }))
     } else {
-        return Err(UccError {
+        Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("Invalid operands for subtraction."),
+            msg: "Invalid operands for subtraction.".to_string(),
             span,
-        });
+        })
     }
 }
 
@@ -2468,11 +2466,11 @@ fn typecheck_multiplicative(
 
         match kind {
             BinaryExpressionKind::Rem if is_floating_type(common_type) => {
-                return Err(UccError {
+                Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Rem can't be applied to float types."),
+                    msg: "Rem can't be applied to float types.".to_string(),
                     span,
-                });
+                })
             }
             BinaryExpressionKind::Mul | BinaryExpressionKind::Div | BinaryExpressionKind::Rem => {
                 Ok(Expression::Binary(BinaryExpression {
@@ -2486,11 +2484,11 @@ fn typecheck_multiplicative(
             _ => unreachable!(),
         }
     } else {
-        return Err(UccError {
+        Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("Invalid operands for remainder."),
+            msg: "Invalid operands for remainder.".to_string(),
             span,
-        });
+        })
     }
 }
 
@@ -2513,7 +2511,7 @@ fn typecheck_equality(
     } else {
         return Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("Invalid operands for equality."),
+            msg: "Invalid operands for equality.".to_string(),
             span,
         });
     };
@@ -2549,7 +2547,7 @@ fn typecheck_relational(
     } else {
         return Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("Invalid operands for rel op."),
+            msg: "Invalid operands for rel op.".to_string(),
             span,
         });
     };
@@ -2572,7 +2570,7 @@ fn typecheck_not(expr: &Expression, span: Span) -> Result<Expression> {
     if !is_scalar(get_type(&typed_expr)) {
         return Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("Invalid operands for logical not."),
+            msg: "Invalid operands for logical not.".to_string(),
             span,
         });
     }
@@ -2593,7 +2591,7 @@ fn typecheck_complement(expr: &Expression, span: Span) -> Result<Expression> {
     if !is_integer_type(t) {
         return Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("Invalid operands for bitwise complement."),
+            msg: "Invalid operands for bitwise complement.".to_string(),
             span,
         });
     }
@@ -2630,7 +2628,7 @@ fn typecheck_negate(expr: &Expression, span: Span) -> Result<Expression> {
     } else {
         return Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("Invalid operands for negation."),
+            msg: "Invalid operands for negation.".to_string(),
             span,
         });
     };
@@ -2658,7 +2656,7 @@ fn typecheck_bitwise(
     if !(is_integer_type(lhs_type) && is_integer_type(rhs_type)) {
         return Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("Both operands in a bitwise op must be ints."),
+            msg: "Both operands in a bitwise op must be ints.".to_string(),
             span,
         });
     }
@@ -2692,7 +2690,7 @@ fn typecheck_bitshift(
     if !(is_integer_type(lhs_type) && is_integer_type(rhs_type)) {
         return Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("Both operands in a bitshift op must be ints."),
+            msg: "Both operands in a bitshift op must be ints.".to_string(),
             span,
         });
     }
@@ -2732,11 +2730,11 @@ fn typecheck_incr(expr: &Expression, kind: UnaryExpressionKind, span: Span) -> R
         }));
     }
 
-    return Err(UccError {
+    Err(UccError {
         kind: ErrorKind::Typecheck,
-        msg: format!("operand of ++/-- must be an lvalue with arithemtic or ptr type"),
+        msg: "operand of ++/-- must be an lvalue with arithemtic or ptr type".to_string(),
         span,
-    });
+    })
 }
 
 fn typecheck_postfix_inc(expr: &Expression, span: Span) -> Result<Expression> {
@@ -2753,11 +2751,11 @@ fn typecheck_postfix_inc(expr: &Expression, span: Span) -> Result<Expression> {
         }));
     }
 
-    return Err(UccError {
+    Err(UccError {
         kind: ErrorKind::Typecheck,
-        msg: format!("operand of postfix ++ must be an lvalue with arithemtic or ptr type"),
+        msg: "operand of postfix ++ must be an lvalue with arithemtic or ptr type".to_string(),
         span,
-    });
+    })
 }
 
 fn typecheck_postfix_dec(expr: &Expression, span: Span) -> Result<Expression> {
@@ -2774,11 +2772,11 @@ fn typecheck_postfix_dec(expr: &Expression, span: Span) -> Result<Expression> {
         }));
     }
 
-    return Err(UccError {
+    Err(UccError {
         kind: ErrorKind::Typecheck,
-        msg: format!("operand of postfix -- must be an lvalue with arithemtic or ptr type"),
+        msg: "operand of postfix -- must be an lvalue with arithemtic or ptr type".to_string(),
         span,
-    });
+    })
 }
 
 fn typecheck_subscript(expr: &Expression, index: &Expression, span: Span) -> Result<Expression> {
@@ -2796,8 +2794,8 @@ fn typecheck_subscript(expr: &Expression, index: &Expression, span: Span) -> Res
     } else {
         return Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("Invalid operands for subscript."),
-            span: spanof(&index),
+            msg: "Invalid operands for subscript.".to_string(),
+            span: spanof(index),
         });
     };
 
@@ -2836,7 +2834,7 @@ fn typecheck_compound(
                 if !is_integer_type(lhs_type) || !is_integer_type(rhs_type) {
                     return Err(UccError {
                         kind: ErrorKind::Typecheck,
-                        msg: format!("Operator only supports integer types."),
+                        msg: "Operator only supports integer types.".to_string(),
                         span,
                     });
                 }
@@ -2845,7 +2843,7 @@ fn typecheck_compound(
                 if !is_arithmetic(lhs_type) || !is_arithmetic(rhs_type) {
                     return Err(UccError {
                         kind: ErrorKind::Typecheck,
-                        msg: format!("Operator only supports arithmetic types."),
+                        msg: "Operator only supports arithmetic types.".to_string(),
                         span,
                     });
                 }
@@ -2856,7 +2854,7 @@ fn typecheck_compound(
                 {
                     return Err(UccError {
                         kind: ErrorKind::Typecheck,
-                        msg: format!("Invalid types for += / -="),
+                        msg: "Invalid types for += / -=".to_string(),
                         span,
                     });
                 }
@@ -2897,11 +2895,11 @@ fn typecheck_compound(
             span,
         }))
     } else {
-        return Err(UccError {
+        Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("lhs of compound assignment must be lvalue"),
+            msg: "lhs of compound assignment must be lvalue".to_string(),
             span,
-        });
+        })
     }
 }
 
@@ -2933,7 +2931,7 @@ pub fn typecheck_and_convert(e: &Expression) -> Result<Expression> {
             if !is_complete(type_of_expr) {
                 return Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Unknown aggregate type."),
+                    msg: "Unknown aggregate type.".to_string(),
                     span: spanof(e),
                 });
             }
@@ -2954,11 +2952,11 @@ fn convert_by_assignment(e: &Expression, target_type: &Type) -> Result<Expressio
     {
         Ok(convert_to(e, target_type))
     } else {
-        return Err(UccError {
+        Err(UccError {
             kind: ErrorKind::Typecheck,
-            msg: format!("cannot convert"),
+            msg: "cannot convert".to_string(),
             span: spanof(e),
-        });
+        })
     }
 }
 
@@ -3005,11 +3003,11 @@ fn get_common_ptr_type<'a>(e1: &'a Expression, e2: &'a Expression) -> Result<Typ
     {
         Ok(Type::Pointer(Type::Void.into()))
     } else {
-        return Err(UccError {
-            msg: format!("Incompatible pointer types"),
+        Err(UccError {
+            msg: "Incompatible pointer types".to_string(),
             kind: ErrorKind::Typecheck,
             span: Span { start: 0, end: 0 },
-        });
+        })
     }
 }
 
@@ -3120,11 +3118,11 @@ fn typecheck_scalar(e: &Expression) -> Result<Expression> {
     if is_scalar(get_type(&typechecked_expr)) {
         Ok(typechecked_expr)
     } else {
-        return Err(UccError {
-            msg: format!("Expected a scalar expression, got non-scalar"),
+        Err(UccError {
+            msg: "Expected a scalar expression, got non-scalar".to_string(),
             kind: ErrorKind::Typecheck,
             span: Span { start: 0, end: 0 },
-        });
+        })
     }
 }
 
@@ -3391,7 +3389,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             }
 
             Err(UccError {
-                msg: format!("StaticInitError::NonConstantInitializer"),
+                msg: "StaticInitError::NonConstantInitializer".to_string(),
                 kind: ErrorKind::Typecheck,
                 span: Span { start: 0, end: 0 },
             })
@@ -3420,7 +3418,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
 
             if compound_init.len() > struct_def.members.len() {
                 return Err(UccError {
-                    msg: format!("Too many initializers"),
+                    msg: "Too many initializers".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: Span { start: 0, end: 0 },
                 });
@@ -3450,7 +3448,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                     let idx = next_member;
                     if idx >= struct_def.members.len() {
                         return Err(UccError {
-                            msg: format!("Too many initializers"),
+                            msg: "Too many initializers".to_string(),
                             kind: ErrorKind::Typecheck,
                             span: Span { start: 0, end: 0 },
                         });
@@ -3489,7 +3487,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
 
             if compound_init.len() > 1 {
                 return Err(UccError {
-                    msg: format!("Too many initializers"),
+                    msg: "Too many initializers".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: Span { start: 0, end: 0 },
                 });
@@ -3532,18 +3530,18 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             Ok(static_inits)
         }
         (Type::Struct { .. } | Type::Union { .. }, Initializer::Single(_, _)) => {
-            return Err(UccError {
+            Err(UccError {
                 kind: ErrorKind::Typecheck,
-                msg: format!("Single initializer for aggregate type"),
+                msg: "Single initializer for aggregate type".to_string(),
                 span: Span { start: 0, end: 0 },
-            });
+            })
         }
         (Type::Array { element, size }, Initializer::Single(_, expr)) => {
             if let Expression::String(string_expr) = expr {
                 if !is_char_type(element) {
                     return Err(UccError {
                         kind: ErrorKind::Typecheck,
-                        msg: format!("Cannot init an array with non char type."),
+                        msg: "Cannot init an array with non char type.".to_string(),
                         span: Span { start: 0, end: 0 },
                     });
                 }
@@ -3562,19 +3560,19 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                         Ok(initializers)
                     }
                     _ => {
-                        return Err(UccError {
+                        Err(UccError {
                             kind: ErrorKind::Typecheck,
-                            msg: format!("String too long for array"),
+                            msg: "String too long for array".to_string(),
                             span: Span { start: 0, end: 0 },
                         })
                     }
                 }
             } else {
-                return Err(UccError {
+                Err(UccError {
                     kind: ErrorKind::Typecheck,
-                    msg: format!("Can't initialize array with non-string"),
+                    msg: "Can't initialize array with non-string".to_string(),
                     span: Span { start: 0, end: 0 },
-                });
+                })
             }
         }
         (_, Initializer::Single(_, Expression::Constant(ConstantExpression { value, .. }))) => {
@@ -3604,41 +3602,41 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 if v == 0 {
                     Ok(vec![StaticInit::Zero(get_size_of_type(t))])
                 } else if matches!(t, Type::Pointer(_)) {
-                    return Err(UccError {
-                        msg: format!("InvalidPointerInitializer"),
+                    Err(UccError {
+                        msg: "InvalidPointerInitializer".to_string(),
                         kind: ErrorKind::Typecheck,
                         span: Span { start: 0, end: 0 },
-                    });
+                    })
                 } else if is_scalar(t) {
                     Ok(vec![const2staticinit(&Const::Int(v), t)])
                 } else {
-                    return Err(UccError {
-                        msg: format!("StaticInitError::NonConstantInitializer"),
+                    Err(UccError {
+                        msg: "StaticInitError::NonConstantInitializer".to_string(),
                         kind: ErrorKind::Typecheck,
                         span: Span { start: 0, end: 0 },
-                    });
+                    })
                 }
             } else {
-                return Err(UccError {
-                    msg: format!("StaticInitError::NonConstantInitializer"),
+                Err(UccError {
+                    msg: "StaticInitError::NonConstantInitializer".to_string(),
                     kind: ErrorKind::Typecheck,
                     span: Span { start: 0, end: 0 },
-                });
+                })
             }
         }
         (Type::Pointer(_), Initializer::Single(_, expr)) if is_null_ptr_constant(expr) => {
             Ok(vec![StaticInit::Zero(get_size_of_type(t))])
         }
         (Type::Pointer(_), _) => {
-            return Err(UccError {
-                msg: format!("InvalidPointerInitializer"),
+            Err(UccError {
+                msg: "InvalidPointerInitializer".to_string(),
                 kind: ErrorKind::Typecheck,
                 span: Span { start: 0, end: 0 },
             })
         }
         (_, Initializer::Single(_, _)) => {
-            return Err(UccError {
-                msg: format!("StaticInitError::NonConstantInitializer"),
+            Err(UccError {
+                msg: "StaticInitError::NonConstantInitializer".to_string(),
                 kind: ErrorKind::Typecheck,
                 span: Span { start: 0, end: 0 },
             })
@@ -3658,7 +3656,7 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
                 std::cmp::Ordering::Equal => vec![],
                 std::cmp::Ordering::Less => {
                     return Err(UccError {
-                        msg: format!("Too many initializers"),
+                        msg: "Too many initializers".to_string(),
                         kind: ErrorKind::Typecheck,
                         span: Span { start: 0, end: 0 },
                     })
@@ -3669,11 +3667,11 @@ fn static_init_helper(init: &Initializer, t: &Type) -> Result<Vec<StaticInit>> {
             Ok(static_inits)
         }
         (_, Initializer::Compound(_, _, _)) => {
-            return Err(UccError {
+            Err(UccError {
                 kind: ErrorKind::Typecheck,
-                msg: format!("compound init for scalar type"),
+                msg: "compound init for scalar type".to_string(),
                 span: Span { start: 0, end: 0 },
-            });
+            })
         }
     }
 }

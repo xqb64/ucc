@@ -271,7 +271,7 @@ impl Resolve for FunctionDeclaration {
         if self.body.is_some() && !self.is_global {
             return Err(UccError {
                 kind: ErrorKind::Resolve,
-                msg: format!("function definition in non-global scope"),
+                msg: "function definition in non-global scope".to_string(),
                 span: self.span,
             });
         }
@@ -283,7 +283,7 @@ impl Resolve for FunctionDeclaration {
         {
             return Err(UccError {
                 kind: ErrorKind::Resolve,
-                msg: format!("storage class specifier in non-global scope"),
+                msg: "storage class specifier in non-global scope".to_string(),
                 span: self.span,
             });
         }
@@ -295,7 +295,7 @@ impl Resolve for FunctionDeclaration {
                     for stmt in &block.stmts {
                         if let BlockItem::Declaration(Declaration::Variable(var_decl)) = stmt {
                             if var_decl.name == *param {
-                                return Err(UccError { kind: ErrorKind::Resolve, msg: format!("parameter name cannot be the same as a variable name in the function body"), span: self.span });
+                                return Err(UccError { kind: ErrorKind::Resolve, msg: "parameter name cannot be the same as a variable name in the function body".to_string(), span: self.span });
                             }
                         }
                     }
@@ -369,7 +369,7 @@ impl Resolve for StructDeclaration {
                 if prev_entry.kind != TagKind::from(self.kind) {
                     return Err(UccError {
                         kind: ErrorKind::Resolve,
-                        msg: format!("Conflicting tag declaration"),
+                        msg: "Conflicting tag declaration".to_string(),
                         span: self.span,
                     });
                 }
@@ -464,7 +464,7 @@ impl Resolve for EnumDeclaration {
                 if prev_entry.kind != TagKind::Enum {
                     return Err(UccError {
                         kind: ErrorKind::Resolve,
-                        msg: format!("Conflicting tag declaration"),
+                        msg: "Conflicting tag declaration".to_string(),
                         span: self.span,
                     });
                 }
@@ -1046,11 +1046,11 @@ impl Resolve for Expression {
                         span,
                     }))
                 } else {
-                    return Err(UccError {
+                    Err(UccError {
                         kind: ErrorKind::Resolve,
-                        msg: format!("undeclared function"),
+                        msg: "undeclared function".to_string(),
                         span,
-                    });
+                    })
                 }
             }
 
@@ -1330,11 +1330,11 @@ impl Resolve for Type {
                             tag: entry.name.clone(),
                         })
                     } else {
-                        return Err(UccError {
+                        Err(UccError {
                             kind: ErrorKind::Resolve,
-                            msg: format!("Specified a non-struct tag as a structure."),
+                            msg: "Specified a non-struct tag as a structure.".to_string(),
                             span: Span { start: 0, end: 0 },
-                        });
+                        })
                     }
                 } else {
                     // In C, a use like `struct Foo *p;` introduces `struct Foo`
@@ -1363,11 +1363,11 @@ impl Resolve for Type {
                             tag: entry.name.clone(),
                         })
                     } else {
-                        return Err(UccError {
+                        Err(UccError {
                             kind: ErrorKind::Resolve,
-                            msg: format!("Specified a non-union tag as a union."),
+                            msg: "Specified a non-union tag as a union.".to_string(),
                             span: Span { start: 0, end: 0 },
-                        });
+                        })
                     }
                 } else {
                     // Same incomplete-tag rule as `struct Foo *p;` above.
@@ -1390,18 +1390,18 @@ impl Resolve for Type {
                         // This compiler represents enum objects as signed int.
                         Ok(Type::Int)
                     } else {
-                        return Err(UccError {
+                        Err(UccError {
                             kind: ErrorKind::Resolve,
-                            msg: format!("Specified a non-enum tag as an enum."),
+                            msg: "Specified a non-enum tag as an enum.".to_string(),
                             span: Span { start: 0, end: 0 },
-                        });
+                        })
                     }
                 } else {
-                    return Err(UccError {
+                    Err(UccError {
                         kind: ErrorKind::Resolve,
-                        msg: format!("Specified an undeclared enum tag."),
+                        msg: "Specified an undeclared enum tag.".to_string(),
                         span: Span { start: 0, end: 0 },
-                    });
+                    })
                 }
             }
 

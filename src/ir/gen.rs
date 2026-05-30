@@ -2031,7 +2031,7 @@ fn emit_string_init(dst: String, offset: usize, s: &[u8]) -> Vec<IRInstruction> 
         let rest = &s[8..];
         let mut instructions = vec![instr];
         instructions.extend(emit_string_init(dst, offset + 8, rest));
-        return instructions;
+        instructions
     } else if len >= 4 {
         let i = i32::from_le_bytes(s[0..4].try_into().unwrap());
         let instr = IRInstruction::CopyToOffset {
@@ -2042,7 +2042,7 @@ fn emit_string_init(dst: String, offset: usize, s: &[u8]) -> Vec<IRInstruction> 
         let rest = &s[4..];
         let mut instructions = vec![instr];
         instructions.extend(emit_string_init(dst, offset + 4, rest));
-        return instructions;
+        instructions
     } else {
         let c = s[0] as i8;
         let instr = IRInstruction::CopyToOffset {
@@ -2053,7 +2053,7 @@ fn emit_string_init(dst: String, offset: usize, s: &[u8]) -> Vec<IRInstruction> 
         let rest = &s[1..];
         let mut instructions = vec![instr];
         instructions.extend(emit_string_init(dst, offset + 1, rest));
-        return instructions;
+        instructions
     }
 }
 

@@ -41,7 +41,7 @@ macro_rules! collect_enabled {
 
 fn main() {
     let opts = Opt::from_args();
-    if let Err(_) = run(&opts) {
+    if run(&opts).is_err() {
         std::process::exit(1);
     }
 }
@@ -116,7 +116,7 @@ fn compile_file(opts: Opt, file: PathBuf) -> Result<Status> {
 
                 Err(UccError {
                     kind: ErrorKind::Lex,
-                    msg: format!("Failed to tokenize"),
+                    msg: "Failed to tokenize".to_string(),
                     span: token.span,
                 })
             } else {
@@ -149,34 +149,29 @@ fn compile_file(opts: Opt, file: PathBuf) -> Result<Status> {
 
     let cooked_ast = raw_ast
         .resolve(&mut variable_map, &mut struct_map)
-        .map_err(|err| {
+        .inspect_err(|err| {
             print_errctx(&src, &err.span);
-            err
         })?
         .loop_label(LabelContext {
             innermost: LabelKind::None,
             loop_label: "",
             switch_label: "",
         })
-        .map_err(|err| {
+        .inspect_err(|err| {
             print_errctx(&src, &err.span);
-            err
         })?
         .label_check(&mut HashSet::new(), "")
-        .map_err(|err| {
+        .inspect_err(|err| {
             print_errctx(&src, &err.span);
-            err
         })?
         .typecheck()
-        .map_err(|err| {
+        .inspect_err(|err| {
             println!("{:?}: {}\n", err.kind, err.msg);
             print_errctx(&src, &err.span);
-            err
         })?
         .collect_switch_cases(&mut vec![], &Type::Dummy)
-        .map_err(|err| {
+        .inspect_err(|err| {
             print_errctx(&src, &err.span);
-            err
         })?;
 
     if opts.validate {
@@ -280,7 +275,7 @@ fn asm_file(opts: &Opt, path: PathBuf) -> Result<Status> {
     if !status.success() {
         return Err(UccError {
             kind: ErrorKind::Codegen,
-            msg: format!("assembler failed"),
+            msg: "assembler failed".to_string(),
             span: Span { start: 0, end: 0 },
         });
     }
@@ -341,7 +336,7 @@ fn link(opts: &Opt) -> Result<Status> {
     if !status.success() {
         return Err(UccError {
             kind: ErrorKind::Codegen,
-            msg: format!("linker failed"),
+            msg: "linker failed".to_string(),
             span: Span { start: 0, end: 0 },
         });
     }
@@ -363,7 +358,7 @@ fn preprocess(path: &PathBuf) -> Result<PathBuf> {
     if !status.success() {
         return Err(UccError {
             kind: ErrorKind::Lex,
-            msg: format!("preprocessor failed"),
+            msg: "preprocessor failed".to_string(),
             span: Span { start: 0, end: 0 },
         });
     }

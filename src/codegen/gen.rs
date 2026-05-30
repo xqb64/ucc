@@ -706,7 +706,7 @@ fn copy_qwords_with_xmm_scratch(
     dst: &AsmOperand,
     byte_count: usize,
 ) -> Vec<AsmInstruction> {
-    assert!(byte_count % 8 == 0);
+    assert!(byte_count.is_multiple_of(8));
 
     let mut instructions = vec![];
     let mut offset = 0;
@@ -3213,7 +3213,7 @@ fn classify_structure(struct_entry: &StructEntry) -> Vec<Class> {
         return result;
     }
 
-    let eightbyte_count = (struct_entry.size + 7) / 8;
+    let eightbyte_count = struct_entry.size.div_ceil(8);
     let mut classes = vec![Class::Sse; eightbyte_count.max(1)];
     let mut scalar_fields = vec![];
     collect_scalar_fields(&struct_entry.members, 0, &mut scalar_fields);

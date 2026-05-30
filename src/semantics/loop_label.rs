@@ -203,7 +203,7 @@ impl LoopLabel for BlockStatement {
             .map(|stmt| stmt.loop_label(ctx))
             .collect::<Result<Vec<_>>>()?;
         Ok(BlockStatement {
-            stmts: labeled_stmts.into(),
+            stmts: labeled_stmts,
             span: self.span,
         })
     }
@@ -296,9 +296,9 @@ impl LoopLabel for BreakStatement {
                 span: self.span,
             }),
             LabelKind::None => {
-                return Err(UccError {
+                Err(UccError {
                     kind: ErrorKind::LoopLabel,
-                    msg: format!("break stmt not within loop or switch"),
+                    msg: "break stmt not within loop or switch".to_string(),
                     span: self.span,
                 })
             }
@@ -311,7 +311,7 @@ impl LoopLabel for ContinueStatement {
         if ctx.loop_label.is_empty() {
             return Err(UccError {
                 kind: ErrorKind::LoopLabel,
-                msg: format!("continue stmt not within loop"),
+                msg: "continue stmt not within loop".to_string(),
                 span: self.span,
             });
         }

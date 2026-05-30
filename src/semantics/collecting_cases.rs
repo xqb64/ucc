@@ -294,7 +294,7 @@ impl SwitchCaseCollect for CaseStatement {
         if !is_integer_type(get_type(&self.value)) {
             return Err(UccError {
                 kind: ErrorKind::CaseCollect,
-                msg: format!("switch condition not a constant expression"),
+                msg: "switch condition not a constant expression".to_string(),
                 span: self.span,
             });
         }
@@ -302,7 +302,7 @@ impl SwitchCaseCollect for CaseStatement {
         if !self.label.contains("Switch") {
             return Err(UccError {
                 kind: ErrorKind::CaseCollect,
-                msg: format!("case outside the switch statement"),
+                msg: "case outside the switch statement".to_string(),
                 span: self.span,
             });
         }
@@ -335,7 +335,7 @@ impl SwitchCaseCollect for CaseStatement {
         }) {
             return Err(UccError {
                 kind: ErrorKind::CaseCollect,
-                msg: format!("duplicate case value"),
+                msg: "duplicate case value".to_string(),
                 span: self.span,
             });
         }
@@ -374,7 +374,7 @@ impl SwitchCaseCollect for DefaultStatement {
         {
             return Err(UccError {
                 kind: ErrorKind::CaseCollect,
-                msg: format!("multiple defaults in a switch statement"),
+                msg: "multiple defaults in a switch statement".to_string(),
                 span: self.span,
             });
         }
@@ -382,7 +382,7 @@ impl SwitchCaseCollect for DefaultStatement {
         if !self.label.contains("Switch") {
             return Err(UccError {
                 kind: ErrorKind::CaseCollect,
-                msg: format!("default outside the switch statement"),
+                msg: "default outside the switch statement".to_string(),
                 span: self.span,
             });
         }

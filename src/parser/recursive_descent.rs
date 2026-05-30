@@ -284,16 +284,7 @@ impl Parser {
         }
 
         if let Some(current) = &self.current {
-            match current.kind {
-                TokenKind::Identifier(_) => match self.tokens.front() {
-                    Some(front) => match front.kind {
-                        TokenKind::Colon => return self.parse_labeled_statement(),
-                        _ => {}
-                    },
-                    _ => {}
-                },
-                _ => {}
-            }
+            if let TokenKind::Identifier(_) = current.kind { if let Some(front) = self.tokens.front() { if front.kind == TokenKind::Colon { return self.parse_labeled_statement() } } }
         }
 
         if self.starts_declaration() {
@@ -346,7 +337,7 @@ impl Parser {
             .pop_front()
             .ok_or_else(|| UccError {
                 kind: ErrorKind::Parse,
-                msg: format!("internal error, parse_declaration"),
+                msg: "internal error, parse_declaration".to_string(),
                 span: self.current_span().unwrap_or(Span { start: 0, end: 0 }),
             })
     }
@@ -465,7 +456,7 @@ impl Parser {
                     if members.is_empty() {
                         return Err(UccError {
                             kind: ErrorKind::Parse,
-                            msg: format!("aggregate member list cannot be empty"),
+                            msg: "aggregate member list cannot be empty".to_string(),
                             span: self.current_span()?,
                         });
                     }
@@ -475,7 +466,7 @@ impl Parser {
                 if self.check(&TokenKind::Semicolon) {
                     return Err(UccError {
                         kind: ErrorKind::Parse,
-                        msg: format!("stray semicolon in aggregate member list"),
+                        msg: "stray semicolon in aggregate member list".to_string(),
                         span: self.current_span()?,
                     });
                 }
@@ -589,7 +580,7 @@ impl Parser {
         while depth > 0 {
             let token = self.advance().ok_or_else(|| UccError {
                 kind: ErrorKind::Parse,
-                msg: format!("unterminated parenthesized attribute"),
+                msg: "unterminated parenthesized attribute".to_string(),
                 span: self.current_span().unwrap_or(Span { start: 0, end: 0 }),
             })?;
             match token.kind {
@@ -682,7 +673,7 @@ impl Parser {
                     if members.is_empty() {
                         return Err(UccError {
                             kind: ErrorKind::Parse,
-                            msg: format!("aggregate member list cannot be empty"),
+                            msg: "aggregate member list cannot be empty".to_string(),
                             span: self.current_span()?,
                         });
                     }
@@ -692,7 +683,7 @@ impl Parser {
                 if self.check(&TokenKind::Semicolon) {
                     return Err(UccError {
                         kind: ErrorKind::Parse,
-                        msg: format!("stray semicolon in aggregate member list"),
+                        msg: "stray semicolon in aggregate member list".to_string(),
                         span: self.current_span()?,
                     });
                 }
@@ -721,7 +712,7 @@ impl Parser {
         } else {
             return Err(UccError {
                 kind: ErrorKind::Parse,
-                msg: format!("expected a tag name or member list after aggregate specifier"),
+                msg: "expected a tag name or member list after aggregate specifier".to_string(),
                 span: self.current_span()?,
             });
         };
@@ -778,7 +769,7 @@ impl Parser {
         } else {
             return Err(UccError {
                 kind: ErrorKind::Parse,
-                msg: format!("expected a tag name or member list after enum specifier"),
+                msg: "expected a tag name or member list after enum specifier".to_string(),
                 span: self.current_span()?,
             });
         };
@@ -808,7 +799,7 @@ impl Parser {
 
             if self.check(&TokenKind::Semicolon) {
                 return Err(UccError {
-                    msg: format!("aggregate members must have declarators"),
+                    msg: "aggregate members must have declarators".to_string(),
                     kind: ErrorKind::Parse,
                     span: self.current_span()?,
                 });
@@ -821,7 +812,7 @@ impl Parser {
             let (name, decl_type, _) = self.process_declarator(&declarator, &base_type)?;
             if matches!(decl_type, Type::Func { .. }) {
                 return Err(UccError {
-                    msg: format!("function declarations not allowed in struct"),
+                    msg: "function declarations not allowed in struct".to_string(),
                     kind: ErrorKind::Parse,
                     span: self.current_span()?,
                 });
@@ -945,7 +936,7 @@ impl Parser {
             } else if matches!(decl_type, Type::Func { .. }) {
                 if !decls.is_empty() {
                     return Err(UccError {
-                        msg: format!("function declaration mixed with other declarators"),
+                        msg: "function declaration mixed with other declarators".to_string(),
                         kind: ErrorKind::Parse,
                         span: self.current_span()?,
                     });
@@ -1126,9 +1117,9 @@ impl Parser {
                 _ => self.parse_direct_declarator(),
             },
             None => {
-                return Err(UccError {
+                Err(UccError {
                     kind: ErrorKind::Parse,
-                    msg: format!("internal error parse_declarator"),
+                    msg: "internal error parse_declarator".to_string(),
                     span: self.current_span()?,
                 })
             }
@@ -1155,9 +1146,9 @@ impl Parser {
                 _ => Ok(simple_declarator),
             },
             None => {
-                return Err(UccError {
+                Err(UccError {
                     kind: ErrorKind::Parse,
-                    msg: format!("internal error, parse_direct_declarator"),
+                    msg: "internal error, parse_direct_declarator".to_string(),
                     span: self.current_span()?,
                 })
             }
@@ -1174,11 +1165,11 @@ impl Parser {
             }
             TokenKind::Identifier(id) => Ok(Declarator::Ident(id)),
             _ => {
-                return Err(UccError {
-                    msg: format!("internal error, parse_simple_declarator"),
+                Err(UccError {
+                    msg: "internal error, parse_simple_declarator".to_string(),
                     kind: ErrorKind::Parse,
                     span: self.current_span()?,
-                });
+                })
             }
         }
     }
@@ -1204,14 +1195,14 @@ impl Parser {
             Const::Long(v) => Ok(*v),
             Const::UInt(v) => Ok(*v as i64),
             Const::ULong(v) => i64::try_from(*v).map_err(|_| UccError {
-                msg: format!("array dimension is too large"),
+                msg: "array dimension is too large".to_string(),
                 kind: ErrorKind::Parse,
                 span,
             }),
             Const::Char(v) => Ok(*v as i64),
             Const::UChar(v) => Ok(*v as i64),
             Const::Float(_) | Const::Double(_) => Err(UccError {
-                msg: format!("array dimension is not an integer constant expression"),
+                msg: "array dimension is not an integer constant expression".to_string(),
                 kind: ErrorKind::Parse,
                 span,
             }),
@@ -1229,7 +1220,7 @@ impl Parser {
             }
             Type::Void | Type::Struct { .. } | Type::Union { .. } | Type::Dummy => {
                 return Err(UccError {
-                    msg: format!("unsupported type in array dimension sizeof"),
+                    msg: "unsupported type in array dimension sizeof".to_string(),
                     kind: ErrorKind::Parse,
                     span,
                 })
@@ -1241,7 +1232,7 @@ impl Parser {
         match expr {
             Expression::Variable(VariableExpression { value, .. }) => {
                 self.lookup_object_type(value).ok_or_else(|| UccError {
-                    msg: format!("unknown object in array dimension sizeof"),
+                    msg: "unknown object in array dimension sizeof".to_string(),
                     kind: ErrorKind::Parse,
                     span,
                 })
@@ -1251,7 +1242,7 @@ impl Parser {
                 match container_type {
                     Type::Array { element, .. } | Type::Pointer(element) => Ok(*element),
                     _ => Err(UccError {
-                        msg: format!("subscripted non-array in array dimension sizeof"),
+                        msg: "subscripted non-array in array dimension sizeof".to_string(),
                         kind: ErrorKind::Parse,
                         span,
                     }),
@@ -1262,7 +1253,7 @@ impl Parser {
                 match pointer_type {
                     Type::Pointer(element) => Ok(*element),
                     _ => Err(UccError {
-                        msg: format!("dereferenced non-pointer in array dimension sizeof"),
+                        msg: "dereferenced non-pointer in array dimension sizeof".to_string(),
                         kind: ErrorKind::Parse,
                         span,
                     }),
@@ -1270,7 +1261,7 @@ impl Parser {
             }
             Expression::Cast(CastExpression { target_type, .. }) => Ok(target_type.clone()),
             _ => Err(UccError {
-                msg: format!("unsupported expression in array dimension sizeof"),
+                msg: "unsupported expression in array dimension sizeof".to_string(),
                 kind: ErrorKind::Parse,
                 span,
             }),
@@ -1303,7 +1294,7 @@ impl Parser {
                     UnaryExpressionKind::Complement => Ok(!value),
                     UnaryExpressionKind::Not => Ok((value == 0) as i64),
                     UnaryExpressionKind::Inc | UnaryExpressionKind::Dec => Err(UccError {
-                        msg: format!("array dimension is not an integer constant expression"),
+                        msg: "array dimension is not an integer constant expression".to_string(),
                         kind: ErrorKind::Parse,
                         span: *span,
                     }),
@@ -1323,12 +1314,12 @@ impl Parser {
                     BinaryExpressionKind::Sub => Ok(lhs.wrapping_sub(rhs)),
                     BinaryExpressionKind::Mul => Ok(lhs.wrapping_mul(rhs)),
                     BinaryExpressionKind::Div => lhs.checked_div(rhs).ok_or_else(|| UccError {
-                        msg: format!("invalid array dimension division"),
+                        msg: "invalid array dimension division".to_string(),
                         kind: ErrorKind::Parse,
                         span: *span,
                     }),
                     BinaryExpressionKind::Rem => lhs.checked_rem(rhs).ok_or_else(|| UccError {
-                        msg: format!("invalid array dimension remainder"),
+                        msg: "invalid array dimension remainder".to_string(),
                         kind: ErrorKind::Parse,
                         span: *span,
                     }),
@@ -1360,7 +1351,7 @@ impl Parser {
                 }
             }
             _ => Err(UccError {
-                msg: format!("array dimension is not an integer constant expression"),
+                msg: "array dimension is not an integer constant expression".to_string(),
                 kind: ErrorKind::Parse,
                 span: spanof(expr),
             }),
@@ -1377,13 +1368,13 @@ impl Parser {
         let value = self.eval_array_dim_expression(&expr)?;
         if value < 0 {
             return Err(UccError {
-                msg: format!("array dimension must be non-negative"),
+                msg: "array dimension must be non-negative".to_string(),
                 kind: ErrorKind::Parse,
                 span: spanof(&expr),
             });
         }
         usize::try_from(value).map_err(|_| UccError {
-            msg: format!("array dimension is too large"),
+            msg: "array dimension is too large".to_string(),
             kind: ErrorKind::Parse,
             span: spanof(&expr),
         })
@@ -1408,9 +1399,7 @@ impl Parser {
                 if self.is_next(&[TokenKind::Ellipsis]) {
                     if params.is_empty() {
                         return Err(UccError {
-                            msg: format!(
-                                "Variadic parameter list needs at least one named parameter"
-                            ),
+                            msg: "Variadic parameter list needs at least one named parameter".to_string(),
                             kind: ErrorKind::Parse,
                             span: self.current_span()?,
                         });
@@ -1520,7 +1509,7 @@ impl Parser {
                 None => {
                     return Err(UccError {
                         kind: ErrorKind::Parse,
-                        msg: format!("internal error, consume_while_spec 2"),
+                        msg: "internal error, consume_while_spec 2".to_string(),
                         span: self.current_span()?,
                     })
                 }
@@ -1557,9 +1546,7 @@ impl Parser {
                     {
                         return Err(UccError {
                             kind: ErrorKind::Parse,
-                            msg: format!(
-                                "Function parameters with function type are not supported."
-                            ),
+                            msg: "Function parameters with function type are not supported.".to_string(),
                             span: self.current_span()?,
                         });
                     }
@@ -1667,7 +1654,7 @@ impl Parser {
         let invalid_type = || {
             Err(UccError {
                 kind: ErrorKind::Parse,
-                msg: format!("Invalid type specifier."),
+                msg: "Invalid type specifier.".to_string(),
                 span: self.current_span()?,
             })
         };
@@ -1853,7 +1840,7 @@ impl Parser {
             _ => {
                 return Err(UccError {
                     kind: ErrorKind::Parse,
-                    msg: format!("internal error, parse_switch"),
+                    msg: "internal error, parse_switch".to_string(),
                     span: self.current_span()?,
                 });
             }
@@ -1877,7 +1864,7 @@ impl Parser {
             _ => {
                 return Err(UccError {
                     kind: ErrorKind::Parse,
-                    msg: format!("internal error, parse case"),
+                    msg: "internal error, parse case".to_string(),
                     span: self.current_span()?,
                 });
             }
@@ -1899,7 +1886,7 @@ impl Parser {
             _ => {
                 return Err(UccError {
                     kind: ErrorKind::Parse,
-                    msg: format!("internal error, parse_default"),
+                    msg: "internal error, parse_default".to_string(),
                     span: self.current_span()?,
                 });
             }
@@ -1922,7 +1909,7 @@ impl Parser {
         if let BlockItem::Declaration(_) = then_branch {
             return Err(UccError {
                 kind: ErrorKind::Parse,
-                msg: format!("Variable declarations not allowed in if body."),
+                msg: "Variable declarations not allowed in if body.".to_string(),
                 span: self.current_span()?,
             });
         }
@@ -1971,7 +1958,7 @@ impl Parser {
         if let BlockItem::Declaration(_) = body {
             return Err(UccError {
                 kind: ErrorKind::Parse,
-                msg: format!("Variable declarations not allowed in while body."),
+                msg: "Variable declarations not allowed in while body.".to_string(),
                 span: self.current_span()?,
             });
         }
@@ -1999,7 +1986,7 @@ impl Parser {
                 _ => {
                     return Err(UccError {
                         kind: ErrorKind::Parse,
-                        msg: format!("Function declarations are not allowed in for loop headers."),
+                        msg: "Function declarations are not allowed in for loop headers.".to_string(),
                         span: self.current_span()?,
                     })
                 }
@@ -2070,7 +2057,7 @@ impl Parser {
         } else {
             return Err(UccError {
                 kind: ErrorKind::Parse,
-                msg: format!("internal error, parse_goto"),
+                msg: "internal error, parse_goto".to_string(),
                 span: self.current_span()?,
             });
         };
@@ -2090,7 +2077,7 @@ impl Parser {
         } else {
             return Err(UccError {
                 kind: ErrorKind::Parse,
-                msg: format!("Expected label identifier."),
+                msg: "Expected label identifier.".to_string(),
                 span: self.current_span()?,
             });
         };
@@ -2109,9 +2096,9 @@ impl Parser {
                 })))
             }
             _ => {
-                return Err(UccError {
+                Err(UccError {
                     kind: ErrorKind::Parse,
-                    msg: format!("Label must precede a statement, not a declaration"),
+                    msg: "Label must precede a statement, not a declaration".to_string(),
                     span: self.current_span()?,
                 })
             }
@@ -2147,7 +2134,7 @@ impl Parser {
         match self.current.as_ref() {
             Some(token) => Ok(token.span),
             None => {
-                return Ok(Span { start: 0, end: 0 });
+                Ok(Span { start: 0, end: 0 })
             }
         }
     }
@@ -2199,7 +2186,7 @@ impl Parser {
                         None => {
                             return Err(UccError {
                                 kind: ErrorKind::Parse,
-                                msg: format!("internal error, assignment"),
+                                msg: "internal error, assignment".to_string(),
                                 span: self.current_span()?,
                             })
                         }
@@ -2722,7 +2709,7 @@ impl Parser {
                     Expression::Variable(var) => var.value.clone(),
                     _ => {
                         return Err(UccError {
-                            msg: format!("expected a variable"),
+                            msg: "expected a variable".to_string(),
                             kind: ErrorKind::Parse,
                             span: self.current_span()?,
                         })
@@ -2795,7 +2782,7 @@ impl Parser {
                     None => {
                         return Err(UccError {
                             kind: ErrorKind::Parse,
-                            msg: format!("internal error, call"),
+                            msg: "internal error, call".to_string(),
                             span: self.current_span()?,
                         })
                     }
@@ -2872,7 +2859,7 @@ impl Parser {
 
         if inits.is_empty() {
             return Err(UccError {
-                msg: format!("empty compound literal"),
+                msg: "empty compound literal".to_string(),
                 kind: ErrorKind::Parse,
                 span: self.current_span()?,
             });
@@ -2922,11 +2909,11 @@ impl Parser {
                 _ => unreachable!(),
             }
         } else {
-            return Err(UccError {
-                msg: format!("expected primary"),
+            Err(UccError {
+                msg: "expected primary".to_string(),
                 kind: ErrorKind::Parse,
                 span: self.current_span()?,
-            });
+            })
         }
     }
 
@@ -2971,7 +2958,7 @@ impl Parser {
             None => {
                 return Err(UccError {
                     kind: ErrorKind::Parse,
-                    msg: format!("internal error, parse_string"),
+                    msg: "internal error, parse_string".to_string(),
                     span: Span { start: 0, end: 0 },
                 })
             }
@@ -2990,7 +2977,7 @@ impl Parser {
         while brace_depth > 0 {
             let token = self.advance().ok_or_else(|| UccError {
                 kind: ErrorKind::Parse,
-                msg: format!("unterminated statement expression"),
+                msg: "unterminated statement expression".to_string(),
                 span: self.current_span().unwrap_or(Span { start: 0, end: 0 }),
             })?;
             match token.kind {
@@ -3086,9 +3073,9 @@ impl Parser {
                 _ => Ok(new_decl),
             },
             None => {
-                return Err(UccError {
+                Err(UccError {
                     kind: ErrorKind::Parse,
-                    msg: format!("itnernnl error"),
+                    msg: "itnernnl error".to_string(),
                     span: self.current_span()?,
                 })
             }
