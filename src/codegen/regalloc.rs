@@ -488,7 +488,7 @@ fn pseudo_is_current_type(pseudo: &str, register_class: &RegisterClass) -> bool 
                 is_static: _,
                 is_constant: _,
             } => {
-                return matches!(ty, AsmType::Float | AsmType::Double);
+                matches!(ty, AsmType::Float | AsmType::Double)
             }
             _ => false,
         }

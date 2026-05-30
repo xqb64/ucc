@@ -3362,7 +3362,6 @@ macro_rules! convert_to_static {
             Const::Double(val) => $variant(*val as $ty),
             Const::Char(val) => $variant(*val as $ty),
             Const::UChar(val) => $variant(*val as $ty),
-            _ => unreachable!(),
         }
     };
 }

@@ -1249,8 +1249,6 @@ impl Resolve for Expression {
                     span,
                 }))
             }
-
-            _ => unreachable!(),
         }
     }
 }
